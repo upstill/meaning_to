@@ -1,9 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:meaning_to/splash_screen.dart';
+import 'package:meaning_to/auth_screen.dart';
+import 'package:meaning_to/home_screen.dart';
 
-void main() {
+void main() async {
+  print('App: Starting initialization...');
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  print('App: Initializing Supabase...');
+  try {
+    await Supabase.initialize(
+      url: 'https://zhpxdayfpysoixxjjqik.supabase.co',
+      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpocHhkYXlmcHlzb2l4eGpqcWlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0Mjk4MjAsImV4cCI6MjA2MTAwNTgyMH0.vWogNfl_98kZaTLFFf3sMSyddZBSjBt9D1yxTTiamVQ',
+    );
+    print('App: Supabase initialized successfully');
+  } catch (e) {
+    print('App: Error initializing Supabase: $e');
+  }
+  
+  print('App: Running app...');
   runApp(const MyApp());
 }
 
+class MyApp extends StatelessWidget {
+  const MyApp({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Meaning To',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.purple),
+      ),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const SplashScreen(),
+        '/auth': (context) => const AuthScreen(),
+        '/home': (context) => const HomeScreen(),
+      },
+    );
+  }
+}
+
+/* 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -120,3 +160,4 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 }
+ */
