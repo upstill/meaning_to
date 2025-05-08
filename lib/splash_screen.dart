@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:meaning_to/auth_screen.dart';
-import 'package:meaning_to/home_screen.dart';
-import 'dart:async';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({Key? key}) : super(key: key);
+  const SplashScreen({super.key});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -19,35 +16,43 @@ class _SplashScreenState extends State<SplashScreen> {
     _checkSession();
   }
 
-  void _checkSession() {
+  Future<void> _checkSession() async {
     print('SplashScreen: Checking session...');
     try {
+      // Get the current session
       final session = Supabase.instance.client.auth.currentSession;
-      print('SplashScreen: Session check result: ${session != null ? 'Session exists' : 'No session'}');
+      print('SplashScreen: Current session: ${session != null ? 'exists' : 'null'}');
       
-      if (!mounted) return;
+      if (!mounted) {
+        print('SplashScreen: Widget not mounted, returning');
+        return;
+      }
+
+      // Wait for the next frame
+      await Future.delayed(Duration.zero);
       
-      // Schedule navigation for after the build phase
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        
-        if (session == null) {
-          print('SplashScreen: Navigating to auth screen');
-          Navigator.pushReplacementNamed(context, '/auth');
-        } else {
-          print('SplashScreen: Navigating to home screen');
-          Navigator.pushReplacementNamed(context, '/home');
-        }
-      });
+      if (!mounted) {
+        print('SplashScreen: Widget not mounted after delay, returning');
+        return;
+      }
+
+      if (session == null) {
+        print('SplashScreen: No session found, navigating to auth screen');
+        Navigator.pushReplacementNamed(context, '/auth');
+      } else {
+        print('SplashScreen: Session found, navigating to home screen');
+        Navigator.pushReplacementNamed(context, '/home');
+      }
     } catch (e) {
       print('SplashScreen: Error checking session: $e');
-      if (!mounted) return;
+      if (!mounted) {
+        print('SplashScreen: Widget not mounted after error, returning');
+        return;
+      }
       
-      // Schedule error navigation for after the build phase
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/auth');
-      });
+      // If there's an error, go to auth screen
+      print('SplashScreen: Navigating to auth screen due to error');
+      Navigator.pushReplacementNamed(context, '/auth');
     }
   }
 
@@ -56,7 +61,14 @@ class _SplashScreenState extends State<SplashScreen> {
     print('SplashScreen: Building widget');
     return const Scaffold(
       body: Center(
-        child: CircularProgressIndicator(),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Loading...'),
+          ],
+        ),
       ),
     );
   }

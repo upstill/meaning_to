@@ -1,43 +1,140 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/home_screen.dart';
+import 'package:meaning_to/reset_password_screen.dart';
+import 'package:app_links/app_links.dart';
+import 'dart:async';
 
 void main() async {
-  print('App: Starting initialization...');
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  print('App: Initializing Supabase...');
   try {
+    WidgetsFlutterBinding.ensureInitialized();
+    
+    // Load environment variables
+    await dotenv.load(fileName: '.env');
+    
+    // Initialize Supabase
     await Supabase.initialize(
-      url: 'https://zhpxdayfpysoixxjjqik.supabase.co',
-      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpocHhkYXlmcHlzb2l4eGpqcWlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0Mjk4MjAsImV4cCI6MjA2MTAwNTgyMH0.vWogNfl_98kZaTLFFf3sMSyddZBSjBt9D1yxTTiamVQ',
+      url: dotenv.env['SUPABASE_URL']!,
+      anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
     );
-    print('App: Supabase initialized successfully');
+    
+    runApp(const MyApp());
   } catch (e) {
-    print('App: Error initializing Supabase: $e');
+    print('Error during initialization: $e');
+    runApp(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Text('Error initializing app: $e'),
+        ),
+      ),
+    ));
   }
-  
-  print('App: Running app...');
-  runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late AppLinks _appLinks;
+  StreamSubscription? _linkSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _initDeepLinkListener();
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initDeepLinkListener() async {
+    _appLinks = AppLinks();
+
+    // Handle initial link
+    final uri = await _appLinks.getInitialAppLink();
+    if (uri != null) {
+      _handleDeepLink(uri);
+    }
+
+    // Handle subsequent links
+    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    }, onError: (err) {
+      print('Error handling deep link: $err');
+    });
+  }
+
+  void _handleDeepLink(Uri uri) async {
+    print('Received deep link: $uri');
+    
+    // Handle both our custom scheme and Supabase verification URLs
+    if (uri.host == 'reset-password' || uri.path.contains('/auth/v1/verify')) {
+      final type = uri.queryParameters['type'];
+      final token = uri.queryParameters['token'];
+      
+      print('Deep link type: $type');
+      print('Token present: ${token != null}');
+
+      if (type == 'recovery' && token != null) {
+        try {
+          // Verify the token with Supabase
+          final response = await Supabase.instance.client.auth.verifyOTP(
+            type: OtpType.recovery,
+            token: token,
+          );
+          
+          if (response.session != null) {
+            if (context.mounted) {
+              Navigator.pushReplacementNamed(context, '/reset-password');
+            }
+          } else {
+            throw Exception('No session returned from verification');
+          }
+        } catch (e) {
+          print('Error verifying token: $e');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error verifying reset token: $e')),
+            );
+            Navigator.pushReplacementNamed(context, '/auth');
+          }
+        }
+      } else {
+        print('Invalid recovery parameters');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid password reset link')),
+          );
+          Navigator.pushReplacementNamed(context, '/auth');
+        }
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Meaning To',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.purple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
       ),
       initialRoute: '/',
       routes: {
         '/': (context) => const SplashScreen(),
         '/auth': (context) => const AuthScreen(),
         '/home': (context) => const HomeScreen(),
+        '/reset-password': (context) => const ResetPasswordScreen(),
       },
     );
   }

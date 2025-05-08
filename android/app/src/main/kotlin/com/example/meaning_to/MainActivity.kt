@@ -1,4 +1,4 @@
-package com.example.meaning_to
+package com.supabase.meaningto
 
 import io.flutter.embedding.android.FlutterActivity
 
