@@ -44,6 +44,8 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   late AppLinks _appLinks;
   StreamSubscription? _linkSubscription;
+  final _scaffoldKey = GlobalKey<ScaffoldMessengerState>();
+  final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -58,16 +60,21 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _initDeepLinkListener() async {
+    print('Initializing deep link listener');
     _appLinks = AppLinks();
 
     // Handle initial link
     final uri = await _appLinks.getInitialAppLink();
     if (uri != null) {
+      print('Got initial app link: $uri');
       _handleDeepLink(uri);
+    } else {
+      print('No initial app link found');
     }
 
     // Handle subsequent links
     _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      print('Received subsequent app link: $uri');
       _handleDeepLink(uri);
     }, onError: (err) {
       print('Error handling deep link: $err');
@@ -75,49 +82,60 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _handleDeepLink(Uri uri) async {
-    print('Received deep link: $uri');
+    print('Handling deep link: $uri');
+    print('URI path: ${uri.path}');
+    print('URI host: ${uri.host}');
+    print('URI query parameters: ${uri.queryParameters}');
     
-    // Handle both our custom scheme and Supabase verification URLs
-    if (uri.host == 'reset-password' || uri.path.contains('/auth/v1/verify')) {
-      final type = uri.queryParameters['type'];
-      final token = uri.queryParameters['token'];
+    // Handle our custom URL scheme
+    if (uri.scheme == 'meaningto' && uri.host == 'auth' && uri.path == '/callback') {
+      final code = uri.queryParameters['code'];
       
-      print('Deep link type: $type');
-      print('Token present: ${token != null}');
+      print('Callback code: $code');
 
-      if (type == 'recovery' && token != null) {
+      if (code != null) {
         try {
-          // Verify the token with Supabase
-          final response = await Supabase.instance.client.auth.verifyOTP(
-            type: OtpType.recovery,
-            token: token,
-          );
+          print('Exchanging code for session...');
+          final response = await Supabase.instance.client.auth.exchangeCodeForSession(code);
+          
+          print('Session exchange response: ${response.session != null}');
           
           if (response.session != null) {
-            if (context.mounted) {
-              Navigator.pushReplacementNamed(context, '/reset-password');
-            }
+            print('Updating user metadata for recovery...');
+            // Update the user metadata to indicate this is a recovery session
+            await Supabase.instance.client.auth.updateUser(
+              UserAttributes(
+                data: {'type': 'recovery'},
+              ),
+            );
+            
+            print('User metadata updated, navigating to reset password screen');
+            // Use the navigator key to navigate
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _navigatorKey.currentState?.pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const ResetPasswordScreen()),
+                (route) => false,
+              );
+            });
           } else {
-            throw Exception('No session returned from verification');
+            throw Exception('No session returned from code exchange');
           }
         } catch (e) {
-          print('Error verifying token: $e');
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Error verifying reset token: $e')),
-            );
-            Navigator.pushReplacementNamed(context, '/auth');
-          }
+          print('Error in recovery flow: $e');
+          _scaffoldKey.currentState?.showSnackBar(
+            SnackBar(content: Text('Error verifying reset token: $e')),
+          );
+          _navigatorKey.currentState?.pushReplacementNamed('/auth');
         }
       } else {
-        print('Invalid recovery parameters');
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Invalid password reset link')),
-          );
-          Navigator.pushReplacementNamed(context, '/auth');
-        }
+        print('Invalid callback parameters - code: ${code != null}');
+        _scaffoldKey.currentState?.showSnackBar(
+          const SnackBar(content: Text('Invalid password reset link')),
+        );
+        _navigatorKey.currentState?.pushReplacementNamed('/auth');
       }
+    } else {
+      print('URI not handled: $uri');
     }
   }
 
@@ -129,6 +147,8 @@ class _MyAppState extends State<MyApp> {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
+      scaffoldMessengerKey: _scaffoldKey,
+      navigatorKey: _navigatorKey,
       initialRoute: '/',
       routes: {
         '/': (context) => const SplashScreen(),

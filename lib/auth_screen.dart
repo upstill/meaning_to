@@ -11,8 +11,8 @@ class AuthScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // Define the redirect URL based on platform
     final supabaseUrl = dotenv.env['SUPABASE_URL']!;
-    // Use a custom URL scheme that our app can handle
-    final redirectUrl = 'meaningto://reset-password';
+    // Use the app's custom URL scheme for deep linking
+    final redirectUrl = 'meaningto://auth/callback';
 
     return Scaffold(
       body: ListView(
