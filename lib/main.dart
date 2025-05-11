@@ -81,61 +81,141 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  void _handleDeepLink(Uri uri) async {
+  Future<void> _handleDeepLink(Uri uri) async {
     print('Handling deep link: $uri');
-    print('URI path: ${uri.path}');
+    print('URI scheme: ${uri.scheme}');
     print('URI host: ${uri.host}');
+    print('URI path: ${uri.path}');
     print('URI query parameters: ${uri.queryParameters}');
     
     // Handle our custom URL scheme
     if (uri.scheme == 'meaningto' && uri.host == 'auth' && uri.path == '/callback') {
-      final code = uri.queryParameters['code'];
-      
-      print('Callback code: $code');
-
-      if (code != null) {
-        try {
-          print('Exchanging code for session...');
-          final response = await Supabase.instance.client.auth.exchangeCodeForSession(code);
+      try {
+        // Check for error parameters first
+        if (uri.queryParameters.containsKey('error')) {
+          final error = uri.queryParameters['error']!;
+          final errorCode = uri.queryParameters['error_code'];
+          final errorDescription = uri.queryParameters['error_description'];
           
-          print('Session exchange response: ${response.session != null}');
+          print('Auth error detected:');
+          print('- Error: $error');
+          print('- Code: $errorCode');
+          print('- Description: $errorDescription');
           
-          if (response.session != null) {
-            print('Updating user metadata for recovery...');
-            // Update the user metadata to indicate this is a recovery session
-            await Supabase.instance.client.auth.updateUser(
-              UserAttributes(
-                data: {'type': 'recovery'},
-              ),
-            );
-            
-            print('User metadata updated, navigating to reset password screen');
-            // Use the navigator key to navigate
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _navigatorKey.currentState?.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const ResetPasswordScreen()),
-                (route) => false,
-              );
-            });
-          } else {
-            throw Exception('No session returned from code exchange');
-          }
-        } catch (e) {
-          print('Error in recovery flow: $e');
+          // Show error message and navigate to auth screen
           _scaffoldKey.currentState?.showSnackBar(
-            SnackBar(content: Text('Error verifying reset token: $e')),
+            SnackBar(
+              content: Text(errorDescription ?? 'Authentication error occurred'),
+              backgroundColor: Colors.red,
+            ),
           );
           _navigatorKey.currentState?.pushReplacementNamed('/auth');
+          return;
         }
-      } else {
-        print('Invalid callback parameters - code: ${code != null}');
+
+        // Check if this is a verification token (signup or recovery)
+        if (uri.queryParameters.containsKey('type') && 
+            uri.queryParameters.containsKey('token')) {
+          final type = uri.queryParameters['type']!;
+          final token = uri.queryParameters['token']!;
+          
+          print('Processing verification token:');
+          print('- Type: $type');
+          print('- Token: $token');
+          
+          // Exchange the token for a session
+          print('Verifying OTP...');
+          final response = await Supabase.instance.client.auth.verifyOTP(
+            type: type == 'signup' ? OtpType.signup : OtpType.recovery,
+            token: token,
+          );
+          print('Verification response:');
+          print('- Session: ${response.session != null}');
+          print('- User: ${response.session?.user.id}');
+          print('- Metadata: ${response.session?.user.userMetadata}');
+          
+          if (response.session != null) {
+            if (type == 'recovery') {
+              print('Recovery session verified, navigating to reset password screen');
+              // Use the navigator key to ensure we can navigate
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _navigatorKey.currentState?.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const ResetPasswordScreen()),
+                  (route) => false,
+                );
+              });
+            } else {
+              print('Signup verified, navigating to home');
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _navigatorKey.currentState?.pushReplacementNamed('/home');
+              });
+            }
+          } else {
+            print('No session in verification response');
+            throw Exception('No session returned from verification');
+          }
+          return;
+        }
+
+        // Handle other auth callbacks
+        final code = uri.queryParameters['code'];
+        if (code != null) {
+          print('Exchanging code for session');
+          final response = await Supabase.instance.client.auth.exchangeCodeForSession(code);
+          print('Code exchange response:');
+          print('- Session: ${response.session != null}');
+          print('- User: ${response.session?.user.id}');
+          print('- Metadata: ${response.session?.user.userMetadata}');
+          
+          if (response.session != null) {
+            // Check if this is a recovery session
+            final type = response.session?.user.userMetadata?['type'] as String?;
+            print('Session type from metadata: $type');
+            
+            if (type == 'recovery') {
+              print('Recovery session detected, navigating to reset password screen');
+              // Use post frame callback to ensure navigation happens after the current frame
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _navigatorKey.currentState?.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const ResetPasswordScreen()),
+                  (route) => false,
+                );
+              });
+            } else {
+              print('Regular session, navigating to home');
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _navigatorKey.currentState?.pushReplacementNamed('/home');
+              });
+            }
+          }
+        } else {
+          print('No code parameter found in URI');
+          // Navigate to auth screen if no valid parameters found
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _navigatorKey.currentState?.pushReplacementNamed('/auth');
+          });
+        }
+      } catch (e) {
+        print('Error handling deep link: $e');
         _scaffoldKey.currentState?.showSnackBar(
-          const SnackBar(content: Text('Invalid password reset link')),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
-        _navigatorKey.currentState?.pushReplacementNamed('/auth');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _navigatorKey.currentState?.pushReplacementNamed('/auth');
+        });
       }
     } else {
-      print('URI not handled: $uri');
+      print('URI not handled:');
+      print('- Expected scheme: meaningto');
+      print('- Expected host: auth');
+      print('- Expected path: /callback');
+      // Navigate to auth screen for unhandled URIs
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navigatorKey.currentState?.pushReplacementNamed('/auth');
+      });
     }
   }
 
