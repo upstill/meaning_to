@@ -48,15 +48,68 @@ class _HomeScreenState extends State<HomeScreen> {
         throw Exception('No user logged in');
       }
 
-      final task = await Task.nextTask(category, userId);
+      final task = await Task.loadRandomTask(category, userId);
       
       setState(() {
         _randomTask = task;
         _isLoadingTask = false;
       });
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('Error loading random task: $e');
-      print('Stack trace: $stackTrace');
+      setState(() {
+        _error = e.toString();
+        _isLoadingTask = false;
+      });
+    }
+  }
+
+  Future<void> _rejectCurrentTask() async {
+    try {
+      setState(() {
+        _isLoadingTask = true;
+        _error = null;
+      });
+
+      await Task.rejectCurrentTask();
+      
+      // Load a new random task
+      if (_selectedCategory != null) {
+        await _loadRandomTask(_selectedCategory!);
+      } else {
+        setState(() {
+          _randomTask = null;
+          _isLoadingTask = false;
+        });
+      }
+    } catch (e) {
+      print('Error rejecting task: $e');
+      setState(() {
+        _error = e.toString();
+        _isLoadingTask = false;
+      });
+    }
+  }
+
+  Future<void> _finishCurrentTask() async {
+    try {
+      setState(() {
+        _isLoadingTask = true;
+        _error = null;
+      });
+
+      await Task.finishCurrentTask();
+      
+      // Load a new random task
+      if (_selectedCategory != null) {
+        await _loadRandomTask(_selectedCategory!);
+      } else {
+        setState(() {
+          _randomTask = null;
+          _isLoadingTask = false;
+        });
+      }
+    } catch (e) {
+      print('Error finishing task: $e');
       setState(() {
         _error = e.toString();
         _isLoadingTask = false;
@@ -123,11 +176,24 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _navigateToEditCategory([Category? category]) async {
+    final result = await Navigator.pushNamed(
+      context,
+      '/edit-category',
+      arguments: category,
+    );
+
+    if (result == true) {
+      // Reload categories if changes were made
+      _loadCategories();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('I\'ve been meaning to...'),
+        title: const Text(''),  // Blank header
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -190,14 +256,17 @@ class _HomeScreenState extends State<HomeScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Select a Category',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                  const Center(
+                    child: Text(
+                      'I\'ve been meaning to...?',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1A237E),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   DropdownButtonFormField<Category>(
                     value: _selectedCategory,
                     decoration: const InputDecoration(
@@ -207,11 +276,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         vertical: 8,
                       ),
                     ),
-                    hint: const Text('Choose a category'),
+                    hint: const Text(
+                      'Choose an endeavor',
+                      style: TextStyle(fontSize: 20),
+                    ),
                     items: _categories.map((category) {
                       return DropdownMenuItem(
                         value: category,
-                        child: Text(category.headline),
+                        child: Text(
+                          category.headline,
+                          style: const TextStyle(fontSize: 20),
+                        ),
                       );
                     }).toList(),
                     onChanged: (Category? newValue) {
@@ -232,59 +307,110 @@ class _HomeScreenState extends State<HomeScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            _selectedCategory!.headline,
-                            style: Theme.of(context).textTheme.headlineSmall,
-                          ),
-                          if (_selectedCategory!.invitation != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              _selectedCategory!.invitation!,
-                              style: Theme.of(context).textTheme.bodyLarge,
-                            ),
-                          ],
-                          const SizedBox(height: 24),
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Here\'s something you\'ve been meaning to do:',
-                                    style: Theme.of(context).textTheme.titleMedium,
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            width: MediaQuery.of(context).size.width - 32,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minHeight: 172,
+                              ),
+                              child: Card(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _randomTask!.headline,
+                                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                          fontSize: (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) + 6,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      if (_randomTask!.notes != null) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          _randomTask!.notes!,
+                                          style: Theme.of(context).textTheme.bodyMedium,
+                                        ),
+                                      ],
+                                      if (_randomTask!.triggersAt != null) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
+                                          style: Theme.of(context).textTheme.bodySmall,
+                                        ),
+                                      ],
+                                      if (_randomTask!.suggestibleAt != null) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Available again in ${_randomTask!.suggestibleAt!.difference(DateTime.now()).inMinutes} minutes',
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            color: Colors.blue,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    _randomTask!.headline,  // Changed from description to headline
-                                    style: Theme.of(context).textTheme.bodyLarge,
-                                  ),
-                                  if (_randomTask!.notes != null) ...[
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      _randomTask!.notes!,
-                                      style: Theme.of(context).textTheme.bodyMedium,
-                                    ),
-                                  ],
-                                  if (_randomTask!.triggersAt != null) ...[
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
-                                      style: Theme.of(context).textTheme.bodySmall,
-                                    ),
-                                  ],
-                                ],
+                                ),
                               ),
                             ),
                           ),
                           const SizedBox(height: 16),
                           Center(
-                            child: ElevatedButton.icon(
-                              onPressed: () => _loadRandomTask(_selectedCategory!),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Show Another Task'),
+                            child: Column(
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    try {
+                                      setState(() {
+                                        _isLoadingTask = true;
+                                        _error = null;
+                                      });
+                                      
+                                      // First reject the current task
+                                      await Task.rejectCurrentTask();
+                                      
+                                      // Then load a new random task
+                                      if (_selectedCategory != null) {
+                                        await _loadRandomTask(_selectedCategory!);
+                                      }
+                                    } catch (e) {
+                                      print('Error in Hit Me Again: $e');
+                                      setState(() {
+                                        _error = e.toString();
+                                        _isLoadingTask = false;
+                                      });
+                                    }
+                                  },
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text(
+                                    'Hit Me Again',
+                                    style: TextStyle(fontSize: 18),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ElevatedButton.icon(
+                                  onPressed: _finishCurrentTask,
+                                  icon: const Icon(Icons.check),
+                                  label: const Text('Actually, I\'m done with that'),
+                                ),
+                              ],
                             ),
                           ),
+                          const SizedBox(height: 16),
+                          if (Task.currentTaskSet != null) ...[
+                            Text(
+                              '${Task.currentTaskSet!.length} more tasks in this category',
+                              style: Theme.of(context).textTheme.bodySmall,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                          ],
                         ],
                       )
                     else
@@ -292,16 +418,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Column(
                           children: [
                             const Text(
-                              'No tasks found for this category.',
+                              'All out of ideas!',
                               style: TextStyle(fontSize: 16),
                             ),
                             const SizedBox(height: 16),
                             ElevatedButton.icon(
                               onPressed: () {
-                                // TODO: Implement task creation
+                                Navigator.pushNamed(
+                                  context, 
+                                  '/edit-category',
+                                  arguments: _selectedCategory,
+                                );
                               },
-                              icon: const Icon(Icons.add),
-                              label: const Text('Add a Task'),
+                              icon: const Icon(Icons.edit),
+                              label: const Text('Edit Endeavor'),
                             ),
                           ],
                         ),
@@ -313,11 +443,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // TODO: Implement category creation
-        },
+        onPressed: () => _navigateToEditCategory(),
         child: const Icon(Icons.add),
-        tooltip: 'Create new category',
+        tooltip: 'Create new endeavor',
       ),
     );
   }

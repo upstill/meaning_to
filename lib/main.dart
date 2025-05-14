@@ -7,6 +7,10 @@ import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/reset_password_screen.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
+import 'package:meaning_to/edit_category_screen.dart';
+import 'package:meaning_to/task_edit_screen.dart';
+import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/models/task.dart';
 
 void main() async {
   try {
@@ -235,6 +239,17 @@ class _MyAppState extends State<MyApp> {
         '/auth': (context) => const AuthScreen(),
         '/home': (context) => const HomeScreen(),
         '/reset-password': (context) => const ResetPasswordScreen(),
+        '/edit-category': (context) {
+          final category = ModalRoute.of(context)?.settings.arguments as Category?;
+          return EditCategoryScreen(category: category);
+        },
+        '/edit-task': (context) {
+          final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>;
+          return TaskEditScreen(
+            category: args['category'] as Category,
+            task: args['task'] as Task?,
+          );
+        },
       },
     );
   }

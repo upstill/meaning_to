@@ -85,11 +85,36 @@ class Task {
     };
   }
 
-  /// Fetches a random unfinished task for the given category and user.
-  /// Returns null if no tasks are found.
-  static Future<Task?> nextTask(Category category, String userId) async {
+  // Static cache for current context
+  static Task? _currentTask;
+  static List<Task>? _currentTaskSet;
+  static Category? _currentCategory;
+  static String? _currentUserId;
+
+  // Getters for the cache
+  static Task? get currentTask => _currentTask;
+  static List<Task>? get currentTaskSet => _currentTaskSet;
+  static Category? get currentCategory => _currentCategory;
+  static String? get currentUserId => _currentUserId;
+
+  // Clear the cache
+  static void clearCache() {
+    _currentTask = null;
+    _currentTaskSet = null;
+    _currentCategory = null;
+    _currentUserId = null;
+  }
+
+  /// Updates the current context and fetches tasks for the given category and user.
+  /// Returns the task set if successful, null if no tasks are found.
+  static Future<List<Task>?> loadTaskSet(Category category, String userId) async {
     try {
-      print('Fetching tasks for category ${category.id} and user $userId');
+      print('Loading task set for category ${category.id} and user $userId');
+      
+      // Update current context
+      _currentCategory = category;
+      _currentUserId = userId;
+      _currentTask = null;  // Clear current task when changing context
       
       // Query tasks from the database
       final response = await supabase
@@ -104,20 +129,186 @@ class Task {
 
       if (response == null || response.isEmpty) {
         print('No tasks found for category ${category.id}');
+        _currentTaskSet = null;
         return null;
       }
 
-      // Convert to Task objects
-      final tasks = (response as List)
+      // Convert to Task objects and update cache
+      _currentTaskSet = (response as List)
           .map((json) => Task.fromJson(json as Map<String, dynamic>))
           .toList();
+      
+      print('Loaded ${_currentTaskSet!.length} tasks into cache');
+      return _currentTaskSet;
+    } catch (e, stackTrace) {
+      print('Error loading task set: $e');
+      print('Stack trace: $stackTrace');
+      clearCache();  // Clear cache on error
+      rethrow;
+    }
+  }
+
+  /// Fetches a random unfinished task for the given category and user.
+  /// Uses cached task set if available and context matches.
+  /// Returns null if no tasks are found.
+  static Future<Task?> nextTask(Category category, String userId) async {
+    try {
+      // Check if we need to load a new task set
+      if (_currentTaskSet == null || 
+          _currentCategory?.id != category.id || 
+          _currentUserId != userId) {
+        await loadTaskSet(category, userId);
+      }
+
+      if (_currentTaskSet == null || _currentTaskSet!.isEmpty) {
+        print('No tasks available for category ${category.id}');
+        return null;
+      }
 
       // Select a random task
       final random = Random();
-      final randomTask = tasks[random.nextInt(tasks.length)];
+      _currentTask = _currentTaskSet![random.nextInt(_currentTaskSet!.length)];
       
-      print('Selected random task: ${randomTask.headline}');
-      return randomTask;
+      print('Selected random task: ${_currentTask!.headline}');
+      return _currentTask;
+    } catch (e, stackTrace) {
+      print('Error loading random task: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
+  /// Marks the current task as finished in both the database and cache.
+  static Future<void> finishCurrentTask() async {
+    final currentTask = _currentTask;
+    final currentUserId = _currentUserId;
+    
+    if (currentTask == null || currentUserId == null) {
+      throw Exception('No current task to finish');
+    }
+
+    try {
+      // Update in database
+      await supabase
+          .from('Tasks')
+          .update({'finished': true})
+          .eq('id', currentTask.id)
+          .eq('owner_id', currentUserId);
+
+      // Update cache
+      final updatedTask = Task(
+        id: currentTask.id,
+        categoryId: currentTask.categoryId,
+        headline: currentTask.headline,
+        notes: currentTask.notes,
+        ownerId: currentTask.ownerId,
+        createdAt: currentTask.createdAt,
+        suggestibleAt: currentTask.suggestibleAt,
+        triggersAt: currentTask.triggersAt,
+        deferral: currentTask.deferral,
+        links: currentTask.links,
+        finished: true,  // Set to true
+      );
+
+      // Update the task in the cache
+      if (_currentTaskSet != null) {
+        final index = _currentTaskSet!.indexWhere((t) => t.id == currentTask.id);
+        if (index != -1) {
+          _currentTaskSet![index] = updatedTask;
+        }
+      }
+      _currentTask = updatedTask;
+
+      print('Task marked as finished');
+    } catch (e, stackTrace) {
+      print('Error finishing task: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
+  /// Rejects the current task by deferring it to a later time.
+  /// If the task has no deferral set, initializes it to 60 minutes.
+  /// Doubles the deferral time for next time.
+  /// Updates both the database and cache.
+  static Future<void> rejectCurrentTask() async {
+    final currentTask = _currentTask;
+    final currentUserId = _currentUserId;
+    
+    print("Rejecting task ${currentTask?.headline}");
+    if (currentTask == null || currentUserId == null) {
+      throw Exception('No current task to reject');
+    }
+
+    try {
+      // Calculate new deferral time (default to 60 minutes if not set)
+      final currentDeferral = currentTask.deferral ?? 60;
+      final newDeferral = currentDeferral * 2;
+      
+      // Calculate new suggestible time
+      final now = DateTime.now();
+      final newSuggestibleAt = now.add(Duration(minutes: currentDeferral));
+
+      // Update in database
+      await supabase
+          .from('Tasks')
+          .update({
+            'suggestible_at': newSuggestibleAt.toIso8601String(),
+            'deferral': newDeferral,
+          })
+          .eq('id', currentTask.id)
+          .eq('owner_id', currentUserId);
+
+      // Update cache
+      final updatedTask = Task(
+        id: currentTask.id,
+        categoryId: currentTask.categoryId,
+        headline: currentTask.headline,
+        notes: currentTask.notes,
+        ownerId: currentTask.ownerId,
+        createdAt: currentTask.createdAt,
+        suggestibleAt: newSuggestibleAt,
+        triggersAt: currentTask.triggersAt,
+        deferral: newDeferral,
+        links: currentTask.links,
+        finished: currentTask.finished,
+      );
+
+      // Update the task in the cache
+      if (_currentTaskSet != null) {
+        final index = _currentTaskSet!.indexWhere((t) => t.id == currentTask.id);
+        if (index != -1) {
+        print("Updating task ${updatedTask.headline} in cache");
+          _currentTaskSet![index] = updatedTask;
+        }
+      }
+      _currentTask = updatedTask;
+
+      print('Task deferred to ${newSuggestibleAt.toLocal()} with new deferral of $newDeferral minutes');
+    } catch (e, stackTrace) {
+      print('Error rejecting task: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
+  static Future<Task?> loadRandomTask(Category category, String userId) async {
+    try {
+      print('Before nextTask:');
+      print('Current task: ${currentTask?.headline}');
+      print('Task set size: ${currentTaskSet?.length}');
+      print('Current category: ${currentCategory?.headline}');
+      print('Current user: $currentUserId');
+
+      final task = await nextTask(category, userId);
+      
+      print('After nextTask:');
+      print('Current task: ${currentTask?.headline}');
+      print('Task set size: ${currentTaskSet?.length}');
+      print('Current category: ${currentCategory?.headline}');
+      print('Current user: $currentUserId');
+      
+      return task;
     } catch (e, stackTrace) {
       print('Error loading random task: $e');
       print('Stack trace: $stackTrace');
