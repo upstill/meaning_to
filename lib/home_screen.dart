@@ -180,7 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final result = await Navigator.pushNamed(
       context,
       '/edit-category',
-      arguments: category,
+      arguments: {'category': category},
     );
 
     if (result == true) {
@@ -320,12 +320,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        _randomTask!.headline,
-                                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                          fontSize: (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) + 6,
-                                        ),
-                                        textAlign: TextAlign.center,
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            _randomTask!.headline,
+                                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                              fontSize: (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) + 6,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          if (_randomTask!.finished) ...[
+                                            const SizedBox(width: 8),
+                                            Icon(Icons.check_circle, color: Colors.green, size: 28),
+                                          ],
+                                        ],
                                       ),
                                       if (_randomTask!.notes != null) ...[
                                         const SizedBox(height: 8),
@@ -425,13 +434,16 @@ class _HomeScreenState extends State<HomeScreen> {
                             ElevatedButton.icon(
                               onPressed: () {
                                 Navigator.pushNamed(
-                                  context, 
+                                  context,
                                   '/edit-category',
-                                  arguments: _selectedCategory,
+                                  arguments: {
+                                    'category': _selectedCategory,
+                                    'tasksOnly': true,
+                                  },
                                 );
                               },
                               icon: const Icon(Icons.edit),
-                              label: const Text('Edit Endeavor'),
+                              label: const Text('Edit the List of Tasks'),
                             ),
                           ],
                         ),

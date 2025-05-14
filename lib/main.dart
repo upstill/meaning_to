@@ -240,8 +240,18 @@ class _MyAppState extends State<MyApp> {
         '/home': (context) => const HomeScreen(),
         '/reset-password': (context) => const ResetPasswordScreen(),
         '/edit-category': (context) {
-          final category = ModalRoute.of(context)?.settings.arguments as Category?;
-          return EditCategoryScreen(category: category);
+          final settings = ModalRoute.of(context)!.settings;
+          final args = settings.arguments;
+          if (args is Map) {
+            return EditCategoryScreen(
+              category: args['category'] as Category?,
+              tasksOnly: args['tasksOnly'] == true,
+            );
+          } else if (args is Category) {
+            return EditCategoryScreen(category: args);
+          } else {
+            return const EditCategoryScreen();
+          }
         },
         '/edit-task': (context) {
           final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>;

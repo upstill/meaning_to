@@ -122,7 +122,6 @@ class Task {
           .select()
           .eq('category_id', category.id)
           .eq('owner_id', userId)
-          .eq('finished', false)
           .order('created_at', ascending: false);
       
       print('Task response fields: ${response.isNotEmpty ? response.first.keys.toList() : 'No tasks found'}');
@@ -137,6 +136,8 @@ class Task {
       _currentTaskSet = (response as List)
           .map((json) => Task.fromJson(json as Map<String, dynamic>))
           .toList();
+      // Sort: unfinished first, then by suggestibleAt ascending
+      sortTaskSet(_currentTaskSet!);
       
       print('Loaded ${_currentTaskSet!.length} tasks into cache');
       return _currentTaskSet;
@@ -161,14 +162,26 @@ class Task {
       }
 
       if (_currentTaskSet == null || _currentTaskSet!.isEmpty) {
-        print('No tasks available for category ${category.id}');
+        print('No tasks available for category \\${category.id}');
         return null;
       }
 
-      // Select a random task
+      // Count the number of unfinished tasks at the beginning of the sorted list
+      int unfinishedCount = 0;
+      for (final task in _currentTaskSet!) {
+        if (!task.finished && (task.suggestibleAt == null || !task.suggestibleAt!.isAfter(DateTime.now()))) {
+          unfinishedCount++;
+        } else {
+          break;
+        }
+      }
+      if (unfinishedCount == 0) {
+        print('No unfinished tasks available for category ${category.id}');
+        return null;
+      }
+      // Select a random unfinished task from the first unfinishedCount tasks
       final random = Random();
-      _currentTask = _currentTaskSet![random.nextInt(_currentTaskSet!.length)];
-      
+      _currentTask = _currentTaskSet![random.nextInt(unfinishedCount)];
       print('Selected random task: ${_currentTask!.headline}');
       return _currentTask;
     } catch (e, stackTrace) {
@@ -184,16 +197,19 @@ class Task {
     final currentUserId = _currentUserId;
     
     if (currentTask == null || currentUserId == null) {
+      print('[finishCurrentTask] No current task or user ID');
       throw Exception('No current task to finish');
     }
 
     try {
+      print('[finishCurrentTask] Attempting to update task id: \\${currentTask.id}, owner_id: \\${currentUserId}');
       // Update in database
-      await supabase
+      final response = await supabase
           .from('Tasks')
           .update({'finished': true})
           .eq('id', currentTask.id)
           .eq('owner_id', currentUserId);
+      print('[finishCurrentTask] Update response: \\${response.toString()}');
 
       // Update cache
       final updatedTask = Task(
@@ -216,13 +232,15 @@ class Task {
         if (index != -1) {
           _currentTaskSet![index] = updatedTask;
         }
+        // Resort the cache after modification
+        sortTaskSet(_currentTaskSet!);
       }
       _currentTask = updatedTask;
 
-      print('Task marked as finished');
+      print('[finishCurrentTask] Task marked as finished and cache updated');
     } catch (e, stackTrace) {
-      print('Error finishing task: $e');
-      print('Stack trace: $stackTrace');
+      print('[finishCurrentTask] Error finishing task: \\${e.toString()}');
+      print('[finishCurrentTask] Stack trace: \\${stackTrace.toString()}');
       rethrow;
     }
   }
@@ -278,9 +296,11 @@ class Task {
       if (_currentTaskSet != null) {
         final index = _currentTaskSet!.indexWhere((t) => t.id == currentTask.id);
         if (index != -1) {
-        print("Updating task ${updatedTask.headline} in cache");
+        print("Updating task \\${updatedTask.headline} in cache");
           _currentTaskSet![index] = updatedTask;
         }
+        // Resort the cache after modification
+        sortTaskSet(_currentTaskSet!);
       }
       _currentTask = updatedTask;
 
@@ -313,6 +333,29 @@ class Task {
       print('Error loading random task: $e');
       print('Stack trace: $stackTrace');
       rethrow;
+    }
+  }
+
+  // Sorts a list of tasks: unfinished first, then by suggestibleAt ascending
+  static void sortTaskSet(List<Task> tasks) {
+    tasks.sort((a, b) {
+      // 1. Unfinished (false) first
+      if (a.finished != b.finished) {
+        return a.finished ? 1 : -1;
+      }
+      // 2. Ascending suggestibleAt (nulls last)
+      if (a.suggestibleAt == null && b.suggestibleAt == null) return 0;
+      if (a.suggestibleAt == null) return 1;
+      if (b.suggestibleAt == null) return -1;
+      return a.suggestibleAt!.compareTo(b.suggestibleAt!);
+    });
+    // Print a report of the sorted tasks
+    print('[sortTaskSet] Sorted task cache:');
+    for (final t in tasks) {
+      final minutes = t.suggestibleAt != null
+          ? t.suggestibleAt!.difference(DateTime.now()).inMinutes
+          : 'n/a';
+      print('  headline: "${t.headline}", finished: ${t.finished}, suggestible in $minutes minutes');
     }
   }
 } 

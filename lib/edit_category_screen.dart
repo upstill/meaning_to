@@ -7,8 +7,28 @@ final supabase = Supabase.instance.client;
 
 class EditCategoryScreen extends StatefulWidget {
   final Category? category;  // null for new category, existing category for edit
+  final bool tasksOnly;
 
-  const EditCategoryScreen({super.key, this.category});
+  const EditCategoryScreen({super.key, this.category, this.tasksOnly = false});
+
+  // Add a factory constructor to handle arguments from Navigator
+  static Route routeFromArgs(RouteSettings settings) {
+    final args = settings.arguments;
+    if (args is Map) {
+      return MaterialPageRoute(
+        builder: (_) => EditCategoryScreen(
+          category: args['category'] as Category?,
+          tasksOnly: args['tasksOnly'] == true,
+        ),
+        settings: settings,
+      );
+    } else {
+      return MaterialPageRoute(
+        builder: (_) => EditCategoryScreen(),
+        settings: settings,
+      );
+    }
+  }
 
   @override
   State<EditCategoryScreen> createState() => _EditCategoryScreenState();
@@ -22,6 +42,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
   String? _error;
   List<Task> _tasks = [];
   bool _isLoadingTasks = false;
+  late bool _editTasksLocal;
 
   @override
   void initState() {
@@ -31,6 +52,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
     if (widget.category != null) {
       _loadTasks();
     }
+    _editTasksLocal = widget.tasksOnly;
   }
 
   @override
@@ -154,7 +176,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
       appBar: AppBar(
         title: Text(widget.category == null ? 'New Endeavor' : 'Edit Endeavor'),
         actions: [
-          if (widget.category != null)
+          if (widget.category != null && !_editTasksLocal)
             IconButton(
               icon: const Icon(Icons.delete),
               onPressed: _isLoading ? null : () {
@@ -192,36 +214,69 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            TextFormField(
-              controller: _headlineController,
-              decoration: const InputDecoration(
-                labelText: 'Endeavor',
-                hintText: 'What have you been meaning to do?',
-                border: OutlineInputBorder(),
+            if (_editTasksLocal && widget.category != null) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.category!.headline,
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit),
+                    tooltip: 'Edit details',
+                    onPressed: () {
+                      setState(() {
+                        // Exit editTasks mode to allow editing
+                        // This assumes editTasks is not final in the State
+                        // We'll need to track local editTasks state
+                        _editTasksLocal = false;
+                      });
+                    },
+                  ),
+                ],
               ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please name your endeavor';
-                }
-                return null;
-              },
-              enabled: !_isLoading,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _invitationController,
-              decoration: const InputDecoration(
-                labelText: 'Invitation (optional)',
-                hintText: 'What would you like to say to yourself?',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 8),
+              if (widget.category!.invitation != null)
+                Text(
+                  widget.category!.invitation!,
+                  style: const TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
+                ),
+              const SizedBox(height: 16),
+            ] else ...[
+              TextFormField(
+                controller: _headlineController,
+                decoration: const InputDecoration(
+                  labelText: 'Endeavor',
+                  hintText: 'What have you been meaning to do?',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please name your endeavor';
+                  }
+                  return null;
+                },
+                enabled: !_isLoading,
               ),
-              maxLines: 3,
-              enabled: !_isLoading,
-            ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _invitationController,
+                decoration: const InputDecoration(
+                  labelText: 'Invitation (optional)',
+                  hintText: 'What would you like to say to yourself?',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+                enabled: !_isLoading,
+              ),
+              const SizedBox(height: 16),
+            ],
             if (widget.category != null) ...[
               const SizedBox(height: 24),
               const Text(
-                'Tasks in this category:',
+                'Tasks for this endeavor:',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -264,9 +319,29 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                       child: ListTile(
                         title: Text(task.headline),
                         subtitle: task.notes != null ? Text(task.notes!) : null,
-                        trailing: IconButton(
-                          icon: const Icon(Icons.edit),
-                          onPressed: () => _editTask(task),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Checkbox(
+                              value: task.finished,
+                              onChanged: (val) async {
+                                // Update finished value in the database
+                                final userId = supabase.auth.currentUser?.id;
+                                if (userId == null) return;
+                                await supabase
+                                    .from('Tasks')
+                                    .update({'finished': val})
+                                    .eq('id', task.id)
+                                    .eq('owner_id', userId);
+                                // Refresh the task list
+                                _loadTasks();
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () => _editTask(task),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -280,17 +355,19 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                 style: const TextStyle(color: Colors.red),
               ),
             ],
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _saveCategory,
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(widget.category == null ? 'Create Endeavor' : 'Save Changes'),
-            ),
+            if (!_editTasksLocal) ...[
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _saveCategory,
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(widget.category == null ? 'Create Endeavor' : 'Save Changes'),
+              ),
+            ],
           ],
         ),
       ),
