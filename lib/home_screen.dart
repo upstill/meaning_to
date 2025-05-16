@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'dart:math';
+import 'package:url_launcher/url_launcher.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -334,6 +335,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                             const SizedBox(width: 8),
                                             Icon(Icons.check_circle, color: Colors.green, size: 28),
                                           ],
+                                          IconButton(
+                                            icon: const Icon(Icons.edit),
+                                            tooltip: 'Edit this task',
+                                            onPressed: () {
+                                              Navigator.pushNamed(
+                                                context,
+                                                '/edit-task',
+                                                arguments: {
+                                                  'category': _selectedCategory!,
+                                                  'task': _randomTask!,
+                                                },
+                                              );
+                                            },
+                                          ),
                                         ],
                                       ),
                                       if (_randomTask!.notes != null) ...[
@@ -341,6 +356,33 @@ class _HomeScreenState extends State<HomeScreen> {
                                         Text(
                                           _randomTask!.notes!,
                                           style: Theme.of(context).textTheme.bodyMedium,
+                                        ),
+                                      ],
+                                      if (_randomTask!.links != null && _randomTask!.links!.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text('Links:', style: TextStyle(fontWeight: FontWeight.bold)),
+                                            ..._randomTask!.links!.map((link) => Padding(
+                                              padding: const EdgeInsets.only(top: 2.0),
+                                              child: InkWell(
+                                                onTap: () async {
+                                                  // Try to launch the URL
+                                                  if (await canLaunchUrl(Uri.parse(link))) {
+                                                    await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication);
+                                                  }
+                                                },
+                                                child: Text(
+                                                  link,
+                                                  style: const TextStyle(
+                                                    color: Colors.blue,
+                                                    decoration: TextDecoration.underline,
+                                                  ),
+                                                ),
+                                              ),
+                                            )),
+                                          ],
                                         ),
                                       ],
                                       if (_randomTask!.triggersAt != null) ...[

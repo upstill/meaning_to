@@ -182,7 +182,13 @@ class Task {
       // Select a random unfinished task from the first unfinishedCount tasks
       final random = Random();
       _currentTask = _currentTaskSet![random.nextInt(unfinishedCount)];
-      print('Selected random task: ${_currentTask!.headline}');
+      print('Selected random task: \\${_currentTask!.headline}');
+      // Update only the suggestible_at field in the database for the selected task
+      await supabase
+          .from('Tasks')
+          .update({'suggestible_at': _currentTask!.suggestibleAt?.toIso8601String()})
+          .eq('id', _currentTask!.id)
+          .eq('owner_id', _currentTask!.ownerId);
       return _currentTask;
     } catch (e, stackTrace) {
       print('Error loading random task: $e');
@@ -357,5 +363,26 @@ class Task {
           : 'n/a';
       print('  headline: "${t.headline}", finished: ${t.finished}, suggestible in $minutes minutes');
     }
+  }
+
+  // Utility: Convert a string to a List<String> of URLs
+  static List<String> parseLinks(String? linksString) {
+    if (linksString == null || linksString.trim().isEmpty) return [];
+    try {
+      final decoded = jsonDecode(linksString);
+      if (decoded is List) {
+        return decoded.map((e) => e.toString()).toList();
+      }
+    } catch (e) {
+      // Fallback: try splitting by comma
+      return linksString.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    }
+    return [];
+  }
+
+  // Utility: Convert a List<String> of URLs to a string for storage
+  static String? linksToString(List<String>? links) {
+    if (links == null || links.isEmpty) return null;
+    return jsonEncode(links);
   }
 } 

@@ -309,43 +309,89 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                   ),
                 )
               else
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _tasks.length,
-                  itemBuilder: (context, index) {
-                    final task = _tasks[index];
-                    return Card(
-                      child: ListTile(
-                        title: Text(task.headline),
-                        subtitle: task.notes != null ? Text(task.notes!) : null,
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Checkbox(
-                              value: task.finished,
-                              onChanged: (val) async {
-                                // Update finished value in the database
-                                final userId = supabase.auth.currentUser?.id;
-                                if (userId == null) return;
-                                await supabase
-                                    .from('Tasks')
-                                    .update({'finished': val})
-                                    .eq('id', task.id)
-                                    .eq('owner_id', userId);
-                                // Refresh the task list
-                                _loadTasks();
-                              },
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: Container()), // For alignment with the task title
+                        SizedBox(
+                          width: 40,
+                          child: Center(
+                            child: Text(
+                              'Done',
+                              style: TextStyle(fontWeight: FontWeight.bold),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _editTask(task),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                        SizedBox(width: 40), // Space for the edit icon
+                      ],
+                    ),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _tasks.length,
+                      itemBuilder: (context, index) {
+                        final task = _tasks[index];
+                        return Card(
+                          child: Row(
+                            children: [
+                              // Headline and notes take remaining space
+                              Expanded(
+                                child: ListTile(
+                                  title: Text(task.headline),
+                                  subtitle: task.notes != null ? Text(task.notes!) : null,
+                                ),
+                              ),
+                              // Checkbox in fixed-width area
+                              SizedBox(
+                                width: 40,
+                                child: Center(
+                                  child: Checkbox(
+                                    value: task.finished,
+                                    onChanged: (val) async {
+                                      setState(() {
+                                        _tasks[index] = Task(
+                                          id: task.id,
+                                          categoryId: task.categoryId,
+                                          headline: task.headline,
+                                          notes: task.notes,
+                                          ownerId: task.ownerId,
+                                          createdAt: task.createdAt,
+                                          suggestibleAt: task.suggestibleAt,
+                                          triggersAt: task.triggersAt,
+                                          deferral: task.deferral,
+                                          links: task.links,
+                                          finished: val ?? false,
+                                        );
+                                      });
+                                      final userId = supabase.auth.currentUser?.id;
+                                      if (userId == null) return;
+                                      print('Updating task \\${task.id} to finished: \\${val ?? false} by user \\${userId}');
+                                      final response = await supabase
+                                          .from('Tasks')
+                                          .update({'finished': val ?? false})
+                                          .eq('id', task.id)
+                                          .eq('owner_id', userId);
+                                      print('Supabase update response: \\${response.toString()}');
+                                    },
+                                  ),
+                                ),
+                              ),
+                              // Edit button in fixed-width area
+                              SizedBox(
+                                width: 40,
+                                child: IconButton(
+                                  icon: const Icon(Icons.edit),
+                                  onPressed: () => _editTask(task),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
             ],
             if (_error != null) ...[

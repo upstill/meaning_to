@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
+import 'package:flutter/services.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -25,19 +26,47 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   late TextEditingController _notesController;
   bool _isLoading = false;
   String? _error;
+  List<String> _links = [];
+  List<TextEditingController> _linkControllers = [];
 
   @override
   void initState() {
     super.initState();
     _headlineController = TextEditingController(text: widget.task?.headline);
     _notesController = TextEditingController(text: widget.task?.notes);
+    _links = widget.task?.links != null ? List<String>.from(widget.task!.links!) : [];
+    _linkControllers = _links.map((link) => TextEditingController(text: link)).toList();
   }
 
   @override
   void dispose() {
     _headlineController.dispose();
     _notesController.dispose();
+    for (final c in _linkControllers) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  void _addLink() {
+    setState(() {
+      _links.add("");
+      _linkControllers.add(TextEditingController());
+    });
+  }
+
+  void _removeLink(int index) {
+    setState(() {
+      _links.removeAt(index);
+      _linkControllers[index].dispose();
+      _linkControllers.removeAt(index);
+    });
+  }
+
+  void _updateLink(int index, String value) {
+    setState(() {
+      _links[index] = value;
+    });
   }
 
   Future<void> _saveTask() async {
@@ -58,6 +87,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         'category_id': widget.category.id,
         'owner_id': userId,
         'finished': widget.task?.finished ?? false,
+        'links': Task.linksToString(_linkControllers.map((c) => c.text).toList()),
       };
 
       if (widget.task == null) {
@@ -228,6 +258,64 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               ),
             ],
             const SizedBox(height: 24),
+            // Links editing UI
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Links',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Add link',
+                  onPressed: _isLoading ? null : _addLink,
+                ),
+              ],
+            ),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _links.length,
+              itemBuilder: (context, index) {
+                return Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _linkControllers[index],
+                        decoration: InputDecoration(
+                          labelText: 'Link ${index + 1}',
+                        ),
+                        onChanged: (val) => _updateLink(index, val),
+                        // Always enabled except during save
+                        enabled: !_isLoading,
+                        // Use TextInputType.text to ensure context menu works on all platforms
+                        keyboardType: TextInputType.text,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.paste),
+                      tooltip: 'Paste from clipboard',
+                      onPressed: _isLoading
+                          ? null
+                          : () async {
+                              final data = await Clipboard.getData('text/plain');
+                              if (data?.text != null) {
+                                _linkControllers[index].text = data!.text!;
+                                _updateLink(index, data.text!);
+                              }
+                            },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete),
+                      tooltip: 'Delete link',
+                      onPressed: _isLoading ? null : () => _removeLink(index),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _isLoading ? null : _saveTask,
               child: _isLoading
