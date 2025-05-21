@@ -4,6 +4,8 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'dart:math';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_html/flutter_html.dart';
+import 'package:meaning_to/utils/link_processor.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -360,30 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ],
                                       if (_randomTask!.links != null && _randomTask!.links!.isNotEmpty) ...[
                                         const SizedBox(height: 8),
-                                        Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            const Text('Links:', style: TextStyle(fontWeight: FontWeight.bold)),
-                                            ..._randomTask!.links!.map((link) => Padding(
-                                              padding: const EdgeInsets.only(top: 2.0),
-                                              child: InkWell(
-                                                onTap: () async {
-                                                  // Try to launch the URL
-                                                  if (await canLaunchUrl(Uri.parse(link))) {
-                                                    await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication);
-                                                  }
-                                                },
-                                                child: Text(
-                                                  link,
-                                                  style: const TextStyle(
-                                                    color: Colors.blue,
-                                                    decoration: TextDecoration.underline,
-                                                  ),
-                                                ),
-                                              ),
-                                            )),
-                                          ],
-                                        ),
+                                        LinkProcessor.processAndDisplayLinks(_randomTask!.links!),
                                       ],
                                       if (_randomTask!.triggersAt != null) ...[
                                         const SizedBox(height: 8),

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/utils/link_processor.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -16,6 +17,7 @@ class Task {
   final DateTime? triggersAt;
   final int? deferral;
   final List<String>? links;
+  List<ProcessedLink>? processedLinks;
   final bool finished;
 
   Task({
@@ -29,6 +31,7 @@ class Task {
     this.triggersAt,
     this.deferral,
     this.links,
+    this.processedLinks,
     required this.finished,
   });
 
@@ -50,6 +53,15 @@ class Task {
       return null;
     }
 
+    final links = parseLinks(json['links']);
+    List<ProcessedLink>? processedLinks;
+    if (links != null) {
+      // Process links asynchronously when needed
+      LinkProcessor.processLinks(links).then((processed) {
+        processedLinks = processed;
+      });
+    }
+
     return Task(
       id: json['id'] as int,
       categoryId: json['category_id'] as int,
@@ -64,7 +76,8 @@ class Task {
           ? DateTime.parse(json['triggers_at'] as String)
           : null,
       deferral: json['deferral'] as int?,
-      links: parseLinks(json['links']),
+      links: links,
+      processedLinks: processedLinks,
       finished: json['finished'] as bool,
     );
   }
@@ -229,6 +242,7 @@ class Task {
         triggersAt: currentTask.triggersAt,
         deferral: currentTask.deferral,
         links: currentTask.links,
+        processedLinks: currentTask.processedLinks,
         finished: true,  // Set to true
       );
 
@@ -295,6 +309,7 @@ class Task {
         triggersAt: currentTask.triggersAt,
         deferral: newDeferral,
         links: currentTask.links,
+        processedLinks: currentTask.processedLinks,
         finished: currentTask.finished,
       );
 
@@ -384,5 +399,18 @@ class Task {
   static String? linksToString(List<String>? links) {
     if (links == null || links.isEmpty) return null;
     return jsonEncode(links);
+  }
+
+  // Add a method to process links if they haven't been processed yet
+  Future<void> ensureLinksProcessed() async {
+    if (links == null || (processedLinks != null && processedLinks!.length == links!.length)) {
+      return;
+    }
+    processedLinks = await LinkProcessor.processLinks(links!);
+  }
+
+  // Add a method to validate links before saving
+  static List<String> validateLinks(List<String> links) {
+    return links.where((link) => LinkProcessor.isValidUrl(link)).toList();
   }
 } 

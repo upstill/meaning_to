@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:flutter/services.dart';
+import 'package:meaning_to/utils/link_processor.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -81,13 +82,23 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('No user logged in');
 
+      // Validate links before saving
+      final validLinks = Task.validateLinks(_linkControllers.map((c) => c.text).toList());
+      if (validLinks.length != _linkControllers.length) {
+        setState(() {
+          _error = 'Some links are invalid. Please check and try again.';
+          _isLoading = false;
+        });
+        return;
+      }
+
       final data = {
         'headline': _headlineController.text,
         'notes': _notesController.text.isEmpty ? null : _notesController.text,
         'category_id': widget.category.id,
         'owner_id': userId,
         'finished': widget.task?.finished ?? false,
-        'links': Task.linksToString(_linkControllers.map((c) => c.text).toList()),
+        'links': Task.linksToString(validLinks),
       };
 
       if (widget.task == null) {
@@ -193,6 +204,53 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
+  // Add link validation to the form
+  Widget _buildLinkField(int index) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextFormField(
+            controller: _linkControllers[index],
+            decoration: InputDecoration(
+              labelText: 'Link ${index + 1}',
+              errorText: _linkControllers[index].text.isNotEmpty && 
+                        !LinkProcessor.isValidUrl(_linkControllers[index].text)
+                    ? 'Invalid URL'
+                    : null,
+            ),
+            onChanged: (val) {
+              _updateLink(index, val);
+              // Trigger form validation
+              _formKey.currentState?.validate();
+            },
+            enabled: !_isLoading,
+            keyboardType: TextInputType.url,
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.paste),
+          tooltip: 'Paste from clipboard',
+          onPressed: _isLoading
+              ? null
+              : () async {
+                  final data = await Clipboard.getData('text/plain');
+                  if (data?.text != null) {
+                    _linkControllers[index].text = data!.text!;
+                    _updateLink(index, data.text!);
+                    // Trigger form validation
+                    _formKey.currentState?.validate();
+                  }
+                },
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete),
+          tooltip: 'Delete link',
+          onPressed: _isLoading ? null : () => _removeLink(index),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -277,43 +335,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _links.length,
-              itemBuilder: (context, index) {
-                return Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _linkControllers[index],
-                        decoration: InputDecoration(
-                          labelText: 'Link ${index + 1}',
-                        ),
-                        onChanged: (val) => _updateLink(index, val),
-                        // Always enabled except during save
-                        enabled: !_isLoading,
-                        // Use TextInputType.text to ensure context menu works on all platforms
-                        keyboardType: TextInputType.text,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.paste),
-                      tooltip: 'Paste from clipboard',
-                      onPressed: _isLoading
-                          ? null
-                          : () async {
-                              final data = await Clipboard.getData('text/plain');
-                              if (data?.text != null) {
-                                _linkControllers[index].text = data!.text!;
-                                _updateLink(index, data.text!);
-                              }
-                            },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      tooltip: 'Delete link',
-                      onPressed: _isLoading ? null : () => _removeLink(index),
-                    ),
-                  ],
-                );
-              },
+              itemBuilder: (context, index) => _buildLinkField(index),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
