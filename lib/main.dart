@@ -235,26 +235,17 @@ class _MyAppState extends State<MyApp> {
       navigatorKey: _navigatorKey,
       initialRoute: '/',
       routes: {
-        '/': (context) => const SplashScreen(),
+        '/': (context) => HomeScreen(),
         '/auth': (context) => const AuthScreen(),
-        '/home': (context) => const HomeScreen(),
-        '/reset-password': (context) => const ResetPasswordScreen(),
         '/edit-category': (context) {
-          final settings = ModalRoute.of(context)!.settings;
-          final args = settings.arguments;
-          if (args is Map) {
-            return EditCategoryScreen(
-              category: args['category'] as Category?,
-              tasksOnly: args['tasksOnly'] == true,
-            );
-          } else if (args is Category) {
-            return EditCategoryScreen(category: args);
-          } else {
-            return const EditCategoryScreen();
-          }
+          final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+          return EditCategoryScreen(
+            category: args?['category'] as Category?,
+            tasksOnly: args?['tasksOnly'] == true,
+          );
         },
         '/edit-task': (context) {
-          final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>;
+          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
           return TaskEditScreen(
             category: args['category'] as Category,
             task: args['task'] as Task?,

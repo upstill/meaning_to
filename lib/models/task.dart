@@ -43,43 +43,61 @@ class Task {
       }
       if (linksData is String) {
         try {
+          // If it's a single HTML link, return it as is
+          if (linksData.trim().startsWith('<a href="')) {
+            return [linksData];
+          }
+          // Otherwise try to parse as JSON
           final decoded = jsonDecode(linksData) as List;
           return List<String>.from(decoded);
         } catch (e) {
-          print('Error parsing links JSON: $e');
-          return null;
+          print('Error parsing links: $e');
+          // If parsing fails, return the string as a single link
+          return [linksData];
         }
       }
       return null;
     }
 
     final links = parseLinks(json['links']);
-    List<ProcessedLink>? processedLinks;
-    if (links != null) {
-      // Process links asynchronously when needed
-      LinkProcessor.processLinks(links).then((processed) {
-        processedLinks = processed;
-      });
-    }
-
-    return Task(
+    print('Parsed links from JSON: $links');
+    
+    // Get suggestibleAt, defaulting to current time if null
+    final suggestibleAt = json['suggestible_at'] != null 
+        ? DateTime.parse(json['suggestible_at'] as String)
+        : DateTime.now();
+    
+    // Create the task with the links
+    final task = Task(
       id: json['id'] as int,
       categoryId: json['category_id'] as int,
       headline: json['headline'] as String,
       notes: json['notes'] as String?,
       ownerId: json['owner_id'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
-      suggestibleAt: json['suggestible_at'] != null 
-          ? DateTime.parse(json['suggestible_at'] as String)
-          : null,
+      suggestibleAt: suggestibleAt,
       triggersAt: json['triggers_at'] != null 
           ? DateTime.parse(json['triggers_at'] as String)
           : null,
       deferral: json['deferral'] as int?,
       links: links,
-      processedLinks: processedLinks,
+      processedLinks: null,  // Will be processed when needed
       finished: json['finished'] as bool,
     );
+
+    // If we had to set suggestibleAt to now, update it in the database
+    if (json['suggestible_at'] == null) {
+      print('Updating suggestible_at to now for task ${task.headline}');
+      supabase
+          .from('Tasks')
+          .update({'suggestible_at': suggestibleAt.toIso8601String()})
+          .eq('id', task.id)
+          .eq('owner_id', task.ownerId)
+          .then((_) => print('Updated suggestible_at in database'))
+          .catchError((e) => print('Error updating suggestible_at: $e'));
+    }
+
+    return task;
   }
 
   Map<String, dynamic> toJson() {
@@ -93,7 +111,7 @@ class Task {
       'suggestible_at': suggestibleAt?.toIso8601String(),
       'triggers_at': triggersAt?.toIso8601String(),
       'deferral': deferral,
-      'links': links != null ? jsonEncode(links) : null,
+      'links': links != null ? (links!.length == 1 ? links![0] : jsonEncode(links)) : null,
       'finished': finished,
     };
   }
@@ -153,6 +171,16 @@ class Task {
       sortTaskSet(_currentTaskSet!);
       
       print('Loaded ${_currentTaskSet!.length} tasks into cache');
+
+      // Process links for all tasks in the set
+      print('Processing links for all tasks in set');
+      for (final task in _currentTaskSet!) {
+        if (task.links != null && task.links!.isNotEmpty) {
+          print('Processing links for task: ${task.headline}');
+          await task.ensureLinksProcessed();
+        }
+      }
+      
       return _currentTaskSet;
     } catch (e, stackTrace) {
       print('Error loading task set: $e');
@@ -196,6 +224,11 @@ class Task {
       final random = Random();
       _currentTask = _currentTaskSet![random.nextInt(unfinishedCount)];
       print('Selected random task: \\${_currentTask!.headline}');
+
+      // Process links for the selected task
+      print('Processing links for selected task: ${_currentTask!.headline}');
+      await _currentTask!.ensureLinksProcessed();
+      
       // Update only the suggestible_at field in the database for the selected task
       await supabase
           .from('Tasks')
@@ -401,16 +434,113 @@ class Task {
     return jsonEncode(links);
   }
 
-  // Add a method to process links if they haven't been processed yet
+  /// Returns a formatted string showing when the task will be available again.
+  /// Returns null if the task is not deferred (suggestibleAt is null) or if the suggestible time is in the past.
+  /// Time is expressed in the most appropriate unit:
+  /// - Less than a minute: seconds
+  /// - Less than an hour: minutes (and seconds if less than 5 minutes)
+  /// - Less than a day: hours and minutes
+  /// - Otherwise: days and hours
+  String? getSuggestibleTimeDisplay() {
+    if (suggestibleAt == null) return null;
+    if (!suggestibleAt!.isAfter(DateTime.now())) return null;
+    
+    final difference = suggestibleAt!.difference(DateTime.now());
+    final seconds = difference.inSeconds;
+    final minutes = difference.inMinutes;
+    final hours = difference.inHours;
+    final days = difference.inDays;
+
+    // Get the remainder for the next smaller unit
+    final remainingSeconds = seconds % 60;
+    final remainingMinutes = minutes % 60;
+    final remainingHours = hours % 24;
+    final preface = "Deferred for";
+
+    if (seconds < 60) {
+      return '$preface $seconds second${seconds == 1 ? '' : 's'}';
+    } else if (minutes < 60) {
+      if (minutes < 5) {
+        // For times less than 5 minutes, show seconds too
+        return '$preface $minutes minute${minutes == 1 ? '' : 's'} and $remainingSeconds second${remainingSeconds == 1 ? '' : 's'}';
+      }
+      return '$preface $minutes minute${minutes == 1 ? '' : 's'}';
+    } else if (hours < 24) {
+      return '$preface $hours hour${hours == 1 ? '' : 's'} and $remainingMinutes minute${remainingMinutes == 1 ? '' : 's'}';
+    } else {
+      return '$preface $days day${days == 1 ? '' : 's'} and $remainingHours hour${remainingHours == 1 ? '' : 's'}';
+    }
+  }
+
+  // Update ensureLinksProcessed to only handle display processing
   Future<void> ensureLinksProcessed() async {
+    // If links are already processed or there are no links, return immediately
     if (links == null || (processedLinks != null && processedLinks!.length == links!.length)) {
       return;
     }
-    processedLinks = await LinkProcessor.processLinks(links!);
+
+    print('Processing links for display: $headline');
+    print('Raw URLs: $links');
+    
+    // Process links for display only
+    final processed = await LinkProcessor.processLinksForDisplay(links!);
+    processedLinks = processed;
+    
+    print('Processed links for display: ${processed.map((p) => p.originalLink).toList()}');
   }
 
   // Add a method to validate links before saving
   static List<String> validateLinks(List<String> links) {
     return links.where((link) => LinkProcessor.isValidUrl(link)).toList();
+  }
+
+  /// Revives a task by setting its suggestibleAt time to now.
+  /// Updates both the database and cache.
+  static Future<void> reviveTask(Task task, String userId) async {
+    try {
+      final now = DateTime.now();
+      
+      // Update in database
+      await supabase
+          .from('Tasks')
+          .update({'suggestible_at': now.toIso8601String()})
+          .eq('id', task.id)
+          .eq('owner_id', userId);
+
+      // Update cache
+      final updatedTask = Task(
+        id: task.id,
+        categoryId: task.categoryId,
+        headline: task.headline,
+        notes: task.notes,
+        ownerId: task.ownerId,
+        createdAt: task.createdAt,
+        suggestibleAt: now,  // Set to current time
+        triggersAt: task.triggersAt,
+        deferral: task.deferral,
+        links: task.links,
+        processedLinks: task.processedLinks,
+        finished: task.finished,
+      );
+
+      // Update the task in the cache
+      if (_currentTaskSet != null) {
+        final index = _currentTaskSet!.indexWhere((t) => t.id == task.id);
+        if (index != -1) {
+          _currentTaskSet![index] = updatedTask;
+        }
+        // Resort the cache after modification
+        sortTaskSet(_currentTaskSet!);
+      }
+      if (_currentTask?.id == task.id) {
+        _currentTask = updatedTask;
+      }
+
+      print('Task ${task.headline} revived at ${now.toLocal()}');
+    } catch (e, stackTrace) {
+      print('Error reviving task: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
 } 

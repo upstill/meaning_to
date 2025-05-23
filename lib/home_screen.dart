@@ -6,11 +6,16 @@ import 'dart:math';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/edit_category_screen.dart';
+import 'package:meaning_to/task_edit_screen.dart';
 
 final supabase = Supabase.instance.client;
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  static final GlobalKey<_HomeScreenState> globalKey = GlobalKey<_HomeScreenState>();
+  static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
+  
+  HomeScreen() : super(key: globalKey);
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -27,7 +32,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    print('HomeScreen initState called');
+    print('HomeScreen: initState called');
+    // Listen for task reload requests
+    HomeScreen.needsTaskReload.addListener(_handleTaskReloadRequest);
     final session = supabase.auth.currentSession;
     print('Current session: ${session?.user.id}');
     if (session == null) {
@@ -39,7 +46,29 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    HomeScreen.needsTaskReload.removeListener(_handleTaskReloadRequest);
+    super.dispose();
+  }
+
+  void _handleTaskReloadRequest() {
+    print('HomeScreen: Task reload requested');
+    if (HomeScreen.needsTaskReload.value && mounted) {
+      print('HomeScreen: Handling task reload request');
+      print('HomeScreen: Current category: ${_selectedCategory?.headline}');
+      print('HomeScreen: Current task: ${_randomTask?.headline}');
+      
+      HomeScreen.needsTaskReload.value = false;  // Reset the flag
+      _handleEditComplete();
+    } else {
+      print('HomeScreen: Task reload requested but widget not mounted or flag not set');
+      print('HomeScreen: mounted: $mounted, needsTaskReload: ${HomeScreen.needsTaskReload.value}');
+    }
+  }
+
   Future<void> _loadRandomTask(Category category) async {
+    print('HomeScreen: Starting to load random task for category: ${category.headline}');
     try {
       setState(() {
         _isLoadingTask = true;
@@ -51,18 +80,28 @@ class _HomeScreenState extends State<HomeScreen> {
         throw Exception('No user logged in');
       }
 
+      print('HomeScreen: Calling Task.loadRandomTask...');
       final task = await Task.loadRandomTask(category, userId);
+      print('HomeScreen: Task loaded: ${task?.headline}');
       
-      setState(() {
-        _randomTask = task;
-        _isLoadingTask = false;
-      });
+      if (mounted) {
+        setState(() {
+          _randomTask = task;
+          _isLoadingTask = false;
+        });
+        print('HomeScreen: State updated with new task');
+      } else {
+        print('HomeScreen: Widget not mounted after loading task');
+      }
     } catch (e) {
-      print('Error loading random task: $e');
-      setState(() {
-        _error = e.toString();
-        _isLoadingTask = false;
-      });
+      print('HomeScreen: Error loading random task: $e');
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoadingTask = false;
+        });
+      }
+      rethrow;
     }
   }
 
@@ -180,15 +219,181 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _navigateToEditCategory([Category? category]) async {
-    final result = await Navigator.pushNamed(
-      context,
-      '/edit-category',
-      arguments: {'category': category},
-    );
+    print('HomeScreen: Starting navigation to edit category screen...');
+    print('HomeScreen: Current category: ${_selectedCategory?.headline}');
+    print('HomeScreen: Current task: ${_randomTask?.headline}');
+    
+    if (!mounted) {
+      print('HomeScreen: Not mounted before navigation');
+      return;
+    }
 
-    if (result == true) {
-      // Reload categories if changes were made
-      _loadCategories();
+    // Set up the static callback before navigation
+    EditCategoryScreen.onEditComplete = () {
+      print('HomeScreen: Edit complete callback received');
+      if (mounted) {
+        print('HomeScreen: Widget mounted, triggering task reload');
+        // Force a rebuild and task reload
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            print('HomeScreen: Post frame callback executing');
+            setState(() {
+              print('HomeScreen: Setting needsTaskReload to true');
+              HomeScreen.needsTaskReload.value = true;
+            });
+            print('HomeScreen: Directly calling _handleEditComplete');
+            _handleEditComplete();
+          } else {
+            print('HomeScreen: Widget not mounted in post frame callback');
+          }
+        });
+      } else {
+        print('HomeScreen: Widget not mounted, cannot trigger task reload');
+      }
+    };
+    print('HomeScreen: Set static callback: ${EditCategoryScreen.onEditComplete != null}');
+
+    try {
+      print('HomeScreen: About to push route...');
+      // Create the screen
+      final screen = EditCategoryScreen(
+        key: ValueKey('edit_category_${category?.id ?? 'new'}'),
+        category: category,
+        tasksOnly: false,
+      );
+      print('HomeScreen: Created EditCategoryScreen');
+      
+      // Push the route and wait for result
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => screen,
+          fullscreenDialog: true,
+        ),
+      );
+      print('HomeScreen: Returned from edit category screen with result: $result');
+    } catch (e, stackTrace) {
+      print('HomeScreen: Error during navigation: $e');
+      print('HomeScreen: Stack trace: $stackTrace');
+    } finally {
+      // Always clear the callback after navigation
+      EditCategoryScreen.onEditComplete = null;
+      print('HomeScreen: Cleared static callback');
+    }
+  }
+
+  void _navigateToEditTask(Task task) {
+    print('HomeScreen: Navigating to edit task: ${task.headline}');
+    if (!mounted) {
+      print('HomeScreen: Not mounted before task edit navigation');
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskEditScreen(
+          category: _selectedCategory!,
+          task: task,
+        ),
+      ),
+    );
+  }
+
+  void _navigateToEditTasks() {
+    print('HomeScreen: Navigating to edit tasks for category: ${_selectedCategory?.headline}');
+    if (!mounted || _selectedCategory == null) {
+      print('HomeScreen: Not mounted or no category selected');
+      return;
+    }
+
+    // Set up the static callback before navigation
+    EditCategoryScreen.onEditComplete = () {
+      print('HomeScreen: Tasks edit complete callback received');
+      if (mounted) {
+        print('HomeScreen: Widget mounted, triggering task reload');
+        // Force a rebuild and task reload
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            print('HomeScreen: Post frame callback executing');
+            setState(() {
+              print('HomeScreen: Setting needsTaskReload to true');
+              HomeScreen.needsTaskReload.value = true;
+            });
+            print('HomeScreen: Directly calling _handleEditComplete');
+            _handleEditComplete();
+          } else {
+            print('HomeScreen: Widget not mounted in post frame callback');
+          }
+        });
+      } else {
+        print('HomeScreen: Widget not mounted, cannot trigger task reload');
+      }
+    };
+    print('HomeScreen: Set static callback for tasks edit: ${EditCategoryScreen.onEditComplete != null}');
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditCategoryScreen(
+          category: _selectedCategory,
+          tasksOnly: true,
+        ),
+      ),
+    ).then((_) {
+      // Clear the callback after navigation
+      EditCategoryScreen.onEditComplete = null;
+      print('HomeScreen: Cleared static callback after tasks edit');
+    });
+  }
+
+  Future<void> _handleEditComplete() async {
+    print('HomeScreen: Handling edit complete...');
+    if (!mounted) {
+      print('HomeScreen: Not mounted in handleEditComplete');
+      return;
+    }
+
+    try {
+      print('HomeScreen: Reloading categories...');
+      await _loadCategories();
+      print('HomeScreen: Categories reloaded');
+      
+      if (!mounted) {
+        print('HomeScreen: Not mounted after loading categories');
+        return;
+      }
+
+      if (_selectedCategory != null) {
+        print('HomeScreen: Selected category: ${_selectedCategory!.headline}');
+        print('HomeScreen: Current task after reload: ${_randomTask?.headline}');
+        
+        // Force a new task load
+        print('HomeScreen: Forcing new task load...');
+        if (mounted) {
+          setState(() {
+            _randomTask = null;  // Clear current task
+            print('HomeScreen: Cleared current task');
+          });
+        }
+        
+        try {
+          print('HomeScreen: Loading new random task...');
+          await _loadRandomTask(_selectedCategory!);
+          if (mounted) {
+            print('HomeScreen: New task loaded: ${_randomTask?.headline}');
+            print('HomeScreen: Task finished state: ${_randomTask?.finished}');
+            print('HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}');
+          }
+        } catch (e) {
+          print('HomeScreen: Error loading new task: $e');
+          rethrow;
+        }
+      } else {
+        print('HomeScreen: No category selected, skipping task load');
+      }
+    } catch (e) {
+      print('HomeScreen: Error handling edit complete: $e');
     }
   }
 
@@ -330,6 +535,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                             _randomTask!.headline,
                                             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                                               fontSize: (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) + 6,
+                                              fontWeight: _randomTask!.suggestibleAt == null || !_randomTask!.suggestibleAt!.isAfter(DateTime.now())
+                                                  ? FontWeight.bold
+                                                  : FontWeight.normal,
+                                              color: _randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())
+                                                  ? Colors.grey
+                                                  : null,
                                             ),
                                             textAlign: TextAlign.center,
                                           ),
@@ -340,16 +551,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           IconButton(
                                             icon: const Icon(Icons.edit),
                                             tooltip: 'Edit this task',
-                                            onPressed: () {
-                                              Navigator.pushNamed(
-                                                context,
-                                                '/edit-task',
-                                                arguments: {
-                                                  'category': _selectedCategory!,
-                                                  'task': _randomTask!,
-                                                },
-                                              );
-                                            },
+                                            onPressed: () => _navigateToEditTask(_randomTask!),
                                           ),
                                         ],
                                       ),
@@ -357,11 +559,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                         const SizedBox(height: 8),
                                         Text(
                                           _randomTask!.notes!,
-                                          style: Theme.of(context).textTheme.bodyMedium,
+                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                            color: _randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())
+                                                ? Colors.grey
+                                                : null,
+                                          ),
                                         ),
                                       ],
                                       if (_randomTask!.links != null && _randomTask!.links!.isNotEmpty) ...[
-                                        const SizedBox(height: 8),
+                                        const SizedBox(height: 16),
                                         LinkProcessor.processAndDisplayLinks(_randomTask!.links!),
                                       ],
                                       if (_randomTask!.triggersAt != null) ...[
@@ -371,13 +577,45 @@ class _HomeScreenState extends State<HomeScreen> {
                                           style: Theme.of(context).textTheme.bodySmall,
                                         ),
                                       ],
-                                      if (_randomTask!.suggestibleAt != null) ...[
+                                      if (_randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())) ...[
                                         const SizedBox(height: 8),
-                                        Text(
-                                          'Available again in ${_randomTask!.suggestibleAt!.difference(DateTime.now()).inMinutes} minutes',
-                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                            color: Colors.blue,
-                                          ),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                _randomTask!.getSuggestibleTimeDisplay()!,
+                                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                  color: Colors.blue,
+                                                ),
+                                              ),
+                                            ),
+                                            TextButton.icon(
+                                              onPressed: () async {
+                                                final userId = supabase.auth.currentUser?.id;
+                                                if (userId == null) return;
+                                                try {
+                                                  await Task.reviveTask(_randomTask!, userId);
+                                                  setState(() {
+                                                    // The task will be updated in the cache
+                                                    // and the UI will refresh automatically
+                                                  });
+                                                } catch (e) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text('Error reviving task: $e'),
+                                                      backgroundColor: Colors.red,
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                              icon: const Icon(Icons.refresh, size: 16),
+                                              label: const Text('Revive'),
+                                              style: TextButton.styleFrom(
+                                                foregroundColor: Colors.blue,
+                                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ],
@@ -453,16 +691,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             const SizedBox(height: 16),
                             ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.pushNamed(
-                                  context,
-                                  '/edit-category',
-                                  arguments: {
-                                    'category': _selectedCategory,
-                                    'tasksOnly': true,
-                                  },
-                                );
-                              },
+                              onPressed: _navigateToEditTasks,
                               icon: const Icon(Icons.edit),
                               label: const Text('Edit the List of Tasks'),
                             ),
