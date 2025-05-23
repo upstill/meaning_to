@@ -4,6 +4,8 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:flutter/services.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/link_edit_screen.dart';
+import 'dart:convert';
 
 final supabase = Supabase.instance.client;
 
@@ -28,7 +30,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   bool _isLoading = false;
   String? _error;
   List<String> _links = [];
-  List<TextEditingController> _linkControllers = [];
 
   @override
   void initState() {
@@ -36,38 +37,93 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     _headlineController = TextEditingController(text: widget.task?.headline);
     _notesController = TextEditingController(text: widget.task?.notes);
     _links = widget.task?.links != null ? List<String>.from(widget.task!.links!) : [];
-    _linkControllers = _links.map((link) => TextEditingController(text: link)).toList();
   }
 
   @override
   void dispose() {
     _headlineController.dispose();
     _notesController.dispose();
-    for (final c in _linkControllers) {
-      c.dispose();
-    }
     super.dispose();
   }
 
-  void _addLink() {
-    setState(() {
-      _links.add("");
-      _linkControllers.add(TextEditingController());
-    });
+  Future<void> _addLink() async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const LinkEditScreen(),
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        _links.add(result);
+      });
+    }
+  }
+
+  Future<void> _editLink(int index) async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => LinkEditScreen(
+          initialLink: _links[index],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        _links[index] = result;
+      });
+    }
   }
 
   void _removeLink(int index) {
     setState(() {
       _links.removeAt(index);
-      _linkControllers[index].dispose();
-      _linkControllers.removeAt(index);
     });
   }
 
-  void _updateLink(int index, String value) {
-    setState(() {
-      _links[index] = value;
-    });
+  Future<void> _pasteLinkFromClipboard() async {
+    try {
+      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+      if (clipboardData?.text == null) {
+        setState(() {
+          _error = 'No text found in clipboard';
+        });
+        return;
+      }
+
+      final text = clipboardData!.text!.trim();
+      String linkText;
+
+      // Check if it's an HTML link
+      if (text.startsWith('<a href="')) {
+        linkText = text;
+      } else {
+        // Try to parse as URL
+        if (LinkProcessor.isValidUrl(text)) {
+          // Create a simple HTML link with the URL as text
+          linkText = '<a href="$text">$text</a>';
+        } else {
+          setState(() {
+            _error = 'Clipboard text is not a valid URL or HTML link';
+          });
+          return;
+        }
+      }
+
+      // Add the link to the list
+      setState(() {
+        _links.add(linkText);
+        _error = null;
+      });
+    } catch (e) {
+      print('Error pasting link: $e');
+      setState(() {
+        _error = 'Failed to paste link: ${e.toString()}';
+      });
+    }
   }
 
   Future<void> _saveTask() async {
@@ -82,23 +138,13 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('No user logged in');
 
-      // Validate links before saving
-      final validLinks = Task.validateLinks(_linkControllers.map((c) => c.text).toList());
-      if (validLinks.length != _linkControllers.length) {
-        setState(() {
-          _error = 'Some links are invalid. Please check and try again.';
-          _isLoading = false;
-        });
-        return;
-      }
-
       final data = {
         'headline': _headlineController.text,
         'notes': _notesController.text.isEmpty ? null : _notesController.text,
         'category_id': widget.category.id,
         'owner_id': userId,
         'finished': widget.task?.finished ?? false,
-        'links': Task.linksToString(validLinks),
+        'links': _links.isEmpty ? null : (_links.length == 1 ? _links[0] : jsonEncode(_links)),
       };
 
       if (widget.task == null) {
@@ -204,49 +250,65 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
-  // Add link validation to the form
-  Widget _buildLinkField(int index) {
-    return Row(
+  Widget _buildLinksList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: TextFormField(
-            controller: _linkControllers[index],
-            decoration: InputDecoration(
-              labelText: 'Link ${index + 1}',
-              errorText: _linkControllers[index].text.isNotEmpty && 
-                        !LinkProcessor.isValidUrl(_linkControllers[index].text)
-                    ? 'Invalid URL'
-                    : null,
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Links:',
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            onChanged: (val) {
-              _updateLink(index, val);
-              // Trigger form validation
-              _formKey.currentState?.validate();
-            },
-            enabled: !_isLoading,
-            keyboardType: TextInputType.url,
-          ),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.content_paste),
+                  tooltip: 'Paste link from clipboard',
+                  onPressed: _isLoading ? null : _pasteLinkFromClipboard,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Add link',
+                  onPressed: _isLoading ? null : _addLink,
+                ),
+              ],
+            ),
+          ],
         ),
-        IconButton(
-          icon: const Icon(Icons.paste),
-          tooltip: 'Paste from clipboard',
-          onPressed: _isLoading
-              ? null
-              : () async {
-                  final data = await Clipboard.getData('text/plain');
-                  if (data?.text != null) {
-                    _linkControllers[index].text = data!.text!;
-                    _updateLink(index, data.text!);
-                    // Trigger form validation
-                    _formKey.currentState?.validate();
-                  }
-                },
-        ),
-        IconButton(
-          icon: const Icon(Icons.delete),
-          tooltip: 'Delete link',
-          onPressed: _isLoading ? null : () => _removeLink(index),
-        ),
+        if (_links.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          ...List.generate(_links.length, (index) {
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: LinkDisplayWidget(
+                        linkText: _links[index],
+                        showIcon: true,
+                        showTitle: true,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit),
+                      tooltip: 'Edit link',
+                      onPressed: _isLoading ? null : () => _editLink(index),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete),
+                      tooltip: 'Delete link',
+                      onPressed: _isLoading ? null : () => _removeLink(index),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
       ],
     );
   }
@@ -315,29 +377,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 style: const TextStyle(color: Colors.red),
               ),
             ],
-            const SizedBox(height: 24),
-            // Links editing UI
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Links',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  tooltip: 'Add link',
+            _buildLinksList(),
+            if (_links.isEmpty) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: TextButton.icon(
                   onPressed: _isLoading ? null : _addLink,
+                  icon: const Icon(Icons.add_link),
+                  label: const Text('Add Link'),
                 ),
-              ],
-            ),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _links.length,
-              itemBuilder: (context, index) => _buildLinkField(index),
-            ),
-            const SizedBox(height: 16),
+              ),
+            ],
+            const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _isLoading ? null : _saveTask,
               child: _isLoading
