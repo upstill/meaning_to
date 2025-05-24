@@ -10,11 +10,13 @@ import 'dart:convert';
 final supabase = Supabase.instance.client;
 
 class TaskEditScreen extends StatefulWidget {
+  static VoidCallback? onEditComplete;  // Static callback for edit completion
+  
   final Category category;
   final Task? task;  // null for new task, existing task for edit
 
   const TaskEditScreen({
-    super.key, 
+    super.key,
     required this.category,
     this.task,
   });
@@ -147,42 +149,66 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         'links': _links.isEmpty ? null : (_links.length == 1 ? _links[0] : jsonEncode(_links)),
       };
 
+      Task? updatedTask;
       if (widget.task == null) {
         // Create new task
+        print('TaskEditScreen: Creating new task...');
         final response = await supabase
             .from('Tasks')
             .insert(data)
             .select()
             .single();
         
-        final newTask = Task.fromJson(response);
-        print('Created new task: ${newTask.headline}');
-        
-        // Update the task cache
-        if (Task.currentCategory?.id == widget.category.id) {
-          await Task.loadTaskSet(widget.category, userId);
-        }
+        updatedTask = Task.fromJson(response);
+        print('TaskEditScreen: Created new task: ${updatedTask.headline}');
       } else {
         // Update existing task
-        await supabase
+        print('TaskEditScreen: Updating existing task...');
+        final response = await supabase
             .from('Tasks')
             .update(data)
             .eq('id', widget.task!.id)
-            .eq('owner_id', userId);
+            .eq('owner_id', userId)
+            .select()
+            .single();
         
-        print('Updated task: ${widget.task!.headline}');
+        updatedTask = Task.fromJson(response);
+        print('TaskEditScreen: Updated task: ${updatedTask.headline}');
+      }
+      
+      // Update the task cache
+      print('TaskEditScreen: Updating task cache...');
+      if (Task.currentCategory?.id == widget.category.id) {
+        print('TaskEditScreen: Reloading task set for current category...');
+        await Task.loadTaskSet(widget.category, userId);
         
-        // Update the task cache
-        if (Task.currentCategory?.id == widget.category.id) {
-          await Task.loadTaskSet(widget.category, userId);
+        // If this was the current task, update it in the cache
+        if (widget.task != null && Task.currentTask?.id == widget.task!.id) {
+          print('TaskEditScreen: Updating current task in cache...');
+          Task.updateCurrentTask(updatedTask);
         }
       }
 
+      print('TaskEditScreen: Task saved successfully, calling edit complete callback...');
+      // Call the edit complete callback before popping
+      if (TaskEditScreen.onEditComplete != null) {
+        print('TaskEditScreen: Static callback available, calling it...');
+        try {
+          TaskEditScreen.onEditComplete!();
+          print('TaskEditScreen: Static callback executed successfully');
+        } catch (e) {
+          print('TaskEditScreen: Error executing static callback: $e');
+        }
+      } else {
+        print('TaskEditScreen: No static callback available');
+      }
+
       if (mounted) {
+        print('TaskEditScreen: Popping screen with true result...');
         Navigator.pop(context, true);  // Return true to indicate success
       }
     } catch (e) {
-      print('Error saving task: $e');
+      print('TaskEditScreen: Error saving task: $e');
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -247,6 +273,33 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         _error = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  void _handleBack() {
+    print('TaskEditScreen: Back button pressed');
+    print('TaskEditScreen: Current task: ${widget.task?.headline}');
+    print('TaskEditScreen: Static callback available: ${TaskEditScreen.onEditComplete != null}');
+    
+    // Call the static callback before popping
+    if (TaskEditScreen.onEditComplete != null) {
+      print('TaskEditScreen: Calling static callback');
+      try {
+        TaskEditScreen.onEditComplete!();
+        print('TaskEditScreen: Static callback executed successfully');
+      } catch (e) {
+        print('TaskEditScreen: Error executing static callback: $e');
+      }
+    } else {
+      print('TaskEditScreen: No static callback available');
+    }
+    
+    // Pop after executing the callback
+    if (mounted) {
+      Navigator.of(context).pop(true);  // Always return true to indicate completion
+      print('TaskEditScreen: Popped screen with true result');
+    } else {
+      print('TaskEditScreen: Widget not mounted, cannot pop');
     }
   }
 
@@ -315,91 +368,106 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.category.headline,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            Text(
-              widget.task == null ? 'New Task' : 'Edit Task',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal),
-            ),
+    return WillPopScope(
+      onWillPop: () async {
+        print('TaskEditScreen: WillPopScope triggered');
+        _handleBack();
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              print('TaskEditScreen: Back button pressed in app bar');
+              _handleBack();
+            },
+          ),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.category.headline,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              if (widget.task != null)
+                Text(
+                  'Edit Task',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal),
+                ),
+            ],
+          ),
+          actions: [
+            if (widget.task != null)
+              IconButton(
+                icon: const Icon(Icons.delete),
+                onPressed: _isLoading ? null : _deleteTask,
+                tooltip: 'Delete task',
+              ),
           ],
         ),
-        actions: [
-          if (widget.task != null)
-            IconButton(
-              icon: const Icon(Icons.delete),
-              onPressed: _isLoading ? null : _deleteTask,
-              tooltip: 'Delete task',
-            ),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            TextFormField(
-              controller: _headlineController,
-              decoration: const InputDecoration(
-                labelText: 'Task',
-                hintText: 'What have you been meaning to do?',
-                border: OutlineInputBorder(),
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter a task';
-                }
-                return null;
-              },
-              enabled: !_isLoading,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _notesController,
-              decoration: const InputDecoration(
-                labelText: 'Notes (optional)',
-                hintText: 'Add any additional details...',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-              enabled: !_isLoading,
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                'Error: $_error',
-                style: const TextStyle(color: Colors.red),
-              ),
-            ],
-            _buildLinksList(),
-            if (_links.isEmpty) ...[
-              const SizedBox(height: 16),
-              Center(
-                child: TextButton.icon(
-                  onPressed: _isLoading ? null : _addLink,
-                  icon: const Icon(Icons.add_link),
-                  label: const Text('Add Link'),
+        body: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              TextFormField(
+                controller: _headlineController,
+                decoration: const InputDecoration(
+                  labelText: 'Task',
+                  hintText: 'What have you been meaning to do?',
+                  border: OutlineInputBorder(),
                 ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a task';
+                  }
+                  return null;
+                },
+                enabled: !_isLoading,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
+                  hintText: 'Add any additional details...',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+                enabled: !_isLoading,
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Error: $_error',
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ],
+              _buildLinksList(),
+              if (_links.isEmpty) ...[
+                const SizedBox(height: 16),
+                Center(
+                  child: TextButton.icon(
+                    onPressed: _isLoading ? null : _addLink,
+                    icon: const Icon(Icons.add_link),
+                    label: const Text('Add Link'),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _saveTask,
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(widget.task == null ? 'Create Task' : 'Save Changes'),
               ),
             ],
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _saveTask,
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(widget.task == null ? 'Create Task' : 'Save Changes'),
-            ),
-          ],
+          ),
         ),
       ),
     );

@@ -136,6 +136,31 @@ class Task {
     _currentUserId = null;
   }
 
+  /// Updates the current task in the cache if it matches the given task ID.
+  /// Also updates the task in the task set if it exists there.
+  static void updateCurrentTask(Task updatedTask) {
+    print('Task: Updating current task in cache...');
+    print('Task: Current task ID: ${_currentTask?.id}');
+    print('Task: Updated task ID: ${updatedTask.id}');
+    
+    // Update in task set if it exists
+    if (_currentTaskSet != null) {
+      final index = _currentTaskSet!.indexWhere((t) => t.id == updatedTask.id);
+      if (index != -1) {
+        print('Task: Updating task in task set at index $index');
+        _currentTaskSet![index] = updatedTask;
+        // Resort the cache after modification
+        sortTaskSet(_currentTaskSet!);
+      }
+    }
+    
+    // Update current task if it matches
+    if (_currentTask?.id == updatedTask.id) {
+      print('Task: Updating current task reference');
+      _currentTask = updatedTask;
+    }
+  }
+
   /// Updates the current context and fetches tasks for the given category and user.
   /// Returns the task set if successful, null if no tasks are found.
   static Future<List<Task>?> loadTaskSet(Category category, String userId) async {
