@@ -284,10 +284,35 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _navigateToEditTask(Task task) {
     print('HomeScreen: Navigating to edit task: ${task.headline}');
-    if (!mounted) {
-      print('HomeScreen: Not mounted before task edit navigation');
+    if (!mounted || _selectedCategory == null) {
+      print('HomeScreen: Not mounted or no category selected');
       return;
     }
+
+    // Set up the static callback before navigation
+    TaskEditScreen.onEditComplete = () {
+      print('HomeScreen: Task edit complete callback received');
+      if (mounted) {
+        print('HomeScreen: Widget mounted, triggering task reload');
+        // Force a rebuild and task reload
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            print('HomeScreen: Post frame callback executing');
+            setState(() {
+              print('HomeScreen: Setting needsTaskReload to true');
+              HomeScreen.needsTaskReload.value = true;
+            });
+            print('HomeScreen: Directly calling _handleEditComplete');
+            _handleEditComplete();
+          } else {
+            print('HomeScreen: Widget not mounted in post frame callback');
+          }
+        });
+      } else {
+        print('HomeScreen: Widget not mounted, cannot trigger task reload');
+      }
+    };
+    print('HomeScreen: Set static callback for task edit: ${TaskEditScreen.onEditComplete != null}');
 
     Navigator.push(
       context,
@@ -297,7 +322,11 @@ class _HomeScreenState extends State<HomeScreen> {
           task: task,
         ),
       ),
-    );
+    ).then((_) {
+      // Clear the callback after navigation
+      TaskEditScreen.onEditComplete = null;
+      print('HomeScreen: Cleared static callback after task edit');
+    });
   }
 
   void _navigateToEditTasks() {
@@ -366,10 +395,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (_selectedCategory != null) {
         print('HomeScreen: Selected category: ${_selectedCategory!.headline}');
-        print('HomeScreen: Current task after reload: ${_randomTask?.headline}');
+        print('HomeScreen: Current task before reload: ${_randomTask?.headline}');
         
-        // Force a new task load
-        print('HomeScreen: Forcing new task load...');
+        // Check if we have a current task in the cache
+        if (Task.currentTask != null) {
+          print('HomeScreen: Found current task in cache: ${Task.currentTask!.headline}');
+          // If the current task is from the same category, use it
+          if (Task.currentTask!.categoryId == _selectedCategory!.id) {
+            print('HomeScreen: Using cached task from same category');
+            setState(() {
+              _randomTask = Task.currentTask;
+              print('HomeScreen: Updated task from cache: ${_randomTask?.headline}');
+            });
+            return;
+          }
+        }
+        
+        // If we don't have a valid cached task, load a new one
+        print('HomeScreen: No valid cached task, loading new random task...');
         if (mounted) {
           setState(() {
             _randomTask = null;  // Clear current task
