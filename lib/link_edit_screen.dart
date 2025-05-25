@@ -3,10 +3,12 @@ import 'package:meaning_to/utils/link_processor.dart';
 
 class LinkEditScreen extends StatefulWidget {
   final String? initialLink;  // HTML link to edit, or null for new link
+  final String? errorMessage;  // Add error message parameter
 
   const LinkEditScreen({
     super.key,
     this.initialLink,
+    this.errorMessage,  // Add to constructor
   });
 
   @override
@@ -26,14 +28,21 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
   void initState() {
     super.initState();
     // Parse initial link if provided
-    if (widget.initialLink != null) {
-      final (url, text) = LinkProcessor.parseHtmlLink(widget.initialLink!);
-      _urlController = TextEditingController(text: url);
-      _textController = TextEditingController(text: text);
+    if (widget.initialLink != null && widget.initialLink!.startsWith('<a href="')) {
+      final linkMatch = RegExp(r'<a href="([^"]+)"[^>]*>(.*?)</a>').firstMatch(widget.initialLink!);
+      if (linkMatch != null) {
+        _urlController = TextEditingController(text: linkMatch.group(1));
+        _textController = TextEditingController(text: linkMatch.group(2));
+      } else {
+        _urlController = TextEditingController(text: widget.initialLink);
+        _textController = TextEditingController();
+      }
     } else {
-      _urlController = TextEditingController();
+      _urlController = TextEditingController(text: widget.initialLink);
       _textController = TextEditingController();
     }
+    // Set initial error if provided
+    _error = widget.errorMessage;
   }
 
   @override
@@ -132,6 +141,13 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
               enabled: !_isLoading,
               keyboardType: TextInputType.url,
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'The above needs to be a valid URL or HTML link',
+                style: const TextStyle(color: Colors.red),
+              ),
+            ],
             const SizedBox(height: 16),
             TextFormField(
               controller: _textController,
@@ -142,13 +158,6 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
               ),
               enabled: !_isLoading,
             ),
-            if (_error != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                'Error: $_error',
-                style: const TextStyle(color: Colors.red),
-              ),
-            ],
             if (_testedUrl != null) ...[
               const SizedBox(height: 24),
               const Text(
@@ -174,7 +183,7 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Test Link'),
+                        : const Text('Verify Link'),
                   ),
                 ),
                 const SizedBox(width: 16),

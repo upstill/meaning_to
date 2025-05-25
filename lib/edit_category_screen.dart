@@ -44,6 +44,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
   List<Task> _tasks = [];
   bool _isLoadingTasks = false;
   late bool _editTasksLocal;
+  bool _isEditing = false;  // New state to track edit mode
 
   @override
   void initState() {
@@ -122,19 +123,47 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
         
         final newCategory = Category.fromJson(response);
         print('Created new endeavor: ${newCategory.headline}');
+        
+        // For new categories, we do want to pop back to home screen
+        if (mounted) {
+          Navigator.pop(context, true);
+        }
       } else {
         // Update existing category
-        await supabase
+        final response = await supabase
             .from('Categories')
             .update(data)
             .eq('id', widget.category!.id)
-            .eq('owner_id', userId);
+            .eq('owner_id', userId)
+            .select()
+            .single();
         
+        // Update the category in memory with the response data
+        final updatedCategory = Category.fromJson(response);
+        widget.category!.headline = updatedCategory.headline;
+        widget.category!.invitation = updatedCategory.invitation;
         print('Updated category: ${widget.category!.headline}');
-      }
 
-      if (mounted) {
-        Navigator.pop(context, true);  // Return true to indicate success
+        // Call the edit complete callback to update home screen
+        if (EditCategoryScreen.onEditComplete != null) {
+          print('EditCategoryScreen: Calling edit complete callback');
+          try {
+            EditCategoryScreen.onEditComplete!();
+            print('EditCategoryScreen: Edit complete callback executed successfully');
+          } catch (e) {
+            print('EditCategoryScreen: Error executing edit complete callback: $e');
+          }
+        } else {
+          print('EditCategoryScreen: No edit complete callback available');
+        }
+
+        // Stay on the screen, just update the state
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _isEditing = false;  // Return to view mode
+          });
+        }
       }
     } catch (e) {
       print('Error saving category: $e');
@@ -221,6 +250,19 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
           ),
           title: Text(widget.category == null ? 'New Endeavor' : 'Edit Endeavor'),
           actions: [
+            if (widget.category != null && !_editTasksLocal && _isEditing)
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  // Reset controllers to current values
+                  _headlineController.text = widget.category!.headline;
+                  _invitationController.text = widget.category!.invitation ?? '';
+                  setState(() {
+                    _isEditing = false;
+                  });
+                },
+                tooltip: 'Cancel edit',
+              ),
             if (widget.category != null && !_editTasksLocal)
               IconButton(
                 icon: const Icon(Icons.delete),
@@ -273,9 +315,6 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                       tooltip: 'Edit details',
                       onPressed: () {
                         setState(() {
-                          // Exit editTasks mode to allow editing
-                          // This assumes editTasks is not final in the State
-                          // We'll need to track local editTasks state
                           _editTasksLocal = false;
                         });
                       },
@@ -289,7 +328,76 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                     style: const TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
                   ),
                 const SizedBox(height: 16),
+              ] else if (widget.category != null && !_isEditing) ...[
+                // View mode - show category details in a card
+                Card(
+                  child: Stack(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.category!.headline,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (widget.category!.invitation != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                widget.category!.invitation!,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () {
+                              setState(() {
+                                _isEditing = true;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                Icons.edit,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
               ] else ...[
+                // Edit mode - show form fields
                 TextFormField(
                   controller: _headlineController,
                   decoration: const InputDecoration(
@@ -316,6 +424,42 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                   maxLines: 3,
                   enabled: !_isLoading,
                 ),
+                if (_isEditing) ...[
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          // Reset controllers to current values
+                          _headlineController.text = widget.category!.headline;
+                          _invitationController.text = widget.category!.invitation ?? '';
+                          setState(() {
+                            _isEditing = false;
+                          });
+                        },
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton(
+                        onPressed: _isLoading ? null : () async {
+                          if (!_formKey.currentState!.validate()) return;
+                          await _saveCategory();
+                          setState(() {
+                            _isEditing = false;
+                          });
+                        },
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Save Changes'),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
               ],
               if (widget.category != null) ...[
@@ -364,7 +508,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                             width: 40,
                             child: Center(
                               child: Text(
-                                'Done',
+                                'Done?',
                                 style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                             ),
@@ -502,19 +646,6 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                 Text(
                   'Error: $_error',
                   style: const TextStyle(color: Colors.red),
-                ),
-              ],
-              if (!_editTasksLocal) ...[
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _saveCategory,
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(widget.category == null ? 'Create Endeavor' : 'Save Changes'),
                 ),
               ],
             ],

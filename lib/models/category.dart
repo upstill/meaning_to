@@ -1,10 +1,10 @@
 class Category {
   final int id;
-  final String headline;
-  final String? invitation;
+  String headline;
+  String? invitation;
   final String ownerId;
   final DateTime createdAt;
-  final DateTime? updatedAt;
+  DateTime? updatedAt;
   final int? originalId;
   final DateTime? triggersAt;
   final String? template;

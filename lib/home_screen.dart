@@ -330,7 +330,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _navigateToEditTasks() {
-    print('HomeScreen: Navigating to edit tasks for category: ${_selectedCategory?.headline}');
+    print('HomeScreen: Navigating to edit category: ${_selectedCategory?.headline}');
     if (!mounted || _selectedCategory == null) {
       print('HomeScreen: Not mounted or no category selected');
       return;
@@ -338,7 +338,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Set up the static callback before navigation
     EditCategoryScreen.onEditComplete = () {
-      print('HomeScreen: Tasks edit complete callback received');
+      print('HomeScreen: Category edit complete callback received');
       if (mounted) {
         print('HomeScreen: Widget mounted, triggering task reload');
         // Force a rebuild and task reload
@@ -359,78 +359,39 @@ class _HomeScreenState extends State<HomeScreen> {
         print('HomeScreen: Widget not mounted, cannot trigger task reload');
       }
     };
-    print('HomeScreen: Set static callback for tasks edit: ${EditCategoryScreen.onEditComplete != null}');
+    print('HomeScreen: Set static callback for category edit: ${EditCategoryScreen.onEditComplete != null}');
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => EditCategoryScreen(
           category: _selectedCategory,
-          tasksOnly: true,
+          tasksOnly: false,  // Changed to false to edit the category
         ),
       ),
     ).then((_) {
       // Clear the callback after navigation
       EditCategoryScreen.onEditComplete = null;
-      print('HomeScreen: Cleared static callback after tasks edit');
+      print('HomeScreen: Cleared static callback after category edit');
     });
   }
 
-  Future<void> _handleEditComplete() async {
-    print('HomeScreen: Handling edit complete...');
-    if (!mounted) {
-      print('HomeScreen: Not mounted in handleEditComplete');
-      return;
-    }
-
+  void _handleEditComplete() async {
+    print('HomeScreen: Handling edit complete');
     try {
+      // Reload categories first
       print('HomeScreen: Reloading categories...');
       await _loadCategories();
       print('HomeScreen: Categories reloaded');
-      
-      if (!mounted) {
-        print('HomeScreen: Not mounted after loading categories');
-        return;
-      }
 
+      // Then reload task if we have a selected category
       if (_selectedCategory != null) {
-        print('HomeScreen: Selected category: ${_selectedCategory!.headline}');
-        print('HomeScreen: Current task before reload: ${_randomTask?.headline}');
-        
-        // Check if we have a current task in the cache
-        if (Task.currentTask != null) {
-          print('HomeScreen: Found current task in cache: ${Task.currentTask!.headline}');
-          // If the current task is from the same category, use it
-          if (Task.currentTask!.categoryId == _selectedCategory!.id) {
-            print('HomeScreen: Using cached task from same category');
-            setState(() {
-              _randomTask = Task.currentTask;
-              print('HomeScreen: Updated task from cache: ${_randomTask?.headline}');
-            });
-            return;
-          }
-        }
-        
-        // If we don't have a valid cached task, load a new one
-        print('HomeScreen: No valid cached task, loading new random task...');
+        print('HomeScreen: Loading new random task...');
+        await _loadRandomTask(_selectedCategory!);
         if (mounted) {
-          setState(() {
-            _randomTask = null;  // Clear current task
-            print('HomeScreen: Cleared current task');
-          });
-        }
-        
-        try {
-          print('HomeScreen: Loading new random task...');
-          await _loadRandomTask(_selectedCategory!);
-          if (mounted) {
-            print('HomeScreen: New task loaded: ${_randomTask?.headline}');
-            print('HomeScreen: Task finished state: ${_randomTask?.finished}');
-            print('HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}');
-          }
-        } catch (e) {
-          print('HomeScreen: Error loading new task: $e');
-          rethrow;
+          print('HomeScreen: New task loaded: ${_randomTask?.headline}');
+          print('HomeScreen: Task finished state: ${_randomTask?.finished}');
+          print('HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}');
         }
       } else {
         print('HomeScreen: No category selected, skipping task load');
@@ -710,6 +671,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                   icon: const Icon(Icons.check),
                                   label: const Text('Actually, I\'m done with that'),
                                 ),
+                                const SizedBox(height: 8),
+                                TextButton.icon(
+                                  onPressed: _navigateToEditTasks,
+                                  icon: const Icon(Icons.edit),
+                                  label: const Text('Reassess Choices'),
+                                ),
                               ],
                             ),
                           ),
@@ -736,7 +703,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ElevatedButton.icon(
                               onPressed: _navigateToEditTasks,
                               icon: const Icon(Icons.edit),
-                              label: const Text('Edit the List of Tasks'),
+                              label: const Text('Reassess Choices'),
                             ),
                           ],
                         ),
