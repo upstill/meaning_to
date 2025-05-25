@@ -98,6 +98,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
       final text = clipboardData!.text!.trim();
       String linkText;
+      String? errorMessage;
 
       // Check if it's an HTML link
       if (text.startsWith('<a href="')) {
@@ -105,12 +106,62 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       } else {
         // Try to parse as URL
         if (LinkProcessor.isValidUrl(text)) {
-          // Create a simple HTML link with the URL as text
-          linkText = '<a href="$text">$text</a>';
-        } else {
           setState(() {
-            _error = 'Clipboard text is not a valid URL or HTML link';
+            _isLoading = true;
+            _error = null;
           });
+
+          try {
+            // Fetch the webpage title
+            final title = await LinkProcessor.fetchWebpageTitle(text);
+            // Create an HTML link with the fetched title or fallback to URL
+            linkText = '<a href="$text">${title ?? text}</a>';
+          } catch (e) {
+            print('Error fetching webpage title: $e');
+            errorMessage = 'Failed to fetch webpage title: ${e.toString()}';
+            // Open link edit screen with the URL pre-filled and error message
+            final result = await Navigator.push<String>(
+              context,
+              MaterialPageRoute(
+                builder: (context) => LinkEditScreen(
+                  initialLink: text,
+                  errorMessage: errorMessage,
+                ),
+              ),
+            );
+            if (result != null) {
+              setState(() {
+                _links.add(result);
+                _error = null;
+              });
+            }
+            setState(() {
+              _isLoading = false;
+            });
+            return;
+          } finally {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+        } else {
+          errorMessage = 'Clipboard text is not a valid URL or HTML link';
+          // Open link edit screen with the text pre-filled and error message
+          final result = await Navigator.push<String>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => LinkEditScreen(
+                initialLink: text,
+                errorMessage: errorMessage,
+              ),
+            ),
+          );
+          if (result != null) {
+            setState(() {
+              _links.add(result);
+              _error = null;
+            });
+          }
           return;
         }
       }
@@ -124,6 +175,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       print('Error pasting link: $e');
       setState(() {
         _error = 'Failed to paste link: ${e.toString()}';
+        _isLoading = false;
       });
     }
   }
@@ -307,7 +359,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -315,19 +367,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               'Links:',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.content_paste),
-                  tooltip: 'Paste link from clipboard',
-                  onPressed: _isLoading ? null : _pasteLinkFromClipboard,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  tooltip: 'Add link',
-                  onPressed: _isLoading ? null : _addLink,
-                ),
-              ],
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Add link',
+              onPressed: _isLoading ? null : _addLink,
             ),
           ],
         ),
@@ -445,17 +488,30 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 ),
               ],
               _buildLinksList(),
-              if (_links.isEmpty) ...[
-                const SizedBox(height: 16),
-                Center(
-                  child: TextButton.icon(
-                    onPressed: _isLoading ? null : _addLink,
-                    icon: const Icon(Icons.add_link),
-                    label: const Text('Add Link'),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 80,  // Fixed width container - enough for two 32px icons plus gap
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.content_paste),
+                          tooltip: 'Paste link from clipboard',
+                          onPressed: _isLoading ? null : _pasteLinkFromClipboard,
+                          iconSize: 32,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        const Icon(Icons.arrow_forward, size: 32),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-              const SizedBox(height: 24),
+                ],
+              ),
+              const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: _isLoading ? null : _saveTask,
                 child: _isLoading
