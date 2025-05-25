@@ -505,7 +505,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                         children: [
                           Expanded(child: Container()), // For alignment with the task title
                           SizedBox(
-                            width: 40,
+                            width: 48,
                             child: Center(
                               child: Text(
                                 'Done?',

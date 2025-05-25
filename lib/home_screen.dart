@@ -211,8 +211,19 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e, stackTrace) {
       print('Error loading categories: $e');
       print('Stack trace: $stackTrace');
+      
+      // Check if it's a network error
+      String errorMessage;
+      if (e.toString().contains('Failed host lookup') || 
+          e.toString().contains('SocketException') ||
+          e.toString().contains('Network is unreachable')) {
+        errorMessage = "Sorry, but we can't connect to the cloud. Are you online?";
+      } else {
+        errorMessage = e.toString();
+      }
+      
       setState(() {
-        _error = e.toString();
+        _error = errorMessage;
         _isLoading = false;
       });
     }
@@ -439,20 +450,29 @@ class _HomeScreenState extends State<HomeScreen> {
             else if (_error != null)
               Center(
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      'Error: $_error',
-                      style: const TextStyle(color: Colors.red),
+                    const Icon(
+                      Icons.cloud_off,
+                      size: 48,
+                      color: Colors.grey,
                     ),
                     const SizedBox(height: 16),
-                    ElevatedButton(
+                    Text(
+                      _error!,
+                      style: const TextStyle(fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
                       onPressed: () {
                         _loadCategories();
                         if (_selectedCategory != null) {
                           _loadRandomTask(_selectedCategory!);
                         }
                       },
-                      child: const Text('Try Again'),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Try Again'),
                     ),
                   ],
                 ),
@@ -527,103 +547,115 @@ class _HomeScreenState extends State<HomeScreen> {
                                 minHeight: 172,
                               ),
                               child: Card(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16.0),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                child: Stack(
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            _randomTask!.headline,
-                                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                              fontSize: (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) + 6,
-                                              fontWeight: _randomTask!.suggestibleAt == null || !_randomTask!.suggestibleAt!.isAfter(DateTime.now())
-                                                  ? FontWeight.bold
-                                                  : FontWeight.normal,
-                                              color: _randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())
-                                                  ? Colors.grey
-                                                  : null,
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Text(
+                                                _randomTask!.headline,
+                                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                                  fontSize: (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) + 6,
+                                                  fontWeight: _randomTask!.suggestibleAt == null || !_randomTask!.suggestibleAt!.isAfter(DateTime.now())
+                                                      ? FontWeight.bold
+                                                      : FontWeight.normal,
+                                                  color: _randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())
+                                                      ? Colors.grey
+                                                      : null,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                              if (_randomTask!.finished) ...[
+                                                const SizedBox(width: 8),
+                                                Icon(Icons.check_circle, color: Colors.green, size: 28),
+                                              ],
+                                            ],
+                                          ),
+                                          if (_randomTask!.notes != null) ...[
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              _randomTask!.notes!,
+                                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                color: _randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())
+                                                    ? Colors.grey
+                                                    : null,
+                                              ),
                                             ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                          if (_randomTask!.finished) ...[
-                                            const SizedBox(width: 8),
-                                            Icon(Icons.check_circle, color: Colors.green, size: 28),
                                           ],
-                                          IconButton(
-                                            icon: const Icon(Icons.edit),
-                                            tooltip: 'Edit this task',
-                                            onPressed: () => _navigateToEditTask(_randomTask!),
-                                          ),
+                                          if (_randomTask!.links != null && _randomTask!.links!.isNotEmpty) ...[
+                                            const SizedBox(height: 16),
+                                            LinkProcessor.processAndDisplayLinks(_randomTask!.links!),
+                                          ],
+                                          if (_randomTask!.triggersAt != null) ...[
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
+                                              style: Theme.of(context).textTheme.bodySmall,
+                                            ),
+                                          ],
+                                          if (_randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())) ...[
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    _randomTask!.getSuggestibleTimeDisplay()!,
+                                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                      color: Colors.blue,
+                                                    ),
+                                                  ),
+                                                ),
+                                                TextButton.icon(
+                                                  onPressed: () async {
+                                                    final userId = supabase.auth.currentUser?.id;
+                                                    if (userId == null) return;
+                                                    try {
+                                                      await Task.reviveTask(_randomTask!, userId);
+                                                      setState(() {
+                                                        // The task will be updated in the cache
+                                                        // and the UI will refresh automatically
+                                                      });
+                                                    } catch (e) {
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        SnackBar(
+                                                          content: Text('Error reviving task: $e'),
+                                                          backgroundColor: Colors.red,
+                                                        ),
+                                                      );
+                                                    }
+                                                  },
+                                                  icon: const Icon(Icons.refresh, size: 16),
+                                                  label: const Text('Revive'),
+                                                  style: TextButton.styleFrom(
+                                                    foregroundColor: Colors.blue,
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
                                         ],
                                       ),
-                                      if (_randomTask!.notes != null) ...[
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          _randomTask!.notes!,
-                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                            color: _randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())
-                                                ? Colors.grey
-                                                : null,
-                                          ),
+                                    ),
+                                    Positioned(
+                                      top: 8,
+                                      right: 8,
+                                      child: IconButton(
+                                        icon: const Icon(Icons.edit),
+                                        tooltip: 'Edit this task',
+                                        onPressed: () => _navigateToEditTask(_randomTask!),
+                                        style: IconButton.styleFrom(
+                                          backgroundColor: Theme.of(context).colorScheme.surface,
+                                          foregroundColor: Theme.of(context).colorScheme.primary,
                                         ),
-                                      ],
-                                      if (_randomTask!.links != null && _randomTask!.links!.isNotEmpty) ...[
-                                        const SizedBox(height: 16),
-                                        LinkProcessor.processAndDisplayLinks(_randomTask!.links!),
-                                      ],
-                                      if (_randomTask!.triggersAt != null) ...[
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
-                                          style: Theme.of(context).textTheme.bodySmall,
-                                        ),
-                                      ],
-                                      if (_randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())) ...[
-                                        const SizedBox(height: 8),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                _randomTask!.getSuggestibleTimeDisplay()!,
-                                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                  color: Colors.blue,
-                                                ),
-                                              ),
-                                            ),
-                                            TextButton.icon(
-                                              onPressed: () async {
-                                                final userId = supabase.auth.currentUser?.id;
-                                                if (userId == null) return;
-                                                try {
-                                                  await Task.reviveTask(_randomTask!, userId);
-                                                  setState(() {
-                                                    // The task will be updated in the cache
-                                                    // and the UI will refresh automatically
-                                                  });
-                                                } catch (e) {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text('Error reviving task: $e'),
-                                                      backgroundColor: Colors.red,
-                                                    ),
-                                                  );
-                                                }
-                                              },
-                                              icon: const Icon(Icons.refresh, size: 16),
-                                              label: const Text('Revive'),
-                                              style: TextButton.styleFrom(
-                                                foregroundColor: Colors.blue,
-                                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ],
-                                  ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -632,6 +664,27 @@ class _HomeScreenState extends State<HomeScreen> {
                           Center(
                             child: Column(
                               children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    TextButton.icon(
+                                      onPressed: _finishCurrentTask,
+                                      icon: const Icon(Icons.check),
+                                      label: const Text('Actually, I\'m done with that'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Theme.of(context).colorScheme.primary,
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: _navigateToEditTasks,
+                                      child: const Text('Browse Choices'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Theme.of(context).colorScheme.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
                                 ElevatedButton.icon(
                                   onPressed: () async {
                                     try {
@@ -664,18 +717,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                     backgroundColor: Colors.green,
                                     foregroundColor: Colors.white,
                                   ),
-                                ),
-                                const SizedBox(height: 8),
-                                ElevatedButton.icon(
-                                  onPressed: _finishCurrentTask,
-                                  icon: const Icon(Icons.check),
-                                  label: const Text('Actually, I\'m done with that'),
-                                ),
-                                const SizedBox(height: 8),
-                                TextButton.icon(
-                                  onPressed: _navigateToEditTasks,
-                                  icon: const Icon(Icons.edit),
-                                  label: const Text('Reassess Choices'),
                                 ),
                               ],
                             ),
