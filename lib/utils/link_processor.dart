@@ -232,6 +232,32 @@ class LinkProcessor {
       )).toList(),
     );
   }
+
+  /// Checks if a URL leads to a valid page by attempting to fetch its title.
+  /// Returns true if the URL is valid and leads to a page, false otherwise.
+  static Future<bool> isUrlValid(String url) async {
+    try {
+      final processedLink = await processLinkForDisplay('<a href="$url"></a>');
+      return processedLink.title != null;
+    } catch (e) {
+      print('Error validating URL: $e');
+      return false;
+    }
+  }
+
+  /// Validates a URL and returns a ProcessedLink if valid, or throws an exception if invalid.
+  /// This is used when you need both validation and the processed link data.
+  static Future<ProcessedLink> validateAndProcessLink(String url, {String? linkText}) async {
+    final processedLink = await processLinkForDisplay(
+      '<a href="$url">${linkText ?? ""}</a>'
+    );
+    
+    if (processedLink.title == null) {
+      throw Exception('Sorry, but this link doesn\'t lead to a page.');
+    }
+    
+    return processedLink;
+  }
 }
 
 class LinkDisplayWidget extends StatelessWidget {

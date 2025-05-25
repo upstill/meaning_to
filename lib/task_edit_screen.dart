@@ -97,35 +97,35 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       }
 
       final text = clipboardData!.text!.trim();
-      String linkText;
-      String? errorMessage;
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
 
-      // Check if it's an HTML link
-      if (text.startsWith('<a href="')) {
-        linkText = text;
-      } else {
-        // Try to parse as URL
-        if (LinkProcessor.isValidUrl(text)) {
-          setState(() {
-            _isLoading = true;
-            _error = null;
-          });
-
-          try {
-            // Fetch the webpage title
-            final title = await LinkProcessor.fetchWebpageTitle(text);
-            // Create an HTML link with the fetched title or fallback to URL
-            linkText = '<a href="$text">${title ?? text}</a>';
-          } catch (e) {
-            print('Error fetching webpage title: $e');
-            errorMessage = 'Failed to fetch webpage title: ${e.toString()}';
-            // Open link edit screen with the URL pre-filled and error message
+      try {
+        // Parse the text as HTML link
+        final (url, linkText) = LinkProcessor.parseHtmlLink(text);
+        
+        // If it's not an HTML link, treat it as a plain URL
+        if (url == text) {
+          if (LinkProcessor.isValidUrl(text)) {
+            // Validate the URL
+            final processedLink = await LinkProcessor.validateAndProcessLink(text);
+            
+            // Create an HTML link with the fetched title
+            final htmlLink = '<a href="$text">${processedLink.title ?? text}</a>';
+            setState(() {
+              _links.add(htmlLink);
+              _error = null;
+            });
+          } else {
+            // Open link edit screen with the text pre-filled
             final result = await Navigator.push<String>(
               context,
               MaterialPageRoute(
                 builder: (context) => LinkEditScreen(
                   initialLink: text,
-                  errorMessage: errorMessage,
+                  errorMessage: 'Clipboard text is not a valid URL or HTML link',
                 ),
               ),
             );
@@ -135,42 +135,44 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 _error = null;
               });
             }
-            setState(() {
-              _isLoading = false;
-            });
-            return;
-          } finally {
-            setState(() {
-              _isLoading = false;
-            });
           }
         } else {
-          errorMessage = 'Clipboard text is not a valid URL or HTML link';
-          // Open link edit screen with the text pre-filled and error message
-          final result = await Navigator.push<String>(
-            context,
-            MaterialPageRoute(
-              builder: (context) => LinkEditScreen(
-                initialLink: text,
-                errorMessage: errorMessage,
-              ),
-            ),
+          // It was an HTML link, validate the extracted URL
+          final processedLink = await LinkProcessor.validateAndProcessLink(
+            url,
+            linkText: linkText,
           );
-          if (result != null) {
-            setState(() {
-              _links.add(result);
-              _error = null;
-            });
-          }
-          return;
+          
+          // Create a new HTML link with the validated data
+          final htmlLink = '<a href="$url">${linkText ?? processedLink.title ?? url}</a>';
+          setState(() {
+            _links.add(htmlLink);
+            _error = null;
+          });
         }
+      } catch (e) {
+        print('Error processing pasted link: $e');
+        // Open link edit screen with error message
+        final result = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => LinkEditScreen(
+              initialLink: text,
+              errorMessage: e.toString(),
+            ),
+          ),
+        );
+        if (result != null) {
+          setState(() {
+            _links.add(result);
+            _error = null;
+          });
+        }
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
       }
-
-      // Add the link to the list
-      setState(() {
-        _links.add(linkText);
-        _error = null;
-      });
     } catch (e) {
       print('Error pasting link: $e');
       setState(() {

@@ -23,10 +23,12 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
   String? _error;
   String? _testedUrl;
   String? _testedIcon;
+  bool _hasUrlText = false;  // Add state for URL text presence
 
   @override
   void initState() {
     super.initState();
+    print('LinkEditScreen: initState called');
     // Parse initial link if provided
     if (widget.initialLink != null && widget.initialLink!.startsWith('<a href="')) {
       final linkMatch = RegExp(r'<a href="([^"]+)"[^>]*>(.*?)</a>').firstMatch(widget.initialLink!);
@@ -41,15 +43,33 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
       _urlController = TextEditingController(text: widget.initialLink);
       _textController = TextEditingController();
     }
+    print('LinkEditScreen: Initial URL text: "${_urlController.text}"');
     // Set initial error if provided
     _error = widget.errorMessage;
+    // Set initial URL text state
+    _hasUrlText = _urlController.text.trim().isNotEmpty;
+    print('LinkEditScreen: Initial _hasUrlText: $_hasUrlText');
+    // Add listener for URL text changes
+    _urlController.addListener(_updateUrlTextState);
   }
 
   @override
   void dispose() {
+    _urlController.removeListener(_updateUrlTextState);
     _urlController.dispose();
     _textController.dispose();
     super.dispose();
+  }
+
+  void _updateUrlTextState() {
+    final hasText = _urlController.text.trim().isNotEmpty;
+    print('URL text changed: "${_urlController.text}" -> hasText: $hasText');
+    if (hasText != _hasUrlText) {
+      print('Updating _hasUrlText from $_hasUrlText to $hasText');
+      setState(() {
+        _hasUrlText = hasText;
+      });
+    }
   }
 
   Future<void> _testLink() async {
@@ -97,22 +117,50 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
     }
   }
 
-  void _saveLink() {
+  Future<void> _saveLink() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_testedUrl == null) {
+    if (_urlController.text.trim().isEmpty) {
       setState(() {
-        _error = 'Please test the link before saving';
+        _error = 'Please enter a URL';
       });
       return;
     }
 
-    // Create HTML link
-    final htmlLink = '<a href="${_urlController.text.trim()}">${_textController.text.trim()}</a>';
-    Navigator.pop(context, htmlLink);
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final url = _urlController.text.trim();
+      final processedLink = await LinkProcessor.validateAndProcessLink(
+        url,
+        linkText: _textController.text.trim(),
+      );
+
+      // If we got a title from the webpage and the text field was empty,
+      // update the text field with the fetched title
+      if (_textController.text.trim().isEmpty) {
+        _textController.text = processedLink.title!;
+      }
+
+      // Create HTML link and return
+      final htmlLink = '<a href="$url">${_textController.text.trim()}</a>';
+      if (mounted) {
+        Navigator.pop(context, htmlLink);
+      }
+    } catch (e) {
+      print('Error validating link: $e');
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    print('LinkEditScreen: Building with _hasUrlText: $_hasUrlText, URL text: "${_urlController.text}"');
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.initialLink == null ? 'New Link' : 'Edit Link'),
@@ -122,6 +170,14 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red),
+              ),
+              const SizedBox(height: 8),
+            ],
             TextFormField(
               controller: _urlController,
               decoration: const InputDecoration(
@@ -140,14 +196,11 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
               },
               enabled: !_isLoading,
               keyboardType: TextInputType.url,
+              onChanged: (value) {
+                print('URL field onChanged: "$value"');
+                _updateUrlTextState();
+              },
             ),
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                'The above needs to be a valid URL or HTML link',
-                style: const TextStyle(color: Colors.red),
-              ),
-            ],
             const SizedBox(height: 16),
             TextFormField(
               controller: _textController,
@@ -158,17 +211,16 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
               ),
               enabled: !_isLoading,
             ),
-            if (_testedUrl != null) ...[
+            if (_isLoading) ...[
               const SizedBox(height: 24),
-              const Text(
-                'Preview:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              LinkDisplayWidget(
-                linkText: '<a href="${_urlController.text.trim()}">${_textController.text.trim()}</a>',
-                showIcon: true,
-                showTitle: true,
+              const Center(
+                child: Column(
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Checking if this link works...'),
+                  ],
+                ),
               ),
             ],
             const SizedBox(height: 24),
@@ -176,20 +228,18 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
               children: [
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : _testLink,
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Verify Link'),
+                    onPressed: _isLoading ? null : () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.surface,
+                      foregroundColor: Theme.of(context).colorScheme.onSurface,
+                    ),
+                    child: const Text('Cancel'),
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: _isLoading || _testedUrl == null ? null : _saveLink,
+                    onPressed: _isLoading || !_hasUrlText ? null : _saveLink,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Theme.of(context).colorScheme.primary,
                       foregroundColor: Theme.of(context).colorScheme.onPrimary,
