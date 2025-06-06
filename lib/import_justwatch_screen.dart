@@ -285,7 +285,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Import your ${widget.category.originalId == 1 ? 'movies' : 'TV shows'} from JustWatch to create tasks in "${widget.category.headline}".',
+              'Import your ${widget.category.originalId == 1 ? 'movies' : 'TV shows'} from JustWatch for "${widget.category.headline}".',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: 24),
@@ -378,10 +378,8 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
               ),
               const Spacer(),
             ] else ...[
-              Text('Selected file: $_selectedFileName'),
-              const SizedBox(height: 16),
               if (_matchingItems.isNotEmpty) ...[
-                Text('Found ${_matchingItems.length} items to import'),
+                Text('Got ${_matchingItems.length} items to import:'),
                 const SizedBox(height: 16),
                 Expanded(
                   child: ListView.builder(
@@ -402,11 +400,6 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                item.title,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: 8),
                               if (task.links != null && task.links!.isNotEmpty) ...[
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -492,13 +485,26 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
           'finished': task.finished,
         };
 
-        final response = await supabase
-            .from('Tasks')
-            .insert(taskData)
-            .select()
-            .single();
-
-        print('Added task to database: ${task.headline}');
+        print('Inserting task into database: ${task.headline}');
+        print('Task data: $taskData');
+        
+        try {
+          final response = await supabase
+              .from('Tasks')
+              .insert(taskData)
+              .select()
+              .single();
+          
+          print('Successfully inserted task: ${response['headline']} (ID: ${response['id']})');
+        } catch (e) {
+          print('Error inserting task ${task.headline}: $e');
+          if (e is PostgrestException) {
+            print('Postgrest error details: ${e.details}');
+            print('Postgrest hint: ${e.hint}');
+            print('Postgrest code: ${e.code}');
+          }
+          rethrow; // Re-throw to be caught by the outer try-catch
+        }
       }
 
       print('Successfully imported ${tasksToImport.length} tasks');
