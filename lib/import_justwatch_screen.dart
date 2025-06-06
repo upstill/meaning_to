@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/widgets/link_display.dart';
 
 class JustWatchItem {
   final String title;
@@ -86,6 +87,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
   }
 
   void _parseJsonData(dynamic jsonData) {
+    print('Starting _parseJsonData');
     setState(() {
       _isLoading = true;
       _error = null;
@@ -96,7 +98,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
     try {
       // Map category's original_id to target_type
       final targetType = widget.category.originalId == 1 ? 'MOVIE' : 'SHOW';
-      print('Processing for [38;5;2m${targetType}s[0m');
+      print('Processing for ${targetType}s');
       if (jsonData is List) {
         int totalNodes = 0;
         int matchingNodes = 0;
@@ -114,27 +116,34 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
               matchingNodes++;
               final content = node['content'];
               if (content is Map) {
-                final title = content['title'];
-                final fullPath = 'https://www.justwatch.com' + content['fullPath'];
-                final htmlLink = '<a href="$fullPath">$title</a>';
-                if (!filterJustWatchItem(title.toString(), htmlLink)) {
+                final title = content['title']?.toString() ?? 'Unknown Title';
+                final fullPath = 'https://www.justwatch.com' + (content['fullPath']?.toString() ?? '');
+                print('Processing item: $title with path: $fullPath');
+                
+                // Create both JustWatch and IMDB links
+                final justWatchLink = '<a href="$fullPath">$title</a>';
+                
+                if (!filterJustWatchItem(title, justWatchLink)) {
+                  print('Skipping $title - already exists');
                   continue;
                 }
+                
+                print('Adding item: $title with link: $justWatchLink');
                 items.add(JustWatchItem(
-                  title: title.toString(),
+                  title: title,
                   fullPath: fullPath,
                 ));
                 tasks.add(Task(
                   id: -1,
                   categoryId: widget.category.id,
-                  headline: title.toString(),
+                  headline: title,
                   notes: null,
                   ownerId: '',
                   createdAt: DateTime.now(),
                   suggestibleAt: DateTime.now(),
                   triggersAt: null,
                   deferral: null,
-                  links: [htmlLink],
+                  links: [justWatchLink],
                   processedLinks: null,
                   finished: false,
                 ));
@@ -144,18 +153,26 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
         }
         items.sort((a, b) => a.title.compareTo(b.title));
         tasks.sort((a, b) => a.headline.compareTo(b.headline));
+        print('Found ${items.length} items to import');
+        print('First item: ${items.isNotEmpty ? items.first.title : "none"}');
+        print('First task: ${tasks.isNotEmpty ? tasks.first.headline : "none"}');
+        print('First task links: ${tasks.isNotEmpty ? tasks.first.links : "none"}');
+        
         setState(() {
           _matchingItems = items;
           _tasks = tasks;
           _isLoading = false;
         });
       } else {
+        print('Invalid JSON format: expected a list, got ${jsonData.runtimeType}');
         setState(() {
           _error = 'Invalid JSON format: expected a list';
           _isLoading = false;
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('Error parsing JSON: $e');
+      print('Stack trace: $stackTrace');
       setState(() {
         _error = 'Error parsing JSON: $e';
         _isLoading = false;
@@ -165,6 +182,13 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    print('Building ImportJustWatchScreen');
+    print('_matchingItems length: ${_matchingItems.length}');
+    print('_tasks length: ${_tasks.length}');
+    if (_tasks.isNotEmpty) {
+      print('First task links: ${_tasks.first.links}');
+    }
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Import JustWatch List'),
@@ -206,9 +230,32 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                     itemCount: _matchingItems.length,
                     itemBuilder: (context, index) {
                       final item = _matchingItems[index];
-                      return ListTile(
-                        title: Text(item.title),
-                        subtitle: Text(item.fullPath),
+                      final task = _tasks[index];
+                      print('Building item $index: ${item.title}');
+                      print('Task links: ${task.links}');
+                      
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.title,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 8),
+                              if (task.links != null && task.links!.isNotEmpty) ...[
+                                LinkListDisplay(
+                                  key: ValueKey('links_${task.id}_$index'),
+                                  links: task.links!.map((link) => link.toString()).toList(),
+                                ),
+                              ] else ...[
+                                const Text('No links available', style: TextStyle(color: Colors.grey)),
+                              ],
+                            ],
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -227,34 +274,8 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
               ],
             ] else ...[
               const Spacer(),
-              Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.movie,
-                      size: 64,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Select your JustWatch export file to begin',
-                      style: TextStyle(fontSize: 16),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : () {
-                        // No-op since file picking is now handled in edit screen
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Please pick a file from the edit screen')),
-                        );
-                      },
-                      icon: const Icon(Icons.file_open),
-                      label: const Text('Pick a file (use edit screen)'),
-                    ),
-                  ],
-                ),
+              const Center(
+                child: Text("No imported data", style: TextStyle(fontSize: 16)),
               ),
               const Spacer(),
             ],

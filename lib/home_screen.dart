@@ -8,6 +8,7 @@ import 'package:flutter_html/flutter_html.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
+import 'package:meaning_to/widgets/link_display.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -589,7 +590,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ],
                                           if (_randomTask!.links != null && _randomTask!.links!.isNotEmpty) ...[
                                             const SizedBox(height: 16),
-                                            LinkProcessor.processAndDisplayLinks(_randomTask!.links!),
+                                            LinkListDisplay(links: _randomTask!.links!),
                                           ],
                                           if (_randomTask!.triggersAt != null) ...[
                                             const SizedBox(height: 8),
