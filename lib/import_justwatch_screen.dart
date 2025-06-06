@@ -5,6 +5,7 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/widgets/link_display.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class JustWatchItem {
   final String title;
@@ -52,6 +53,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
   String? _selectedFileName;
   List<JustWatchItem> _matchingItems = [];
   List<Task> _tasks = [];
+  List<Task> _existingTasks = [];
 
   @override
   void initState() {
@@ -59,15 +61,49 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
     print('ImportJustWatchScreen: initState called');
     print('ImportJustWatchScreen: Category: ${widget.category.headline}');
     if (widget.jsonData != null) {
-      _parseJsonData(widget.jsonData);
+      _loadExistingTasks().then((_) {
+        _parseJsonData(widget.jsonData);
+      });
+    }
+  }
+
+  Future<void> _loadExistingTasks() async {
+    print('Loading existing tasks for category: ${widget.category.headline}');
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('No user logged in');
+      }
+
+      final response = await supabase
+          .from('Tasks')
+          .select()
+          .eq('category_id', widget.category.id)
+          .eq('owner_id', userId);
+
+      if (response == null) {
+        print('No existing tasks found');
+        return;
+      }
+
+      final tasks = response
+          .map((json) => Task.fromJson(json as Map<String, dynamic>))
+          .toList();
+      
+      print('Loaded ${tasks.length} existing tasks');
+      setState(() {
+        _existingTasks = tasks;
+      });
+    } catch (e) {
+      print('Error loading existing tasks: $e');
+      // Don't throw - we can still proceed with import
     }
   }
 
   /// Returns true if the item should be included, false to filter it out.
-  /// Override this method to implement custom filtering logic.
-  bool filterJustWatchItem(String title, String fullLink) {
+  Future<bool> filterJustWatchItem(String title, String fullLink) async {
     // Check each existing task
-    for (var task in _tasks) {
+    for (var task in _existingTasks) {
       // If task already has this link, skip it
       if (task.links?.any((link) => link.contains(fullLink)) ?? false) {
         print('Skipping $title because it already exists in task #${task.id}: ${task.headline}');
@@ -75,9 +111,49 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
       }
       
       // If task has matching headline, add this link to its links
+      print('Checking task "${task.headline}" against "$title"');
       if (task.headline == title) {
         print('Adding $fullLink to task #${task.id}: ${task.headline}');
-        task.links?.add(fullLink);
+        
+        // Create new list with existing links plus the new one
+        final updatedLinks = [...?task.links, fullLink];
+        
+        // Create updated task
+        final updatedTask = Task(
+          id: task.id,
+          categoryId: task.categoryId,
+          headline: task.headline,
+          notes: task.notes,
+          ownerId: task.ownerId,
+          createdAt: task.createdAt,
+          suggestibleAt: task.suggestibleAt,
+          triggersAt: task.triggersAt,
+          deferral: task.deferral,
+          links: updatedLinks,
+          processedLinks: null,  // Will be processed when needed
+          finished: task.finished,
+        );
+        
+        // Update in database
+        try {
+          await supabase
+              .from('Tasks')
+              .update({'links': Task.linksToString(updatedLinks)})
+              .eq('id', task.id)
+              .eq('owner_id', task.ownerId);
+          
+          // Update in our local list
+          final index = _existingTasks.indexWhere((t) => t.id == task.id);
+          if (index != -1) {
+            _existingTasks[index] = updatedTask;
+          }
+          
+          print('Successfully updated task #${task.id} with new link');
+        } catch (e) {
+          print('Error updating task #${task.id}: $e');
+          // Continue with import even if update fails
+        }
+        
         return false;
       }
     }
@@ -86,8 +162,9 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
     return true;
   }
 
-  void _parseJsonData(dynamic jsonData) {
+  Future<void> _parseJsonData(dynamic jsonData) async {
     print('Starting _parseJsonData');
+    print('Existing tasks count: ${_existingTasks.length}');
     setState(() {
       _isLoading = true;
       _error = null;
@@ -123,7 +200,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                 // Create both JustWatch and IMDB links
                 final justWatchLink = '<a href="$fullPath">$title</a>';
                 
-                if (!filterJustWatchItem(title, justWatchLink)) {
+                if (!await filterJustWatchItem(title, justWatchLink)) {
                   print('Skipping $title - already exists');
                   continue;
                 }
@@ -219,7 +296,88 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
               ),
               const SizedBox(height: 16),
             ],
-            if (_selectedFileName != null) ...[
+            if (_selectedFileName == null) ...[
+              const Spacer(),
+              Center(
+                child: ElevatedButton.icon(
+                  onPressed: _isLoading ? null : () async {
+                    print('Pick a file button pressed in ImportJustWatchScreen');
+                    try {
+                      final file = await openFile(
+                        acceptedTypeGroups: [
+                          XTypeGroup(
+                            label: 'JSON Files',
+                            extensions: ['json'],
+                            mimeTypes: ['application/json'],
+                          ),
+                        ],
+                      );
+                      
+                      if (file == null) {
+                        print('No file selected in ImportJustWatchScreen');
+                        return;
+                      }
+                      
+                      print('File picked in ImportJustWatchScreen: ${file.name}');
+                      final contents = await file.readAsString();
+                      print('File contents length: ${contents.length}');
+                      
+                      dynamic jsonData;
+                      try {
+                        jsonData = json.decode(contents);
+                        print('JSON decoded successfully in ImportJustWatchScreen');
+                        print('JSON type: ${jsonData.runtimeType}');
+                        if (jsonData is List) {
+                          print('JSON is a list with ${jsonData.length} items');
+                        }
+                      } catch (e) {
+                        print('Error decoding JSON in ImportJustWatchScreen: $e');
+                        if (mounted) {
+                          setState(() {
+                            _error = 'Invalid JSON file: $e';
+                          });
+                        }
+                        return;
+                      }
+                      
+                      if (mounted) {
+                        setState(() {
+                          _selectedFileName = file.name;
+                          _isLoading = true;
+                          _error = null;
+                          _matchingItems = [];
+                          _tasks = [];
+                        });
+                      }
+                      
+                      await _loadExistingTasks();
+                      await _parseJsonData(jsonData);
+                      
+                      if (mounted) {
+                        setState(() {
+                          _isLoading = false;
+                        });
+                      }
+                    } catch (e) {
+                      print('Error picking file in ImportJustWatchScreen: $e');
+                      if (mounted) {
+                        setState(() {
+                          _error = 'Error picking file: $e';
+                          _isLoading = false;
+                        });
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.file_upload),
+                  label: const Text('Pick a file'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                    minimumSize: const Size(200, 48),
+                  ),
+                ),
+              ),
+              const Spacer(),
+            ] else ...[
               Text('Selected file: $_selectedFileName'),
               const SizedBox(height: 16),
               if (_matchingItems.isNotEmpty) ...[
@@ -229,6 +387,10 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                   child: ListView.builder(
                     itemCount: _matchingItems.length,
                     itemBuilder: (context, index) {
+                      if (index >= _matchingItems.length || index >= _tasks.length) {
+                        return const SizedBox.shrink();
+                      }
+                      
                       final item = _matchingItems[index];
                       final task = _tasks[index];
                       print('Building item $index: ${item.title}');
@@ -246,9 +408,17 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                               ),
                               const SizedBox(height: 8),
                               if (task.links != null && task.links!.isNotEmpty) ...[
-                                LinkListDisplay(
-                                  key: ValueKey('links_${task.id}_$index'),
-                                  links: task.links!.map((link) => link.toString()).toList(),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: task.links!.map((link) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 4.0),
+                                    child: LinkDisplayWidget(
+                                      key: ValueKey('link_${task.id}_$link'),
+                                      linkText: link,
+                                      showIcon: true,
+                                      showTitle: true,
+                                    ),
+                                  )).toList(),
                                 ),
                               ] else ...[
                                 const Text('No links available', style: TextStyle(color: Colors.grey)),
@@ -271,13 +441,11 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                         )
                       : const Text('Import Items'),
                 ),
+              ] else if (_selectedFileName != null) ...[
+                const Center(
+                  child: Text("No matching items found in the file", style: TextStyle(fontSize: 16)),
+                ),
               ],
-            ] else ...[
-              const Spacer(),
-              const Center(
-                child: Text("No imported data", style: TextStyle(fontSize: 16)),
-              ),
-              const Spacer(),
             ],
           ],
         ),
@@ -286,7 +454,61 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
   }
 
   Future<void> _importItems() async {
-    // TODO: Implement importing items
-    Navigator.pop(context, widget.category);
+    if (_tasks.isEmpty) {
+      print('No tasks to import');
+      Navigator.pop(context, widget.category);
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('No user logged in');
+      }
+
+      // Take first three tasks
+      final tasksToImport = _tasks.take(3).toList();
+      print('Importing ${tasksToImport.length} tasks:');
+      for (var task in tasksToImport) {
+        print('- ${task.headline}');
+      }
+
+      // Insert tasks into database
+      for (var task in tasksToImport) {
+        final taskData = {
+          'category_id': task.categoryId,
+          'headline': task.headline,
+          'notes': task.notes,
+          'owner_id': userId,
+          'created_at': task.createdAt?.toIso8601String(),
+          'suggestible_at': task.suggestibleAt?.toIso8601String(),
+          'triggers_at': task.triggersAt?.toIso8601String(),
+          'deferral': task.deferral,
+          'links': Task.linksToString(task.links ?? []),
+          'finished': task.finished,
+        };
+
+        final response = await supabase
+            .from('Tasks')
+            .insert(taskData)
+            .select()
+            .single();
+
+        print('Added task to database: ${task.headline}');
+      }
+
+      print('Successfully imported ${tasksToImport.length} tasks');
+      Navigator.pop(context, widget.category);
+    } catch (e) {
+      print('Error importing tasks: $e');
+      setState(() {
+        _error = 'Error importing tasks: $e';
+        _isLoading = false;
+      });
+    }
   }
 } 

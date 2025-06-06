@@ -361,61 +361,26 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                             if (widget.category!.originalId == 1 || widget.category!.originalId == 2) ...[
                               const SizedBox(height: 16),
                               ElevatedButton.icon(
-                                onPressed: () async {
+                                onPressed: () {
                                   print('Import JustWatch button pressed');
-                                  print('Category: [38;5;2m${widget.category?.headline}[0m');
-                                  // Open the file picker
-                                  final XFile? file = await openFile(
-                                    acceptedTypeGroups: [
-                                      XTypeGroup(
-                                        label: 'JSON Files',
-                                        extensions: ['json'],
-                                        mimeTypes: ['application/json'],
-                                      ),
-                                    ],
-                                  );
-                                  if (file != null) {
-                                    print('File picked: ${file.name}');
-                                    // Read and decode the file contents
-                                    final String contents = await file.readAsString();
-                                    print('File contents length: ${contents.length}');
-                                    dynamic jsonData;
-                                    try {
-                                      jsonData = json.decode(contents);
-                                      print('JSON decoded successfully');
-                                      print('JSON type: ${jsonData.runtimeType}');
-                                      if (jsonData is List) {
-                                        print('JSON is a list with ${jsonData.length} items');
-                                      }
-                                    } catch (e) {
-                                      print('Error decoding JSON: $e');
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Invalid JSON file: $e')),
-                                      );
-                                      return;
-                                    }
-                                    print('About to navigate to /import-justwatch');
-                                    print('Category: ${widget.category?.headline}');
-                                    print('JSON data: $jsonData');
-                                    final result = await Navigator.pushNamed(
-                                      context,
-                                      '/import-justwatch',
-                                      arguments: {
-                                        'category': widget.category,
-                                        'jsonData': jsonData,
-                                      },
-                                    );
-                                    print('Navigation completed with result: $result');
+                                  print('Category: ${widget.category?.headline}');
+                                  
+                                  // Navigate directly to Import JustWatch screen without any file picking
+                                  Navigator.pushNamed(
+                                    context,
+                                    '/import-justwatch',
+                                    arguments: {
+                                      'category': widget.category,
+                                    },
+                                  ).then((result) {
                                     if (result is Category) {
-                                      // Update the category with the imported data
                                       setState(() {
                                         widget.category!.headline = result.headline;
                                         widget.category!.invitation = result.invitation;
-                                        // Reload tasks if needed
                                         _loadTasks();
                                       });
                                     }
-                                  }
+                                  });
                                 },
                                 icon: const Icon(Icons.movie),
                                 label: const Text('Import JustWatch list'),
