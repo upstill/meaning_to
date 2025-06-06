@@ -4,6 +4,8 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:meaning_to/models/icon.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:convert';
 
 class ProcessedLink {
   final String url;
@@ -96,6 +98,167 @@ enum LinkType {
 }
 
 class LinkProcessor {
+  static String? get browserlessApiKey => dotenv.env['BROWSERLESS_API_KEY'];
+  
+  static final Map<String, List<Map<String, String>>> _cookies = {};
+
+  static Map<String, String>? parseCookieString(String cookieStr) {
+    try {
+      final parts = cookieStr.split(';').map((s) => s.trim()).toList();
+      if (parts.isEmpty) return null;
+
+      final firstPart = parts.first.split('=');
+      if (firstPart.length != 2) return null;
+
+      final cookie = <String, String>{
+        'name': firstPart[0],
+        'value': firstPart[1],
+      };
+
+      for (var i = 1; i < parts.length; i++) {
+        final part = parts[i].split('=');
+        if (part.length == 2) {
+          cookie[part[0].toLowerCase()] = part[1];
+        } else {
+          cookie[part[0].toLowerCase()] = 'true';
+        }
+      }
+
+      return cookie;
+    } catch (e) {
+      print('Error parsing cookie string: $e');
+      return null;
+    }
+  }
+
+  static void addCookie(String domain, Map<String, String> cookie) {
+    _cookies[domain] ??= [];
+    _cookies[domain]!.add(cookie);
+  }
+
+  static void clearCookies(String domain) {
+    _cookies.remove(domain);
+  }
+
+  static String _getCookieHeader(String domain) {
+    final cookies = _cookies[domain] ?? [];
+    return cookies.map((c) => '${c['name']}=${c['value']}').join('; ');
+  }
+
+  static Future<List<ProcessedLink>> fetchLinks(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      final domain = uri.host;
+      final cookieHeader = _getCookieHeader(domain);
+
+      final response = await http.get(
+        uri,
+        headers: {
+          if (cookieHeader.isNotEmpty) 'Cookie': cookieHeader,
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to fetch URL: ${response.statusCode}');
+      }
+
+      return _processHtml(url, response.body);
+    } catch (e) {
+      print('Error fetching links: $e');
+      rethrow;
+    }
+  }
+
+  static Future<List<ProcessedLink>> fetchLinksFromBrowserless(
+    String url,
+    String domain,
+  ) async {
+    final apiKey = browserlessApiKey;
+    if (apiKey == null || apiKey.isEmpty) {
+      throw Exception('Browserless API key not found');
+    }
+
+    try {
+      final cookieHeader = _getCookieHeader(domain);
+      final response = await http.post(
+        Uri.parse('https://chrome.browserless.io/content'),
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'url': url,
+          'waitFor': 5000,  // Wait for 5 seconds to let JavaScript execute
+          'headers': {
+            if (cookieHeader.isNotEmpty) 'Cookie': cookieHeader,
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
+          },
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Browserless request failed: ${response.statusCode}');
+      }
+
+      return _processHtml(url, response.body);
+    } catch (e) {
+      print('Error fetching links from Browserless: $e');
+      rethrow;
+    }
+  }
+
+  static List<ProcessedLink> _processHtml(String baseUrl, String html) {
+    final document = html_parser.parse(html);
+    final links = <ProcessedLink>[];
+    final baseUri = Uri.parse(baseUrl);
+
+    // Find all links
+    for (final element in document.querySelectorAll('a[href]')) {
+      final href = element.attributes['href'];
+      if (href == null || href.isEmpty) continue;
+
+      try {
+        // Resolve relative URLs
+        final uri = baseUri.resolve(href);
+        final url = uri.toString();
+
+        // Skip if not http/https
+        if (!url.startsWith('http://') && !url.startsWith('https://')) continue;
+
+        // Get link text, fallback to URL if no text
+        var title = element.text.trim();
+        if (title.isEmpty) title = url;
+
+        // Try to find favicon
+        String? favicon;
+        final faviconElement = document.querySelector('link[rel="icon"], link[rel="shortcut icon"]');
+        if (faviconElement != null) {
+          final faviconHref = faviconElement.attributes['href'];
+          if (faviconHref != null) {
+            favicon = baseUri.resolve(faviconHref).toString();
+          }
+        }
+
+        // Create HTML for display
+        final displayHtml = '<a href="$url">$title</a>';
+
+        links.add(ProcessedLink(
+          url: url,
+          title: title,
+          favicon: favicon,
+          type: LinkType.webpage,
+          domain: baseUri.host,
+          originalLink: displayHtml,
+        ));
+      } catch (e) {
+        print('Error processing link: $e');
+      }
+    }
+
+    return links;
+  }
+
   static bool isValidUrl(String url) {
     try {
       final uri = Uri.parse(url);
@@ -207,14 +370,38 @@ class LinkProcessor {
   }
 
   static Future<List<ProcessedLink>> processLinksForDisplay(List<String> links) async {
-    final results = <ProcessedLink>[];
+    final processedLinks = <ProcessedLink>[];
     
     for (final link in links) {
-      final processed = await processLinkForDisplay(link);
-      results.add(processed);
+      try {
+        // Parse the HTML link
+        final document = html_parser.parse(link);
+        final anchor = document.querySelector('a');
+        if (anchor == null) continue;
+
+        final url = anchor.attributes['href'];
+        if (url == null || url.isEmpty) continue;
+
+        final title = anchor.text.trim();
+        if (title.isEmpty) continue;
+
+        // Create a simple display HTML
+        final displayHtml = '<a href="$url">$title</a>';
+
+        processedLinks.add(ProcessedLink(
+          url: url,
+          title: title,
+          favicon: null,
+          type: LinkType.webpage,
+          domain: extractDomain(url),
+          originalLink: displayHtml,
+        ));
+      } catch (e) {
+        print('Error processing link for display: $e');
+      }
     }
-    
-    return results;
+
+    return processedLinks;
   }
 
   // Process and display links

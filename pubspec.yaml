@@ -35,11 +35,13 @@ dependencies:
   supabase_auth_ui: ^0.5.5
   flutter_dotenv: ^5.1.0
   app_links: ^3.4.1
-  flutter_html: ^3.0.0
+  flutter_html: ^3.0.0-beta.2
   uri: ^1.0.0
   http: ^1.4.0
-  html: ^0.15.6
+  html: ^0.15.4
   image: ^4.1.7  # For image resizing and processing
+  file_selector: ^1.0.2
+  permission_handler: ^11.3.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
