@@ -4,6 +4,12 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:file_selector/file_selector.dart';
 import 'dart:convert';
+import 'package:meaning_to/widgets/link_display.dart';
+import 'package:flutter/services.dart';
+import 'package:html/parser.dart' as html_parser;
+import 'package:meaning_to/utils/link_processor.dart';
+import 'package:http/http.dart' as http;
+import 'package:meaning_to/utils/link_extractor.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -47,6 +53,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
   bool _isLoadingTasks = false;
   late bool _editTasksLocal;
   bool _isEditing = false;  // New state to track edit mode
+  List<Task> _newTasks = [];  // Temporary list for tasks in new categories
 
   @override
   void initState() {
@@ -118,6 +125,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
 
       if (widget.category == null) {
         // Create new category
+        print('Creating new category...');
         final response = await supabase
             .from('Categories')
             .insert(data)
@@ -125,14 +133,30 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
             .single();
         
         final newCategory = Category.fromJson(response);
-        print('Created new endeavor: ${newCategory.headline}');
+        print('Created new category: ${newCategory.headline}');
+
+        // Save any tasks that were created
+        if (_newTasks.isNotEmpty) {
+          print('Saving ${_newTasks.length} tasks for new category...');
+          for (final task in _newTasks) {
+            final taskData = {
+              'headline': task.headline,
+              'notes': task.notes,
+              'category_id': newCategory.id,
+              'owner_id': userId,
+              'links': task.links,
+            };
+            await supabase.from('Tasks').insert(taskData);
+          }
+        }
         
-        // For new categories, we do want to pop back to home screen
+        // For new categories, pop back to home screen
         if (mounted) {
           Navigator.pop(context, true);
         }
       } else {
         // Update existing category
+        print('Updating existing category...');
         final response = await supabase
             .from('Categories')
             .update(data)
@@ -178,32 +202,164 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
   }
 
   Future<void> _editTask(Task task) async {
-    final result = await Navigator.pushNamed(
-      context,
-      '/edit-task',
-      arguments: {
-        'category': widget.category!,
-        'task': task,
-      },
-    );
+    if (widget.category == null) {
+      // For new categories, edit the task in _newTasks
+      final index = _newTasks.indexWhere((t) => t.headline == task.headline);
+      if (index == -1) return;
 
-    if (result == true) {
-      _loadTasks();  // Reload tasks if changes were made
+      final result = await Navigator.pushNamed(
+        context,
+        '/edit-task',
+        arguments: {
+          'category': null,  // No category yet
+          'task': task,
+          'isNewCategory': true,
+        },
+      );
+
+      if (result is Task) {
+        setState(() {
+          _newTasks[index] = result;
+        });
+      }
+    } else {
+      // For existing categories, use the normal flow
+      final result = await Navigator.pushNamed(
+        context,
+        '/edit-task',
+        arguments: {
+          'category': widget.category!,
+          'task': task,
+        },
+      );
+
+      if (result == true) {
+        _loadTasks();  // Reload tasks if changes were made
+      }
     }
   }
 
   Future<void> _createTask() async {
-    final result = await Navigator.pushNamed(
-      context,
-      '/edit-task',
-      arguments: {
-        'category': widget.category!,
-        'task': null,
-      },
-    );
+    if (widget.category == null) {
+      // For new categories, add to _newTasks
+      final result = await Navigator.pushNamed(
+        context,
+        '/edit-task',
+        arguments: {
+          'category': null,  // No category yet
+          'task': null,
+          'isNewCategory': true,
+        },
+      );
 
-    if (result == true) {
-      _loadTasks();  // Reload tasks if a new task was created
+      if (result is Task) {
+        setState(() {
+          _newTasks.add(result);
+        });
+      }
+    } else {
+      // For existing categories, use the normal flow
+      final result = await Navigator.pushNamed(
+        context,
+        '/edit-task',
+        arguments: {
+          'category': widget.category!,
+          'task': null,
+        },
+      );
+
+      if (result == true) {
+        _loadTasks();  // Reload tasks if a new task was created
+      }
+    }
+  }
+
+  Future<String?> _getJustWatchTitle(String url) async {
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode != 200) {
+        print('Error fetching JustWatch page: ${response.statusCode}');
+        return null;
+      }
+
+      final document = html_parser.parse(response.body);
+      final titleElement = document.querySelector('h1.title-detail-hero__details__title');
+      if (titleElement != null) {
+        // Get only the direct text nodes, ignoring text from child elements
+        final directText = titleElement.nodes
+            .where((node) => node.nodeType == 3)  // 3 is the value for TEXT_NODE
+            .map((node) => node.text?.trim())
+            .where((text) => text != null && text.isNotEmpty)
+            .join(' ')
+            .trim();
+        
+        return directText.isEmpty ? null : directText;
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching JustWatch title: $e');
+      return null;
+    }
+  }
+
+  Future<void> _handleClipboardContent() async {
+    try {
+      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+      if (clipboardData?.text == null) {
+        throw Exception('Clipboard is empty');
+      }
+
+      final extractedLink = await LinkExtractor.extractLinkFromString(clipboardData!.text!);
+      if (extractedLink == null) {
+        throw Exception('Clipboard content must be either a URL or an HTML <a> tag');
+      }
+
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('No user logged in');
+      }
+
+      // Create a new task with this link
+      final task = Task(
+        id: -1,  // Temporary ID for new task
+        categoryId: widget.category?.id ?? -1,
+        headline: extractedLink.title,
+        notes: null,
+        ownerId: userId,
+        createdAt: DateTime.now(),
+        suggestibleAt: null,
+        triggersAt: null,
+        deferral: null,
+        links: [extractedLink.html],  // Store as HTML <a> tag
+        finished: false,
+      );
+
+      setState(() {
+        if (widget.category == null) {
+          _newTasks.add(task);
+        } else {
+          _tasks.add(task);
+        }
+      });
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Task created from link'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -455,11 +611,11 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                   maxLines: 3,
                   enabled: !_isLoading,
                 ),
-                if (_isEditing) ...[
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (widget.category != null && _isEditing)
                       TextButton(
                         onPressed: () {
                           // Reset controllers to current values
@@ -471,70 +627,86 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                         },
                         child: const Text('Cancel'),
                       ),
+                    if (widget.category != null && _isEditing)
                       const SizedBox(width: 16),
-                      ElevatedButton(
-                        onPressed: _isLoading ? null : () async {
-                          if (!_formKey.currentState!.validate()) return;
-                          await _saveCategory();
+                    ElevatedButton(
+                      onPressed: _isLoading ? null : () async {
+                        if (!_formKey.currentState!.validate()) return;
+                        await _saveCategory();
+                        if (widget.category != null) {
                           setState(() {
                             _isEditing = false;
                           });
-                        },
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Save Changes'),
+                        }
+                      },
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(widget.category == null ? 'Create Endeavor' : 'Save Changes'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
+              // Show tasks section for both new and existing categories
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Tasks for this endeavor:',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _handleClipboardContent,
+                    icon: const Icon(Icons.content_paste),
+                    label: const Text('Add from Clipboard'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_isLoadingTasks)
+                const Center(child: CircularProgressIndicator())
+              else if (_error != null)
+                Center(
+                  child: Column(
+                    children: [
+                      Text(
+                        'Error: $_error',
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _loadTasks,
+                        child: const Text('Try Again'),
                       ),
                     ],
                   ),
-                ],
-                const SizedBox(height: 16),
-              ],
-              if (widget.category != null) ...[
-                const SizedBox(height: 24),
-                const Text(
-                  'Tasks for this endeavor:',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                )
+              else if (widget.category == null ? _newTasks.isEmpty : _tasks.isEmpty)
+                const Center(
+                  child: Text(
+                    'No tasks yet. Add some tasks to get started!',
+                    style: TextStyle(fontSize: 16),
                   ),
-                ),
-                const SizedBox(height: 8),
-                if (_isLoadingTasks)
-                  const Center(child: CircularProgressIndicator())
-                else if (_error != null)
-                  Center(
-                    child: Column(
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Text(
-                          'Error: $_error',
-                          style: const TextStyle(color: Colors.red),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _loadTasks,
-                          child: const Text('Try Again'),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (_tasks.isEmpty)
-                  const Center(
-                    child: Text(
-                      'No tasks yet. Add some tasks to get started!',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  )
-                else
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(child: Container()), // For alignment with the task title
+                        Expanded(child: Container()), // For alignment with the task title
+                        if (widget.category != null)  // Only show checkbox column for existing categories
                           SizedBox(
                             width: 48,
                             child: Center(
@@ -544,84 +716,54 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                               ),
                             ),
                           ),
-                          SizedBox(width: 40), // Space for the edit icon
-                        ],
-                      ),
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _tasks.length,
-                        itemBuilder: (context, index) {
-                          final task = _tasks[index];
-                          return Card(
-                            child: Row(
-                              children: [
-                                // Headline and notes take remaining space
-                                Expanded(
-                                  child: ListTile(
-                                    title: Text(
-                                      task.headline,
-                                      style: TextStyle(
-                                        fontWeight: task.suggestibleAt == null || !task.suggestibleAt!.isAfter(DateTime.now())
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                        color: task.suggestibleAt != null && task.suggestibleAt!.isAfter(DateTime.now())
-                                            ? Colors.grey
-                                            : null,
-                                      ),
-                                    ),
-                                    subtitle: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        if (task.notes != null)
-                                          Text(
-                                            task.notes!,
-                                            style: TextStyle(
-                                              color: task.suggestibleAt != null && task.suggestibleAt!.isAfter(DateTime.now())
-                                                  ? Colors.grey
-                                                  : null,
-                                            ),
-                                          ),
-                                        if (task.suggestibleAt != null && task.suggestibleAt!.isAfter(DateTime.now()) && !task.finished)
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  task.getSuggestibleTimeDisplay() ?? 'Available now',
-                                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                    color: Colors.blue,
-                                                  ),
-                                                ),
-                                              ),
-                                              TextButton.icon(
-                                                onPressed: () async {
-                                                  final userId = supabase.auth.currentUser?.id;
-                                                  if (userId == null) return;
-                                                  try {
-                                                    await Task.reviveTask(task, userId);
-                                                    setState(() {
-                                                      // The task will be updated in the cache
-                                                      // and the UI will refresh automatically
-                                                    });
-                                                  } catch (e) {
-                                                    ScaffoldMessenger.of(context).showSnackBar(
-                                                      SnackBar(
-                                                        content: Text('Error reviving task: $e'),
-                                                        backgroundColor: Colors.red,
-                                                      ),
-                                                    );
-                                                  }
-                                                },
-                                                icon: const Icon(Icons.refresh, size: 16),
-                                                label: const Text('Revive'),
-                                              ),
-                                            ],
-                                          ),
-                                      ],
+                        SizedBox(width: 40), // Space for the edit icon
+                      ],
+                    ),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: widget.category == null ? _newTasks.length : _tasks.length,
+                      itemBuilder: (context, index) {
+                        final task = widget.category == null ? _newTasks[index] : _tasks[index];
+                        return Card(
+                          child: Row(
+                            children: [
+                              // Headline and notes take remaining space
+                              Expanded(
+                                child: ListTile(
+                                  title: Text(
+                                    task.headline,
+                                    style: TextStyle(
+                                      fontWeight: task.suggestibleAt == null || !task.suggestibleAt!.isAfter(DateTime.now())
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                      color: task.suggestibleAt != null && task.suggestibleAt!.isAfter(DateTime.now())
+                                          ? Colors.grey
+                                          : null,
                                     ),
                                   ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (task.notes != null)
+                                        Text(
+                                          task.notes!,
+                                          style: TextStyle(
+                                            color: task.suggestibleAt != null && task.suggestibleAt!.isAfter(DateTime.now())
+                                                ? Colors.grey
+                                                : null,
+                                          ),
+                                        ),
+                                      if (task.links != null && task.links!.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        LinkListDisplay(links: task.links ?? []),  // Provide empty list as fallback
+                                      ],
+                                    ],
+                                  ),
                                 ),
-                                // Checkbox in fixed-width area
+                              ),
+                              // Checkbox in fixed-width area
+                              if (widget.category != null)  // Only show checkbox for existing categories
                                 SizedBox(
                                   width: 40,
                                   child: Center(
@@ -645,33 +787,32 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                                         });
                                         final userId = supabase.auth.currentUser?.id;
                                         if (userId == null) return;
-                                        print('Updating task \\${task.id} to finished: \\${val ?? false} by user \\${userId}');
+                                        print('Updating task ${task.id} to finished: ${val ?? false} by user $userId');
                                         final response = await supabase
                                             .from('Tasks')
                                             .update({'finished': val ?? false})
                                             .eq('id', task.id)
                                             .eq('owner_id', userId);
-                                        print('Supabase update response: \\${response.toString()}');
+                                        print('Supabase update response: ${response.toString()}');
                                       },
                                     ),
                                   ),
                                 ),
-                                // Edit button in fixed-width area
-                                SizedBox(
-                                  width: 40,
-                                  child: IconButton(
-                                    icon: const Icon(Icons.edit),
-                                    onPressed: () => _editTask(task),
-                                  ),
+                              // Edit button in fixed-width area
+                              SizedBox(
+                                width: 40,
+                                child: IconButton(
+                                  icon: const Icon(Icons.edit),
+                                  onPressed: () => _editTask(task),
                                 ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-              ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               if (_error != null) ...[
                 const SizedBox(height: 16),
                 Text(
@@ -682,13 +823,11 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
             ],
           ),
         ),
-        floatingActionButton: widget.category != null
-            ? FloatingActionButton(
-                onPressed: _createTask,
-                child: const Icon(Icons.add),
-                tooltip: 'Add task',
-              )
-            : null,
+        floatingActionButton: FloatingActionButton(
+          onPressed: _createTask,
+          child: const Icon(Icons.add),
+          tooltip: 'Add task',
+        ),
       ),
     );
   }

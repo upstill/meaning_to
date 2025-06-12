@@ -9,14 +9,14 @@ import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/widgets/link_display.dart';
+import 'package:meaning_to/app.dart';
 
 final supabase = Supabase.instance.client;
 
 class HomeScreen extends StatefulWidget {
-  static final GlobalKey<_HomeScreenState> globalKey = GlobalKey<_HomeScreenState>();
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
   
-  HomeScreen() : super(key: globalKey);
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -36,36 +36,19 @@ class _HomeScreenState extends State<HomeScreen> {
     print('HomeScreen: initState called');
     // Listen for task reload requests
     HomeScreen.needsTaskReload.addListener(_handleTaskReloadRequest);
-    final session = supabase.auth.currentSession;
-    print('Current session: ${session?.user.id}');
-    if (session == null) {
-      print('No session found, navigating to auth screen');
-      Navigator.pushNamed(context, '/auth');
-    } else {
-      print('Session found, loading categories');
-      _loadCategories();
-    }
+    
+    // Load categories after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadCategories();
+      }
+    });
   }
 
   @override
   void dispose() {
     HomeScreen.needsTaskReload.removeListener(_handleTaskReloadRequest);
     super.dispose();
-  }
-
-  void _handleTaskReloadRequest() {
-    print('HomeScreen: Task reload requested');
-    if (HomeScreen.needsTaskReload.value && mounted) {
-      print('HomeScreen: Handling task reload request');
-      print('HomeScreen: Current category: ${_selectedCategory?.headline}');
-      print('HomeScreen: Current task: ${_randomTask?.headline}');
-      
-      HomeScreen.needsTaskReload.value = false;  // Reset the flag
-      _handleEditComplete();
-    } else {
-      print('HomeScreen: Task reload requested but widget not mounted or flag not set');
-      print('HomeScreen: mounted: $mounted, needsTaskReload: ${HomeScreen.needsTaskReload.value}');
-    }
   }
 
   Future<void> _loadRandomTask(Category category) async {
@@ -230,6 +213,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _handleTaskReloadRequest() {
+    print('HomeScreen: Task reload requested');
+    if (HomeScreen.needsTaskReload.value && mounted) {
+      print('HomeScreen: Handling task reload request');
+      print('HomeScreen: Current category: ${_selectedCategory?.headline}');
+      print('HomeScreen: Current task: ${_randomTask?.headline}');
+      
+      HomeScreen.needsTaskReload.value = false;  // Reset the flag
+      _handleEditComplete();
+    } else {
+      print('HomeScreen: Task reload requested but widget not mounted or flag not set');
+      print('HomeScreen: mounted: $mounted, needsTaskReload: ${HomeScreen.needsTaskReload.value}');
+    }
+  }
+
   Future<void> _navigateToEditCategory([Category? category]) async {
     print('HomeScreen: Starting navigation to edit category screen...');
     print('HomeScreen: Current category: ${_selectedCategory?.headline}');
@@ -284,6 +282,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
       print('HomeScreen: Returned from edit category screen with result: $result');
+      
+      // If we got a result (true), reload categories
+      if (result == true) {
+        print('HomeScreen: Category was created/edited, reloading categories');
+        await _loadCategories();
+      }
     } catch (e, stackTrace) {
       print('HomeScreen: Error during navigation: $e');
       print('HomeScreen: Stack trace: $stackTrace');

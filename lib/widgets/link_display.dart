@@ -123,8 +123,8 @@ class LinkListDisplay extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    // Ensure all links are non-null strings
-    final validLinks = links.where((link) => link != null).map((link) => link.toString()).toList();
+    // Filter out null links and ensure all links are strings
+    final validLinks = links.where((link) => link != null && link.isNotEmpty).map((link) => link.toString()).toList();
     if (validLinks.isEmpty) {
       return const SizedBox.shrink();
     }
