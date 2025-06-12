@@ -41,6 +41,8 @@ void main() async {
 }
 
 class MyApp extends StatefulWidget {
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  
   const MyApp({super.key});
 
   @override
@@ -51,7 +53,6 @@ class _MyAppState extends State<MyApp> {
   late AppLinks _appLinks;
   StreamSubscription? _linkSubscription;
   final _scaffoldKey = GlobalKey<ScaffoldMessengerState>();
-  final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -113,9 +114,10 @@ class _MyAppState extends State<MyApp> {
             SnackBar(
               content: Text(errorDescription ?? 'Authentication error occurred'),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
             ),
           );
-          _navigatorKey.currentState?.pushReplacementNamed('/auth');
+          MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
           return;
         }
 
@@ -129,36 +131,59 @@ class _MyAppState extends State<MyApp> {
           print('- Type: $type');
           print('- Token: $token');
           
-          // Exchange the token for a session
-          print('Verifying OTP...');
-          final response = await Supabase.instance.client.auth.verifyOTP(
-            type: type == 'signup' ? OtpType.signup : OtpType.recovery,
-            token: token,
-          );
-          print('Verification response:');
-          print('- Session: ${response.session != null}');
-          print('- User: ${response.session?.user.id}');
-          print('- Metadata: ${response.session?.user.userMetadata}');
-          
-          if (response.session != null) {
-            if (type == 'recovery') {
-              print('Recovery session verified, navigating to reset password screen');
-              // Use the navigator key to ensure we can navigate
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _navigatorKey.currentState?.pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const ResetPasswordScreen()),
-                  (route) => false,
-                );
-              });
+          try {
+            // Exchange the token for a session
+            print('Verifying OTP...');
+            final response = await Supabase.instance.client.auth.verifyOTP(
+              type: type == 'signup' ? OtpType.signup : OtpType.recovery,
+              token: token,
+            );
+            print('Verification response:');
+            print('- Session: ${response.session != null}');
+            print('- User: ${response.session?.user.id}');
+            print('- Metadata: ${response.session?.user.userMetadata}');
+            
+            if (response.session != null) {
+              if (type == 'recovery') {
+                print('Recovery session verified, navigating to reset password screen');
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  MyApp.navigatorKey.currentState?.pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => const ResetPasswordScreen()),
+                    (route) => false,
+                  );
+                });
+              } else {
+                print('Signup verified, navigating to home');
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
+                });
+              }
             } else {
-              print('Signup verified, navigating to home');
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _navigatorKey.currentState?.pushReplacementNamed('/home');
-              });
+              print('No session in verification response');
+              throw Exception('No session returned from verification');
             }
-          } else {
-            print('No session in verification response');
-            throw Exception('No session returned from verification');
+          } catch (e) {
+            print('Error during verification: $e');
+            String message = 'Error verifying email';
+            if (e.toString().contains('Email not confirmed')) {
+              message = 'Please check your email for a confirmation link and click it to verify your account.';
+            }
+            _scaffoldKey.currentState?.showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 10),
+                action: SnackBarAction(
+                  label: 'OK',
+                  onPressed: () {
+                    _scaffoldKey.currentState?.hideCurrentSnackBar();
+                  },
+                ),
+              ),
+            );
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
+            });
           }
           return;
         }
@@ -166,51 +191,84 @@ class _MyAppState extends State<MyApp> {
         // Handle other auth callbacks
         final code = uri.queryParameters['code'];
         if (code != null) {
-          print('Exchanging code for session');
-          final response = await Supabase.instance.client.auth.exchangeCodeForSession(code);
-          print('Code exchange response:');
-          print('- Session: ${response.session != null}');
-          print('- User: ${response.session?.user.id}');
-          print('- Metadata: ${response.session?.user.userMetadata}');
-          
-          if (response.session != null) {
-            // Check if this is a recovery session
-            final type = response.session?.user.userMetadata?['type'] as String?;
-            print('Session type from metadata: $type');
+          try {
+            print('Exchanging code for session');
+            final response = await Supabase.instance.client.auth.exchangeCodeForSession(code);
+            print('Code exchange response:');
+            print('- Session: ${response.session != null}');
+            print('- User: ${response.session?.user.id}');
+            print('- Metadata: ${response.session?.user.userMetadata}');
             
-            if (type == 'recovery') {
-              print('Recovery session detected, navigating to reset password screen');
-              // Use post frame callback to ensure navigation happens after the current frame
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _navigatorKey.currentState?.pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const ResetPasswordScreen()),
-                  (route) => false,
-                );
-              });
-            } else {
-              print('Regular session, navigating to home');
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _navigatorKey.currentState?.pushReplacementNamed('/home');
-              });
+            if (response.session != null) {
+              // Check if this is a recovery session
+              final type = response.session?.user.userMetadata?['type'] as String?;
+              print('Session type from metadata: $type');
+              
+              if (type == 'recovery') {
+                print('Recovery session detected, navigating to reset password screen');
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  MyApp.navigatorKey.currentState?.pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => const ResetPasswordScreen()),
+                    (route) => false,
+                  );
+                });
+              } else {
+                print('Regular session, navigating to home');
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
+                });
+              }
             }
+          } catch (e) {
+            print('Error during code exchange: $e');
+            String message = 'Error during authentication';
+            if (e.toString().contains('Email not confirmed')) {
+              message = 'Please check your email for a confirmation link and click it to verify your account.';
+            }
+            _scaffoldKey.currentState?.showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 10),
+                action: SnackBarAction(
+                  label: 'OK',
+                  onPressed: () {
+                    _scaffoldKey.currentState?.hideCurrentSnackBar();
+                  },
+                ),
+              ),
+            );
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
+            });
           }
         } else {
           print('No code parameter found in URI');
-          // Navigate to auth screen if no valid parameters found
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            _navigatorKey.currentState?.pushReplacementNamed('/auth');
+            MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
           });
         }
       } catch (e) {
         print('Error handling deep link: $e');
+        String message = 'Error during authentication';
+        if (e.toString().contains('Email not confirmed')) {
+          message = 'Please check your email for a confirmation link and click it to verify your account.';
+        }
         _scaffoldKey.currentState?.showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
+            content: Text(message),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 10),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {
+                _scaffoldKey.currentState?.hideCurrentSnackBar();
+              },
+            ),
           ),
         );
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _navigatorKey.currentState?.pushReplacementNamed('/auth');
+          MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
         });
       }
     } else {
@@ -218,9 +276,8 @@ class _MyAppState extends State<MyApp> {
       print('- Expected scheme: meaningto');
       print('- Expected host: auth');
       print('- Expected path: /callback');
-      // Navigate to auth screen for unhandled URIs
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _navigatorKey.currentState?.pushReplacementNamed('/auth');
+        MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
       });
     }
   }
@@ -234,35 +291,63 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
       ),
       scaffoldMessengerKey: _scaffoldKey,
-      navigatorKey: _navigatorKey,
-      initialRoute: '/',
-      routes: {
-        '/': (context) => HomeScreen(),
-        '/auth': (context) => const AuthScreen(),
-        '/edit-category': (context) {
-          final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-          return EditCategoryScreen(
-            category: args?['category'] as Category?,
-            tasksOnly: args?['tasksOnly'] == true,
-          );
-        },
-        '/edit-task': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
-          return TaskEditScreen(
-            category: args['category'] as Category,
-            task: args['task'] as Task?,
-          );
-        },
-        '/import-justwatch': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
-          return ImportJustWatchScreen(
-            category: args['category'] as Category,
-            jsonData: args['jsonData'],
-          );
-        },
-        '/download': (context) {
-          return const DownloadScreen();
-        },
+      navigatorKey: MyApp.navigatorKey,
+      onGenerateRoute: (settings) {
+        print('Generating route for: ${settings.name}');
+        
+        // If we're going to home, check auth first
+        if (settings.name == '/home') {
+          final session = Supabase.instance.client.auth.currentSession;
+          if (session == null) {
+            print('No session found, redirecting to auth');
+            return MaterialPageRoute(
+              builder: (context) => const AuthScreen(),
+              settings: const RouteSettings(name: '/auth'),
+            );
+          }
+        }
+        
+        // Otherwise use normal route generation
+        switch (settings.name) {
+          case '/':
+            return MaterialPageRoute(
+              builder: (context) => const SplashScreen(),
+              settings: settings,
+            );
+          case '/auth':
+            return MaterialPageRoute(
+              builder: (context) => const AuthScreen(),
+              settings: settings,
+            );
+          case '/home':
+            return MaterialPageRoute(
+              builder: (context) => const HomeScreen(),
+              settings: settings,
+            );
+          case '/edit-category':
+            final args = settings.arguments as Map<String, dynamic>?;
+            return MaterialPageRoute(
+              builder: (context) => EditCategoryScreen(
+                category: args?['category'] as Category?,
+                tasksOnly: args?['tasksOnly'] == true,
+              ),
+              settings: settings,
+            );
+          case '/import-justwatch':
+            final args = settings.arguments as Map<String, dynamic>?;
+            return MaterialPageRoute(
+              builder: (context) => ImportJustWatchScreen(
+                category: args?['category'] as Category,
+                jsonData: args?['jsonData'] as List<dynamic>,
+              ),
+              settings: settings,
+            );
+          default:
+            return MaterialPageRoute(
+              builder: (context) => const SplashScreen(),
+              settings: settings,
+            );
+        }
       },
     );
   }
