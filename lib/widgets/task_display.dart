@@ -115,191 +115,171 @@ class _TaskDisplayState extends State<TaskDisplay> {
         mainAxisSize: MainAxisSize.min, // Add this to ensure proper sizing
         children: [
           // Main task content
-          InkWell(
-            onTap: widget.onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Task headline and controls
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Title with flexible width
-                      Expanded(
-                        child: Text(
-                          widget.task.headline,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Task headline and controls
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Title with flexible width - clickable to toggle expanded state, with arrow
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          _toggleExpanded();
+                        },
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                widget.task.headline,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (hasLinks ||
+                                (widget.task.notes != null &&
+                                    widget.task.notes!.isNotEmpty))
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4.0),
+                                child: Text(
+                                  _isExpanded ? '\u25B2' : '\u25BC', // ▲ or ▼
+                                  style: theme.textTheme.titleMedium,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                      // Controls bundle - expand, finished checkbox, edit, delete
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Expand button - only show if there are links or notes
-                          if (hasLinks ||
-                              (widget.task.notes != null &&
-                                  widget.task.notes!.isNotEmpty)) ...[
-                            Builder(
-                              builder: (context) {
-                                print(
-                                    'TaskDisplay: Rendering expand button for "${widget.task.headline}"');
-                                return Container(
-                                  /* decoration: BoxDecoration(
-                                    color: Colors.red.withOpacity(0.3),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ), */
-                                  child: SizedBox(
-                                    width: 30,
-                                    height: 30,
-                                    child: IconButton(
-                                      icon: Icon(
-                                        _isExpanded
-                                            ? Icons.expand_less
-                                            : Icons.expand_more,
-                                        size: 16,
-                                      ),
-                                      onPressed: _toggleExpanded,
-                                      tooltip: _isExpanded
-                                          ? 'Hide details'
-                                          : 'Show details',
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(
-                                        minWidth: 30,
-                                        minHeight: 30,
-                                        maxWidth: 30,
-                                        maxHeight: 30,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                          // Finished checkbox
+                    ),
+                    // Controls bundle - finished checkbox, edit, delete
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Finished checkbox
+                        Builder(
+                          builder: (context) {
+                            print(
+                                'TaskDisplay: Rendering checkbox for "${widget.task.headline}"');
+                            return Container(
+                              /* decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(4),
+                              ), */
+                              child: Checkbox(
+                                value: widget.task.finished,
+                                onChanged: (value) {
+                                  if (widget.onTap != null) {
+                                    widget.onTap!();
+                                  }
+                                },
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            );
+                          },
+                        ),
+                        // Edit and Delete buttons grouped tightly together
+                        if (widget.withControls) ...[
                           Builder(
                             builder: (context) {
                               print(
-                                  'TaskDisplay: Rendering checkbox for "${widget.task.headline}"');
+                                  'TaskDisplay: Rendering edit button for "${widget.task.headline}"');
                               return Container(
                                 /* decoration: BoxDecoration(
-                                  color: Colors.green.withOpacity(0.3),
+                                  color: Colors.blue.withOpacity(0.3),
                                   borderRadius: BorderRadius.circular(4),
                                 ), */
-                                child: Checkbox(
-                                  value: widget.task.finished,
-                                  onChanged: (value) {
-                                    if (widget.onTap != null) {
-                                      widget.onTap!();
-                                    }
-                                  },
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  visualDensity: VisualDensity.compact,
+                                child: SizedBox(
+                                  width: 30,
+                                  height: 30,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.edit, size: 16),
+                                    onPressed: widget.onEdit,
+                                    tooltip: 'Edit task',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 30,
+                                      minHeight: 30,
+                                      maxWidth: 30,
+                                      maxHeight: 30,
+                                    ),
+                                  ),
                                 ),
                               );
                             },
                           ),
-                          // Edit and Delete buttons grouped tightly together
-                          if (widget.withControls) ...[
-                            Builder(
-                              builder: (context) {
-                                print(
-                                    'TaskDisplay: Rendering edit button for "${widget.task.headline}"');
-                                return Container(
-                                  /* decoration: BoxDecoration(
-                                    color: Colors.blue.withOpacity(0.3),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ), */
-                                  child: SizedBox(
-                                    width: 30,
-                                    height: 30,
-                                    child: IconButton(
-                                      icon: const Icon(Icons.edit, size: 16),
-                                      onPressed: widget.onEdit,
-                                      tooltip: 'Edit task',
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(
-                                        minWidth: 30,
-                                        minHeight: 30,
-                                        maxWidth: 30,
-                                        maxHeight: 30,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            Builder(
-                              builder: (context) {
-                                print(
-                                    'TaskDisplay: Rendering delete button anew for "${widget.task.headline}"');
-                                return Container(
-                                  /*                                   decoration: BoxDecoration(
-                                    color: Colors.orange.withOpacity(0.3),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
+                          Builder(
+                            builder: (context) {
+                              print(
+                                  'TaskDisplay: Rendering delete button anew for "${widget.task.headline}"');
+                              return Container(
+                                /*                                   decoration: BoxDecoration(
+                                  color: Colors.orange.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
  */
-                                  child: SizedBox(
-                                    width: 30,
-                                    height: 30,
-                                    child: IconButton(
-                                      icon: const Icon(Icons.delete, size: 16),
-                                      onPressed: widget.onDelete,
-                                      tooltip: 'Delete task',
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(
-                                        minWidth: 30,
-                                        minHeight: 30,
-                                        maxWidth: 30,
-                                        maxHeight: 30,
-                                      ),
+                                child: SizedBox(
+                                  width: 30,
+                                  height: 30,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.delete, size: 16),
+                                    onPressed: widget.onDelete,
+                                    tooltip: 'Delete task',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 30,
+                                      minHeight: 30,
+                                      maxWidth: 30,
+                                      maxHeight: 30,
                                     ),
                                   ),
-                                );
-                              },
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                  // Show links if expanded
-                  if (_isExpanded && hasLinks) ...[
-                    const SizedBox(height: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Show notes if present
-                        if (widget.task.notes != null &&
-                            widget.task.notes!.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            widget.task.notes!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontStyle: FontStyle.italic,
-                              color: theme.textTheme.bodySmall?.color,
-                            ),
+                                ),
+                              );
+                            },
                           ),
-                          const SizedBox(height: 12),
                         ],
-                        ...widget.task.links!.map((link) => Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: LinkDisplay(
-                                linkText: link,
-                                showIcon: true,
-                                showTitle: true,
-                              ),
-                            )),
                       ],
                     ),
                   ],
+                ),
+                // Show links if expanded
+                if (_isExpanded && hasLinks) ...[
+                  const SizedBox(height: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Show notes if present
+                      if (widget.task.notes != null &&
+                          widget.task.notes!.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.task.notes!,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontStyle: FontStyle.italic,
+                            color: theme.textTheme.bodySmall?.color,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      ...widget.task.links!.map((link) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: LinkDisplay(
+                              linkText: link,
+                              showIcon: true,
+                              showTitle: true,
+                            ),
+                          )),
+                    ],
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
         ],
