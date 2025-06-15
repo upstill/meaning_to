@@ -403,6 +403,9 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
   }
 
   Future<void> _deleteTask(Task task) async {
+    print(
+        '=== Starting delete task for: ${task.headline} (ID: ${task.id}) ===');
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -421,27 +424,100 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
       ),
     );
 
-    if (confirmed != true) return;
-
-    setState(() {
-      _tasks.remove(task);
-    });
+    if (confirmed != true) {
+      print('Delete cancelled by user');
+      return;
+    }
 
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null) {
+      print('No user logged in');
+      setState(() {
+        _error = 'No user logged in';
+      });
+      return;
+    }
+
+    print('User ID: $userId, Task ID: ${task.id}');
 
     try {
-      await supabase
+      // Delete from database first
+      print('Attempting database deletion...');
+      final response = await supabase
           .from('Tasks')
           .delete()
           .eq('id', task.id)
           .eq('owner_id', userId);
+
+      print('Database delete response type: ${response.runtimeType}');
+      print('Database delete response: $response');
+      print(
+          'Database delete response length: ${response is List ? response.length : 'N/A'}');
+
+      // Check if deletion was successful
+      if (response is List && response.isEmpty) {
+        print(
+            'Database deletion successful - no rows returned (expected for delete)');
+      } else {
+        print('Database deletion may have failed - unexpected response');
+      }
+
+      // Verify deletion by trying to fetch the task
+      print('Verifying deletion by checking if task still exists...');
+      try {
+        final verifyResponse = await supabase
+            .from('Tasks')
+            .select('id')
+            .eq('id', task.id)
+            .eq('owner_id', userId);
+
+        print('Verification response: $verifyResponse');
+        if (verifyResponse is List && verifyResponse.isNotEmpty) {
+          print(
+              'WARNING: Task still exists in database after deletion attempt!');
+          throw Exception(
+              'Task deletion failed - task still exists in database');
+        } else {
+          print('Verification successful - task no longer exists in database');
+        }
+      } catch (verifyError) {
+        print('Error during verification: $verifyError');
+        throw verifyError;
+      }
+
+      // Only remove from UI if database deletion was successful
+      setState(() {
+        _tasks.remove(task);
+        _error = null; // Clear any previous errors
+      });
+
+      print('Successfully removed task from UI: ${task.headline}');
+
+      // Also update the task cache if this category is the current one
+      if (Task.currentCategory?.id == widget.category?.id) {
+        print('Updating task cache for current category...');
+        await Task.loadTaskSet(widget.category!, userId);
+        print('Task cache updated');
+      }
     } catch (e) {
       print('Error deleting task: $e');
+      print('Error type: ${e.runtimeType}');
       setState(() {
         _error = 'Error deleting task: $e';
       });
+
+      // Show error to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete task: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
+
+    print('=== End delete task ===');
   }
 
   Future<void> _toggleTaskCompletion(Task task) async {
@@ -817,7 +893,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Tasks for this endeavor:',
+                    'Choices for this endeavor:',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
