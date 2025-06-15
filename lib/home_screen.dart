@@ -15,7 +15,7 @@ final supabase = Supabase.instance.client;
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
-  
+
   const HomeScreen({super.key});
 
   @override
@@ -36,7 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
     print('HomeScreen: initState called');
     // Listen for task reload requests
     HomeScreen.needsTaskReload.addListener(_handleTaskReloadRequest);
-    
+
     // Load categories after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -52,7 +52,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadRandomTask(Category category) async {
-    print('HomeScreen: Starting to load random task for category: ${category.headline}');
+    print(
+        'HomeScreen: Starting to load random task for category: ${category.headline}');
     try {
       setState(() {
         _isLoadingTask = true;
@@ -67,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
       print('HomeScreen: Calling Task.loadRandomTask...');
       final task = await Task.loadRandomTask(category, userId);
       print('HomeScreen: Task loaded: ${task?.headline}');
-      
+
       if (mounted) {
         setState(() {
           _randomTask = task;
@@ -97,7 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       await Task.rejectCurrentTask();
-      
+
       // Load a new random task
       if (_selectedCategory != null) {
         await _loadRandomTask(_selectedCategory!);
@@ -124,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       await Task.finishCurrentTask();
-      
+
       // Load a new random task
       if (_selectedCategory != null) {
         await _loadRandomTask(_selectedCategory!);
@@ -148,7 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
       print('Starting to load categories...');
       final session = supabase.auth.currentSession;
       print('Session in _loadCategories: ${session?.user.id}');
-      
+
       setState(() {
         _isLoading = true;
         _error = null;
@@ -195,17 +196,18 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e, stackTrace) {
       print('Error loading categories: $e');
       print('Stack trace: $stackTrace');
-      
+
       // Check if it's a network error
       String errorMessage;
-      if (e.toString().contains('Failed host lookup') || 
+      if (e.toString().contains('Failed host lookup') ||
           e.toString().contains('SocketException') ||
           e.toString().contains('Network is unreachable')) {
-        errorMessage = "Sorry, but we can't connect to the cloud. Are you online?";
+        errorMessage =
+            "Sorry, but we can't connect to the cloud. Are you online?";
       } else {
         errorMessage = e.toString();
       }
-      
+
       setState(() {
         _error = errorMessage;
         _isLoading = false;
@@ -219,12 +221,14 @@ class _HomeScreenState extends State<HomeScreen> {
       print('HomeScreen: Handling task reload request');
       print('HomeScreen: Current category: ${_selectedCategory?.headline}');
       print('HomeScreen: Current task: ${_randomTask?.headline}');
-      
-      HomeScreen.needsTaskReload.value = false;  // Reset the flag
+
+      HomeScreen.needsTaskReload.value = false; // Reset the flag
       _handleEditComplete();
     } else {
-      print('HomeScreen: Task reload requested but widget not mounted or flag not set');
-      print('HomeScreen: mounted: $mounted, needsTaskReload: ${HomeScreen.needsTaskReload.value}');
+      print(
+          'HomeScreen: Task reload requested but widget not mounted or flag not set');
+      print(
+          'HomeScreen: mounted: $mounted, needsTaskReload: ${HomeScreen.needsTaskReload.value}');
     }
   }
 
@@ -232,7 +236,7 @@ class _HomeScreenState extends State<HomeScreen> {
     print('HomeScreen: Starting navigation to edit category screen...');
     print('HomeScreen: Current category: ${_selectedCategory?.headline}');
     print('HomeScreen: Current task: ${_randomTask?.headline}');
-    
+
     if (!mounted) {
       print('HomeScreen: Not mounted before navigation');
       return;
@@ -261,7 +265,8 @@ class _HomeScreenState extends State<HomeScreen> {
         print('HomeScreen: Widget not mounted, cannot trigger task reload');
       }
     };
-    print('HomeScreen: Set static callback: ${EditCategoryScreen.onEditComplete != null}');
+    print(
+        'HomeScreen: Set static callback: ${EditCategoryScreen.onEditComplete != null}');
 
     try {
       print('HomeScreen: About to push route...');
@@ -272,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
         tasksOnly: false,
       );
       print('HomeScreen: Created EditCategoryScreen');
-      
+
       // Push the route and wait for result
       final result = await Navigator.push(
         context,
@@ -281,8 +286,9 @@ class _HomeScreenState extends State<HomeScreen> {
           fullscreenDialog: true,
         ),
       );
-      print('HomeScreen: Returned from edit category screen with result: $result');
-      
+      print(
+          'HomeScreen: Returned from edit category screen with result: $result');
+
       // If we got a result (true), reload categories
       if (result == true) {
         print('HomeScreen: Category was created/edited, reloading categories');
@@ -328,7 +334,8 @@ class _HomeScreenState extends State<HomeScreen> {
         print('HomeScreen: Widget not mounted, cannot trigger task reload');
       }
     };
-    print('HomeScreen: Set static callback for task edit: ${TaskEditScreen.onEditComplete != null}');
+    print(
+        'HomeScreen: Set static callback for task edit: ${TaskEditScreen.onEditComplete != null}');
 
     Navigator.push(
       context,
@@ -346,7 +353,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _navigateToEditTasks() {
-    print('HomeScreen: Navigating to edit category: ${_selectedCategory?.headline}');
+    print(
+        'HomeScreen: Navigating to edit category: ${_selectedCategory?.headline}');
     if (!mounted || _selectedCategory == null) {
       print('HomeScreen: Not mounted or no category selected');
       return;
@@ -375,14 +383,15 @@ class _HomeScreenState extends State<HomeScreen> {
         print('HomeScreen: Widget not mounted, cannot trigger task reload');
       }
     };
-    print('HomeScreen: Set static callback for category edit: ${EditCategoryScreen.onEditComplete != null}');
+    print(
+        'HomeScreen: Set static callback for category edit: ${EditCategoryScreen.onEditComplete != null}');
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => EditCategoryScreen(
           category: _selectedCategory,
-          tasksOnly: false,  // Changed to false to edit the category
+          tasksOnly: false, // Changed to false to edit the category
         ),
       ),
     ).then((_) {
@@ -407,7 +416,8 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) {
           print('HomeScreen: New task loaded: ${_randomTask?.headline}');
           print('HomeScreen: Task finished state: ${_randomTask?.finished}');
-          print('HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}');
+          print(
+              'HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}');
         }
       } else {
         print('HomeScreen: No category selected, skipping task load');
@@ -421,7 +431,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(''),  // Blank header
+        title: const Text(''), // Blank header
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -529,7 +539,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     onChanged: (Category? newValue) {
                       setState(() {
                         _selectedCategory = newValue;
-                        _randomTask = null;  // Clear the current task
+                        _randomTask = null; // Clear the current task
                       });
                       if (newValue != null) {
                         _loadRandomTask(newValue);
@@ -557,27 +567,54 @@ class _HomeScreenState extends State<HomeScreen> {
                                     Padding(
                                       padding: const EdgeInsets.all(16.0),
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
                                             children: [
                                               Text(
                                                 _randomTask!.headline,
-                                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                                  fontSize: (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) + 6,
-                                                  fontWeight: _randomTask!.suggestibleAt == null || !_randomTask!.suggestibleAt!.isAfter(DateTime.now())
-                                                      ? FontWeight.bold
-                                                      : FontWeight.normal,
-                                                  color: _randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())
-                                                      ? Colors.grey
-                                                      : null,
-                                                ),
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyLarge
+                                                    ?.copyWith(
+                                                      fontSize: (Theme.of(
+                                                                      context)
+                                                                  .textTheme
+                                                                  .bodyLarge
+                                                                  ?.fontSize ??
+                                                              16) +
+                                                          6,
+                                                      fontWeight: _randomTask!
+                                                                      .suggestibleAt ==
+                                                                  null ||
+                                                              !_randomTask!
+                                                                  .suggestibleAt!
+                                                                  .isAfter(
+                                                                      DateTime
+                                                                          .now())
+                                                          ? FontWeight.bold
+                                                          : FontWeight.normal,
+                                                      color: _randomTask!
+                                                                      .suggestibleAt !=
+                                                                  null &&
+                                                              _randomTask!
+                                                                  .suggestibleAt!
+                                                                  .isAfter(
+                                                                      DateTime
+                                                                          .now())
+                                                          ? Colors.grey
+                                                          : null,
+                                                    ),
                                                 textAlign: TextAlign.center,
                                               ),
                                               if (_randomTask!.finished) ...[
                                                 const SizedBox(width: 8),
-                                                Icon(Icons.check_circle, color: Colors.green, size: 28),
+                                                Icon(Icons.check_circle,
+                                                    color: Colors.green,
+                                                    size: 28),
                                               ],
                                             ],
                                           ),
@@ -585,60 +622,97 @@ class _HomeScreenState extends State<HomeScreen> {
                                             const SizedBox(height: 8),
                                             Text(
                                               _randomTask!.notes!,
-                                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                                color: _randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())
-                                                    ? Colors.grey
-                                                    : null,
-                                              ),
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium
+                                                  ?.copyWith(
+                                                    color: _randomTask!
+                                                                    .suggestibleAt !=
+                                                                null &&
+                                                            _randomTask!
+                                                                .suggestibleAt!
+                                                                .isAfter(
+                                                                    DateTime
+                                                                        .now())
+                                                        ? Colors.grey
+                                                        : null,
+                                                  ),
                                             ),
                                           ],
-                                          if (_randomTask!.links != null && _randomTask!.links!.isNotEmpty) ...[
+                                          if (_randomTask!.links != null &&
+                                              _randomTask!
+                                                  .links!.isNotEmpty) ...[
                                             const SizedBox(height: 16),
-                                            LinkListDisplay(links: _randomTask!.links!),
+                                            LinkListDisplay(
+                                              links: _randomTask!.links!,
+                                              showIcon: true,
+                                              showTitle: true,
+                                            ),
                                           ],
-                                          if (_randomTask!.triggersAt != null) ...[
+                                          if (_randomTask!.triggersAt !=
+                                              null) ...[
                                             const SizedBox(height: 8),
                                             Text(
                                               'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
-                                              style: Theme.of(context).textTheme.bodySmall,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall,
                                             ),
                                           ],
-                                          if (_randomTask!.suggestibleAt != null && _randomTask!.suggestibleAt!.isAfter(DateTime.now())) ...[
+                                          if (_randomTask!.suggestibleAt !=
+                                                  null &&
+                                              _randomTask!.suggestibleAt!
+                                                  .isAfter(DateTime.now())) ...[
                                             const SizedBox(height: 8),
                                             Row(
                                               children: [
                                                 Expanded(
                                                   child: Text(
-                                                    _randomTask!.getSuggestibleTimeDisplay()!,
-                                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                      color: Colors.blue,
-                                                    ),
+                                                    _randomTask!
+                                                        .getSuggestibleTimeDisplay()!,
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .bodySmall
+                                                        ?.copyWith(
+                                                          color: Colors.blue,
+                                                        ),
                                                   ),
                                                 ),
                                                 TextButton.icon(
                                                   onPressed: () async {
-                                                    final userId = supabase.auth.currentUser?.id;
+                                                    final userId = supabase
+                                                        .auth.currentUser?.id;
                                                     if (userId == null) return;
                                                     try {
-                                                      await Task.reviveTask(_randomTask!, userId);
+                                                      await Task.reviveTask(
+                                                          _randomTask!, userId);
                                                       setState(() {
                                                         // The task will be updated in the cache
                                                         // and the UI will refresh automatically
                                                       });
                                                     } catch (e) {
-                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                      ScaffoldMessenger.of(
+                                                              context)
+                                                          .showSnackBar(
                                                         SnackBar(
-                                                          content: Text('Error reviving task: $e'),
-                                                          backgroundColor: Colors.red,
+                                                          content: Text(
+                                                              'Error reviving task: $e'),
+                                                          backgroundColor:
+                                                              Colors.red,
                                                         ),
                                                       );
                                                     }
                                                   },
-                                                  icon: const Icon(Icons.refresh, size: 16),
+                                                  icon: const Icon(
+                                                      Icons.refresh,
+                                                      size: 16),
                                                   label: const Text('Revive'),
                                                   style: TextButton.styleFrom(
-                                                    foregroundColor: Colors.blue,
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                    foregroundColor:
+                                                        Colors.blue,
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 8),
                                                   ),
                                                 ),
                                               ],
@@ -653,10 +727,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                       child: IconButton(
                                         icon: const Icon(Icons.edit),
                                         tooltip: 'Edit this task',
-                                        onPressed: () => _navigateToEditTask(_randomTask!),
+                                        onPressed: () =>
+                                            _navigateToEditTask(_randomTask!),
                                         style: IconButton.styleFrom(
-                                          backgroundColor: Theme.of(context).colorScheme.surface,
-                                          foregroundColor: Theme.of(context).colorScheme.primary,
+                                          backgroundColor: Theme.of(context)
+                                              .colorScheme
+                                              .surface,
+                                          foregroundColor: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
                                         ),
                                       ),
                                     ),
@@ -670,21 +749,27 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: Column(
                               children: [
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     TextButton.icon(
                                       onPressed: _finishCurrentTask,
                                       icon: const Icon(Icons.check),
-                                      label: const Text('Actually, I\'m done with that'),
+                                      label: const Text(
+                                          'Actually, I\'m done with that'),
                                       style: TextButton.styleFrom(
-                                        foregroundColor: Theme.of(context).colorScheme.primary,
+                                        foregroundColor: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
                                       ),
                                     ),
                                     TextButton(
                                       onPressed: _navigateToEditTasks,
-                                      child: const Text('Browse Choices'),
+                                      child: const Text('Manage Choices'),
                                       style: TextButton.styleFrom(
-                                        foregroundColor: Theme.of(context).colorScheme.primary,
+                                        foregroundColor: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
                                       ),
                                     ),
                                   ],
@@ -697,13 +782,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                         _isLoadingTask = true;
                                         _error = null;
                                       });
-                                      
+
                                       // First reject the current task
                                       await Task.rejectCurrentTask();
-                                      
+
                                       // Then load a new random task
                                       if (_selectedCategory != null) {
-                                        await _loadRandomTask(_selectedCategory!);
+                                        await _loadRandomTask(
+                                            _selectedCategory!);
                                       }
                                     } catch (e) {
                                       print('Error in Hit Me Again: $e');
@@ -749,7 +835,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ElevatedButton.icon(
                               onPressed: _navigateToEditTasks,
                               icon: const Icon(Icons.edit),
-                              label: const Text('Reassess Choices'),
+                              label: const Text('Manage Choices'),
                             ),
                           ],
                         ),

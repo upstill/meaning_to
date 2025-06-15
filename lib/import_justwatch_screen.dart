@@ -1,11 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/models/category.dart' as models;
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/foundation.dart' hide Category;
 
 class JustWatchItem {
   final String title;
@@ -21,7 +24,7 @@ class JustWatchItem {
 }
 
 class ImportJustWatchScreen extends StatefulWidget {
-  final Category category;
+  final models.Category category;
   final dynamic jsonData;
 
   const ImportJustWatchScreen({
@@ -36,7 +39,7 @@ class ImportJustWatchScreen extends StatefulWidget {
     print('ImportJustWatchScreen: Arguments: $args');
     return MaterialPageRoute(
       builder: (_) => ImportJustWatchScreen(
-        category: args?['category'] as Category,
+        category: args?['category'] as models.Category,
         jsonData: args?['jsonData'],
       ),
       settings: settings,
@@ -64,6 +67,9 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
       _loadExistingTasks().then((_) {
         _parseJsonData(widget.jsonData);
       });
+    } else {
+      // If no jsonData provided, we'll wait for user to pick a file
+      _loadExistingTasks();
     }
   }
 
@@ -89,7 +95,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
       final tasks = response
           .map((json) => Task.fromJson(json as Map<String, dynamic>))
           .toList();
-      
+
       print('Loaded ${tasks.length} existing tasks');
       setState(() {
         _existingTasks = tasks;
@@ -106,18 +112,19 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
     for (var task in _existingTasks) {
       // If task already has this link, skip it
       if (task.links?.any((link) => link.contains(fullLink)) ?? false) {
-        print('Skipping $title because it already exists in task #${task.id}: ${task.headline}');
+        print(
+            'Skipping $title because it already exists in task #${task.id}: ${task.headline}');
         return false;
       }
-      
+
       // If task has matching headline, add this link to its links
       print('Checking task "${task.headline}" against "$title"');
       if (task.headline == title) {
         print('Adding $fullLink to task #${task.id}: ${task.headline}');
-        
+
         // Create new list with existing links plus the new one
         final updatedLinks = [...?task.links, fullLink];
-        
+
         // Create updated task
         final updatedTask = Task(
           id: task.id,
@@ -130,10 +137,10 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
           triggersAt: task.triggersAt,
           deferral: task.deferral,
           links: updatedLinks,
-          processedLinks: null,  // Will be processed when needed
+          processedLinks: null, // Will be processed when needed
           finished: task.finished,
         );
-        
+
         // Update in database
         try {
           await supabase
@@ -141,23 +148,23 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
               .update({'links': Task.linksToString(updatedLinks)})
               .eq('id', task.id)
               .eq('owner_id', task.ownerId);
-          
+
           // Update in our local list
           final index = _existingTasks.indexWhere((t) => t.id == task.id);
           if (index != -1) {
             _existingTasks[index] = updatedTask;
           }
-          
+
           print('Successfully updated task #${task.id} with new link');
         } catch (e) {
           print('Error updating task #${task.id}: $e');
           // Continue with import even if update fails
         }
-        
+
         return false;
       }
     }
-    
+
     // No matches found, include this item
     return true;
   }
@@ -194,17 +201,18 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
               final content = node['content'];
               if (content is Map) {
                 final title = content['title']?.toString() ?? 'Unknown Title';
-                final fullPath = 'https://www.justwatch.com' + (content['fullPath']?.toString() ?? '');
+                final fullPath = 'https://www.justwatch.com' +
+                    (content['fullPath']?.toString() ?? '');
                 print('Processing item: $title with path: $fullPath');
-                
+
                 // Create both JustWatch and IMDB links
                 final justWatchLink = '<a href="$fullPath">$title</a>';
-                
+
                 if (!await filterJustWatchItem(title, justWatchLink)) {
                   print('Skipping $title - already exists');
                   continue;
                 }
-                
+
                 print('Adding item: $title with link: $justWatchLink');
                 items.add(JustWatchItem(
                   title: title,
@@ -232,16 +240,19 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
         tasks.sort((a, b) => a.headline.compareTo(b.headline));
         print('Found ${items.length} items to import');
         print('First item: ${items.isNotEmpty ? items.first.title : "none"}');
-        print('First task: ${tasks.isNotEmpty ? tasks.first.headline : "none"}');
-        print('First task links: ${tasks.isNotEmpty ? tasks.first.links : "none"}');
-        
+        print(
+            'First task: ${tasks.isNotEmpty ? tasks.first.headline : "none"}');
+        print(
+            'First task links: ${tasks.isNotEmpty ? tasks.first.links : "none"}');
+
         setState(() {
           _matchingItems = items;
           _tasks = tasks;
           _isLoading = false;
         });
       } else {
-        print('Invalid JSON format: expected a list, got ${jsonData.runtimeType}');
+        print(
+            'Invalid JSON format: expected a list, got ${jsonData.runtimeType}');
         setState(() {
           _error = 'Invalid JSON format: expected a list';
           _isLoading = false;
@@ -257,6 +268,144 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
     }
   }
 
+  Future<void> _pickAndParseFile() async {
+    try {
+      print('Starting file pick in ImportJustWatchScreen...');
+      setState(() {
+        _isLoading = true;
+        _error = null;
+        _selectedFileName = null;
+        _matchingItems = [];
+        _tasks = [];
+      });
+
+      // Request permissions first (only on Android)
+      if (Platform.isAndroid) {
+        try {
+          await _requestAndroidPermissions();
+        } catch (e) {
+          print('Permission error: $e');
+          setState(() {
+            _error = e.toString();
+            _isLoading = false;
+          });
+          return;
+        }
+      }
+
+      try {
+        // Use file_selector to pick a file
+        print('Opening file picker...');
+        final typeGroup = XTypeGroup(
+          label: 'JSON',
+          extensions: ['json'],
+          mimeTypes: ['application/json'],
+        );
+
+        final file = await openFile(
+          acceptedTypeGroups: [typeGroup],
+        ).catchError((error) {
+          print('Error opening file picker: $error');
+          throw Exception('Failed to open file picker: $error');
+        });
+
+        if (file == null) {
+          print('No file selected');
+          setState(() {
+            _isLoading = false;
+          });
+          return;
+        }
+
+        print('File selected: ${file.name}');
+
+        // Read and parse the file content
+        final contents = await file.readAsString();
+        print('File contents length: ${contents.length}');
+
+        dynamic jsonData;
+        try {
+          jsonData = json.decode(contents);
+          print('JSON decoded successfully');
+          print('JSON type: ${jsonData.runtimeType}');
+          if (jsonData is List) {
+            print('JSON is a list with ${jsonData.length} items');
+          }
+        } catch (e) {
+          print('Error decoding JSON: $e');
+          setState(() {
+            _error = 'Invalid JSON file: $e';
+            _isLoading = false;
+          });
+          return;
+        }
+
+        setState(() {
+          _selectedFileName = file.name;
+        });
+
+        await _parseJsonData(jsonData);
+      } catch (e) {
+        print('Error in file processing: $e');
+        setState(() {
+          _error = 'Error processing file: $e';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error in _pickAndParseFile: $e');
+      setState(() {
+        _error = 'Error: $e';
+        _isLoading = false;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _requestAndroidPermissions() async {
+    if (!Platform.isAndroid) return;
+
+    print('Checking Android permissions...');
+
+    // For Android 13+ (API 33+)
+    if (await Permission.photos.status.isGranted &&
+        await Permission.videos.status.isGranted &&
+        await Permission.audio.status.isGranted) {
+      print('Media permissions already granted');
+      return;
+    }
+
+    // Request media permissions for Android 13+
+    if (await Permission.photos.request().isGranted &&
+        await Permission.videos.request().isGranted &&
+        await Permission.audio.request().isGranted) {
+      print('Media permissions granted');
+      return;
+    }
+
+    // For Android 12 and below
+    if (await Permission.storage.status.isGranted) {
+      print('Storage permission already granted');
+      return;
+    }
+
+    // Request storage permission for Android 12 and below
+    final storageStatus = await Permission.storage.request();
+    if (storageStatus.isGranted) {
+      print('Storage permission granted');
+      return;
+    }
+
+    // If we get here, permissions were denied
+    print('All permissions denied');
+    throw Exception('Storage permission is required to browse files');
+  }
+
   @override
   Widget build(BuildContext context) {
     print('Building ImportJustWatchScreen');
@@ -265,7 +414,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
     if (_tasks.isNotEmpty) {
       print('First task links: ${_tasks.first.links}');
     }
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Import JustWatch List'),
@@ -273,6 +422,14 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.folder_open, size: 28),
+            onPressed: _isLoading ? null : _pickAndParseFile,
+            tooltip: 'Browse JSON Files',
+            color: Colors.blue.shade700,
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -298,82 +455,45 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
             ],
             if (_selectedFileName == null) ...[
               const Spacer(),
-              Center(
-                child: ElevatedButton.icon(
-                  onPressed: _isLoading ? null : () async {
-                    print('Pick a file button pressed in ImportJustWatchScreen');
-                    try {
-                      final file = await openFile(
-                        acceptedTypeGroups: [
-                          XTypeGroup(
-                            label: 'JSON Files',
-                            extensions: ['json'],
-                            mimeTypes: ['application/json'],
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.folder_open, color: Colors.blue.shade700),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Browse JSON File',
+                          style: TextStyle(
+                            color: Colors.blue.shade700,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
-                        ],
-                      );
-                      
-                      if (file == null) {
-                        print('No file selected in ImportJustWatchScreen');
-                        return;
-                      }
-                      
-                      print('File picked in ImportJustWatchScreen: ${file.name}');
-                      final contents = await file.readAsString();
-                      print('File contents length: ${contents.length}');
-                      
-                      dynamic jsonData;
-                      try {
-                        jsonData = json.decode(contents);
-                        print('JSON decoded successfully in ImportJustWatchScreen');
-                        print('JSON type: ${jsonData.runtimeType}');
-                        if (jsonData is List) {
-                          print('JSON is a list with ${jsonData.length} items');
-                        }
-                      } catch (e) {
-                        print('Error decoding JSON in ImportJustWatchScreen: $e');
-                        if (mounted) {
-                          setState(() {
-                            _error = 'Invalid JSON file: $e';
-                          });
-                        }
-                        return;
-                      }
-                      
-                      if (mounted) {
-                        setState(() {
-                          _selectedFileName = file.name;
-                          _isLoading = true;
-                          _error = null;
-                          _matchingItems = [];
-                          _tasks = [];
-                        });
-                      }
-                      
-                      await _loadExistingTasks();
-                      await _parseJsonData(jsonData);
-                      
-                      if (mounted) {
-                        setState(() {
-                          _isLoading = false;
-                        });
-                      }
-                    } catch (e) {
-                      print('Error picking file in ImportJustWatchScreen: $e');
-                      if (mounted) {
-                        setState(() {
-                          _error = 'Error picking file: $e';
-                          _isLoading = false;
-                        });
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.file_upload),
-                  label: const Text('Pick a file'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-                    minimumSize: const Size(200, 48),
-                  ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _pickAndParseFile,
+                      icon: const Icon(Icons.folder_open, size: 24),
+                      label: const Text('Select JSON File',
+                          style: TextStyle(fontSize: 16)),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 16, horizontal: 24),
+                        backgroundColor: Colors.blue.shade100,
+                        foregroundColor: Colors.blue.shade900,
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const Spacer(),
@@ -385,36 +505,43 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                   child: ListView.builder(
                     itemCount: _matchingItems.length,
                     itemBuilder: (context, index) {
-                      if (index >= _matchingItems.length || index >= _tasks.length) {
+                      if (index >= _matchingItems.length ||
+                          index >= _tasks.length) {
                         return const SizedBox.shrink();
                       }
-                      
+
                       final item = _matchingItems[index];
                       final task = _tasks[index];
                       print('Building item $index: ${item.title}');
                       print('Task links: ${task.links}');
-                      
+
                       return Card(
                         child: Padding(
                           padding: const EdgeInsets.all(8.0),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (task.links != null && task.links!.isNotEmpty) ...[
+                              if (task.links != null &&
+                                  task.links!.isNotEmpty) ...[
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: task.links!.map((link) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 4.0),
-                                    child: LinkDisplayWidget(
-                                      key: ValueKey('link_${task.id}_$link'),
-                                      linkText: link,
-                                      showIcon: true,
-                                      showTitle: true,
-                                    ),
-                                  )).toList(),
+                                  children: task.links!
+                                      .map((link) => Padding(
+                                            padding: const EdgeInsets.only(
+                                                bottom: 4.0),
+                                            child: LinkDisplayWidget(
+                                              key: ValueKey(
+                                                  'link_${task.id}_$link'),
+                                              linkText: link,
+                                              showIcon: true,
+                                              showTitle: true,
+                                            ),
+                                          ))
+                                      .toList(),
                                 ),
                               ] else ...[
-                                const Text('No links available', style: TextStyle(color: Colors.grey)),
+                                const Text('No links available',
+                                    style: TextStyle(color: Colors.grey)),
                               ],
                             ],
                           ),
@@ -436,7 +563,8 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                 ),
               ] else if (_selectedFileName != null) ...[
                 const Center(
-                  child: Text("No matching items found in the file", style: TextStyle(fontSize: 16)),
+                  child: Text("No matching items found in the file",
+                      style: TextStyle(fontSize: 16)),
                 ),
               ],
             ],
@@ -487,15 +615,13 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
 
         print('Inserting task into database: ${task.headline}');
         print('Task data: $taskData');
-        
+
         try {
-          final response = await supabase
-              .from('Tasks')
-              .insert(taskData)
-              .select()
-              .single();
-          
-          print('Successfully inserted task: ${response['headline']} (ID: ${response['id']})');
+          final response =
+              await supabase.from('Tasks').insert(taskData).select().single();
+
+          print(
+              'Successfully inserted task: ${response['headline']} (ID: ${response['id']})');
         } catch (e) {
           print('Error inserting task ${task.headline}: $e');
           if (e is PostgrestException) {
@@ -517,4 +643,4 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
       });
     }
   }
-} 
+}

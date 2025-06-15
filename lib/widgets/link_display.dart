@@ -20,6 +20,50 @@ class LinkDisplay extends StatelessWidget {
     this.isEditing = false,
   });
 
+  /// Builds a widget to display a processed link with its icon and title.
+  /// This is used by ProcessedLink to create its display widget.
+  static Widget buildLinkWidget(ProcessedLink link) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4.0),
+      child: InkWell(
+        onTap: () {
+          launchUrl(
+            Uri.parse(link.url),
+            mode: LaunchMode.externalApplication,
+          );
+        },
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4.0),
+          child: Row(
+            children: [
+              if (link.favicon != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: Image.network(
+                    link.favicon!,
+                    width: 32,
+                    height: 32,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const SizedBox.shrink(),
+                  ),
+                ),
+              Expanded(
+                child: Text(
+                  link.displayTitle,
+                  style: const TextStyle(
+                    color: Colors.blue,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<ProcessedLink>(
@@ -47,8 +91,8 @@ class LinkDisplay extends StatelessWidget {
               favicon,
               width: 32,
               height: 32,
-              errorBuilder: (context, error, stackTrace) => 
-                const SizedBox.shrink(),
+              errorBuilder: (context, error, stackTrace) =>
+                  const SizedBox.shrink(),
             ),
           );
         }
@@ -72,12 +116,13 @@ class LinkDisplay extends StatelessWidget {
         }
 
         return InkWell(
-          onTap: onTap ?? () {
-            launchUrl(
-              Uri.parse(processedLink.url),
-              mode: LaunchMode.externalApplication,
-            );
-          },
+          onTap: onTap ??
+              () {
+                launchUrl(
+                  Uri.parse(processedLink.url),
+                  mode: LaunchMode.externalApplication,
+                );
+              },
           borderRadius: BorderRadius.circular(4),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -124,22 +169,27 @@ class LinkListDisplay extends StatelessWidget {
     }
 
     // Filter out null links and ensure all links are strings
-    final validLinks = links.where((link) => link != null && link.isNotEmpty).map((link) => link.toString()).toList();
+    final validLinks = links
+        .where((link) => link != null && link.isNotEmpty)
+        .map((link) => link.toString())
+        .toList();
     if (validLinks.isEmpty) {
       return const SizedBox.shrink();
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: validLinks.map((link) => Padding(
-        padding: const EdgeInsets.only(bottom: 4.0),
-        child: LinkDisplay(
-          key: ValueKey('link_$link'),
-          linkText: link,
-          showIcon: showIcon,
-          showTitle: showTitle,
-        ),
-      )).toList(),
+      children: validLinks
+          .map((link) => Padding(
+                padding: const EdgeInsets.only(bottom: 4.0),
+                child: LinkDisplay(
+                  key: ValueKey('link_$link'),
+                  linkText: link,
+                  showIcon: showIcon,
+                  showTitle: showTitle,
+                ),
+              ))
+          .toList(),
     );
   }
-} 
+}

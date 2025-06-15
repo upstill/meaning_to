@@ -10,19 +10,22 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:http/http.dart' as http;
 import 'package:meaning_to/utils/link_extractor.dart';
+import 'package:meaning_to/import_justwatch_screen.dart';
+import 'package:meaning_to/task_edit_screen.dart';
+import 'package:meaning_to/widgets/task_display.dart';
 
 final supabase = Supabase.instance.client;
 
 class EditCategoryScreen extends StatefulWidget {
-  static VoidCallback? onEditComplete;  // Static callback for edit completion
-  
-  final Category? category;  // null for new category, existing category for edit
+  static VoidCallback? onEditComplete; // Static callback for edit completion
+
+  final Category? category; // null for new category, existing category for edit
   final bool tasksOnly;
 
   // Remove onComplete from constructor since we'll use static callback
   EditCategoryScreen({
-    super.key, 
-    this.category, 
+    super.key,
+    this.category,
     this.tasksOnly = false,
   });
 
@@ -52,18 +55,21 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
   List<Task> _tasks = [];
   bool _isLoadingTasks = false;
   late bool _editTasksLocal;
-  bool _isEditing = false;  // New state to track edit mode
-  List<Task> _newTasks = [];  // Temporary list for tasks in new categories
+  bool _isEditing = false; // New state to track edit mode
+  List<Task> _newTasks = []; // Temporary list for tasks in new categories
 
   @override
   void initState() {
     super.initState();
     print('EditCategoryScreen: initState called');
-    print('EditCategoryScreen: Static callback available: ${EditCategoryScreen.onEditComplete != null}');
+    print(
+        'EditCategoryScreen: Static callback available: ${EditCategoryScreen.onEditComplete != null}');
     print('EditCategoryScreen: Current category: ${widget.category?.headline}');
-    
-    _headlineController = TextEditingController(text: widget.category?.headline);
-    _invitationController = TextEditingController(text: widget.category?.invitation);
+
+    _headlineController =
+        TextEditingController(text: widget.category?.headline);
+    _invitationController =
+        TextEditingController(text: widget.category?.invitation);
     if (widget.category != null) {
       _loadTasks();
     }
@@ -118,20 +124,19 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
 
       final data = {
         'headline': _headlineController.text,
-        'invitation': _invitationController.text.isEmpty ? null : _invitationController.text,
+        'invitation': _invitationController.text.isEmpty
+            ? null
+            : _invitationController.text,
         'owner_id': userId,
-        'original_id': 1,  // Default to movies (1) for now
+        'original_id': 1, // Default to movies (1) for now
       };
 
       if (widget.category == null) {
         // Create new category
         print('Creating new category...');
-        final response = await supabase
-            .from('Categories')
-            .insert(data)
-            .select()
-            .single();
-        
+        final response =
+            await supabase.from('Categories').insert(data).select().single();
+
         final newCategory = Category.fromJson(response);
         print('Created new category: ${newCategory.headline}');
 
@@ -149,7 +154,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
             await supabase.from('Tasks').insert(taskData);
           }
         }
-        
+
         // For new categories, pop back to home screen
         if (mounted) {
           Navigator.pop(context, true);
@@ -164,7 +169,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
             .eq('owner_id', userId)
             .select()
             .single();
-        
+
         // Update the category in memory with the response data
         final updatedCategory = Category.fromJson(response);
         widget.category!.headline = updatedCategory.headline;
@@ -176,9 +181,11 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
           print('EditCategoryScreen: Calling edit complete callback');
           try {
             EditCategoryScreen.onEditComplete!();
-            print('EditCategoryScreen: Edit complete callback executed successfully');
+            print(
+                'EditCategoryScreen: Edit complete callback executed successfully');
           } catch (e) {
-            print('EditCategoryScreen: Error executing edit complete callback: $e');
+            print(
+                'EditCategoryScreen: Error executing edit complete callback: $e');
           }
         } else {
           print('EditCategoryScreen: No edit complete callback available');
@@ -188,7 +195,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
         if (mounted) {
           setState(() {
             _isLoading = false;
-            _isEditing = false;  // Return to view mode
+            _isEditing = false; // Return to view mode
           });
         }
       }
@@ -211,7 +218,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
         context,
         '/edit-task',
         arguments: {
-          'category': null,  // No category yet
+          'category': null, // No category yet
           'task': task,
           'isNewCategory': true,
         },
@@ -234,7 +241,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
       );
 
       if (result == true) {
-        _loadTasks();  // Reload tasks if changes were made
+        _loadTasks(); // Reload tasks if changes were made
       }
     }
   }
@@ -246,7 +253,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
         context,
         '/edit-task',
         arguments: {
-          'category': null,  // No category yet
+          'category': null, // No category yet
           'task': null,
           'isNewCategory': true,
         },
@@ -269,7 +276,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
       );
 
       if (result == true) {
-        _loadTasks();  // Reload tasks if a new task was created
+        _loadTasks(); // Reload tasks if a new task was created
       }
     }
   }
@@ -283,16 +290,17 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
       }
 
       final document = html_parser.parse(response.body);
-      final titleElement = document.querySelector('h1.title-detail-hero__details__title');
+      final titleElement =
+          document.querySelector('h1.title-detail-hero__details__title');
       if (titleElement != null) {
         // Get only the direct text nodes, ignoring text from child elements
         final directText = titleElement.nodes
-            .where((node) => node.nodeType == 3)  // 3 is the value for TEXT_NODE
+            .where((node) => node.nodeType == 3) // 3 is the value for TEXT_NODE
             .map((node) => node.text?.trim())
             .where((text) => text != null && text.isNotEmpty)
             .join(' ')
             .trim();
-        
+
         return directText.isEmpty ? null : directText;
       }
       return null;
@@ -309,9 +317,11 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
         throw Exception('Clipboard is empty');
       }
 
-      final extractedLink = await LinkExtractor.extractLinkFromString(clipboardData!.text!);
+      final extractedLink =
+          await LinkExtractor.extractLinkFromString(clipboardData!.text!);
       if (extractedLink == null) {
-        throw Exception('Clipboard content must be either a URL or an HTML <a> tag');
+        throw Exception(
+            'Clipboard content must be either a URL or an HTML <a> tag');
       }
 
       final userId = supabase.auth.currentUser?.id;
@@ -321,7 +331,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
 
       // Create a new task with this link
       final task = Task(
-        id: -1,  // Temporary ID for new task
+        id: -1, // Temporary ID for new task
         categoryId: widget.category?.id ?? -1,
         headline: extractedLink.title,
         notes: null,
@@ -330,7 +340,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
         suggestibleAt: null,
         triggersAt: null,
         deferral: null,
-        links: [extractedLink.html],  // Store as HTML <a> tag
+        links: [extractedLink.html], // Store as HTML <a> tag
         finished: false,
       );
 
@@ -366,8 +376,9 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
   void _handleBack() {
     print('EditCategoryScreen: Back button pressed');
     print('EditCategoryScreen: Current category: ${widget.category?.headline}');
-    print('EditCategoryScreen: Static callback available: ${EditCategoryScreen.onEditComplete != null}');
-    
+    print(
+        'EditCategoryScreen: Static callback available: ${EditCategoryScreen.onEditComplete != null}');
+
     // Call the static callback before popping
     if (EditCategoryScreen.onEditComplete != null) {
       print('EditCategoryScreen: Calling static callback');
@@ -380,14 +391,145 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
     } else {
       print('EditCategoryScreen: No static callback available');
     }
-    
+
     // Pop after executing the callback
     if (mounted) {
-      Navigator.of(context).pop(true);  // Always return true to indicate completion
+      Navigator.of(context)
+          .pop(true); // Always return true to indicate completion
       print('EditCategoryScreen: Popped screen with true result');
     } else {
       print('EditCategoryScreen: Widget not mounted, cannot pop');
     }
+  }
+
+  Future<void> _deleteTask(Task task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Task'),
+        content: Text('Are you sure you want to delete "${task.headline}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _tasks.remove(task);
+    });
+
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      await supabase
+          .from('Tasks')
+          .delete()
+          .eq('id', task.id)
+          .eq('owner_id', userId);
+    } catch (e) {
+      print('Error deleting task: $e');
+      setState(() {
+        _error = 'Error deleting task: $e';
+      });
+    }
+  }
+
+  Future<void> _toggleTaskCompletion(Task task) async {
+    final newFinishedState = !task.finished;
+
+    setState(() {
+      final index = _tasks.indexWhere((t) => t.id == task.id);
+      if (index != -1) {
+        _tasks[index] = Task(
+          id: task.id,
+          categoryId: task.categoryId,
+          headline: task.headline,
+          notes: task.notes,
+          ownerId: task.ownerId,
+          createdAt: task.createdAt,
+          suggestibleAt: task.suggestibleAt,
+          triggersAt: task.triggersAt,
+          deferral: task.deferral,
+          links: task.links,
+          finished: newFinishedState,
+        );
+      }
+    });
+
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      await supabase
+          .from('Tasks')
+          .update({'finished': newFinishedState})
+          .eq('id', task.id)
+          .eq('owner_id', userId);
+    } catch (e) {
+      print('Error updating task completion: $e');
+      setState(() {
+        _error = 'Error updating task: $e';
+      });
+    }
+  }
+
+  Widget _buildTaskList() {
+    if (_tasks.isEmpty) {
+      print('EditCategoryScreen: No tasks to display');
+      return const Center(
+        child: Text('No tasks yet. Add one to get started!'),
+      );
+    }
+
+    // Debug log to check task links
+    print(
+        '\n=== EditCategoryScreen: Building task list with ${_tasks.length} tasks ===');
+    for (final task in _tasks) {
+      print(
+          'Task "${task.headline}" has ${task.links?.length ?? 0} links: ${task.links}');
+    }
+
+    print('EditCategoryScreen: Creating ListView.builder...');
+    return ListView.builder(
+      shrinkWrap: true, // Add this to ensure ListView takes minimum space
+      physics:
+          const NeverScrollableScrollPhysics(), // Disable scrolling since we're in a ListView
+      itemCount: _tasks.length,
+      itemBuilder: (context, index) {
+        final task = _tasks[index];
+        print(
+            '\n=== EditCategoryScreen: Building TaskDisplay for "${task.headline}" at index $index ===');
+        print('Task links: ${task.links}');
+        print('Task links type: ${task.links?.runtimeType}');
+        print('Task links length: ${task.links?.length ?? 0}');
+        print('About to create TaskDisplay widget...');
+
+        final taskDisplay = TaskDisplay(
+          key: ValueKey(
+              'task-${task.id}'), // Add a key to help Flutter track the widget
+          task: task,
+          withControls: true,
+          onEdit: () => _editTask(task),
+          onDelete: () => _deleteTask(task),
+          onTap: () => _toggleTaskCompletion(task),
+        );
+
+        print('TaskDisplay widget created successfully for "${task.headline}"');
+        print('=== End TaskDisplay creation ===\n');
+
+        return taskDisplay;
+      },
+    );
   }
 
   @override
@@ -407,7 +549,8 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
               _handleBack();
             },
           ),
-          title: Text(widget.category == null ? 'New Endeavor' : 'Edit Endeavor'),
+          title:
+              Text(widget.category == null ? 'New Endeavor' : 'Edit Endeavor'),
           actions: [
             if (widget.category != null && !_editTasksLocal && _isEditing)
               IconButton(
@@ -415,7 +558,8 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                 onPressed: () {
                   // Reset controllers to current values
                   _headlineController.text = widget.category!.headline;
-                  _invitationController.text = widget.category!.invitation ?? '';
+                  _invitationController.text =
+                      widget.category!.invitation ?? '';
                   setState(() {
                     _isEditing = false;
                   });
@@ -425,32 +569,35 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
             if (widget.category != null && !_editTasksLocal)
               IconButton(
                 icon: const Icon(Icons.delete),
-                onPressed: _isLoading ? null : () {
-                  // TODO: Implement category deletion
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Delete Endeavor?'),
-                      content: const Text('This will also delete all tasks in this category. This action cannot be undone.'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            // TODO: Implement deletion
-                            Navigator.pop(context);
-                          },
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.red,
+                onPressed: _isLoading
+                    ? null
+                    : () {
+                        // TODO: Implement category deletion
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Delete Endeavor?'),
+                            content: const Text(
+                                'This will also delete all tasks in this category. This action cannot be undone.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  // TODO: Implement deletion
+                                  Navigator.pop(context);
+                                },
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                ),
+                                child: const Text('Delete'),
+                              ),
+                            ],
                           ),
-                          child: const Text('Delete'),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                        );
+                      },
                 tooltip: 'Delete endeavor',
               ),
           ],
@@ -466,7 +613,8 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                     Expanded(
                       child: Text(
                         widget.category!.headline,
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold),
                       ),
                     ),
                     IconButton(
@@ -484,7 +632,8 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                 if (widget.category!.invitation != null)
                   Text(
                     widget.category!.invitation!,
-                    style: const TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
+                    style: const TextStyle(
+                        fontSize: 16, fontStyle: FontStyle.italic),
                   ),
                 const SizedBox(height: 16),
               ] else if (widget.category != null && !_isEditing) ...[
@@ -514,25 +663,31 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                                 ),
                               ),
                             ],
-                            if (widget.category!.originalId == 1 || widget.category!.originalId == 2) ...[
+                            if (widget.category!.originalId == 1 ||
+                                widget.category!.originalId == 2) ...[
                               const SizedBox(height: 16),
                               ElevatedButton.icon(
                                 onPressed: () {
                                   print('Import JustWatch button pressed');
-                                  print('Category: ${widget.category?.headline}');
-                                  
-                                  // Navigate directly to Import JustWatch screen without any file picking
-                                  Navigator.pushNamed(
+                                  print(
+                                      'Category: ${widget.category?.headline}');
+
+                                  // Navigate to Import JustWatch screen, replacing the current screen
+                                  Navigator.pushReplacement(
                                     context,
-                                    '/import-justwatch',
-                                    arguments: {
-                                      'category': widget.category,
-                                    },
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          ImportJustWatchScreen(
+                                        category: widget.category!,
+                                      ),
+                                    ),
                                   ).then((result) {
                                     if (result is Category) {
                                       setState(() {
-                                        widget.category!.headline = result.headline;
-                                        widget.category!.invitation = result.invitation;
+                                        widget.category!.headline =
+                                            result.headline;
+                                        widget.category!.invitation =
+                                            result.invitation;
                                         _loadTasks();
                                       });
                                     }
@@ -620,7 +775,8 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                         onPressed: () {
                           // Reset controllers to current values
                           _headlineController.text = widget.category!.headline;
-                          _invitationController.text = widget.category!.invitation ?? '';
+                          _invitationController.text =
+                              widget.category!.invitation ?? '';
                           setState(() {
                             _isEditing = false;
                           });
@@ -630,22 +786,26 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                     if (widget.category != null && _isEditing)
                       const SizedBox(width: 16),
                     ElevatedButton(
-                      onPressed: _isLoading ? null : () async {
-                        if (!_formKey.currentState!.validate()) return;
-                        await _saveCategory();
-                        if (widget.category != null) {
-                          setState(() {
-                            _isEditing = false;
-                          });
-                        }
-                      },
+                      onPressed: _isLoading
+                          ? null
+                          : () async {
+                              if (!_formKey.currentState!.validate()) return;
+                              await _saveCategory();
+                              if (widget.category != null) {
+                                setState(() {
+                                  _isEditing = false;
+                                });
+                              }
+                            },
                       child: _isLoading
                           ? const SizedBox(
                               height: 20,
                               width: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Text(widget.category == null ? 'Create Endeavor' : 'Save Changes'),
+                          : Text(widget.category == null
+                              ? 'Create Endeavor'
+                              : 'Save Changes'),
                     ),
                   ],
                 ),
@@ -692,7 +852,9 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                     ],
                   ),
                 )
-              else if (widget.category == null ? _newTasks.isEmpty : _tasks.isEmpty)
+              else if (widget.category == null
+                  ? _newTasks.isEmpty
+                  : _tasks.isEmpty)
                 const Center(
                   child: Text(
                     'No tasks yet. Add some tasks to get started!',
@@ -700,119 +862,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                   ),
                 )
               else
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(child: Container()), // For alignment with the task title
-                        if (widget.category != null)  // Only show checkbox column for existing categories
-                          SizedBox(
-                            width: 48,
-                            child: Center(
-                              child: Text(
-                                'Done?',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        SizedBox(width: 40), // Space for the edit icon
-                      ],
-                    ),
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: widget.category == null ? _newTasks.length : _tasks.length,
-                      itemBuilder: (context, index) {
-                        final task = widget.category == null ? _newTasks[index] : _tasks[index];
-                        return Card(
-                          child: Row(
-                            children: [
-                              // Headline and notes take remaining space
-                              Expanded(
-                                child: ListTile(
-                                  title: Text(
-                                    task.headline,
-                                    style: TextStyle(
-                                      fontWeight: task.suggestibleAt == null || !task.suggestibleAt!.isAfter(DateTime.now())
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                      color: task.suggestibleAt != null && task.suggestibleAt!.isAfter(DateTime.now())
-                                          ? Colors.grey
-                                          : null,
-                                    ),
-                                  ),
-                                  subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      if (task.notes != null)
-                                        Text(
-                                          task.notes!,
-                                          style: TextStyle(
-                                            color: task.suggestibleAt != null && task.suggestibleAt!.isAfter(DateTime.now())
-                                                ? Colors.grey
-                                                : null,
-                                          ),
-                                        ),
-                                      if (task.links != null && task.links!.isNotEmpty) ...[
-                                        const SizedBox(height: 8),
-                                        LinkListDisplay(links: task.links ?? []),  // Provide empty list as fallback
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              // Checkbox in fixed-width area
-                              if (widget.category != null)  // Only show checkbox for existing categories
-                                SizedBox(
-                                  width: 40,
-                                  child: Center(
-                                    child: Checkbox(
-                                      value: task.finished,
-                                      onChanged: (val) async {
-                                        setState(() {
-                                          _tasks[index] = Task(
-                                            id: task.id,
-                                            categoryId: task.categoryId,
-                                            headline: task.headline,
-                                            notes: task.notes,
-                                            ownerId: task.ownerId,
-                                            createdAt: task.createdAt,
-                                            suggestibleAt: task.suggestibleAt,
-                                            triggersAt: task.triggersAt,
-                                            deferral: task.deferral,
-                                            links: task.links,
-                                            finished: val ?? false,
-                                          );
-                                        });
-                                        final userId = supabase.auth.currentUser?.id;
-                                        if (userId == null) return;
-                                        print('Updating task ${task.id} to finished: ${val ?? false} by user $userId');
-                                        final response = await supabase
-                                            .from('Tasks')
-                                            .update({'finished': val ?? false})
-                                            .eq('id', task.id)
-                                            .eq('owner_id', userId);
-                                        print('Supabase update response: ${response.toString()}');
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              // Edit button in fixed-width area
-                              SizedBox(
-                                width: 40,
-                                child: IconButton(
-                                  icon: const Icon(Icons.edit),
-                                  onPressed: () => _editTask(task),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                _buildTaskList(), // Remove Expanded since we're in a ListView
               if (_error != null) ...[
                 const SizedBox(height: 16),
                 Text(
@@ -831,4 +881,4 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
       ),
     );
   }
-} 
+}
