@@ -210,34 +210,27 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
 
   Future<void> _editTask(Task task) async {
     if (widget.category == null) {
-      // For new categories, edit the task in _newTasks
-      final index = _newTasks.indexWhere((t) => t.headline == task.headline);
-      if (index == -1) return;
-
-      final result = await Navigator.pushNamed(
-        context,
-        '/edit-task',
-        arguments: {
-          'category': null, // No category yet
-          'task': task,
-          'isNewCategory': true,
-        },
-      );
-
-      if (result is Task) {
-        setState(() {
-          _newTasks[index] = result;
-        });
+      // For new categories, show error message - category must be saved first
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Please save the category first before editing tasks'),
+            backgroundColor: Colors.orange,
+          ),
+        );
       }
+      return;
     } else {
       // For existing categories, use the normal flow
-      final result = await Navigator.pushNamed(
+      final result = await Navigator.push(
         context,
-        '/edit-task',
-        arguments: {
-          'category': widget.category!,
-          'task': task,
-        },
+        MaterialPageRoute(
+          builder: (context) => TaskEditScreen(
+            category: widget.category!,
+            task: task,
+          ),
+        ),
       );
 
       if (result == true) {
