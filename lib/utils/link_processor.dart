@@ -5,6 +5,7 @@ import 'package:meaning_to/models/icon.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:meaning_to/widgets/link_display.dart';
 import 'dart:convert';
 
 class ProcessedLink {
@@ -13,7 +14,7 @@ class ProcessedLink {
   final String? favicon;
   final LinkType type;
   final String domain;
-  final String originalLink;  // Store the original/modified link text
+  final String originalLink; // Store the original/modified link text
 
   ProcessedLink({
     required this.url,
@@ -28,45 +29,7 @@ class ProcessedLink {
 
   // Widget to display the link with its icon
   Widget buildLinkWidget() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4.0),
-      child: InkWell(
-        onTap: () {
-          launchUrl(
-            Uri.parse(url),
-            mode: LaunchMode.externalApplication,
-          );
-        },
-        borderRadius: BorderRadius.circular(4),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4.0),
-          child: Row(
-            children: [
-              if (favicon != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: Image.network(
-                    favicon!,
-                    width: 32,
-                    height: 32,
-                    errorBuilder: (context, error, stackTrace) => 
-                      const SizedBox.shrink(),
-                  ),
-                ),
-              Expanded(
-                child: Text(
-                  displayTitle,
-                  style: const TextStyle(
-                    color: Colors.blue,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return LinkDisplay.buildLinkWidget(this);
   }
 
   // Widget to display a list of links
@@ -79,27 +42,23 @@ class ProcessedLink {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text('Links:', style: TextStyle(fontWeight: FontWeight.bold)),
-        ...links.map((link) => LinkDisplayWidget(
-          linkText: link.originalLink,
-          showIcon: true,
-          showTitle: true,
-        )).toList(),
+        ...links
+            .map((link) => LinkDisplayWidget(
+                  linkText: link.originalLink,
+                  showIcon: true,
+                  showTitle: true,
+                ))
+            .toList(),
       ],
     );
   }
 }
 
-enum LinkType {
-  webpage,
-  youtube,
-  github,
-  twitter,
-  other
-}
+enum LinkType { webpage, youtube, github, twitter, other }
 
 class LinkProcessor {
   static String? get browserlessApiKey => dotenv.env['BROWSERLESS_API_KEY'];
-  
+
   static final Map<String, List<Map<String, String>>> _cookies = {};
 
   static Map<String, String>? parseCookieString(String cookieStr) {
@@ -155,7 +114,8 @@ class LinkProcessor {
         uri,
         headers: {
           if (cookieHeader.isNotEmpty) 'Cookie': cookieHeader,
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
+          'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
         },
       );
 
@@ -189,10 +149,11 @@ class LinkProcessor {
         },
         body: json.encode({
           'url': url,
-          'waitFor': 5000,  // Wait for 5 seconds to let JavaScript execute
+          'waitFor': 5000, // Wait for 5 seconds to let JavaScript execute
           'headers': {
             if (cookieHeader.isNotEmpty) 'Cookie': cookieHeader,
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
+            'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
           },
         }),
       );
@@ -232,7 +193,8 @@ class LinkProcessor {
 
         // Try to find favicon
         String? favicon;
-        final faviconElement = document.querySelector('link[rel="icon"], link[rel="shortcut icon"]');
+        final faviconElement = document
+            .querySelector('link[rel="icon"], link[rel="shortcut icon"]');
         if (faviconElement != null) {
           final faviconHref = faviconElement.attributes['href'];
           if (faviconHref != null) {
@@ -296,7 +258,7 @@ class LinkProcessor {
   static LinkType determineLinkType(String url) {
     final uri = Uri.parse(url);
     final host = uri.host.toLowerCase();
-    
+
     if (host.contains('youtube.com') || host.contains('youtu.be')) {
       return LinkType.youtube;
     } else if (host.contains('github.com')) {
@@ -326,7 +288,7 @@ class LinkProcessor {
   static Future<ProcessedLink> processLinkForDisplay(String linkText) async {
     // Parse the HTML link to get URL and title
     final (url, title) = parseHtmlLink(linkText);
-    
+
     if (!isValidUrl(url)) {
       return ProcessedLink(
         url: url,
@@ -338,7 +300,7 @@ class LinkProcessor {
 
     final type = determineLinkType(url);
     final domain = extractDomain(url);
-    
+
     // Get icon for domain with error handling
     String? favicon;
     try {
@@ -365,13 +327,14 @@ class LinkProcessor {
       favicon: favicon,
       type: type,
       domain: domain,
-      originalLink: finalLink,  // Use the final HTML link with the title
+      originalLink: finalLink, // Use the final HTML link with the title
     );
   }
 
-  static Future<List<ProcessedLink>> processLinksForDisplay(List<String> links) async {
+  static Future<List<ProcessedLink>> processLinksForDisplay(
+      List<String> links) async {
     final processedLinks = <ProcessedLink>[];
-    
+
     for (final link in links) {
       try {
         // Parse the HTML link
@@ -412,11 +375,13 @@ class LinkProcessor {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: links.map((link) => LinkDisplayWidget(
-        linkText: link,
-        showIcon: true,
-        showTitle: true,
-      )).toList(),
+      children: links
+          .map((link) => LinkDisplayWidget(
+                linkText: link,
+                showIcon: true,
+                showTitle: true,
+              ))
+          .toList(),
     );
   }
 
@@ -434,15 +399,15 @@ class LinkProcessor {
 
   /// Validates a URL and returns a ProcessedLink if valid, or throws an exception if invalid.
   /// This is used when you need both validation and the processed link data.
-  static Future<ProcessedLink> validateAndProcessLink(String url, {String? linkText}) async {
-    final processedLink = await processLinkForDisplay(
-      '<a href="$url">${linkText ?? ""}</a>'
-    );
-    
+  static Future<ProcessedLink> validateAndProcessLink(String url,
+      {String? linkText}) async {
+    final processedLink =
+        await processLinkForDisplay('<a href="$url">${linkText ?? ""}</a>');
+
     if (processedLink.title == null) {
       throw Exception('Sorry, but this link doesn\'t lead to a page.');
     }
-    
+
     return processedLink;
   }
 }
@@ -541,7 +506,7 @@ class LinkDisplayWidget extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.red,
                     decoration: TextDecoration.underline,
-                    fontSize: 16,  // Increased by 4 from default
+                    fontSize: 16, // Increased by 4 from default
                   ),
                 ),
               ),
@@ -565,7 +530,7 @@ class LinkDisplayWidget extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.red,
                     decoration: TextDecoration.underline,
-                    fontSize: 16,  // Increased by 4 from default
+                    fontSize: 16, // Increased by 4 from default
                   ),
                 ),
               ),
@@ -583,7 +548,7 @@ class LinkDisplayWidget extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.blue,
                     decoration: TextDecoration.underline,
-                    fontSize: 16,  // Increased by 4 from default
+                    fontSize: 16, // Increased by 4 from default
                   ),
                 ),
               ),
@@ -592,12 +557,13 @@ class LinkDisplayWidget extends StatelessWidget {
         }
 
         return InkWell(
-          onTap: onTap ?? () {
-            launchUrl(
-              Uri.parse(processedLink.url),
-              mode: LaunchMode.externalApplication,
-            );
-          },
+          onTap: onTap ??
+              () {
+                launchUrl(
+                  Uri.parse(processedLink.url),
+                  mode: LaunchMode.externalApplication,
+                );
+              },
           borderRadius: BorderRadius.circular(4),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -611,7 +577,7 @@ class LinkDisplayWidget extends StatelessWidget {
                       style: const TextStyle(
                         color: Colors.blue,
                         decoration: TextDecoration.underline,
-                        fontSize: 16,  // Increased by 4 from default
+                        fontSize: 16, // Increased by 4 from default
                       ),
                     ),
                   ),
@@ -622,4 +588,4 @@ class LinkDisplayWidget extends StatelessWidget {
       },
     );
   }
-} 
+}
