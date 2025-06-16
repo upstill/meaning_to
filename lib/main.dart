@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/splash_screen.dart';
@@ -8,11 +9,12 @@ import 'package:meaning_to/reset_password_screen.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'package:meaning_to/edit_category_screen.dart';
-import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
-import 'package:meaning_to/download_screen.dart';
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/models/task.dart';
+import 'package:share_handler/share_handler.dart';
+
+// Remove the instance creation since we'll use static methods
+// final _receiveSharingIntent = ReceiveSharingIntent();
 
 void main() async {
   try {
@@ -54,16 +56,104 @@ class _MyAppState extends State<MyApp> {
   late AppLinks _appLinks;
   StreamSubscription? _linkSubscription;
   final _scaffoldKey = GlobalKey<ScaffoldMessengerState>();
+  StreamSubscription<SharedMedia?>? _shareSubscription;
+  String? _sharedText;
+
+  void _logIntent(String type, dynamic data) {
+    final timestamp = DateTime.now().toIso8601String();
+    print('\n=== Intent Received ===');
+    print('Timestamp: $timestamp');
+    print('Type: $type');
+    print('Data: $data');
+    print('=====================\n');
+
+    // Show a snackbar to report the intent to the user
+    if (mounted) {
+      _scaffoldKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Received $type intent'),
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: 'Details',
+            onPressed: () {
+              // Use Navigator.push instead of showDialog to avoid context issues
+              Navigator.of(MyApp.navigatorKey.currentContext!).push(
+                MaterialPageRoute(
+                  builder: (context) => Scaffold(
+                    appBar: AppBar(
+                      title: const Text('Intent Details'),
+                    ),
+                    body: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Type: $type',
+                              style: const TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 16),
+                          Text('Time: $timestamp'),
+                          const SizedBox(height: 16),
+                          const Text('Data:',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Text(data.toString()),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _initDeepLinkListener();
+    _initShareHandler();
+  }
+
+  void _initShareHandler() {
+    // Listen for shared content
+    _shareSubscription = ShareHandlerPlatform.instance.sharedMediaStream.listen(
+        (SharedMedia? media) {
+      if (media?.content != null) {
+        setState(() {
+          _sharedText = media!.content;
+        });
+        _logIntent('Text Share', media!.content);
+      }
+    }, onError: (err) {
+      print('Share handler error: $err');
+      _logIntent('Share Handler Error', err.toString());
+    });
+
+    // Get initial shared content if app was launched via share intent
+    ShareHandlerPlatform.instance
+        .getInitialSharedMedia()
+        .then((SharedMedia? media) {
+      if (media?.content != null) {
+        setState(() {
+          _sharedText = media!.content;
+        });
+        _logIntent('Initial Text Share', media!.content);
+      }
+    });
   }
 
   @override
   void dispose() {
     _linkSubscription?.cancel();
+    _shareSubscription?.cancel();
     super.dispose();
   }
 
@@ -90,11 +180,12 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _handleDeepLink(Uri uri) async {
-    print('Handling deep link: $uri');
-    print('URI scheme: ${uri.scheme}');
-    print('URI host: ${uri.host}');
-    print('URI path: ${uri.path}');
-    print('URI query parameters: ${uri.queryParameters}');
+    _logIntent('Deep Link', {
+      'scheme': uri.scheme,
+      'host': uri.host,
+      'path': uri.path,
+      'queryParameters': uri.queryParameters,
+    });
 
     // Handle our custom URL scheme
     if (uri.scheme == 'meaningto' &&
@@ -107,10 +198,11 @@ class _MyAppState extends State<MyApp> {
           final errorCode = uri.queryParameters['error_code'];
           final errorDescription = uri.queryParameters['error_description'];
 
-          print('Auth error detected:');
-          print('- Error: $error');
-          print('- Code: $errorCode');
-          print('- Description: $errorDescription');
+          _logIntent('Auth Error', {
+            'error': error,
+            'code': errorCode,
+            'description': errorDescription,
+          });
 
           // Show error message and navigate to auth screen
           _scaffoldKey.currentState?.showSnackBar(
@@ -307,6 +399,14 @@ class _MyAppState extends State<MyApp> {
       ),
       scaffoldMessengerKey: _scaffoldKey,
       navigatorKey: MyApp.navigatorKey,
+      localizationsDelegates: const [
+        DefaultMaterialLocalizations.delegate,
+        DefaultWidgetsLocalizations.delegate,
+        DefaultCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('en', 'US'),
+      ],
       onGenerateRoute: (settings) {
         print('Generating route for: ${settings.name}');
 
