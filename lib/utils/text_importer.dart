@@ -26,18 +26,34 @@ class ImportItem {
   final String title;
   final String? description;
   final String? link;
+  final String? domain;
   final Map<String, dynamic> metadata;
 
   ImportItem({
     required this.title,
     this.description,
     this.link,
+    this.domain,
     this.metadata = const {},
   });
 
+  /// Get the domain from the link or return the stored domain
+  String? get extractedDomain {
+    if (domain != null) return domain;
+    if (link == null) return null;
+
+    try {
+      final uri = Uri.parse(link!);
+      return uri.host.isNotEmpty ? uri.host : null;
+    } catch (e) {
+      print('Error extracting domain from link: $e');
+      return null;
+    }
+  }
+
   @override
   String toString() =>
-      'ImportItem(title: $title, description: $description, link: $link)';
+      'ImportItem(title: $title, description: $description, link: $link, domain: $domain)';
 
   /// Converts the ImportItem to a Task
   Task toTask(int categoryId, {required String ownerId}) {
@@ -232,14 +248,18 @@ class TextImporter {
         return null;
       }
 
+      final link = jsonData['link']?.toString() ??
+          jsonData['url']?.toString() ??
+          jsonData['fullpath']?.toString();
+
       return ImportItem(
         title: title.trim(),
         description: jsonData['description']?.toString() ??
             jsonData['notes']?.toString() ??
             jsonData['summary']?.toString(),
-        link: jsonData['link']?.toString() ??
-            jsonData['url']?.toString() ??
-            jsonData['fullpath']?.toString(),
+        link: link,
+        domain: jsonData['domain']?.toString() ??
+            (link != null ? extractedDomainFromUrl(link) : null),
         metadata: jsonData,
       );
     } catch (e) {
@@ -263,6 +283,7 @@ class TextImporter {
         return ImportItem(
           title: title ?? 'Link',
           link: url,
+          domain: extractedDomainFromUrl(url),
           metadata: {'source': 'html_link'},
         );
       }
@@ -282,6 +303,7 @@ class TextImporter {
       return ImportItem(
         title: title.isNotEmpty ? title : 'Link',
         link: url,
+        domain: extractedDomainFromUrl(url),
         metadata: {'source': 'plain_text_with_url'},
       );
     }
@@ -295,6 +317,7 @@ class TextImporter {
       return ImportItem(
         title: title,
         link: url,
+        domain: extractedDomainFromUrl(url),
         metadata: {'source': 'markdown_link'},
       );
     }
@@ -343,5 +366,16 @@ class TextImporter {
       }
     }
     return null;
+  }
+
+  /// Extract domain from a URL
+  static String? extractedDomainFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      return uri.host.isNotEmpty ? uri.host : null;
+    } catch (e) {
+      print('Error extracting domain from URL: $e');
+      return null;
+    }
   }
 }
