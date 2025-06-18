@@ -19,16 +19,19 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  HomeScreenState createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
   List<Category> _categories = [];
   Category? _selectedCategory;
   Task? _randomTask;
   bool _isLoading = true;
   bool _isLoadingTask = false;
   String? _error;
+
+  // Add getter for selected category
+  Category? get selectedCategory => _selectedCategory;
 
   @override
   void initState() {

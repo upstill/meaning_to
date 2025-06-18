@@ -43,10 +43,10 @@ class EditCategoryScreen extends StatefulWidget {
   }
 
   @override
-  State<EditCategoryScreen> createState() => _EditCategoryScreenState();
+  EditCategoryScreenState createState() => EditCategoryScreenState();
 }
 
-class _EditCategoryScreenState extends State<EditCategoryScreen> {
+class EditCategoryScreenState extends State<EditCategoryScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _headlineController;
   late TextEditingController _invitationController;

@@ -45,12 +45,44 @@ void main() {
         title: 'Test Task',
         description: 'Test Description',
         link: 'https://example.com',
+        domain: 'example.com',
       );
 
       expect(item.title, equals('Test Task'));
       expect(item.description, equals('Test Description'));
       expect(item.link, equals('https://example.com'));
+      expect(item.domain, equals('example.com'));
       expect(item.metadata, isEmpty);
+    });
+
+    test('extracts domain from link when domain not provided', () {
+      final item = ImportItem(
+        title: 'Test Task',
+        link: 'https://example.com/path',
+      );
+
+      expect(item.extractedDomain, equals('example.com'));
+      expect(item.domain, isNull);
+    });
+
+    test('uses provided domain over extracted domain', () {
+      final item = ImportItem(
+        title: 'Test Task',
+        link: 'https://example.com/path',
+        domain: 'custom-domain.com',
+      );
+
+      expect(item.extractedDomain, equals('custom-domain.com'));
+      expect(item.domain, equals('custom-domain.com'));
+    });
+
+    test('handles invalid URLs gracefully', () {
+      final item = ImportItem(
+        title: 'Test Task',
+        link: 'not-a-valid-url',
+      );
+
+      expect(item.extractedDomain, isNull);
     });
 
     test('converts to Task', () {
@@ -58,6 +90,7 @@ void main() {
         title: 'Test Task',
         description: 'Test Description',
         link: 'https://example.com',
+        domain: 'example.com',
       );
 
       final task = item.toTask(1, ownerId: 'test_user');
@@ -74,6 +107,7 @@ void main() {
         title: 'Test Link',
         description: 'Test Description',
         link: 'https://example.com',
+        domain: 'example.com',
       );
 
       final link = item.toLink();
@@ -106,6 +140,15 @@ Test Task 2 with https://example.com
           TextImporter.parsePlainTextItem('Test Task with https://example.com');
       expect(item?.title, equals('Test Task with'));
       expect(item?.link, equals('https://example.com'));
+      expect(item?.extractedDomain, equals('example.com'));
+    });
+
+    test('parsePlainTextItem handles Letterboxd share', () {
+      final item = TextImporter.parsePlainTextItem(
+          'The Phoenician Scheme on Letterboxd https://boxd.it/H0Ca');
+      expect(item?.title, equals('The Phoenician Scheme on Letterboxd'));
+      expect(item?.link, equals('https://boxd.it/H0Ca'));
+      expect(item?.extractedDomain, equals('boxd.it'));
     });
 
     test('parsePlainTextItem handles HTML link', () {
@@ -113,6 +156,7 @@ Test Task 2 with https://example.com
           '<a href="https://example.com">Test Link</a>');
       expect(item?.title, equals('Test Link'));
       expect(item?.link, equals('https://example.com'));
+      expect(item?.extractedDomain, equals('example.com'));
       expect(item?.metadata['source'], equals('html_link'));
     });
 
@@ -122,6 +166,16 @@ Test Task 2 with https://example.com
       expect(item?.title, equals('Test Task'));
       expect(item?.description, equals('Test Description'));
       expect(item?.link, equals('https://example.com'));
+      expect(item?.extractedDomain, equals('example.com'));
+    });
+
+    test('parseJsonItem uses provided domain over extracted domain', () {
+      final item = TextImporter.parseJsonItem(
+          '{"title": "Test Task", "link": "https://example.com", "domain": "custom-domain.com"}');
+      expect(item?.title, equals('Test Task'));
+      expect(item?.link, equals('https://example.com'));
+      expect(item?.domain, equals('custom-domain.com'));
+      expect(item?.extractedDomain, equals('custom-domain.com'));
     });
 
     test('processTextData handles mixed content', () async {

@@ -175,9 +175,51 @@ class ImportItem {
   final String title;           // Required: The title/name of the item
   final String? description;    // Optional: Description or notes
   final String? link;           // Optional: URL or link
+  final String? domain;         // Optional: Domain name (can be set explicitly or extracted from link)
   final Map<String, dynamic>? metadata; // Optional: Additional metadata
 }
 ```
+
+### Domain Handling
+
+The `ImportItem` class provides flexible domain handling:
+
+- **Explicit Domain**: You can set the domain explicitly during creation
+- **Automatic Extraction**: If no domain is provided but a link is available, the domain is automatically extracted from the URL
+- **Domain Getter**: Use `item.extractedDomain` to get the domain (either the explicitly set one or the extracted one)
+
+#### Examples:
+
+```dart
+// Domain explicitly set
+final item1 = ImportItem(
+  title: 'Movie Title',
+  link: 'https://example.com/movie',
+  domain: 'custom-domain.com', // This domain will be used
+);
+
+// Domain automatically extracted from link
+final item2 = ImportItem(
+  title: 'Movie Title',
+  link: 'https://example.com/movie', // Domain will be extracted as 'example.com'
+);
+
+// Get the domain (either explicit or extracted)
+print(item1.extractedDomain); // 'custom-domain.com'
+print(item2.extractedDomain); // 'example.com'
+```
+
+#### JSON Import with Domain:
+
+```json
+{
+  "title": "Movie Title",
+  "link": "https://example.com/movie",
+  "domain": "custom-domain.com"
+}
+```
+
+If the `domain` field is provided in JSON, it will be used. Otherwise, the domain will be extracted from the `link` field.
 
 ## Error Handling
 

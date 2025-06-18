@@ -11,7 +11,7 @@ import 'dart:async';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/models/category.dart';
-import 'package:share_handler/share_handler.dart';
+import 'package:meaning_to/utils/share_handler.dart';
 
 // Remove the instance creation since we'll use static methods
 // final _receiveSharingIntent = ReceiveSharingIntent();
@@ -56,16 +56,52 @@ class _MyAppState extends State<MyApp> {
   late AppLinks _appLinks;
   StreamSubscription? _linkSubscription;
   final _scaffoldKey = GlobalKey<ScaffoldMessengerState>();
-  StreamSubscription<SharedMedia?>? _shareSubscription;
-  String? _sharedText;
+  final _shareHandler = ShareHandler();
 
   void _logIntent(String type, dynamic data) {
     final timestamp = DateTime.now().toIso8601String();
-    print('\n=== Intent Received ===');
-    print('Timestamp: $timestamp');
-    print('Type: $type');
-    print('Data: $data');
-    print('=====================\n');
+
+    // Check if this is context-aware data from ShareHandler
+    if (data is Map<String, dynamic> && data.containsKey('context')) {
+      print('\n=== Intent Received with Context ===');
+      print('Timestamp: $timestamp');
+      print('Type: $type');
+      print('Route: ${data['context']['route']}');
+      if (data['context']['currentCategory'] != null) {
+        print('Current Category: ${data['context']['currentCategory']}');
+      }
+      if (data['context']['hasCategory'] != null) {
+        print('Has Category: ${data['context']['hasCategory']}');
+      }
+
+      // Display source app information
+      if (data.containsKey('source')) {
+        final source = data['source'] as Map<String, dynamic>;
+        print('Source App Information:');
+        if (source['serviceName'] != null) {
+          print('  Service Name: ${source['serviceName']}');
+        }
+        if (source['senderIdentifier'] != null) {
+          print('  Sender ID: ${source['senderIdentifier']}');
+        }
+        if (source['speakableGroupName'] != null) {
+          print('  Group Name: ${source['speakableGroupName']}');
+        }
+        if (source['conversationIdentifier'] != null) {
+          print('  Conversation ID: ${source['conversationIdentifier']}');
+        }
+        print('  Attachments: ${source['attachments']}');
+      }
+
+      print('Data: ${data['data']}');
+      print('===================================\n');
+    } else {
+      print('\n=== Intent Received ===');
+      print('Timestamp: $timestamp');
+      print('Type: $type');
+      print('Data: $data');
+      print('=====================\n');
+    }
 
     // Show a snackbar to report the intent to the user
     if (mounted) {
@@ -76,37 +112,11 @@ class _MyAppState extends State<MyApp> {
           action: SnackBarAction(
             label: 'Details',
             onPressed: () {
-              // Use Navigator.push instead of showDialog to avoid context issues
-              Navigator.of(MyApp.navigatorKey.currentContext!).push(
-                MaterialPageRoute(
-                  builder: (context) => Scaffold(
-                    appBar: AppBar(
-                      title: const Text('Intent Details'),
-                    ),
-                    body: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Type: $type',
-                              style: const TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 16),
-                          Text('Time: $timestamp'),
-                          const SizedBox(height: 16),
-                          const Text('Data:',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 8),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              child: Text(data.toString()),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+              _shareHandler.showDetailsDialog(
+                MyApp.navigatorKey.currentContext!,
+                type,
+                data,
+                timestamp,
               );
             },
           ),
@@ -119,41 +129,17 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _initDeepLinkListener();
-    _initShareHandler();
-  }
-
-  void _initShareHandler() {
-    // Listen for shared content
-    _shareSubscription = ShareHandlerPlatform.instance.sharedMediaStream.listen(
-        (SharedMedia? media) {
-      if (media?.content != null) {
-        setState(() {
-          _sharedText = media!.content;
-        });
-        _logIntent('Text Share', media!.content);
-      }
-    }, onError: (err) {
-      print('Share handler error: $err');
-      _logIntent('Share Handler Error', err.toString());
-    });
-
-    // Get initial shared content if app was launched via share intent
-    ShareHandlerPlatform.instance
-        .getInitialSharedMedia()
-        .then((SharedMedia? media) {
-      if (media?.content != null) {
-        setState(() {
-          _sharedText = media!.content;
-        });
-        _logIntent('Initial Text Share', media!.content);
-      }
-    });
+    _shareHandler.initialize(
+      onIntentReceived: _logIntent,
+      scaffoldKey: _scaffoldKey,
+      navigatorKey: MyApp.navigatorKey,
+    );
   }
 
   @override
   void dispose() {
     _linkSubscription?.cancel();
-    _shareSubscription?.cancel();
+    _shareHandler.dispose();
     super.dispose();
   }
 
@@ -223,160 +209,31 @@ class _MyAppState extends State<MyApp> {
           final type = uri.queryParameters['type']!;
           final token = uri.queryParameters['token']!;
 
-          print('Processing verification token:');
-          print('- Type: $type');
-          print('- Token: $token');
-
-          try {
-            // Exchange the token for a session
-            print('Verifying OTP...');
-            final response = await Supabase.instance.client.auth.verifyOTP(
-              type: type == 'signup' ? OtpType.signup : OtpType.recovery,
+          if (type == 'signup') {
+            // Handle signup verification
+            await Supabase.instance.client.auth.verifyOTP(
               token: token,
+              type: OtpType.signup,
             );
-            print('Verification response:');
-            print('- Session: ${response.session != null}');
-            print('- User: ${response.session?.user.id}');
-            print('- Metadata: ${response.session?.user.userMetadata}');
-
-            if (response.session != null) {
-              if (type == 'recovery') {
-                print(
-                    'Recovery session verified, navigating to reset password screen');
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  MyApp.navigatorKey.currentState?.pushAndRemoveUntil(
-                    MaterialPageRoute(
-                        builder: (context) => const ResetPasswordScreen()),
-                    (route) => false,
-                  );
-                });
-              } else {
-                print('Signup verified, navigating to home');
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  MyApp.navigatorKey.currentState
-                      ?.pushReplacementNamed('/home');
-                });
-              }
-            } else {
-              print('No session in verification response');
-              throw Exception('No session returned from verification');
-            }
-          } catch (e) {
-            print('Error during verification: $e');
-            String message = 'Error verifying email';
-            if (e.toString().contains('Email not confirmed')) {
-              message =
-                  'Please check your email for a confirmation link and click it to verify your account.';
-            }
-            _scaffoldKey.currentState?.showSnackBar(
-              SnackBar(
-                content: Text(message),
-                backgroundColor: Colors.orange,
-                duration: const Duration(seconds: 10),
-                action: SnackBarAction(
-                  label: 'OK',
-                  onPressed: () {
-                    _scaffoldKey.currentState?.hideCurrentSnackBar();
-                  },
-                ),
-              ),
+            MyApp.navigatorKey.currentState?.pushReplacementNamed('/');
+          } else if (type == 'recovery') {
+            // Handle password recovery
+            MyApp.navigatorKey.currentState?.pushReplacementNamed(
+              '/reset-password',
+              arguments: {'token': token},
             );
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
-            });
           }
-          return;
-        }
-
-        // Handle other auth callbacks
-        final code = uri.queryParameters['code'];
-        if (code != null) {
-          try {
-            print('Exchanging code for session');
-            final response = await Supabase.instance.client.auth
-                .exchangeCodeForSession(code);
-            print('Code exchange response:');
-            print('- Session: ${response.session != null}');
-            print('- User: ${response.session?.user.id}');
-            print('- Metadata: ${response.session?.user.userMetadata}');
-
-            if (response.session != null) {
-              // Check if this is a recovery session
-              final type =
-                  response.session?.user.userMetadata?['type'] as String?;
-              print('Session type from metadata: $type');
-
-              if (type == 'recovery') {
-                print(
-                    'Recovery session detected, navigating to reset password screen');
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  MyApp.navigatorKey.currentState?.pushAndRemoveUntil(
-                    MaterialPageRoute(
-                        builder: (context) => const ResetPasswordScreen()),
-                    (route) => false,
-                  );
-                });
-              } else {
-                print('Regular session, navigating to home');
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  MyApp.navigatorKey.currentState
-                      ?.pushReplacementNamed('/home');
-                });
-              }
-            }
-          } catch (e) {
-            print('Error during code exchange: $e');
-            String message = 'Error during authentication';
-            if (e.toString().contains('Email not confirmed')) {
-              message =
-                  'Please check your email for a confirmation link and click it to verify your account.';
-            }
-            _scaffoldKey.currentState?.showSnackBar(
-              SnackBar(
-                content: Text(message),
-                backgroundColor: Colors.orange,
-                duration: const Duration(seconds: 10),
-                action: SnackBarAction(
-                  label: 'OK',
-                  onPressed: () {
-                    _scaffoldKey.currentState?.hideCurrentSnackBar();
-                  },
-                ),
-              ),
-            );
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
-            });
-          }
-        } else {
-          print('No code parameter found in URI');
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
-          });
         }
       } catch (e) {
-        print('Error handling deep link: $e');
-        String message = 'Error during authentication';
-        if (e.toString().contains('Email not confirmed')) {
-          message =
-              'Please check your email for a confirmation link and click it to verify your account.';
-        }
+        print('Error handling auth callback: $e');
         _scaffoldKey.currentState?.showSnackBar(
           SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 10),
-            action: SnackBarAction(
-              label: 'OK',
-              onPressed: () {
-                _scaffoldKey.currentState?.hideCurrentSnackBar();
-              },
-            ),
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
-        });
+        MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
       }
     } else {
       print('URI not handled:');
@@ -407,62 +264,32 @@ class _MyAppState extends State<MyApp> {
       supportedLocales: const [
         Locale('en', 'US'),
       ],
-      onGenerateRoute: (settings) {
-        print('Generating route for: ${settings.name}');
-
-        // If we're going to home, check auth first
-        if (settings.name == '/home') {
-          final session = Supabase.instance.client.auth.currentSession;
-          if (session == null) {
-            print('No session found, redirecting to auth');
-            return MaterialPageRoute(
-              builder: (context) => const AuthScreen(),
-              settings: const RouteSettings(name: '/auth'),
-            );
-          }
-        }
-
-        // Otherwise use normal route generation
-        switch (settings.name) {
-          case '/':
-            return MaterialPageRoute(
-              builder: (context) => const SplashScreen(),
-              settings: settings,
-            );
-          case '/auth':
-            return MaterialPageRoute(
-              builder: (context) => const AuthScreen(),
-              settings: settings,
-            );
-          case '/home':
-            return MaterialPageRoute(
-              builder: (context) => const HomeScreen(),
-              settings: settings,
-            );
-          case '/edit-category':
-            final args = settings.arguments as Map<String, dynamic>?;
-            return MaterialPageRoute(
-              builder: (context) => EditCategoryScreen(
-                category: args?['category'] as Category?,
-                tasksOnly: args?['tasksOnly'] == true,
-              ),
-              settings: settings,
-            );
-          case '/import-justwatch':
-            final args = settings.arguments as Map<String, dynamic>?;
-            return MaterialPageRoute(
-              builder: (context) => ImportJustWatchScreen(
-                category: args?['category'] as Category,
-                jsonData: args?['jsonData'],
-              ),
-              settings: settings,
-            );
-          default:
-            return MaterialPageRoute(
-              builder: (context) => const SplashScreen(),
-              settings: settings,
-            );
-        }
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const SplashScreen(),
+        '/auth': (context) => const AuthScreen(),
+        '/home': (context) => const HomeScreen(),
+        '/reset-password': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments
+              as Map<String, dynamic>;
+          return ResetPasswordScreen(token: args['token'] as String);
+        },
+        '/edit-category': (context) {
+          final args = ModalRoute.of(context)?.settings.arguments
+              as Map<String, dynamic>?;
+          return EditCategoryScreen(
+            category: args?['category'] as Category?,
+            tasksOnly: args?['tasksOnly'] == true,
+          );
+        },
+        '/import-justwatch': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments
+              as Map<String, dynamic>;
+          return ImportJustWatchScreen(
+            category: args['category'] as Category,
+            jsonData: args['jsonData'],
+          );
+        },
       },
     );
   }

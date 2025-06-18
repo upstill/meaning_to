@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({super.key});
+  final String token;
+
+  const ResetPasswordScreen({
+    super.key,
+    required this.token,
+  });
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -26,12 +31,13 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     final user = Supabase.instance.client.auth.currentUser;
     print('ResetPasswordScreen - Current user: ${user?.id}');
     print('ResetPasswordScreen - User metadata: ${user?.userMetadata}');
-    
+
     if (user == null || user.userMetadata?['type'] != 'recovery') {
       print('ResetPasswordScreen - Invalid session, redirecting to auth');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid or expired password reset session')),
+          const SnackBar(
+              content: Text('Invalid or expired password reset session')),
         );
         Navigator.pushReplacementNamed(context, '/auth');
       }
@@ -52,7 +58,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       final user = Supabase.instance.client.auth.currentUser;
       print('ResetPasswordScreen - Current user: ${user?.id}');
       print('ResetPasswordScreen - User metadata: ${user?.userMetadata}');
-      
+
       if (user == null || user.userMetadata?['type'] != 'recovery') {
         throw Exception('Invalid or expired password reset session');
       }
@@ -172,4 +178,4 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       ),
     );
   }
-} 
+}
