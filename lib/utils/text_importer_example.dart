@@ -1,22 +1,26 @@
 import 'dart:async';
 import 'package:meaning_to/utils/text_importer.dart';
 import 'package:meaning_to/models/task.dart';
+import 'package:meaning_to/models/category.dart';
 
 /// Example usage of the TextImporter module
 class TextImporterExample {
   /// Example: Import from clipboard for creating a new category
   static Future<void> importFromClipboardForNewCategory() async {
     print('=== Importing from Clipboard for New Category ===');
-
-    final stream = TextImporter.importFromClipboard(
+    final category = Category(
+        id: 1,
+        ownerId: 'user123',
+        headline: 'Test Category',
+        createdAt: DateTime.now());
+    final stream = TextImporter.importFromText(
       'Test Task 1\nhttps://example.com/movie2 Movie Task 2',
-      context: ImportContext.newCategory,
-      categoryId: 1,
+      category: category,
     );
 
     await for (final item in stream) {
       print('Received item: $item');
-      print('Domain: ${item.extractedDomain}');
+      print('Domain: ${item.domain}');
       // Here you would typically create a Task from the item
       // final task = TextImporter.importItemToTask(item, categoryId, ownerId);
     }
@@ -25,11 +29,14 @@ class TextImporterExample {
   /// Example: Import from file for adding to existing category
   static Future<void> importFromFileForAddToCategory() async {
     print('=== Importing from File for Add to Category ===');
-
-    final stream = await TextImporter.importFromFile(
+    final category = Category(
+        id: 1,
+        ownerId: 'user123',
+        headline: 'Test Category',
+        createdAt: DateTime.now());
+    final stream = TextImporter.importFromText(
       'Test Task 1\n{"title": "JSON Task", "link": "https://example.com", "domain": "custom-domain.com"}',
-      context: ImportContext.addToCategory,
-      categoryId: 1,
+      category: category,
     );
 
     if (stream == null) {
@@ -39,7 +46,7 @@ class TextImporterExample {
 
     await for (final item in stream) {
       print('Received item: $item');
-      print('Domain: ${item.extractedDomain}');
+      print('Domain: ${item.domain}');
       // Here you would typically add the item to existing category tasks
     }
   }
@@ -48,15 +55,27 @@ class TextImporterExample {
   static Future<void> importFromClipboardForAddToTask() async {
     print('=== Importing from Clipboard for Add to Task ===');
 
-    final stream = TextImporter.importFromClipboard(
-      'https://example.com/link1\n[Markdown Link](https://example.com/link2)',
-      context: ImportContext.addToTask,
+    final task = Task(
+      id: 1,
       categoryId: 1,
+      ownerId: 'user123',
+      headline: 'Test Task',
+      notes: null,
+      links: null,
+      processedLinks: null,
+      createdAt: DateTime.now(),
+      suggestibleAt: DateTime.now(),
+      finished: false,
+    );
+
+    final stream = TextImporter.importFromText(
+      'https://example.com/link1\n[Markdown Link](https://example.com/link2)',
+      task: task,
     );
 
     await for (final item in stream) {
       print('Received item: $item');
-      print('Domain: ${item.extractedDomain}');
+      print('Domain: ${item.domain}');
       // Here you would typically convert the item to a link
       final link = TextImporter.importItemToLink(item);
       if (link != null) {
@@ -66,12 +85,14 @@ class TextImporterExample {
   }
 
   /// Example: Process all items at once (alternative to stream)
-  static Future<List<ImportItem>> importAllFromClipboard(
-      ImportContext context) async {
-    final stream = TextImporter.importFromClipboard(
+  static Future<List<ImportItem>> importAllFromText({
+    Category? category,
+    Task? task,
+  }) async {
+    final stream = TextImporter.importFromText(
       'Test Task 1\nhttps://example.com/movie2 Movie Task 2',
-      context: context,
-      categoryId: 1,
+      category: category,
+      task: task,
     );
     final items = <ImportItem>[];
 
@@ -83,23 +104,83 @@ class TextImporterExample {
   }
 
   /// Example: Process items with custom filtering
-  static Future<void> importWithFilter(ImportContext context) async {
-    final stream = TextImporter.importFromClipboard(
+  static Future<void> importWithFilter({
+    Category? category,
+    Task? task,
+  }) async {
+    final stream = TextImporter.importFromText(
       'Test Task 1\nhttps://example.com/movie2 Movie Task 2',
-      context: context,
-      categoryId: 1,
+      category: category,
+      task: task,
     );
 
     await for (final item in stream.where((item) => item.title.length > 3)) {
       print('Filtered item: $item');
-      print('Domain: ${item.extractedDomain}');
+      print('Domain: ${item.domain}');
+    }
+  }
+
+  /// Example: Use the new processWithContext method
+  static Future<void> processWithContextExample() async {
+    print('=== Processing with Context Examples ===');
+    final category = Category(
+        id: 1,
+        ownerId: 'user123',
+        headline: 'Test Category',
+        createdAt: DateTime.now());
+    // New category context
+    print('--- New Category Context ---');
+    final newCategoryStream = TextImporter.processWithContext(
+      'Test Task 1\nhttps://example.com/movie2 Movie Task 2',
+      category: category,
+      ownerId: 'user123',
+    );
+
+    await for (final item in newCategoryStream) {
+      print('New category item: $item');
+    }
+
+    // Add to category context
+    print('--- Add to Category Context ---');
+    final addToCategoryStream = TextImporter.processWithContext(
+      'Test Task 1\nhttps://example.com/movie2 Movie Task 2',
+      category: category,
+      ownerId: 'user123',
+    );
+
+    await for (final item in addToCategoryStream) {
+      print('Add to category item: $item');
+    }
+
+    // Add to task context (task specified)
+    print('--- Add to Task Context ---');
+    final task = Task(
+      id: 1,
+      categoryId: 1,
+      ownerId: 'user123',
+      headline: 'Test Task',
+      notes: null,
+      links: null,
+      processedLinks: null,
+      createdAt: DateTime.now(),
+      suggestibleAt: DateTime.now(),
+      finished: false,
+    );
+
+    final addToTaskStream = TextImporter.processWithContext(
+      'https://example.com/link1\n[Markdown Link](https://example.com/link2)',
+      task: task,
+    );
+
+    await for (final item in addToTaskStream) {
+      print('Add to task item: $item');
     }
   }
 
   /// Example: Convert imported items to Tasks for a new category
   static Future<List<Task>> convertToTasks(
     List<ImportItem> items,
-    int categoryId,
+    Category category,
     String ownerId,
   ) async {
     final tasks = <Task>[];
@@ -107,7 +188,7 @@ class TextImporterExample {
     for (final item in items) {
       final task = TextImporter.importItemToTask(
         item,
-        categoryId: categoryId,
+        category: category,
         ownerId: ownerId,
       );
       if (task != null) {
@@ -128,20 +209,20 @@ class TextImporterExample {
       link: 'https://example.com/movie',
       domain: 'custom-domain.com',
     );
-    print('Item 1 - Explicit domain: ${item1.extractedDomain}');
+    print('Item 1 - Explicit domain: ${item1.domain}');
 
     // Domain automatically extracted from link
     final item2 = ImportItem(
       title: 'Movie with Auto-Extracted Domain',
       link: 'https://letterboxd.com/movie',
     );
-    print('Item 2 - Extracted domain: ${item2.extractedDomain}');
+    print('Item 2 - Extracted domain: ${item2.domain}');
 
     // No domain (no link)
     final item3 = ImportItem(
       title: 'Movie without Link',
     );
-    print('Item 3 - No domain: ${item3.extractedDomain}');
+    print('Item 3 - No domain: ${item3.domain}');
   }
 }
 
