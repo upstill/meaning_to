@@ -41,35 +41,25 @@ class ImportItem {
 
 ### Basic Import Operations
 
-#### Import from Clipboard
+#### Import from Text Data
 
 ```dart
 // Import for new category (no categoryId or task specified)
-final stream = TextImporter.importFromClipboard(
+final stream = TextImporter.processTextData(
   'Movie Title 1\nhttps://example.com/movie2 Movie Title 2',
 );
 
 // Import for existing category
 final category = Category(id: 1, ownerId: 'user123', headline: 'Test Category', createdAt: DateTime.now());
-final stream = TextImporter.importFromClipboard(
+final stream = TextImporter.processTextData(
   'Movie Title 1\nhttps://example.com/movie2 Movie Title 2',
   category: category,
 );
 
 // Import for specific task
-final stream = TextImporter.importFromClipboard(
+final stream = TextImporter.processTextData(
   'https://example.com/link1\n[Markdown Link](https://example.com/link2)',
   task: existingTask,
-);
-```
-
-#### Import from File
-
-```dart
-final stream = await TextImporter.importFromFile(
-  fileContent,
-  category: category, // Optional: for existing category
-  task: existingTask, // Optional: for specific task
 );
 ```
 
@@ -114,8 +104,9 @@ The context is determined by the parameters provided:
 // Convert a single item to a Task
 final task = item.toTask(category, ownerId: 'user123');
 
-// Convert multiple items to Tasks
-final tasks = await TextImporter.convertToTasks(items, category, ownerId);
+// Process items as Tasks (for category context)
+final taskStream = TextImporter.processForNewCategory(textData, category: category, ownerId: 'user123');
+final taskStream2 = TextImporter.processForAddToCategory(textData, category: category, ownerId: 'user123');
 ```
 
 #### Convert to Links
@@ -126,6 +117,18 @@ final link = item.toLink();
 
 // Process items as Links (for task context)
 final linkStream = TextImporter.processForAddToTask(textData);
+```
+
+### Individual Item Parsing
+
+You can also parse individual text items:
+
+```dart
+// Parse a single text item
+final item = TextImporter.importFromText('Movie Title with https://example.com/movie');
+
+// Parse a JSON item
+final jsonItem = TextImporter.parseJsonItem('{"title": "Movie", "link": "https://example.com/movie"}');
 ```
 
 ## Supported Data Formats

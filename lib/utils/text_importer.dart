@@ -64,19 +64,6 @@ class ImportItem {
 
 /// A class for importing items from text data sources
 class TextImporter {
-  /// Import items from text data
-  static Stream<ImportItem> importFromText(
-    String textData, {
-    Category? category,
-    Task? task,
-  }) {
-    return processTextData(
-      textData,
-      category: category,
-      task: task,
-    );
-  }
-
   /// Process text data into a stream of ImportItems
   static Stream<ImportItem> processTextData(
     String textData, {
@@ -103,12 +90,30 @@ class TextImporter {
       if (line.trim().isEmpty) continue;
 
       ImportItem? item;
-      if (line.trim().startsWith('{')) {
+      final trimmedLine = line.trim();
+      if (trimmedLine.startsWith('{') || trimmedLine.startsWith('[')) {
         // Try parsing as JSON
-        item = parseJsonItem(line);
+        try {
+          final jsonData = jsonDecode(trimmedLine);
+          if (jsonData is List) {
+            // Handle JSON array - process all items
+            for (final arrayItem in jsonData) {
+              final parsedItem = parseJsonItem(arrayItem);
+              if (parsedItem != null) {
+                items.add(parsedItem);
+              }
+            }
+            continue; // Skip adding a single item since we processed the array
+          } else {
+            item = parseJsonItem(jsonData);
+          }
+        } catch (e) {
+          // If JSON parsing fails, try as plain text
+          item = importFromText(line);
+        }
       } else {
         // Try parsing as plain text
-        item = parsePlainTextItem(line);
+        item = importFromText(line);
       }
 
       if (item != null) {
@@ -217,27 +222,16 @@ class TextImporter {
 
   /// Parses a JSON object or array into an ImportItem
   /// This method is public for testing purposes
-  static ImportItem? parseJsonItem(String json) {
+  static ImportItem? parseJsonItem(dynamic jsonData) {
     try {
-      final dynamic jsonData = jsonDecode(json);
-
-      // Handle JSON array
-      if (jsonData is List) {
-        for (final item in jsonData) {
-          if (item is Map<String, dynamic>) {
-            final result = _parseJsonObject(item);
-            if (result != null) return result;
-          } else if (item is String) {
-            final result = parsePlainTextItem(item);
-            if (result != null) return result;
-          }
-        }
-        return null;
-      }
-
       // Handle JSON object
       if (jsonData is Map<String, dynamic>) {
         return _parseJsonObject(jsonData);
+      }
+
+      // Handle string items (from arrays)
+      if (jsonData is String) {
+        return importFromText(jsonData);
       }
 
       return null;
@@ -287,15 +281,51 @@ class TextImporter {
 
   /// Parses plain text into an ImportItem
   /// This method is public for testing purposes
-  static ImportItem? parsePlainTextItem(String text) {
+  static ImportItem? importFromText(String text) {
     if (text.trim().isEmpty) {
       return null;
     }
 
-    // Check if text is JSON and delegate to parseJsonItem
-    final trimmedText = text.trim();
-    if (trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
-      return parseJsonItem(trimmedText);
+    String? extractedURL;
+    // Check if text contains a URL
+    final urlMatch = RegExp(r'https?://[^\s:]+').firstMatch(text);
+    if (urlMatch != null) {
+      extractedURL = urlMatch.group(0)!;
+      // Remove trailing colon if present
+      if (extractedURL!.endsWith(':')) {
+        extractedURL = extractedURL.substring(0, extractedURL.length - 1);
+      }
+      final urlStart = urlMatch.start;
+      final urlEnd = urlMatch.end;
+      final beforeURL = text.substring(0, urlStart);
+      final afterURL = text.substring(urlEnd);
+      final colonMaybe =
+          beforeURL.lastIndexOf(':') >= 0 || afterURL.indexOf(':') >= 0
+              ? ''
+              : ':';
+      text = beforeURL + colonMaybe + afterURL;
+    }
+
+    // Check if text contains a colon separator (title: description)
+    final colonIndex = text.indexOf(':');
+    if (colonIndex > 0 &&
+        !text.trim().startsWith('{') &&
+        !text.trim().startsWith('[')) {
+      final title = text.substring(0, colonIndex).trim();
+      final description = text.substring(colonIndex + 1).trim();
+
+      if (title.isNotEmpty) {
+        return ImportItem(
+          title: title,
+          description: description.isNotEmpty ? description : null,
+          link: extractedURL,
+          metadata: {
+            'source': extractedURL != null
+                ? 'plain_text_with_url'
+                : 'plain_text_with_colon'
+          },
+        );
+      }
     }
 
     // Check if text is an HTML link
@@ -316,28 +346,18 @@ class TextImporter {
       text = text.trim().substring(2);
     }
 
-    // Check if text contains a URL
-    final urlMatch = RegExp(r'https?://[^\s]+').firstMatch(text);
-    if (urlMatch != null) {
-      final url = urlMatch.group(0)!;
-      final title = text.replaceAll(url, '').trim();
-
-      return ImportItem(
-        title: title.isNotEmpty ? title : 'Link',
-        link: url,
-        metadata: {'source': 'plain_text_with_url'},
-      );
-    }
-
-    // Check if text looks like a markdown link [title](url)
-    final markdownMatch = RegExp(r'\[([^\]]+)\]\(([^)]+)\)').firstMatch(text);
+    // Check if text looks like a markdown link [title](url) with optional description
+    final markdownMatch =
+        RegExp(r'\[([^\]]+)\]\(([^)]+)\)(.*)').firstMatch(text);
     if (markdownMatch != null) {
       final title = markdownMatch.group(1) ?? 'Link';
       final url = markdownMatch.group(2) ?? '';
+      final description = markdownMatch.group(3)?.trim();
 
       return ImportItem(
         title: title,
         link: url,
+        description: description?.isNotEmpty == true ? description : null,
         metadata: {'source': 'markdown_link'},
       );
     }
