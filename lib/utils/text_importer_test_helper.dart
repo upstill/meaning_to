@@ -3,9 +3,9 @@ import 'package:meaning_to/utils/text_importer.dart';
 
 /// A helper class that exposes private methods of TextImporter for testing
 class TextImporterTestHelper {
-  /// Exposes the private _parsePlainTextItem method
-  static ImportItem? parsePlainTextItem(String text) {
-    return TextImporter._parsePlainTextItem(text);
+  /// Exposes the private _importFromText method
+  static ImportItem? importFromText(String text) {
+    return TextImporter._importFromText(text);
   }
 
   /// Exposes the private _parseJsonItem method

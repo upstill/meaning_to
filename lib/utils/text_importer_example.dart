@@ -5,15 +5,15 @@ import 'package:meaning_to/models/category.dart';
 
 /// Example usage of the TextImporter module
 class TextImporterExample {
-  /// Example: Import from clipboard for creating a new category
-  static Future<void> importFromClipboardForNewCategory() async {
-    print('=== Importing from Clipboard for New Category ===');
+  /// Example: Import from text for creating a new category
+  static Future<void> importFromTextForNewCategory() async {
+    print('=== Importing from Text for New Category ===');
     final category = Category(
         id: 1,
         ownerId: 'user123',
         headline: 'Test Category',
         createdAt: DateTime.now());
-    final stream = TextImporter.importFromText(
+    final stream = TextImporter.processTextData(
       'Test Task 1\nhttps://example.com/movie2 Movie Task 2',
       category: category,
     );
@@ -22,38 +22,36 @@ class TextImporterExample {
       print('Received item: $item');
       print('Domain: ${item.domain}');
       // Here you would typically create a Task from the item
-      // final task = TextImporter.importItemToTask(item, categoryId, ownerId);
+      final task = item.toTask(category, ownerId: 'user123');
+      print('Generated task: ${task.headline}');
     }
   }
 
-  /// Example: Import from file for adding to existing category
-  static Future<void> importFromFileForAddToCategory() async {
-    print('=== Importing from File for Add to Category ===');
+  /// Example: Import from text for adding to existing category
+  static Future<void> importFromTextForAddToCategory() async {
+    print('=== Importing from Text for Add to Category ===');
     final category = Category(
         id: 1,
         ownerId: 'user123',
         headline: 'Test Category',
         createdAt: DateTime.now());
-    final stream = TextImporter.importFromText(
+    final stream = TextImporter.processTextData(
       'Test Task 1\n{"title": "JSON Task", "link": "https://example.com", "domain": "custom-domain.com"}',
       category: category,
     );
-
-    if (stream == null) {
-      print('File selection was cancelled');
-      return;
-    }
 
     await for (final item in stream) {
       print('Received item: $item');
       print('Domain: ${item.domain}');
       // Here you would typically add the item to existing category tasks
+      final task = item.toTask(category, ownerId: 'user123');
+      print('Generated task: ${task.headline}');
     }
   }
 
-  /// Example: Import from clipboard for adding links to a task
-  static Future<void> importFromClipboardForAddToTask() async {
-    print('=== Importing from Clipboard for Add to Task ===');
+  /// Example: Import from text for adding links to a task
+  static Future<void> importFromTextForAddToTask() async {
+    print('=== Importing from Text for Add to Task ===');
 
     final task = Task(
       id: 1,
@@ -68,7 +66,7 @@ class TextImporterExample {
       finished: false,
     );
 
-    final stream = TextImporter.importFromText(
+    final stream = TextImporter.processTextData(
       'https://example.com/link1\n[Markdown Link](https://example.com/link2)',
       task: task,
     );
@@ -77,10 +75,8 @@ class TextImporterExample {
       print('Received item: $item');
       print('Domain: ${item.domain}');
       // Here you would typically convert the item to a link
-      final link = TextImporter.importItemToLink(item);
-      if (link != null) {
-        print('Generated link: $link');
-      }
+      final link = item.toLink();
+      print('Generated link: ${link.title} - ${link.url}');
     }
   }
 
@@ -89,7 +85,7 @@ class TextImporterExample {
     Category? category,
     Task? task,
   }) async {
-    final stream = TextImporter.importFromText(
+    final stream = TextImporter.processTextData(
       'Test Task 1\nhttps://example.com/movie2 Movie Task 2',
       category: category,
       task: task,
@@ -108,7 +104,7 @@ class TextImporterExample {
     Category? category,
     Task? task,
   }) async {
-    final stream = TextImporter.importFromText(
+    final stream = TextImporter.processTextData(
       'Test Task 1\nhttps://example.com/movie2 Movie Task 2',
       category: category,
       task: task,
@@ -186,14 +182,8 @@ class TextImporterExample {
     final tasks = <Task>[];
 
     for (final item in items) {
-      final task = TextImporter.importItemToTask(
-        item,
-        category: category,
-        ownerId: ownerId,
-      );
-      if (task != null) {
-        tasks.add(task);
-      }
+      final task = item.toTask(category, ownerId: ownerId);
+      tasks.add(task);
     }
 
     return tasks;
