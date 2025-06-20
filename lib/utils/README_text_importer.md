@@ -1,62 +1,172 @@
 # TextImporter Module
 
-The `TextImporter` module provides functionality for importing items from text data sources (clipboard and files) into the meaning_to app. It supports different import contexts and returns generators for sequential item processing.
+The `TextImporter` module provides functionality to import items from various text data sources, including clipboard data, files, and text strings. It supports multiple data formats and can process items in different contexts.
 
 ## Features
 
-- **Multiple Data Sources**: Import from clipboard or text files
-- **Flexible Contexts**: Support for different import scenarios
-- **Multiple Formats**: Handle plain text, JSON, markdown links, and URLs
-- **Streaming**: Process items sequentially using Dart streams
-- **Error Handling**: Robust error handling with meaningful error messages
+- **Multiple Data Formats**: Supports plain text, JSON objects, JSON arrays, markdown links, and HTML links
+- **Context-Aware Processing**: Can process items for new categories, existing categories, or specific tasks
+- **Domain Extraction**: Automatically extracts domains from URLs or allows explicit domain specification
+- **Stream Processing**: Provides both stream-based and batch processing options
+- **Error Handling**: Gracefully handles parsing errors and invalid data
 
-## Import Contexts
+## Core Classes
 
-The module supports three different import contexts:
+### ImportItem
 
-### 1. `ImportContext.newCategory`
-For creating a new category with imported items as tasks.
+Represents an item that can be imported from text data.
 
-### 2. `ImportContext.addToCategory` 
-For adding items to the tasks of an existing category.
+```dart
+class ImportItem {
+  final String title;
+  final String? description;
+  final String? link;
+  final String? domain;
+  final Map<String, dynamic> metadata;
+}
+```
 
-### 3. `ImportContext.addToTask`
-For adding links to an existing task.
+**Properties:**
+- `title`: The title/name of the item (required)
+- `description`: Optional description or notes
+- `link`: Optional URL associated with the item
+- `domain`: Optional domain (explicitly set or extracted from link)
+- `metadata`: Additional data from the source format
+
+**Methods:**
+- `toTask(category, ownerId)`: Converts the item to a Task
+- `toLink()`: Converts the item to a Link
+
+## Usage
+
+### Basic Import Operations
+
+#### Import from Clipboard
+
+```dart
+// Import for new category (no categoryId or task specified)
+final stream = TextImporter.importFromClipboard(
+  'Movie Title 1\nhttps://example.com/movie2 Movie Title 2',
+);
+
+// Import for existing category
+final category = Category(id: 1, ownerId: 'user123', headline: 'Test Category', createdAt: DateTime.now());
+final stream = TextImporter.importFromClipboard(
+  'Movie Title 1\nhttps://example.com/movie2 Movie Title 2',
+  category: category,
+);
+
+// Import for specific task
+final stream = TextImporter.importFromClipboard(
+  'https://example.com/link1\n[Markdown Link](https://example.com/link2)',
+  task: existingTask,
+);
+```
+
+#### Import from File
+
+```dart
+final stream = await TextImporter.importFromFile(
+  fileContent,
+  category: category, // Optional: for existing category
+  task: existingTask, // Optional: for specific task
+);
+```
+
+### Context-Aware Processing
+
+Use `processWithContext` to automatically determine the processing context based on parameters:
+
+```dart
+// New category context (no categoryId or task specified)
+final newCategoryStream = TextImporter.processWithContext(
+  'Test Task 1\nhttps://example.com/movie2 Movie Task 2',
+  ownerId: 'user123',
+);
+
+// Add to category context (categoryId specified)
+final addToCategoryStream = TextImporter.processWithContext(
+  'Test Task 1\nhttps://example.com/movie2 Movie Task 2',
+  category: category,
+  ownerId: 'user123',
+);
+
+// Add to task context (task specified)
+final addToTaskStream = TextImporter.processWithContext(
+  'https://example.com/link1\n[Markdown Link](https://example.com/link2)',
+  task: existingTask,
+);
+```
+
+### Processing Context Logic
+
+The context is determined by the parameters provided:
+
+- **If `task` is specified**: Process as `addToTask` (converts items to Links)
+- **If `category` is specified**: Process as `addToCategory` (converts items to Tasks)
+- **If neither is specified**: Process as `newCategory` (converts items to Tasks for new category)
+
+### Converting Imported Items
+
+#### Convert to Tasks
+
+```dart
+// Convert a single item to a Task
+final task = item.toTask(category, ownerId: 'user123');
+
+// Convert multiple items to Tasks
+final tasks = await TextImporter.convertToTasks(items, category, ownerId);
+```
+
+#### Convert to Links
+
+```dart
+// Convert a single item to a Link
+final link = item.toLink();
+
+// Process items as Links (for task context)
+final linkStream = TextImporter.processForAddToTask(textData);
+```
 
 ## Supported Data Formats
 
-### Plain Text
+### 1. Plain Text (one item per line)
 ```
 Movie Title 1
 Movie Title 2
 https://example.com/movie3 Movie Title 3
 ```
 
-### JSON Objects (one per line)
+### 2. JSON Objects (one per line)
 ```json
 {"title": "Movie 1", "description": "A great movie", "link": "https://example.com/movie1"}
 {"title": "Movie 2", "notes": "Another great movie", "url": "https://example.com/movie2"}
+{"title": "Movie 3", "link": "https://example.com/movie3", "domain": "custom-domain.com"}
 ```
 
-### JSON Arrays
+### 3. JSON Array
 ```json
 [{"title": "Movie 1"}, {"title": "Movie 2", "link": "https://example.com/movie2"}]
 ```
 
-### Markdown Links
-```
+### 4. Markdown Links
+```markdown
 [Inception](https://example.com/inception)
 [The Matrix](https://example.com/matrix)
 ```
 
-### URLs with Titles
+### 5. URLs with Titles
 ```
 https://example.com/movie1 Movie Title 1
 https://example.com/movie2 Movie Title 2
 ```
 
-### Mixed Formats
-The importer can handle mixed formats in the same input:
+### 6. HTML Links
+```html
+<a href="https://example.com">Test Link</a>
+```
+
+### 7. Mixed Formats
 ```
 Movie Title 1
 {"title": "Movie 2", "link": "https://example.com/movie2"}
@@ -64,193 +174,60 @@ Movie Title 1
 https://example.com/movie4 Movie Title 4
 ```
 
-## Usage Examples
+## Domain Handling
 
-### Basic Import from Clipboard
+The module provides flexible domain handling:
 
-```dart
-import 'package:meaning_to/utils/text_importer.dart';
-
-// Import for new category
-final controller = TextImporter.importFromClipboard(ImportContext.newCategory);
-
-controller.stream.listen(
-  (item) {
-    print('Received item: $item');
-    // Process the item (e.g., create a Task)
-  },
-  onError: (error) {
-    print('Error: $error');
-  },
-  onDone: () {
-    print('Import completed');
-  },
-);
+### Explicit Domain
+```json
+{"title": "Movie with custom domain", "link": "https://example.com/movie", "domain": "custom-domain.com"}
 ```
 
-### Import from File
-
-```dart
-// Import from file
-final controller = await TextImporter.importFromFile(ImportContext.addToCategory);
-
-if (controller != null) {
-  controller.stream.listen(
-    (item) {
-      print('Received item: $item');
-      // Process the item
-    },
-    onError: (error) {
-      print('Error: $error');
-    },
-    onDone: () {
-      print('Import completed');
-    },
-  );
-}
+### Auto-Extracted Domain
+```json
+{"title": "Movie with auto-extracted domain", "link": "https://letterboxd.com/movie"}
 ```
 
-### Convert ImportItem to Task
-
-```dart
-// For new category context
-final task = TextImporter.importItemToTask(item, categoryId, ownerId);
-if (task != null) {
-  // Save task to database
-}
-```
-
-### Convert ImportItem to Link
-
-```dart
-// For add to task context
-final link = TextImporter.importItemToLink(item);
-if (link != null) {
-  // Add link to existing task
-}
-```
-
-### Process All Items at Once
-
-```dart
-final items = <ImportItem>[];
-final controller = TextImporter.importFromClipboard(ImportContext.newCategory);
-
-await for (final item in controller.stream) {
-  items.add(item);
-}
-
-// Now process all items
-for (final item in items) {
-  // Process item
-}
-```
-
-### Custom Filtering
-
-```dart
-final controller = TextImporter.importFromClipboard(ImportContext.newCategory);
-
-controller.stream
-    .where((item) => item.title.length > 3) // Filter out short titles
-    .listen(
-  (item) {
-    print('Filtered item: $item');
-  },
-  onError: (error) {
-    print('Error: $error');
-  },
-  onDone: () {
-    print('Import completed');
-  },
-);
-```
-
-## ImportItem Class
-
-The `ImportItem` class represents a single item that can be imported:
-
-```dart
-class ImportItem {
-  final String title;           // Required: The title/name of the item
-  final String? description;    // Optional: Description or notes
-  final String? link;           // Optional: URL or link
-  final String? domain;         // Optional: Domain name (can be set explicitly or extracted from link)
-  final Map<String, dynamic>? metadata; // Optional: Additional metadata
-}
-```
-
-### Domain Handling
-
-The `ImportItem` class provides flexible domain handling:
-
-- **Explicit Domain**: You can set the domain explicitly during creation
-- **Automatic Extraction**: If no domain is provided but a link is available, the domain is automatically extracted from the URL
-- **Domain Getter**: Use `item.extractedDomain` to get the domain (either the explicitly set one or the extracted one)
-
-#### Examples:
-
-```dart
-// Domain explicitly set
-final item1 = ImportItem(
-  title: 'Movie Title',
-  link: 'https://example.com/movie',
-  domain: 'custom-domain.com', // This domain will be used
-);
-
-// Domain automatically extracted from link
-final item2 = ImportItem(
-  title: 'Movie Title',
-  link: 'https://example.com/movie', // Domain will be extracted as 'example.com'
-);
-
-// Get the domain (either explicit or extracted)
-print(item1.extractedDomain); // 'custom-domain.com'
-print(item2.extractedDomain); // 'example.com'
-```
-
-#### JSON Import with Domain:
+### JustWatch Integration
+The module includes special handling for JustWatch shares:
 
 ```json
-{
-  "title": "Movie Title",
-  "link": "https://example.com/movie",
-  "domain": "custom-domain.com"
-}
+{"title": "Severance", "host": "www.justwatch.com", "scheme": "https", "path": "/us/tv-show/severance"}
 ```
 
-If the `domain` field is provided in JSON, it will be used. Otherwise, the domain will be extracted from the `link` field.
+This automatically assembles the full URL: `https://www.justwatch.com/us/tv-show/severance`
 
 ## Error Handling
 
-The module provides comprehensive error handling:
+The module gracefully handles various error conditions:
 
-- **Empty Data**: Handles empty clipboard or file content
-- **Invalid JSON**: Gracefully falls back to plain text parsing
-- **File Access**: Handles file permission and access errors
-- **Stream Errors**: Propagates errors through the stream for proper handling
+- **Invalid JSON**: Returns null for malformed JSON objects
+- **Empty Lines**: Skips empty or whitespace-only lines
+- **Missing Titles**: Returns null for items without titles
+- **Invalid URLs**: Handles malformed URLs gracefully
+- **Domain Extraction**: Returns null for URLs that can't be parsed
 
-## File Types Supported
+## Testing
 
-When importing from files, the module accepts:
-- `.txt` - Plain text files
-- `.json` - JSON files
-- `.csv` - CSV files (treated as plain text)
+The module includes comprehensive tests covering:
 
-## Integration with Existing Code
+- All supported data formats
+- Domain extraction and handling
+- Error conditions
+- JustWatch integration
+- Context-aware processing
 
-The module is designed to integrate seamlessly with the existing meaning_to codebase:
+Run tests with:
+```bash
+flutter test test/utils/text_importer_test.dart
+```
 
-- Uses existing `Task` and `Category` models
-- Follows the same patterns as the JustWatch importer
-- Compatible with the existing link processing system
-- Uses the same file selection approach as other importers
+## Examples
 
-## Future Enhancements
+See `lib/utils/text_importer_example.dart` for complete usage examples including:
 
-Potential future improvements:
-- CSV parsing with column mapping
-- Batch processing for large files
-- Progress reporting for long imports
-- Custom format plugins
-- Import validation and preview 
+- Import from clipboard for different contexts
+- Import from files
+- Custom filtering
+- Context-aware processing
+- Domain handling demonstrations 
