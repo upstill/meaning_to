@@ -97,34 +97,34 @@ void main() {
   // Test data that puts the same data in different formats
   const String plainTextData = '''
   Task 1
-  Task 2: with description
-  Task 3 with link https://example.com with description description"
+  Task 2: description
+  Task 3 https://example.com description"
   ''';
 
   const String jsonData = '''
   {"title": "Task 1"}
   {"title": "Task 2", "description": "description"}
-  {"title": "Task 3", "link": "https://example.com", "description": "Description"}
+  {"title": "Task 3", "link": "https://example.com", "description": "description"}
   ''';
 
   const String jsonArrayData = '''
   [
     {"title": "Task 1"},
     {"title": "Task 2", "description": "description"},
-    {"title": "Task 3", "link": "https://example.com", "description": "Description"}
+    {"title": "Task 3", "link": "https://example.com", "description": "description"}
   ]
   ''';
 
   const String markdownData = '''
   [Task 1]()
-  [Task 2]() with description Description
-  [Task 3](https://example.com) with description Description
+  [Task 2]() description
+  [Task 3](https://example.com) description
   ''';
 
   const String mixedData = '''
   Task 1
-  {"title": "Task 2", "description": "Description"}
-  [Task 3](https://example.com) with description Description
+  {"title": "Task 2", "description": "description"}
+  [Task 3](https://example.com) description
   ''';
 
   // All the above should result in the following ImportItems
