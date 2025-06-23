@@ -8,6 +8,12 @@ import 'package:meaning_to/utils/text_importer.dart';
 /// A cache management module for Categories and Tasks
 /// Can handle both saved Categories from the database and new unsaved Categories with Tasks
 class CacheManager {
+  static final CacheManager _instance = CacheManager._internal();
+
+  factory CacheManager() => _instance;
+
+  CacheManager._internal();
+
   // Current context
   Category? _currentCategory;
   List<Task>? _currentTasks;
@@ -352,9 +358,10 @@ class CacheManager {
 
     final task = _currentTasks![taskIndex];
     final currentDeferral = task.deferral ?? 60;
-    final newDeferral = currentDeferral * 2;
+    final newDeferral = currentDeferral * 2; // Double for next time
     final now = DateTime.now();
-    final newSuggestibleAt = now.add(Duration(minutes: currentDeferral));
+    final newSuggestibleAt = now.add(
+        Duration(minutes: currentDeferral)); // Use current deferral for timing
 
     final updatedTask = Task(
       id: task.id,
@@ -371,7 +378,109 @@ class CacheManager {
       finished: task.finished,
     );
 
-    await updateTask(updatedTask);
+    // Update in database if this is a saved category
+    if (!_isUnsavedCategory && _currentUserId != null) {
+      await Supabase.instance.client
+          .from('Tasks')
+          .update({
+            'suggestible_at': newSuggestibleAt.toIso8601String(),
+            'deferral': newDeferral,
+          })
+          .eq('id', taskId)
+          .eq('owner_id', _currentUserId!);
+    }
+
+    // Update in cache
+    _currentTasks![taskIndex] = updatedTask;
+    _sortTasks();
+
+    print(
+        'CacheManager: Task ${task.headline} rejected, deferred to ${newSuggestibleAt.toLocal()}');
+  }
+
+  /// Revive a task by setting its suggestibleAt time to now
+  Future<void> reviveTask(int taskId) async {
+    final taskIndex = _currentTasks!.indexWhere((t) => t.id == taskId);
+    if (taskIndex == -1) {
+      throw Exception('Task not found in cache');
+    }
+
+    final task = _currentTasks![taskIndex];
+    final now = DateTime.now();
+
+    final updatedTask = Task(
+      id: task.id,
+      categoryId: task.categoryId,
+      headline: task.headline,
+      notes: task.notes,
+      ownerId: task.ownerId,
+      createdAt: task.createdAt,
+      suggestibleAt: now, // Set to current time
+      triggersAt: task.triggersAt,
+      deferral: task.deferral,
+      links: task.links,
+      processedLinks: task.processedLinks,
+      finished: task.finished,
+    );
+
+    // Update in database if this is a saved category
+    if (!_isUnsavedCategory && _currentUserId != null) {
+      await Supabase.instance.client
+          .from('Tasks')
+          .update({
+            'suggestible_at': now.toIso8601String(),
+          })
+          .eq('id', taskId)
+          .eq('owner_id', _currentUserId!);
+    }
+
+    // Update in cache
+    _currentTasks![taskIndex] = updatedTask;
+    _sortTasks();
+
+    print('CacheManager: Task ${task.headline} revived at ${now.toLocal()}');
+  }
+
+  /// Unfinish a task by setting finished to false
+  Future<void> unfinishTask(int taskId) async {
+    final taskIndex = _currentTasks!.indexWhere((t) => t.id == taskId);
+    if (taskIndex == -1) {
+      throw Exception('Task not found in cache');
+    }
+
+    final task = _currentTasks![taskIndex];
+
+    final updatedTask = Task(
+      id: task.id,
+      categoryId: task.categoryId,
+      headline: task.headline,
+      notes: task.notes,
+      ownerId: task.ownerId,
+      createdAt: task.createdAt,
+      suggestibleAt: task.suggestibleAt,
+      triggersAt: task.triggersAt,
+      deferral: task.deferral,
+      links: task.links,
+      processedLinks: task.processedLinks,
+      finished: false, // Set to false
+    );
+
+    // Update in database if this is a saved category
+    if (!_isUnsavedCategory && _currentUserId != null) {
+      await Supabase.instance.client
+          .from('Tasks')
+          .update({
+            'finished': false,
+          })
+          .eq('id', taskId)
+          .eq('owner_id', _currentUserId!);
+    }
+
+    // Update in cache
+    _currentTasks![taskIndex] = updatedTask;
+    _sortTasks();
+
+    print('CacheManager: Task ${task.headline} marked as unfinished');
   }
 
   /// Clear the cache
