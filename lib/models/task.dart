@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/models/link.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/utils/cache_manager.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -19,6 +21,21 @@ class Task {
   final List<String>? links;
   List<ProcessedLink>? processedLinks;
   final bool finished;
+
+  // Global cache manager instance
+  static final CacheManager _cacheManager = CacheManager();
+
+  // Static variables for current task management
+  static Task? _currentTask;
+  static List<Task>? _currentTaskSet;
+  static Category? _currentCategory;
+  static String? _currentUserId;
+
+  // Getters
+  static Task? get currentTask => _currentTask;
+  static List<Task>? get currentTaskSet => _currentTaskSet;
+  static Category? get currentCategory => _currentCategory;
+  static String? get currentUserId => _currentUserId;
 
   Task({
     required this.id,
@@ -61,12 +78,12 @@ class Task {
 
     final links = parseLinks(json['links']);
     print('Parsed links from JSON: $links');
-    
+
     // Get suggestibleAt, defaulting to current time if null
-    final suggestibleAt = json['suggestible_at'] != null 
+    final suggestibleAt = json['suggestible_at'] != null
         ? DateTime.parse(json['suggestible_at'] as String)
         : DateTime.now();
-    
+
     // Create the task with the links
     final task = Task(
       id: json['id'] as int,
@@ -76,12 +93,12 @@ class Task {
       ownerId: json['owner_id'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
       suggestibleAt: suggestibleAt,
-      triggersAt: json['triggers_at'] != null 
+      triggersAt: json['triggers_at'] != null
           ? DateTime.parse(json['triggers_at'] as String)
           : null,
       deferral: json['deferral'] as int?,
       links: links,
-      processedLinks: null,  // Will be processed when needed
+      processedLinks: null, // Will be processed when needed
       finished: json['finished'] as bool,
     );
 
@@ -111,22 +128,12 @@ class Task {
       'suggestible_at': suggestibleAt?.toIso8601String(),
       'triggers_at': triggersAt?.toIso8601String(),
       'deferral': deferral,
-      'links': links != null ? (links!.length == 1 ? links![0] : jsonEncode(links)) : null,
+      'links': links != null
+          ? (links!.length == 1 ? links![0] : jsonEncode(links))
+          : null,
       'finished': finished,
     };
   }
-
-  // Static cache for current context
-  static Task? _currentTask;
-  static List<Task>? _currentTaskSet;
-  static Category? _currentCategory;
-  static String? _currentUserId;
-
-  // Getters for the cache
-  static Task? get currentTask => _currentTask;
-  static List<Task>? get currentTaskSet => _currentTaskSet;
-  static Category? get currentCategory => _currentCategory;
-  static String? get currentUserId => _currentUserId;
 
   // Clear the cache
   static void clearCache() {
@@ -142,7 +149,7 @@ class Task {
     print('Task: Updating current task in cache...');
     print('Task: Current task ID: ${_currentTask?.id}');
     print('Task: Updated task ID: ${updatedTask.id}');
-    
+
     // Update in task set if it exists
     if (_currentTaskSet != null) {
       final index = _currentTaskSet!.indexWhere((t) => t.id == updatedTask.id);
@@ -153,7 +160,7 @@ class Task {
         sortTaskSet(_currentTaskSet!);
       }
     }
-    
+
     // Update current task if it matches
     if (_currentTask?.id == updatedTask.id) {
       print('Task: Updating current task reference');
@@ -163,15 +170,16 @@ class Task {
 
   /// Updates the current context and fetches tasks for the given category and user.
   /// Returns the task set if successful, null if no tasks are found.
-  static Future<List<Task>?> loadTaskSet(Category category, String userId) async {
+  static Future<List<Task>?> loadTaskSet(
+      Category category, String userId) async {
     try {
       print('Loading task set for category ${category.id} and user $userId');
-      
+
       // Update current context
       _currentCategory = category;
       _currentUserId = userId;
-      _currentTask = null;  // Clear current task when changing context
-      
+      _currentTask = null; // Clear current task when changing context
+
       // Query tasks from the database
       final response = await supabase
           .from('Tasks')
@@ -179,8 +187,9 @@ class Task {
           .eq('category_id', category.id)
           .eq('owner_id', userId)
           .order('created_at', ascending: false);
-      
-      print('Task response fields: ${response.isNotEmpty ? response.first.keys.toList() : 'No tasks found'}');
+
+      print(
+          'Task response fields: ${response.isNotEmpty ? response.first.keys.toList() : 'No tasks found'}');
 
       if (response == null || response.isEmpty) {
         print('No tasks found for category ${category.id}');
@@ -194,7 +203,7 @@ class Task {
           .toList();
       // Sort: unfinished first, then by suggestibleAt ascending
       sortTaskSet(_currentTaskSet!);
-      
+
       print('Loaded ${_currentTaskSet!.length} tasks into cache');
 
       // Process links for all tasks in the set
@@ -205,12 +214,12 @@ class Task {
           await task.ensureLinksProcessed();
         }
       }
-      
+
       return _currentTaskSet;
     } catch (e, stackTrace) {
       print('Error loading task set: $e');
       print('Stack trace: $stackTrace');
-      clearCache();  // Clear cache on error
+      clearCache(); // Clear cache on error
       rethrow;
     }
   }
@@ -221,8 +230,8 @@ class Task {
   static Future<Task?> nextTask(Category category, String userId) async {
     try {
       // Check if we need to load a new task set
-      if (_currentTaskSet == null || 
-          _currentCategory?.id != category.id || 
+      if (_currentTaskSet == null ||
+          _currentCategory?.id != category.id ||
           _currentUserId != userId) {
         await loadTaskSet(category, userId);
       }
@@ -235,7 +244,9 @@ class Task {
       // Count the number of unfinished tasks at the beginning of the sorted list
       int unfinishedCount = 0;
       for (final task in _currentTaskSet!) {
-        if (!task.finished && (task.suggestibleAt == null || !task.suggestibleAt!.isAfter(DateTime.now()))) {
+        if (!task.finished &&
+            (task.suggestibleAt == null ||
+                !task.suggestibleAt!.isAfter(DateTime.now()))) {
           unfinishedCount++;
         } else {
           break;
@@ -253,11 +264,13 @@ class Task {
       // Process links for the selected task
       print('Processing links for selected task: ${_currentTask!.headline}');
       await _currentTask!.ensureLinksProcessed();
-      
+
       // Update only the suggestible_at field in the database for the selected task
       await supabase
           .from('Tasks')
-          .update({'suggestible_at': _currentTask!.suggestibleAt?.toIso8601String()})
+          .update({
+            'suggestible_at': _currentTask!.suggestibleAt?.toIso8601String()
+          })
           .eq('id', _currentTask!.id)
           .eq('owner_id', _currentTask!.ownerId);
       return _currentTask;
@@ -272,14 +285,15 @@ class Task {
   static Future<void> finishCurrentTask() async {
     final currentTask = _currentTask;
     final currentUserId = _currentUserId;
-    
+
     if (currentTask == null || currentUserId == null) {
       print('[finishCurrentTask] No current task or user ID');
       throw Exception('No current task to finish');
     }
 
     try {
-      print('[finishCurrentTask] Attempting to update task id: \\${currentTask.id}, owner_id: \\${currentUserId}');
+      print(
+          '[finishCurrentTask] Attempting to update task id: \\${currentTask.id}, owner_id: \\${currentUserId}');
       // Update in database
       final response = await supabase
           .from('Tasks')
@@ -301,12 +315,13 @@ class Task {
         deferral: currentTask.deferral,
         links: currentTask.links,
         processedLinks: currentTask.processedLinks,
-        finished: true,  // Set to true
+        finished: true, // Set to true
       );
 
       // Update the task in the cache
       if (_currentTaskSet != null) {
-        final index = _currentTaskSet!.indexWhere((t) => t.id == currentTask.id);
+        final index =
+            _currentTaskSet!.indexWhere((t) => t.id == currentTask.id);
         if (index != -1) {
           _currentTaskSet![index] = updatedTask;
         }
@@ -330,7 +345,7 @@ class Task {
   static Future<void> rejectCurrentTask() async {
     final currentTask = _currentTask;
     final currentUserId = _currentUserId;
-    
+
     print("Rejecting task ${currentTask?.headline}");
     if (currentTask == null || currentUserId == null) {
       throw Exception('No current task to reject');
@@ -340,7 +355,7 @@ class Task {
       // Calculate new deferral time (default to 60 minutes if not set)
       final currentDeferral = currentTask.deferral ?? 60;
       final newDeferral = currentDeferral * 2;
-      
+
       // Calculate new suggestible time
       final now = DateTime.now();
       final newSuggestibleAt = now.add(Duration(minutes: currentDeferral));
@@ -373,9 +388,10 @@ class Task {
 
       // Update the task in the cache
       if (_currentTaskSet != null) {
-        final index = _currentTaskSet!.indexWhere((t) => t.id == currentTask.id);
+        final index =
+            _currentTaskSet!.indexWhere((t) => t.id == currentTask.id);
         if (index != -1) {
-        print("Updating task \\${updatedTask.headline} in cache");
+          print("Updating task \\${updatedTask.headline} in cache");
           _currentTaskSet![index] = updatedTask;
         }
         // Resort the cache after modification
@@ -383,7 +399,8 @@ class Task {
       }
       _currentTask = updatedTask;
 
-      print('Task deferred to ${newSuggestibleAt.toLocal()} with new deferral of $newDeferral minutes');
+      print(
+          'Task deferred to ${newSuggestibleAt.toLocal()} with new deferral of $newDeferral minutes');
     } catch (e, stackTrace) {
       print('Error rejecting task: $e');
       print('Stack trace: $stackTrace');
@@ -400,13 +417,13 @@ class Task {
       print('Current user: $currentUserId');
 
       final task = await nextTask(category, userId);
-      
+
       print('After nextTask:');
       print('Current task: ${currentTask?.headline}');
       print('Task set size: ${currentTaskSet?.length}');
       print('Current category: ${currentCategory?.headline}');
       print('Current user: $currentUserId');
-      
+
       return task;
     } catch (e, stackTrace) {
       print('Error loading random task: $e');
@@ -434,7 +451,8 @@ class Task {
       final minutes = t.suggestibleAt != null
           ? t.suggestibleAt!.difference(DateTime.now()).inMinutes
           : 'n/a';
-      print('  headline: "${t.headline}", finished: ${t.finished}, suggestible in $minutes minutes');
+      print(
+          '  headline: "${t.headline}", finished: ${t.finished}, suggestible in $minutes minutes');
     }
   }
 
@@ -448,7 +466,11 @@ class Task {
       }
     } catch (e) {
       // Fallback: try splitting by comma
-      return linksString.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      return linksString
+          .split(',')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
     }
     return [];
   }
@@ -469,7 +491,7 @@ class Task {
   String? getSuggestibleTimeDisplay() {
     if (suggestibleAt == null) return null;
     if (!suggestibleAt!.isAfter(DateTime.now())) return null;
-    
+
     final difference = suggestibleAt!.difference(DateTime.now());
     final seconds = difference.inSeconds;
     final minutes = difference.inMinutes;
@@ -500,18 +522,20 @@ class Task {
   // Update ensureLinksProcessed to only handle display processing
   Future<void> ensureLinksProcessed() async {
     // If links are already processed or there are no links, return immediately
-    if (links == null || (processedLinks != null && processedLinks!.length == links!.length)) {
+    if (links == null ||
+        (processedLinks != null && processedLinks!.length == links!.length)) {
       return;
     }
 
     print('Processing links for display: $headline');
     print('Raw URLs: $links');
-    
+
     // Process links for display only
     final processed = await LinkProcessor.processLinksForDisplay(links!);
     processedLinks = processed;
-    
-    print('Processed links for display: ${processed.map((p) => p.originalLink).toList()}');
+
+    print(
+        'Processed links for display: ${processed.map((p) => p.originalLink).toList()}');
   }
 
   // Add a method to validate links before saving
@@ -524,7 +548,7 @@ class Task {
   static Future<void> reviveTask(Task task, String userId) async {
     try {
       final now = DateTime.now();
-      
+
       // Update in database
       await supabase
           .from('Tasks')
@@ -540,7 +564,7 @@ class Task {
         notes: task.notes,
         ownerId: task.ownerId,
         createdAt: task.createdAt,
-        suggestibleAt: now,  // Set to current time
+        suggestibleAt: now, // Set to current time
         triggersAt: task.triggersAt,
         deferral: task.deferral,
         links: task.links,
@@ -568,4 +592,4 @@ class Task {
       rethrow;
     }
   }
-} 
+}

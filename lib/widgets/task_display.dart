@@ -9,6 +9,7 @@ class TaskDisplay extends StatefulWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final VoidCallback? onTap;
+  final Function(DateTime)? onUpdateSuggestibleAt;
 
   const TaskDisplay({
     super.key,
@@ -17,6 +18,7 @@ class TaskDisplay extends StatefulWidget {
     this.onEdit,
     this.onDelete,
     this.onTap,
+    this.onUpdateSuggestibleAt,
   });
 
   /// Builds a widget to display a task, with optional controls.
@@ -29,6 +31,7 @@ class TaskDisplay extends StatefulWidget {
     VoidCallback? onEdit,
     VoidCallback? onDelete,
     VoidCallback? onTap,
+    Function(DateTime)? onUpdateSuggestibleAt,
   }) {
     return TaskDisplay(
       task: task,
@@ -36,6 +39,7 @@ class TaskDisplay extends StatefulWidget {
       onEdit: onEdit,
       onDelete: onDelete,
       onTap: onTap,
+      onUpdateSuggestibleAt: onUpdateSuggestibleAt,
     );
   }
 
@@ -78,6 +82,15 @@ class _TaskDisplayState extends State<TaskDisplay> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // Debug logging for suggestibleAt and color logic
+    final isDeferred = widget.task.suggestibleAt != null &&
+        widget.task.suggestibleAt!.isAfter(DateTime.now());
+    print(
+        'TaskDisplay: "${widget.task.headline}" - suggestibleAt: ${widget.task.suggestibleAt}');
+    print('TaskDisplay: "${widget.task.headline}" - isDeferred: $isDeferred');
+    print(
+        'TaskDisplay: "${widget.task.headline}" - current time: ${DateTime.now()}');
 
     // SUPER detailed debug logging for link detection
     print('\n=== TaskDisplay build for "${widget.task.headline}" ===');
@@ -135,12 +148,28 @@ class _TaskDisplayState extends State<TaskDisplay> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Flexible(
-                              child: Text(
-                                widget.task.headline,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                              child: Builder(
+                                builder: (context) {
+                                  // Use gray for deferred tasks, black for available tasks
+                                  final now = DateTime.now()
+                                      .toUtc(); // Convert to UTC for proper comparison
+                                  final suggestibleAt =
+                                      widget.task.suggestibleAt;
+                                  final isDeferred = suggestibleAt != null &&
+                                      suggestibleAt.isAfter(now);
+                                  final textColor =
+                                      isDeferred ? Colors.grey : Colors.black;
+
+                                  return Text(
+                                    widget.task.headline,
+                                    style:
+                                        theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: textColor,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  );
+                                },
                               ),
                             ),
                             if (hasLinks ||
@@ -249,6 +278,47 @@ class _TaskDisplayState extends State<TaskDisplay> {
                     ),
                   ],
                 ),
+                // Show suggestible time for deferred tasks
+                if (widget.task.suggestibleAt != null &&
+                    widget.task.suggestibleAt!
+                        .isAfter(DateTime.now().toUtc())) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.schedule,
+                        size: 14,
+                        color: Colors.grey[600],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Available ${_formatSuggestibleTime(widget.task.suggestibleAt!)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (widget.onUpdateSuggestibleAt != null)
+                        ElevatedButton(
+                          onPressed: () {
+                            widget
+                                .onUpdateSuggestibleAt!(DateTime.now().toUtc());
+                          },
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            minimumSize: Size(0, 28),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            textStyle: theme.textTheme.bodySmall
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                          child: const Text('Make Available Now'),
+                        ),
+                    ],
+                  ),
+                ],
                 // Show links if expanded
                 if (_isExpanded && hasLinks) ...[
                   const SizedBox(height: 8),
@@ -302,6 +372,26 @@ class _TaskDisplayState extends State<TaskDisplay> {
       return '${difference.inHours}h ago';
     } else if (difference.inDays < 7) {
       return '${difference.inDays}d ago';
+    } else {
+      return '${date.month}/${date.day}/${date.year}';
+    }
+  }
+
+  /// Format a suggestible time for display
+  static String _formatSuggestibleTime(DateTime date) {
+    final now = DateTime.now().toUtc();
+    final difference = date.difference(now);
+
+    if (difference.inDays == 0) {
+      if (difference.inHours == 0) {
+        if (difference.inMinutes == 0) {
+          return 'just now';
+        }
+        return '${difference.inMinutes}m';
+      }
+      return '${difference.inHours}h';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d';
     } else {
       return '${date.month}/${date.day}/${date.year}';
     }

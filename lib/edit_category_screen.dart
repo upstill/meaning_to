@@ -13,6 +13,7 @@ import 'package:meaning_to/utils/link_extractor.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/widgets/task_display.dart';
+import 'package:meaning_to/utils/cache_manager.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -52,11 +53,13 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   late TextEditingController _invitationController;
   bool _isLoading = false;
   String? _error;
-  List<Task> _tasks = [];
   bool _isLoadingTasks = false;
   late bool _editTasksLocal;
   bool _isEditing = false; // New state to track edit mode
   List<Task> _newTasks = []; // Temporary list for tasks in new categories
+
+  // Add a getter for tasks from the cache
+  List<Task> get _tasks => CacheManager().currentTasks ?? [];
 
   @override
   void initState() {
@@ -95,10 +98,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('No user logged in');
 
-      // Load tasks into cache
-      await Task.loadTaskSet(widget.category!, userId);
+      // Use CacheManager to initialize the cache for the selected category
+      await CacheManager()
+          .initializeWithSavedCategory(widget.category!, userId);
       setState(() {
-        _tasks = Task.currentTaskSet ?? [];
         _isLoadingTasks = false;
       });
     } catch (e) {
@@ -234,7 +237,15 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       );
 
       if (result == true) {
-        _loadTasks(); // Reload tasks if changes were made
+        // Refresh the cache to get updated task data
+        final userId = supabase.auth.currentUser?.id;
+        if (userId != null) {
+          await CacheManager()
+              .initializeWithSavedCategory(widget.category!, userId);
+          setState(() {
+            // Trigger rebuild to reflect changes
+          });
+        }
       }
     }
   }
@@ -269,7 +280,15 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       );
 
       if (result == true) {
-        _loadTasks(); // Reload tasks if a new task was created
+        // Refresh the cache to get the new task
+        final userId = supabase.auth.currentUser?.id;
+        if (userId != null) {
+          await CacheManager()
+              .initializeWithSavedCategory(widget.category!, userId);
+          setState(() {
+            // Trigger rebuild to reflect changes
+          });
+        }
       }
     }
   }
@@ -337,13 +356,18 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         finished: false,
       );
 
-      setState(() {
-        if (widget.category == null) {
+      if (widget.category == null) {
+        // For new categories, add to _newTasks
+        setState(() {
           _newTasks.add(task);
-        } else {
-          _tasks.add(task);
-        }
-      });
+        });
+      } else {
+        // For existing categories, use CacheManager to add the task
+        await CacheManager().addTask(task);
+        setState(() {
+          // Trigger rebuild to reflect changes
+        });
+      }
 
       // Show success message
       if (mounted) {
@@ -422,79 +446,18 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       return;
     }
 
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null) {
-      print('No user logged in');
-      setState(() {
-        _error = 'No user logged in';
-      });
-      return;
-    }
-
-    print('User ID: $userId, Task ID: ${task.id}');
-
     try {
-      // Delete from database first
-      print('Attempting database deletion...');
-      final response = await supabase
-          .from('Tasks')
-          .delete()
-          .eq('id', task.id)
-          .eq('owner_id', userId);
+      // Use CacheManager to delete the task
+      await CacheManager().removeTask(task.id);
 
-      print('Database delete response type: ${response.runtimeType}');
-      print('Database delete response: $response');
-      print(
-          'Database delete response length: ${response is List ? response.length : 'N/A'}');
-
-      // Check if deletion was successful
-      if (response is List && response.isEmpty) {
-        print(
-            'Database deletion successful - no rows returned (expected for delete)');
-      } else {
-        print('Database deletion may have failed - unexpected response');
-      }
-
-      // Verify deletion by trying to fetch the task
-      print('Verifying deletion by checking if task still exists...');
-      try {
-        final verifyResponse = await supabase
-            .from('Tasks')
-            .select('id')
-            .eq('id', task.id)
-            .eq('owner_id', userId);
-
-        print('Verification response: $verifyResponse');
-        if (verifyResponse is List && verifyResponse.isNotEmpty) {
-          print(
-              'WARNING: Task still exists in database after deletion attempt!');
-          throw Exception(
-              'Task deletion failed - task still exists in database');
-        } else {
-          print('Verification successful - task no longer exists in database');
-        }
-      } catch (verifyError) {
-        print('Error during verification: $verifyError');
-        throw verifyError;
-      }
-
-      // Only remove from UI if database deletion was successful
+      // Trigger a rebuild to reflect the changes
       setState(() {
-        _tasks.remove(task);
         _error = null; // Clear any previous errors
       });
 
-      print('Successfully removed task from UI: ${task.headline}');
-
-      // Also update the task cache if this category is the current one
-      if (Task.currentCategory?.id == widget.category?.id) {
-        print('Updating task cache for current category...');
-        await Task.loadTaskSet(widget.category!, userId);
-        print('Task cache updated');
-      }
+      print('Successfully deleted task: ${task.headline}');
     } catch (e) {
       print('Error deleting task: $e');
-      print('Error type: ${e.runtimeType}');
       setState(() {
         _error = 'Error deleting task: $e';
       });
@@ -513,43 +476,20 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     print('=== End delete task ===');
   }
 
-  Future<void> _toggleTaskCompletion(Task task) async {
-    final newFinishedState = !task.finished;
-
-    setState(() {
-      final index = _tasks.indexWhere((t) => t.id == task.id);
-      if (index != -1) {
-        _tasks[index] = Task(
-          id: task.id,
-          categoryId: task.categoryId,
-          headline: task.headline,
-          notes: task.notes,
-          ownerId: task.ownerId,
-          createdAt: task.createdAt,
-          suggestibleAt: task.suggestibleAt,
-          triggersAt: task.triggersAt,
-          deferral: task.deferral,
-          links: task.links,
-          finished: newFinishedState,
-        );
-      }
-    });
-
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return;
-
-    try {
-      await supabase
-          .from('Tasks')
-          .update({'finished': newFinishedState})
-          .eq('id', task.id)
-          .eq('owner_id', userId);
-    } catch (e) {
-      print('Error updating task completion: $e');
-      setState(() {
-        _error = 'Error updating task: $e';
-      });
+  /// Toggle task completion status
+  void _toggleTaskCompletion(Task task) {
+    if (task.finished) {
+      CacheManager().unfinishTask(task.id);
+    } else {
+      CacheManager().finishTask(task.id);
     }
+    setState(() {});
+  }
+
+  /// Update task suggestibleAt time to current time (make available immediately)
+  Future<void> _makeTaskAvailable(Task task) async {
+    await CacheManager().reviveTask(task.id);
+    setState(() {});
   }
 
   Widget _buildTaskList() {
@@ -591,6 +531,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
           onEdit: () => _editTask(task),
           onDelete: () => _deleteTask(task),
           onTap: () => _toggleTaskCompletion(task),
+          onUpdateSuggestibleAt: (DateTime newTime) => _makeTaskAvailable(task),
         );
 
         print('TaskDisplay widget created successfully for "${task.headline}"');

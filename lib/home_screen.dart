@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
+import 'package:meaning_to/utils/cache_manager.dart';
 import 'dart:math';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_html/flutter_html.dart';
@@ -29,6 +30,9 @@ class HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
   bool _isLoadingTask = false;
   String? _error;
+
+  // CacheManager instance for managing current category and tasks
+  final CacheManager _cacheManager = CacheManager();
 
   // Add getter for selected category
   Category? get selectedCategory => _selectedCategory;
@@ -68,8 +72,16 @@ class HomeScreenState extends State<HomeScreen> {
         throw Exception('No user logged in');
       }
 
-      print('HomeScreen: Calling Task.loadRandomTask...');
-      final task = await Task.loadRandomTask(category, userId);
+      // Initialize CacheManager with the selected category
+      if (!_cacheManager.isInitialized ||
+          _cacheManager.currentCategory?.id != category.id) {
+        print(
+            'HomeScreen: Initializing CacheManager with category: ${category.headline}');
+        await _cacheManager.initializeWithSavedCategory(category, userId);
+      }
+
+      // Get a random unfinished task from the cache
+      final task = _cacheManager.getRandomUnfinishedTask();
       print('HomeScreen: Task loaded: ${task?.headline}');
 
       if (mounted) {
@@ -100,7 +112,12 @@ class HomeScreenState extends State<HomeScreen> {
         _error = null;
       });
 
-      await Task.rejectCurrentTask();
+      if (_randomTask == null) {
+        throw Exception('No current task to reject');
+      }
+
+      // Use CacheManager to reject the task
+      await _cacheManager.rejectTask(_randomTask!.id);
 
       // Load a new random task
       if (_selectedCategory != null) {
@@ -127,7 +144,12 @@ class HomeScreenState extends State<HomeScreen> {
         _error = null;
       });
 
-      await Task.finishCurrentTask();
+      if (_randomTask == null) {
+        throw Exception('No current task to finish');
+      }
+
+      // Use CacheManager to finish the task
+      await _cacheManager.finishTask(_randomTask!.id);
 
       // Load a new random task
       if (_selectedCategory != null) {
@@ -144,6 +166,42 @@ class HomeScreenState extends State<HomeScreen> {
         _error = e.toString();
         _isLoadingTask = false;
       });
+    }
+  }
+
+  Future<void> _reviveCurrentTask() async {
+    try {
+      if (_randomTask == null) {
+        throw Exception('No current task to revive');
+      }
+
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('No user logged in');
+      }
+
+      // Use CacheManager to revive the task
+      await _cacheManager.reviveTask(_randomTask!.id);
+
+      // Update the current task reference
+      final updatedTask = _cacheManager.currentTasks?.firstWhere(
+        (t) => t.id == _randomTask!.id,
+        orElse: () => _randomTask!,
+      );
+
+      if (updatedTask != null) {
+        setState(() {
+          _randomTask = updatedTask;
+        });
+      }
+    } catch (e) {
+      print('Error reviving task: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error reviving task: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -683,28 +741,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                 ),
                                                 TextButton.icon(
                                                   onPressed: () async {
-                                                    final userId = supabase
-                                                        .auth.currentUser?.id;
-                                                    if (userId == null) return;
-                                                    try {
-                                                      await Task.reviveTask(
-                                                          _randomTask!, userId);
-                                                      setState(() {
-                                                        // The task will be updated in the cache
-                                                        // and the UI will refresh automatically
-                                                      });
-                                                    } catch (e) {
-                                                      ScaffoldMessenger.of(
-                                                              context)
-                                                          .showSnackBar(
-                                                        SnackBar(
-                                                          content: Text(
-                                                              'Error reviving task: $e'),
-                                                          backgroundColor:
-                                                              Colors.red,
-                                                        ),
-                                                      );
-                                                    }
+                                                    await _reviveCurrentTask();
                                                   },
                                                   icon: const Icon(
                                                       Icons.refresh,
@@ -787,7 +824,7 @@ class HomeScreenState extends State<HomeScreen> {
                                       });
 
                                       // First reject the current task
-                                      await Task.rejectCurrentTask();
+                                      await _rejectCurrentTask();
 
                                       // Then load a new random task
                                       if (_selectedCategory != null) {
