@@ -82,7 +82,7 @@ class HomeScreenState extends State<HomeScreen> {
 
       // Get a random unfinished task from the cache
       final task = _cacheManager.getRandomUnfinishedTask();
-      print('HomeScreen: Task loaded: ${task?.headline}');
+      print('HomeScreen: Task loaded: \'${task?.headline}\'');
 
       if (mounted) {
         setState(() {
@@ -280,8 +280,8 @@ class HomeScreenState extends State<HomeScreen> {
     print('HomeScreen: Task reload requested');
     if (HomeScreen.needsTaskReload.value && mounted) {
       print('HomeScreen: Handling task reload request');
-      print('HomeScreen: Current category: ${_selectedCategory?.headline}');
-      print('HomeScreen: Current task: ${_randomTask?.headline}');
+      print('HomeScreen: Current category: \'${_selectedCategory?.headline}\'');
+      print('HomeScreen: Current task: \'${_randomTask?.headline}\'');
 
       HomeScreen.needsTaskReload.value = false; // Reset the flag
       _handleEditComplete();
@@ -295,8 +295,8 @@ class HomeScreenState extends State<HomeScreen> {
 
   Future<void> _navigateToEditCategory([Category? category]) async {
     print('HomeScreen: Starting navigation to edit category screen...');
-    print('HomeScreen: Current category: ${_selectedCategory?.headline}');
-    print('HomeScreen: Current task: ${_randomTask?.headline}');
+    print('HomeScreen: Current category: \'${_selectedCategory?.headline}\'');
+    print('HomeScreen: Current task: \'${_randomTask?.headline}\'');
 
     if (!mounted) {
       print('HomeScreen: Not mounted before navigation');
@@ -434,8 +434,8 @@ class HomeScreenState extends State<HomeScreen> {
               print('HomeScreen: Setting needsTaskReload to true');
               HomeScreen.needsTaskReload.value = true;
             });
-            print('HomeScreen: Directly calling _handleEditComplete');
-            _handleEditComplete();
+            print('HomeScreen: Directly calling _handleCategoryEditComplete');
+            _handleCategoryEditComplete();
           } else {
             print('HomeScreen: Widget not mounted in post frame callback');
           }
@@ -472,10 +472,22 @@ class HomeScreenState extends State<HomeScreen> {
 
       // Then reload task if we have a selected category
       if (_selectedCategory != null) {
-        print('HomeScreen: Loading new random task...');
+        print('HomeScreen: Loading new random task after category edit...');
+
+        // Force a cache refresh by reinitializing with the current category
+        final userId = supabase.auth.currentUser?.id;
+        if (userId != null) {
+          await _cacheManager.initializeWithSavedCategory(
+              _selectedCategory!, userId);
+        }
+
+        // Always load a new random task when returning from Edit Category screen
+        // since the category or its tasks might have been modified
         await _loadRandomTask(_selectedCategory!);
+
         if (mounted) {
-          print('HomeScreen: New task loaded: ${_randomTask?.headline}');
+          print(
+              'HomeScreen: New random task loaded: \'${_randomTask?.headline}\'');
           print('HomeScreen: Task finished state: ${_randomTask?.finished}');
           print(
               'HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}');
@@ -485,6 +497,37 @@ class HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       print('HomeScreen: Error handling edit complete: $e');
+    }
+  }
+
+  void _handleCategoryEditComplete() async {
+    print('HomeScreen: Handling category edit complete');
+    try {
+      // Reload categories first
+      print('HomeScreen: Reloading categories...');
+      await _loadCategories();
+      print('HomeScreen: Categories reloaded');
+
+      // Then load a new random task if we have a selected category
+      if (_selectedCategory != null) {
+        print('HomeScreen: Loading new random task after category edit...');
+
+        // Always load a new random task when returning from Edit Category screen
+        // since the category or its tasks might have been modified
+        await _loadRandomTask(_selectedCategory!);
+
+        if (mounted) {
+          print(
+              'HomeScreen: New random task loaded: \'${_randomTask?.headline}\'');
+          print('HomeScreen: Task finished state: ${_randomTask?.finished}');
+          print(
+              'HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}');
+        }
+      } else {
+        print('HomeScreen: No category selected, skipping task load');
+      }
+    } catch (e) {
+      print('HomeScreen: Error handling category edit complete: $e');
     }
   }
 
@@ -618,169 +661,187 @@ class HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 14),
                           SizedBox(
                             width: MediaQuery.of(context).size.width - 32,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                minHeight: 172,
-                              ),
-                              child: Card(
-                                child: Stack(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Text(
-                                                _randomTask!.headline,
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .bodyLarge
-                                                    ?.copyWith(
-                                                      fontSize: (Theme.of(
-                                                                      context)
-                                                                  .textTheme
-                                                                  .bodyLarge
-                                                                  ?.fontSize ??
-                                                              16) +
-                                                          6,
-                                                      fontWeight: _randomTask!
-                                                                      .suggestibleAt ==
-                                                                  null ||
-                                                              !_randomTask!
-                                                                  .suggestibleAt!
-                                                                  .isAfter(
-                                                                      DateTime
-                                                                          .now())
-                                                          ? FontWeight.bold
-                                                          : FontWeight.normal,
-                                                      color: _randomTask!
-                                                                      .suggestibleAt !=
-                                                                  null &&
-                                                              _randomTask!
-                                                                  .suggestibleAt!
-                                                                  .isAfter(
-                                                                      DateTime
-                                                                          .now())
-                                                          ? Colors.grey
-                                                          : null,
-                                                    ),
-                                                textAlign: TextAlign.center,
+                            child: Card(
+                              key: ValueKey(
+                                  'task_${_randomTask!.id}_${_randomTask!.headline}'),
+                              child: Stack(
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        16, 16, 16, 0),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Expanded(
+                                              child: GestureDetector(
+                                                onTap: () =>
+                                                    _navigateToEditTask(
+                                                        _randomTask!),
+                                                child: Text(
+                                                  _randomTask!.headline,
+                                                  style:
+                                                      Theme.of(context)
+                                                          .textTheme
+                                                          .bodyLarge
+                                                          ?.copyWith(
+                                                            fontSize: (Theme.of(
+                                                                            context)
+                                                                        .textTheme
+                                                                        .bodyLarge
+                                                                        ?.fontSize ??
+                                                                    16) +
+                                                                6,
+                                                            fontWeight: _randomTask!
+                                                                            .suggestibleAt ==
+                                                                        null ||
+                                                                    !_randomTask!
+                                                                        .suggestibleAt!
+                                                                        .isAfter(DateTime
+                                                                            .now())
+                                                                ? FontWeight
+                                                                    .bold
+                                                                : FontWeight
+                                                                    .normal,
+                                                            color: _randomTask!
+                                                                            .suggestibleAt !=
+                                                                        null &&
+                                                                    _randomTask!
+                                                                        .suggestibleAt!
+                                                                        .isAfter(
+                                                                            DateTime.now())
+                                                                ? Colors.grey
+                                                                : null,
+                                                          ),
+                                                ),
                                               ),
-                                              if (_randomTask!.finished) ...[
-                                                const SizedBox(width: 8),
-                                                Icon(Icons.check_circle,
-                                                    color: Colors.green,
-                                                    size: 28),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            GestureDetector(
+                                              onTap: () => _navigateToEditTask(
+                                                  _randomTask!),
+                                              child: Icon(
+                                                Icons.edit,
+                                                size: 20,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .primary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        if (_randomTask!.finished) ...[
+                                          const SizedBox(width: 8),
+                                          Icon(Icons.check_circle,
+                                              color: Colors.green, size: 28),
+                                        ],
+                                        if (_randomTask!.notes != null) ...[
+                                          const SizedBox(height: 8),
+                                          Text.rich(
+                                            textAlign: TextAlign.left,
+                                            TextSpan(
+                                              children: [
+                                                TextSpan(
+                                                  text: _randomTask!.notes!,
+                                                  style:
+                                                      Theme.of(context)
+                                                          .textTheme
+                                                          .bodyMedium
+                                                          ?.copyWith(
+                                                            color: _randomTask!
+                                                                            .suggestibleAt !=
+                                                                        null &&
+                                                                    _randomTask!
+                                                                        .suggestibleAt!
+                                                                        .isAfter(
+                                                                            DateTime.now())
+                                                                ? Colors.grey
+                                                                : null,
+                                                          ),
+                                                ),
                                               ],
+                                            ),
+                                          ),
+                                        ],
+                                        if (_randomTask!.links != null &&
+                                            _randomTask!.links!.isNotEmpty) ...[
+                                          const SizedBox(height: 16),
+                                          LinkListDisplay(
+                                            links: _randomTask!.links!,
+                                            showIcon: true,
+                                            showTitle: true,
+                                          ),
+                                        ],
+                                        if (_randomTask!.triggersAt !=
+                                            null) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall,
+                                          ),
+                                        ],
+                                        if (_randomTask!.suggestibleAt !=
+                                                null &&
+                                            _randomTask!.suggestibleAt!
+                                                .isAfter(DateTime.now())) ...[
+                                          const SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  _randomTask!
+                                                      .getSuggestibleTimeDisplay()!,
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .bodySmall
+                                                      ?.copyWith(
+                                                        color: Colors.blue,
+                                                      ),
+                                                ),
+                                              ),
+                                              TextButton.icon(
+                                                onPressed: () async {
+                                                  await _reviveCurrentTask();
+                                                },
+                                                icon: const Icon(Icons.refresh,
+                                                    size: 16),
+                                                label: const Text('Revive'),
+                                                style: TextButton.styleFrom(
+                                                  foregroundColor: Colors.blue,
+                                                  padding: const EdgeInsets
+                                                      .symmetric(horizontal: 8),
+                                                ),
+                                              ),
                                             ],
                                           ),
-                                          if (_randomTask!.notes != null) ...[
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              _randomTask!.notes!,
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium
-                                                  ?.copyWith(
-                                                    color: _randomTask!
-                                                                    .suggestibleAt !=
-                                                                null &&
-                                                            _randomTask!
-                                                                .suggestibleAt!
-                                                                .isAfter(
-                                                                    DateTime
-                                                                        .now())
-                                                        ? Colors.grey
-                                                        : null,
-                                                  ),
-                                            ),
-                                          ],
-                                          if (_randomTask!.links != null &&
-                                              _randomTask!
-                                                  .links!.isNotEmpty) ...[
-                                            const SizedBox(height: 16),
-                                            LinkListDisplay(
-                                              links: _randomTask!.links!,
-                                              showIcon: true,
-                                              showTitle: true,
-                                            ),
-                                          ],
-                                          if (_randomTask!.triggersAt !=
-                                              null) ...[
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodySmall,
-                                            ),
-                                          ],
-                                          if (_randomTask!.suggestibleAt !=
-                                                  null &&
-                                              _randomTask!.suggestibleAt!
-                                                  .isAfter(DateTime.now())) ...[
-                                            const SizedBox(height: 8),
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    _randomTask!
-                                                        .getSuggestibleTimeDisplay()!,
-                                                    style: Theme.of(context)
-                                                        .textTheme
-                                                        .bodySmall
-                                                        ?.copyWith(
-                                                          color: Colors.blue,
-                                                        ),
-                                                  ),
-                                                ),
-                                                TextButton.icon(
-                                                  onPressed: () async {
-                                                    await _reviveCurrentTask();
-                                                  },
-                                                  icon: const Icon(
-                                                      Icons.refresh,
-                                                      size: 16),
-                                                  label: const Text('Revive'),
-                                                  style: TextButton.styleFrom(
-                                                    foregroundColor:
-                                                        Colors.blue,
-                                                    padding: const EdgeInsets
-                                                        .symmetric(
-                                                        horizontal: 8),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
                                         ],
-                                      ),
-                                    ),
-                                    Positioned(
-                                      top: 8,
-                                      right: 8,
-                                      child: IconButton(
-                                        icon: const Icon(Icons.edit),
-                                        tooltip: 'Edit this task',
-                                        onPressed: () =>
-                                            _navigateToEditTask(_randomTask!),
-                                        style: IconButton.styleFrom(
-                                          backgroundColor: Theme.of(context)
-                                              .colorScheme
-                                              .surface,
-                                          foregroundColor: Theme.of(context)
-                                              .colorScheme
-                                              .primary,
+                                        const SizedBox(height: 2),
+                                        Center(
+                                          child: TextButton.icon(
+                                            onPressed: _finishCurrentTask,
+                                            icon: const Icon(Icons.check),
+                                            label: const Text(
+                                                'Actually, I\'m done with this'),
+                                            style: TextButton.styleFrom(
+                                              foregroundColor: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary,
+                                              padding: EdgeInsets.zero,
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                      ],
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -788,33 +849,6 @@ class HomeScreenState extends State<HomeScreen> {
                           Center(
                             child: Column(
                               children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    TextButton.icon(
-                                      onPressed: _finishCurrentTask,
-                                      icon: const Icon(Icons.check),
-                                      label: const Text(
-                                          'Actually, I\'m done with that'),
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: _navigateToEditTasks,
-                                      child: const Text('Manage Choices'),
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
                                 ElevatedButton.icon(
                                   onPressed: () async {
                                     try {
@@ -847,6 +881,15 @@ class HomeScreenState extends State<HomeScreen> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green,
                                     foregroundColor: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                TextButton(
+                                  onPressed: _navigateToEditTasks,
+                                  child: const Text('Manage Choices'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor:
+                                        Theme.of(context).colorScheme.primary,
                                   ),
                                 ),
                               ],

@@ -417,7 +417,7 @@ class CacheManager {
       createdAt: task.createdAt,
       suggestibleAt: now, // Set to current time
       triggersAt: task.triggersAt,
-      deferral: task.deferral,
+      deferral: 1, // Reset deferral to 1 when reviving
       links: task.links,
       processedLinks: task.processedLinks,
       finished: task.finished,
@@ -429,6 +429,7 @@ class CacheManager {
           .from('Tasks')
           .update({
             'suggestible_at': now.toIso8601String(),
+            'deferral': 1, // Reset deferral to 1
           })
           .eq('id', taskId)
           .eq('owner_id', _currentUserId!);
@@ -459,7 +460,7 @@ class CacheManager {
       createdAt: task.createdAt,
       suggestibleAt: task.suggestibleAt,
       triggersAt: task.triggersAt,
-      deferral: task.deferral,
+      deferral: 1, // Reset deferral to 1 when unfinishing
       links: task.links,
       processedLinks: task.processedLinks,
       finished: false, // Set to false
@@ -471,6 +472,7 @@ class CacheManager {
           .from('Tasks')
           .update({
             'finished': false,
+            'deferral': 1, // Reset deferral to 1
           })
           .eq('id', taskId)
           .eq('owner_id', _currentUserId!);
@@ -480,7 +482,8 @@ class CacheManager {
     _currentTasks![taskIndex] = updatedTask;
     _sortTasks();
 
-    print('CacheManager: Task ${task.headline} marked as unfinished');
+    print(
+        'CacheManager: Task ${task.headline} marked as unfinished and deferral reset to 1');
   }
 
   /// Clear the cache
