@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/widgets/link_display.dart';
+import 'package:meaning_to/utils/auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class TaskDisplay extends StatefulWidget {
@@ -208,6 +209,32 @@ class _TaskDisplayState extends State<TaskDisplay> {
                         ),
                         // Edit and Delete buttons grouped tightly together
                         if (widget.withControls) ...[
+                          // Debug logging for authentication state
+                          Builder(
+                            builder: (context) {
+                              final isGuest = AuthUtils.isGuestUser();
+                              print(
+                                  'TaskDisplay: Authentication check for "${widget.task.headline}":');
+                              print('  isGuest: $isGuest');
+                              print('  withControls: ${widget.withControls}');
+                              print('  willShowDeleteButton: ${!isGuest}');
+                              return Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: isGuest ? Colors.red : Colors.green,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  isGuest ? 'GUEST' : 'AUTH',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                           Builder(
                             builder: (context) {
                               print(
@@ -236,35 +263,38 @@ class _TaskDisplayState extends State<TaskDisplay> {
                               );
                             },
                           ),
-                          Builder(
-                            builder: (context) {
-                              print(
-                                  'TaskDisplay: Rendering delete button anew for "${widget.task.headline}"');
-                              return Container(
-                                /*                                   decoration: BoxDecoration(
-                                  color: Colors.orange.withOpacity(0.3),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
+                          // Only show delete button for authenticated users
+                          if (!AuthUtils.isGuestUser()) ...[
+                            Builder(
+                              builder: (context) {
+                                print(
+                                    'TaskDisplay: Rendering delete button for "${widget.task.headline}" (authenticated user)');
+                                return Container(
+                                  /*                                   decoration: BoxDecoration(
+                                    color: Colors.orange.withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
  */
-                                child: SizedBox(
-                                  width: 30,
-                                  height: 30,
-                                  child: IconButton(
-                                    icon: const Icon(Icons.delete, size: 16),
-                                    onPressed: widget.onDelete,
-                                    tooltip: 'Delete task',
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(
-                                      minWidth: 30,
-                                      minHeight: 30,
-                                      maxWidth: 30,
-                                      maxHeight: 30,
+                                  child: SizedBox(
+                                    width: 30,
+                                    height: 30,
+                                    child: IconButton(
+                                      icon: const Icon(Icons.delete, size: 16),
+                                      onPressed: widget.onDelete,
+                                      tooltip: 'Delete task',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 30,
+                                        minHeight: 30,
+                                        maxWidth: 30,
+                                        maxHeight: 30,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              );
-                            },
-                          ),
+                                );
+                              },
+                            ),
+                          ],
                         ],
                       ],
                     ),

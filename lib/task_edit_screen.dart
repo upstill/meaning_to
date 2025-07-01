@@ -396,11 +396,13 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       tooltip: 'Edit link',
                       onPressed: _isLoading ? null : () => _editLink(index),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      tooltip: 'Delete link',
-                      onPressed: _isLoading ? null : () => _removeLink(index),
-                    ),
+                    // Only show delete button for authenticated users
+                    if (!AuthUtils.isGuestUser())
+                      IconButton(
+                        icon: const Icon(Icons.delete),
+                        tooltip: 'Delete link',
+                        onPressed: _isLoading ? null : () => _removeLink(index),
+                      ),
                   ],
                 ),
               ),
@@ -449,7 +451,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             ],
           ),
           actions: [
-            if (widget.task != null)
+            // Only show delete button for authenticated users
+            if (widget.task != null && !AuthUtils.isGuestUser())
               IconButton(
                 icon: const Icon(Icons.delete),
                 onPressed: _isLoading ? null : _deleteTask,
