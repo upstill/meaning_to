@@ -6,6 +6,7 @@ import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
+import 'package:meaning_to/utils/supabase_client.dart';
 
 class MeaningToApp extends StatelessWidget {
   const MeaningToApp({super.key});
@@ -23,14 +24,16 @@ class MeaningToApp extends StatelessWidget {
         '/': (context) => HomeScreen(),
         '/auth': (context) => const AuthScreen(),
         '/edit-category': (context) {
-          final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+          final args = ModalRoute.of(context)?.settings.arguments
+              as Map<String, dynamic>?;
           return EditCategoryScreen(
             category: args?['category'] as Category?,
             tasksOnly: args?['tasksOnly'] == true,
           );
         },
         '/edit-task': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+          final args = ModalRoute.of(context)!.settings.arguments
+              as Map<String, dynamic>;
           return TaskEditScreen(
             category: args['category'] as Category,
             task: args['task'] as Task?,
@@ -38,7 +41,8 @@ class MeaningToApp extends StatelessWidget {
         },
         '/import-justwatch': (context) {
           print('Route handler for /import-justwatch called');
-          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+          final args = ModalRoute.of(context)!.settings.arguments
+              as Map<String, dynamic>;
           print('Route args: $args');
           print('Category: ${args['category']}');
           print('JSON data type: ${args['jsonData']?.runtimeType}');
@@ -50,4 +54,4 @@ class MeaningToApp extends StatelessWidget {
       },
     );
   }
-} 
+}

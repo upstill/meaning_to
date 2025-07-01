@@ -9,15 +9,22 @@ import 'package:meaning_to/widgets/link_display.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart' hide Category;
+import 'package:meaning_to/utils/auth.dart';
+import 'package:meaning_to/utils/text_importer.dart';
+import 'package:meaning_to/utils/link_extractor.dart';
+import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/task_edit_screen.dart';
+import 'package:meaning_to/edit_category_screen.dart';
+import 'package:meaning_to/app.dart';
+import 'package:http/http.dart' as http;
+import 'package:html/parser.dart' as html_parser;
+import 'package:meaning_to/utils/supabase_client.dart';
 
 class JustWatchItem {
   final String title;
   final String fullPath;
 
-  JustWatchItem({
-    required this.title,
-    required this.fullPath,
-  });
+  JustWatchItem({required this.title, required this.fullPath});
 
   @override
   String toString() => 'JustWatchItem(title: $title, fullPath: $fullPath)';
@@ -76,7 +83,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
   Future<void> _loadExistingTasks() async {
     print('Loading existing tasks for category: ${widget.category.headline}');
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final userId = AuthUtils.getCurrentUserId();
       if (userId == null) {
         throw Exception('No user logged in');
       }
@@ -113,7 +120,8 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
       // If task already has this link, skip it
       if (task.links?.any((link) => link.contains(fullLink)) ?? false) {
         print(
-            'Skipping $title because it already exists in task #${task.id}: ${task.headline}');
+          'Skipping $title because it already exists in task #${task.id}: ${task.headline}',
+        );
         return false;
       }
 
@@ -214,24 +222,23 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                 }
 
                 print('Adding item: $title with link: $justWatchLink');
-                items.add(JustWatchItem(
-                  title: title,
-                  fullPath: fullPath,
-                ));
-                tasks.add(Task(
-                  id: -1,
-                  categoryId: widget.category.id,
-                  headline: title,
-                  notes: null,
-                  ownerId: '',
-                  createdAt: DateTime.now(),
-                  suggestibleAt: DateTime.now(),
-                  triggersAt: null,
-                  deferral: null,
-                  links: [justWatchLink],
-                  processedLinks: null,
-                  finished: false,
-                ));
+                items.add(JustWatchItem(title: title, fullPath: fullPath));
+                tasks.add(
+                  Task(
+                    id: -1,
+                    categoryId: widget.category.id,
+                    headline: title,
+                    notes: null,
+                    ownerId: '',
+                    createdAt: DateTime.now(),
+                    suggestibleAt: DateTime.now(),
+                    triggersAt: null,
+                    deferral: null,
+                    links: [justWatchLink],
+                    processedLinks: null,
+                    finished: false,
+                  ),
+                );
               }
             }
           }
@@ -241,9 +248,11 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
         print('Found ${items.length} items to import');
         print('First item: ${items.isNotEmpty ? items.first.title : "none"}');
         print(
-            'First task: ${tasks.isNotEmpty ? tasks.first.headline : "none"}');
+          'First task: ${tasks.isNotEmpty ? tasks.first.headline : "none"}',
+        );
         print(
-            'First task links: ${tasks.isNotEmpty ? tasks.first.links : "none"}');
+          'First task links: ${tasks.isNotEmpty ? tasks.first.links : "none"}',
+        );
 
         setState(() {
           _matchingItems = items;
@@ -252,7 +261,8 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
         });
       } else {
         print(
-            'Invalid JSON format: expected a list, got ${jsonData.runtimeType}');
+          'Invalid JSON format: expected a list, got ${jsonData.runtimeType}',
+        );
         setState(() {
           _error = 'Invalid JSON format: expected a list';
           _isLoading = false;
@@ -302,12 +312,12 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
           mimeTypes: ['application/json'],
         );
 
-        final file = await openFile(
-          acceptedTypeGroups: [typeGroup],
-        ).catchError((error) {
-          print('Error opening file picker: $error');
-          throw Exception('Failed to open file picker: $error');
-        });
+        final file = await openFile(acceptedTypeGroups: [typeGroup]).catchError(
+          (error) {
+            print('Error opening file picker: $error');
+            throw Exception('Failed to open file picker: $error');
+          },
+        );
 
         if (file == null) {
           print('No file selected');
@@ -447,10 +457,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
             ),
             const SizedBox(height: 24),
             if (_error != null) ...[
-              Text(
-                'Error: $_error',
-                style: const TextStyle(color: Colors.red),
-              ),
+              Text('Error: $_error', style: const TextStyle(color: Colors.red)),
               const SizedBox(height: 16),
             ],
             if (_selectedFileName == null) ...[
@@ -483,11 +490,15 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                     ElevatedButton.icon(
                       onPressed: _isLoading ? null : _pickAndParseFile,
                       icon: const Icon(Icons.folder_open, size: 24),
-                      label: const Text('Select JSON File',
-                          style: TextStyle(fontSize: 16)),
+                      label: const Text(
+                        'Select JSON File',
+                        style: TextStyle(fontSize: 16),
+                      ),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
-                            vertical: 16, horizontal: 24),
+                          vertical: 16,
+                          horizontal: 24,
+                        ),
                         backgroundColor: Colors.blue.shade100,
                         foregroundColor: Colors.blue.shade900,
                         minimumSize: const Size(double.infinity, 48),
@@ -526,22 +537,28 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: task.links!
-                                      .map((link) => Padding(
-                                            padding: const EdgeInsets.only(
-                                                bottom: 4.0),
-                                            child: LinkDisplayWidget(
-                                              key: ValueKey(
-                                                  'link_${task.id}_$link'),
-                                              linkText: link,
-                                              showIcon: true,
-                                              showTitle: true,
+                                      .map(
+                                        (link) => Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 4.0,
+                                          ),
+                                          child: LinkDisplayWidget(
+                                            key: ValueKey(
+                                              'link_${task.id}_$link',
                                             ),
-                                          ))
+                                            linkText: link,
+                                            showIcon: true,
+                                            showTitle: true,
+                                          ),
+                                        ),
+                                      )
                                       .toList(),
                                 ),
                               ] else ...[
-                                const Text('No links available',
-                                    style: TextStyle(color: Colors.grey)),
+                                const Text(
+                                  'No links available',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
                               ],
                             ],
                           ),
@@ -563,8 +580,10 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                 ),
               ] else if (_selectedFileName != null) ...[
                 const Center(
-                  child: Text("No matching items found in the file",
-                      style: TextStyle(fontSize: 16)),
+                  child: Text(
+                    "No matching items found in the file",
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ),
               ],
             ],
@@ -586,7 +605,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
     });
 
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final userId = AuthUtils.getCurrentUserId();
       if (userId == null) {
         throw Exception('No user logged in');
       }
@@ -621,7 +640,8 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
               await supabase.from('Tasks').insert(taskData).select().single();
 
           print(
-              'Successfully inserted task: ${response['headline']} (ID: ${response['id']})');
+            'Successfully inserted task: ${response['headline']} (ID: ${response['id']})',
+          );
         } catch (e) {
           print('Error inserting task ${task.headline}: $e');
           if (e is PostgrestException) {

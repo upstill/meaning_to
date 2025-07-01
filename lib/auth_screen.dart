@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_auth_ui/supabase_auth_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:meaning_to/utils/supabase_client.dart';
 
 class AuthScreen extends StatelessWidget {
   const AuthScreen({super.key});
@@ -30,8 +31,10 @@ class AuthScreen extends StatelessWidget {
               const SizedBox(height: 24.0),
               SupaEmailAuth(
                 redirectTo: redirectUrl,
-                onSignInComplete: (res) => Navigator.pushNamed(context, '/home'),
-                onSignUpComplete: (res) => Navigator.pushNamed(context, '/home'),
+                onSignInComplete: (res) =>
+                    Navigator.pushNamed(context, '/home'),
+                onSignUpComplete: (res) =>
+                    Navigator.pushNamed(context, '/home'),
                 onError: (error) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(error.toString())),
@@ -60,7 +63,8 @@ class AuthScreen extends StatelessWidget {
                           child: const Text('Cancel'),
                         ),
                         TextButton(
-                          onPressed: () => Navigator.pop(context, emailController.text),
+                          onPressed: () =>
+                              Navigator.pop(context, emailController.text),
                           child: const Text('Send Reset Link'),
                         ),
                       ],
@@ -69,21 +73,24 @@ class AuthScreen extends StatelessWidget {
 
                   if (result != null && result.isNotEmpty) {
                     try {
-                      await Supabase.instance.client.auth.resetPasswordForEmail(
+                      await supabase.auth.resetPasswordForEmail(
                         result,
-                        redirectTo: redirectUrl,
+                        redirectTo: '$redirectUrl?type=recovery',
                       );
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Password reset email sent! Check your inbox.'),
+                            content: Text(
+                                'Password reset email sent! Check your inbox.'),
                           ),
                         );
                       }
                     } catch (error) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error sending reset email: $error')),
+                          SnackBar(
+                              content:
+                                  Text('Error sending reset email: $error')),
                         );
                       }
                     }

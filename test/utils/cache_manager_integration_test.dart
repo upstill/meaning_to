@@ -54,8 +54,7 @@ void main() {
 
       expect(updatedTask, isNotNull);
       expect(updatedTask!.deferral, 120); // Should be doubled from 60 to 120
-      expect(updatedTask.suggestibleAt, isNotNull);
-      expect(updatedTask.suggestibleAt!.isAfter(DateTime.now()), true);
+      expect(updatedTask.isDeferred, true);
 
       // Reject again to test doubling
       await cacheManager.rejectTask(task.id);

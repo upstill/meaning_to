@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/auth.dart';
 import 'dart:math';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_html/flutter_html.dart';
@@ -11,8 +12,7 @@ import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/app.dart';
-
-final supabase = Supabase.instance.client;
+import 'package:meaning_to/utils/supabase_client.dart';
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
@@ -21,6 +21,21 @@ class HomeScreen extends StatefulWidget {
 
   @override
   HomeScreenState createState() => HomeScreenState();
+
+  // Static variable to track if data has been modified
+  static bool _dataModified = false;
+
+  // Method to mark that data has been modified (call from other screens)
+  static void markDataModified() {
+    _dataModified = true;
+  }
+
+  // Method to check and reset the modified flag
+  static bool checkAndResetDataModified() {
+    final wasModified = _dataModified;
+    _dataModified = false;
+    return wasModified;
+  }
 }
 
 class HomeScreenState extends State<HomeScreen> {
@@ -58,25 +73,93 @@ class HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh cache when dependencies change (e.g., when returning from other screens)
+    if (_selectedCategory != null) {
+      // Check if data was modified by other screens
+      final dataModified = HomeScreen.checkAndResetDataModified();
+      _refreshCacheIfNeeded(forceDatabaseRefresh: dataModified);
+    }
+  }
+
+  /// Smart refresh that can skip database calls when appropriate
+  Future<void> _refreshCacheIfNeeded(
+      {bool forceDatabaseRefresh = false}) async {
+    final cacheManager = CacheManager();
+
+    if (cacheManager.currentCategory?.id != _selectedCategory!.id ||
+        cacheManager.currentTasks == null) {
+      print(
+        'HomeScreen: Refreshing cache for category ${_selectedCategory!.headline}',
+      );
+      await _loadRandomTask(_selectedCategory!);
+    } else {
+      print(
+        'HomeScreen: Cache is up to date for category ${_selectedCategory!.headline}',
+      );
+
+      if (forceDatabaseRefresh) {
+        // Force refresh from database to ensure we have the latest data
+        await cacheManager.refreshFromDatabase();
+        print('HomeScreen: Forced database refresh completed');
+      } else {
+        // Use local cache refresh for better performance
+        cacheManager.refreshLocalCache();
+        print('HomeScreen: Local cache refresh completed');
+      }
+
+      // Reload the random task with refreshed data
+      await _loadRandomTask(_selectedCategory!);
+    }
+  }
+
+  /// Determine if a database refresh is needed based on various factors
+  bool _shouldRefreshFromDatabase() {
+    // Add your logic here to determine when database refresh is needed
+    // For example:
+    // - Time since last refresh
+    // - Whether user has been editing tasks
+    // - Network connectivity
+    // - Cache staleness indicators
+
+    // For now, return false to use local refresh by default
+    return false;
+  }
+
+  /// Force refresh and verify database state for debugging
+  Future<void> _forceRefreshAndVerify() async {
+    print('HomeScreen: Force refresh and verify called');
+    await _cacheManager.forceRefreshAndVerify();
+
+    // Reload the random task with the verified data
+    if (_selectedCategory != null) {
+      await _loadRandomTask(_selectedCategory!);
+    }
+  }
+
   Future<void> _loadRandomTask(Category category) async {
     print(
-        'HomeScreen: Starting to load random task for category: ${category.headline}');
+      'HomeScreen: Starting to load random task for category: ${category.headline}',
+    );
     try {
       setState(() {
         _isLoadingTask = true;
         _error = null;
       });
 
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) {
-        throw Exception('No user logged in');
-      }
+      final userId = AuthUtils.getCurrentUserId();
+      print(
+        'HomeScreen: Using user ID: $userId (guest: ${AuthUtils.isGuestUser()})',
+      );
 
       // Initialize CacheManager with the selected category
       if (!_cacheManager.isInitialized ||
           _cacheManager.currentCategory?.id != category.id) {
         print(
-            'HomeScreen: Initializing CacheManager with category: ${category.headline}');
+          'HomeScreen: Initializing CacheManager with category: ${category.headline}',
+        );
         await _cacheManager.initializeWithSavedCategory(category, userId);
       }
 
@@ -175,10 +258,10 @@ class HomeScreenState extends State<HomeScreen> {
         throw Exception('No current task to revive');
       }
 
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) {
-        throw Exception('No user logged in');
-      }
+      final userId = AuthUtils.getCurrentUserId();
+      print(
+        'HomeScreen: Using user ID: $userId (guest: ${AuthUtils.isGuestUser()})',
+      );
 
       // Use CacheManager to revive the task
       await _cacheManager.reviveTask(_randomTask!.id);
@@ -211,22 +294,80 @@ class HomeScreenState extends State<HomeScreen> {
       final session = supabase.auth.currentSession;
       print('Session in _loadCategories: ${session?.user.id}');
 
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
+      // Check if user is authenticated or is a guest
+      final currentUser = AuthUtils.getCurrentUser();
+      final isGuest = AuthUtils.isGuestUser();
 
-      final userId = supabase.auth.currentUser?.id;
-      print('Current user ID: $userId');
-      if (userId == null) {
-        throw Exception('No user logged in');
+      print('Current user: ${currentUser?.id ?? 'null'}');
+      print('Is guest: $isGuest');
+
+      if (session == null && !isGuest) {
+        print('No session found and not guest, redirecting to auth');
+        if (mounted) {
+          Navigator.pushNamed(context, '/auth');
+        }
+        return;
+      }
+
+      // For guest users, we'll load categories using the guest user ID
+      if (isGuest) {
+        print('Guest user detected, loading categories for guest user');
+        final guestUserId = AuthUtils.getCurrentUserId();
+        print('Guest user ID: $guestUserId');
+
+        try {
+          final response = await supabase
+              .from('Categories')
+              .select()
+              .eq('owner_id', guestUserId)
+              .order('created_at', ascending: false);
+          print('Guest categories response: $response');
+
+          if (response == null) {
+            print('Guest categories response is null');
+            setState(() {
+              _categories = [];
+              _isLoading = false;
+            });
+            return;
+          }
+
+          if (response is! List) {
+            print(
+                'Guest categories response is not a List: ${response.runtimeType}');
+            setState(() {
+              _categories = [];
+              _isLoading = false;
+            });
+            return;
+          }
+
+          final categories = response
+              .map((json) => Category.fromJson(json as Map<String, dynamic>))
+              .toList();
+          print('Parsed ${categories.length} guest categories');
+
+          setState(() {
+            _categories = categories;
+            _isLoading = false;
+          });
+          print('Guest categories loaded successfully');
+        } catch (e) {
+          print('Error loading guest categories: $e');
+          setState(() {
+            _categories = [];
+            _isLoading = false;
+          });
+        }
+        return;
       }
 
       print('Fetching categories from Supabase...');
+      // At this point, we know we have a session (not a guest user)
       final response = await supabase
           .from('Categories')
           .select()
-          .eq('owner_id', userId)
+          .eq('owner_id', session!.user.id)
           .order('created_at', ascending: false);
       print('Supabase response: $response');
 
@@ -287,9 +428,11 @@ class HomeScreenState extends State<HomeScreen> {
       _handleEditComplete();
     } else {
       print(
-          'HomeScreen: Task reload requested but widget not mounted or flag not set');
+        'HomeScreen: Task reload requested but widget not mounted or flag not set',
+      );
       print(
-          'HomeScreen: mounted: $mounted, needsTaskReload: ${HomeScreen.needsTaskReload.value}');
+        'HomeScreen: mounted: $mounted, needsTaskReload: ${HomeScreen.needsTaskReload.value}',
+      );
     }
   }
 
@@ -327,7 +470,8 @@ class HomeScreenState extends State<HomeScreen> {
       }
     };
     print(
-        'HomeScreen: Set static callback: ${EditCategoryScreen.onEditComplete != null}');
+      'HomeScreen: Set static callback: ${EditCategoryScreen.onEditComplete != null}',
+    );
 
     try {
       print('HomeScreen: About to push route...');
@@ -342,13 +486,11 @@ class HomeScreenState extends State<HomeScreen> {
       // Push the route and wait for result
       final result = await Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => screen,
-          fullscreenDialog: true,
-        ),
+        MaterialPageRoute(builder: (context) => screen, fullscreenDialog: true),
       );
       print(
-          'HomeScreen: Returned from edit category screen with result: $result');
+        'HomeScreen: Returned from edit category screen with result: $result',
+      );
 
       // If we got a result (true), reload categories
       if (result == true) {
@@ -396,15 +538,14 @@ class HomeScreenState extends State<HomeScreen> {
       }
     };
     print(
-        'HomeScreen: Set static callback for task edit: ${TaskEditScreen.onEditComplete != null}');
+      'HomeScreen: Set static callback for task edit: ${TaskEditScreen.onEditComplete != null}',
+    );
 
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TaskEditScreen(
-          category: _selectedCategory!,
-          task: task,
-        ),
+        builder: (context) =>
+            TaskEditScreen(category: _selectedCategory!, task: task),
       ),
     ).then((_) {
       // Clear the callback after navigation
@@ -415,7 +556,8 @@ class HomeScreenState extends State<HomeScreen> {
 
   void _navigateToEditTasks() {
     print(
-        'HomeScreen: Navigating to edit category: ${_selectedCategory?.headline}');
+      'HomeScreen: Navigating to edit category: ${_selectedCategory?.headline}',
+    );
     if (!mounted || _selectedCategory == null) {
       print('HomeScreen: Not mounted or no category selected');
       return;
@@ -445,7 +587,8 @@ class HomeScreenState extends State<HomeScreen> {
       }
     };
     print(
-        'HomeScreen: Set static callback for category edit: ${EditCategoryScreen.onEditComplete != null}');
+      'HomeScreen: Set static callback for category edit: ${EditCategoryScreen.onEditComplete != null}',
+    );
 
     Navigator.push(
       context,
@@ -475,10 +618,15 @@ class HomeScreenState extends State<HomeScreen> {
         print('HomeScreen: Loading new random task after category edit...');
 
         // Force a cache refresh by reinitializing with the current category
-        final userId = supabase.auth.currentUser?.id;
+        final userId = AuthUtils.getCurrentUserId();
         if (userId != null) {
           await _cacheManager.initializeWithSavedCategory(
-              _selectedCategory!, userId);
+            _selectedCategory!,
+            userId,
+          );
+
+          // Also force refresh from database to ensure we have the latest data
+          await _cacheManager.refreshFromDatabase();
         }
 
         // Always load a new random task when returning from Edit Category screen
@@ -487,10 +635,12 @@ class HomeScreenState extends State<HomeScreen> {
 
         if (mounted) {
           print(
-              'HomeScreen: New random task loaded: \'${_randomTask?.headline}\'');
+            'HomeScreen: New random task loaded: \'${_randomTask?.headline}\'',
+          );
           print('HomeScreen: Task finished state: ${_randomTask?.finished}');
           print(
-              'HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}');
+            'HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}',
+          );
         }
       } else {
         print('HomeScreen: No category selected, skipping task load');
@@ -512,16 +662,30 @@ class HomeScreenState extends State<HomeScreen> {
       if (_selectedCategory != null) {
         print('HomeScreen: Loading new random task after category edit...');
 
+        // Force a cache refresh by reinitializing with the current category
+        final userId = AuthUtils.getCurrentUserId();
+        if (userId != null) {
+          await _cacheManager.initializeWithSavedCategory(
+            _selectedCategory!,
+            userId,
+          );
+
+          // Also force refresh from database to ensure we have the latest data
+          await _cacheManager.refreshFromDatabase();
+        }
+
         // Always load a new random task when returning from Edit Category screen
         // since the category or its tasks might have been modified
         await _loadRandomTask(_selectedCategory!);
 
         if (mounted) {
           print(
-              'HomeScreen: New random task loaded: \'${_randomTask?.headline}\'');
+            'HomeScreen: New random task loaded: \'${_randomTask?.headline}\'',
+          );
           print('HomeScreen: Task finished state: ${_randomTask?.finished}');
           print(
-              'HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}');
+            'HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}',
+          );
         }
       } else {
         print('HomeScreen: No category selected, skipping task load');
@@ -537,6 +701,13 @@ class HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text(''), // Blank header
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            onPressed: () {
+              _forceRefreshAndVerify();
+            },
+            tooltip: 'Debug: Force Refresh',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
@@ -571,11 +742,7 @@ class HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(
-                      Icons.cloud_off,
-                      size: 48,
-                      color: Colors.grey,
-                    ),
+                    const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
                     const SizedBox(height: 16),
                     Text(
                       _error!,
@@ -663,12 +830,17 @@ class HomeScreenState extends State<HomeScreen> {
                             width: MediaQuery.of(context).size.width - 32,
                             child: Card(
                               key: ValueKey(
-                                  'task_${_randomTask!.id}_${_randomTask!.headline}'),
+                                'task_${_randomTask!.id}_${_randomTask!.headline}',
+                              ),
                               child: Stack(
                                 children: [
                                   Padding(
                                     padding: const EdgeInsets.fromLTRB(
-                                        16, 16, 16, 0),
+                                      16,
+                                      16,
+                                      16,
+                                      0,
+                                    ),
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
@@ -681,63 +853,69 @@ class HomeScreenState extends State<HomeScreen> {
                                               child: GestureDetector(
                                                 onTap: () =>
                                                     _navigateToEditTask(
-                                                        _randomTask!),
+                                                  _randomTask!,
+                                                ),
                                                 child: Text(
                                                   _randomTask!.headline,
-                                                  style:
-                                                      Theme.of(context)
-                                                          .textTheme
-                                                          .bodyLarge
-                                                          ?.copyWith(
-                                                            fontSize: (Theme.of(
-                                                                            context)
-                                                                        .textTheme
-                                                                        .bodyLarge
-                                                                        ?.fontSize ??
-                                                                    16) +
-                                                                6,
-                                                            fontWeight: _randomTask!
-                                                                            .suggestibleAt ==
-                                                                        null ||
-                                                                    !_randomTask!
-                                                                        .suggestibleAt!
-                                                                        .isAfter(DateTime
-                                                                            .now())
-                                                                ? FontWeight
-                                                                    .bold
-                                                                : FontWeight
-                                                                    .normal,
-                                                            color: _randomTask!
-                                                                            .suggestibleAt !=
-                                                                        null &&
-                                                                    _randomTask!
-                                                                        .suggestibleAt!
-                                                                        .isAfter(
-                                                                            DateTime.now())
-                                                                ? Colors.grey
-                                                                : null,
-                                                          ),
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .bodyLarge
+                                                      ?.copyWith(
+                                                        fontSize: (Theme.of(
+                                                                        context)
+                                                                    .textTheme
+                                                                    .bodyLarge
+                                                                    ?.fontSize ??
+                                                                16) +
+                                                            6,
+                                                        fontWeight: _randomTask!
+                                                                        .suggestibleAt ==
+                                                                    null ||
+                                                                !_randomTask!
+                                                                    .suggestibleAt!
+                                                                    .isAfter(
+                                                                  DateTime
+                                                                      .now(),
+                                                                )
+                                                            ? FontWeight.bold
+                                                            : FontWeight.normal,
+                                                        color: _randomTask!
+                                                                        .suggestibleAt !=
+                                                                    null &&
+                                                                _randomTask!
+                                                                    .suggestibleAt!
+                                                                    .isAfter(
+                                                                  DateTime
+                                                                      .now(),
+                                                                )
+                                                            ? Colors.grey
+                                                            : null,
+                                                      ),
                                                 ),
                                               ),
                                             ),
                                             const SizedBox(width: 8),
                                             GestureDetector(
                                               onTap: () => _navigateToEditTask(
-                                                  _randomTask!),
+                                                _randomTask!,
+                                              ),
                                               child: Icon(
                                                 Icons.edit,
                                                 size: 20,
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .primary,
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.primary,
                                               ),
                                             ),
                                           ],
                                         ),
                                         if (_randomTask!.finished) ...[
                                           const SizedBox(width: 8),
-                                          Icon(Icons.check_circle,
-                                              color: Colors.green, size: 28),
+                                          Icon(
+                                            Icons.check_circle,
+                                            color: Colors.green,
+                                            size: 28,
+                                          ),
                                         ],
                                         if (_randomTask!.notes != null) ...[
                                           const SizedBox(height: 8),
@@ -747,21 +925,22 @@ class HomeScreenState extends State<HomeScreen> {
                                               children: [
                                                 TextSpan(
                                                   text: _randomTask!.notes!,
-                                                  style:
-                                                      Theme.of(context)
-                                                          .textTheme
-                                                          .bodyMedium
-                                                          ?.copyWith(
-                                                            color: _randomTask!
-                                                                            .suggestibleAt !=
-                                                                        null &&
-                                                                    _randomTask!
-                                                                        .suggestibleAt!
-                                                                        .isAfter(
-                                                                            DateTime.now())
-                                                                ? Colors.grey
-                                                                : null,
-                                                          ),
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .bodyMedium
+                                                      ?.copyWith(
+                                                        color: _randomTask!
+                                                                        .suggestibleAt !=
+                                                                    null &&
+                                                                _randomTask!
+                                                                    .suggestibleAt!
+                                                                    .isAfter(
+                                                                  DateTime
+                                                                      .now(),
+                                                                )
+                                                            ? Colors.grey
+                                                            : null,
+                                                      ),
                                                 ),
                                               ],
                                             ),
@@ -781,15 +960,16 @@ class HomeScreenState extends State<HomeScreen> {
                                           const SizedBox(height: 8),
                                           Text(
                                             'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall,
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.bodySmall,
                                           ),
                                         ],
                                         if (_randomTask!.suggestibleAt !=
                                                 null &&
-                                            _randomTask!.suggestibleAt!
-                                                .isAfter(DateTime.now())) ...[
+                                            _randomTask!.suggestibleAt!.isAfter(
+                                              DateTime.now(),
+                                            )) ...[
                                           const SizedBox(height: 8),
                                           Row(
                                             children: [
@@ -809,13 +989,17 @@ class HomeScreenState extends State<HomeScreen> {
                                                 onPressed: () async {
                                                   await _reviveCurrentTask();
                                                 },
-                                                icon: const Icon(Icons.refresh,
-                                                    size: 16),
+                                                icon: const Icon(
+                                                  Icons.refresh,
+                                                  size: 16,
+                                                ),
                                                 label: const Text('Revive'),
                                                 style: TextButton.styleFrom(
                                                   foregroundColor: Colors.blue,
                                                   padding: const EdgeInsets
-                                                      .symmetric(horizontal: 8),
+                                                      .symmetric(
+                                                    horizontal: 8,
+                                                  ),
                                                 ),
                                               ),
                                             ],
@@ -827,11 +1011,12 @@ class HomeScreenState extends State<HomeScreen> {
                                             onPressed: _finishCurrentTask,
                                             icon: const Icon(Icons.check),
                                             label: const Text(
-                                                'Actually, I\'m done with this'),
+                                              'Actually, I\'m done with this',
+                                            ),
                                             style: TextButton.styleFrom(
-                                              foregroundColor: Theme.of(context)
-                                                  .colorScheme
-                                                  .primary,
+                                              foregroundColor: Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
                                               padding: EdgeInsets.zero,
                                               visualDensity:
                                                   VisualDensity.compact,
@@ -863,7 +1048,8 @@ class HomeScreenState extends State<HomeScreen> {
                                       // Then load a new random task
                                       if (_selectedCategory != null) {
                                         await _loadRandomTask(
-                                            _selectedCategory!);
+                                          _selectedCategory!,
+                                        );
                                       }
                                     } catch (e) {
                                       print('Error in Hit Me Again: $e');
@@ -888,8 +1074,9 @@ class HomeScreenState extends State<HomeScreen> {
                                   onPressed: _navigateToEditTasks,
                                   child: const Text('Manage Choices'),
                                   style: TextButton.styleFrom(
-                                    foregroundColor:
-                                        Theme.of(context).colorScheme.primary,
+                                    foregroundColor: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
                                   ),
                                 ),
                               ],

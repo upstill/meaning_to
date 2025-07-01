@@ -1,20 +1,25 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
-import 'dart:async';  // Add this import for TimeoutException
+import 'dart:async'; // Add this import for TimeoutException
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:meaning_to/utils/auth.dart';
+import 'package:crypto/crypto.dart';
+import 'package:meaning_to/utils/supabase_client.dart';
 
-final supabase = Supabase.instance.client;
 // The anon key should be the same as what you used to initialize Supabase
-final supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpocHhkYXlmcHlzb2l4eGpqcWlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDk5MjQ5NzAsImV4cCI6MjAyNTUwMDk3MH0.zhpxdayfpysoixxjjqik';
+final supabaseAnonKey =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpocHhkYXlmcHlzb2l4eGpqcWlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDk5MjQ5NzAsImV4cCI6MjAyNTUwMDk3MH0.zhpxdayfpysoixxjjqik';
 
 class DomainIcon {
-  static const int maxIconSize = 128;  // Maximum width/height for icons
-  
+  static const int maxIconSize = 128; // Maximum width/height for icons
+
   final String domain;
   final String iconUrl;
-  final Uint8List? iconData;  // Add binary data field
+  final Uint8List? iconData; // Add binary data field
 
   // Static cache for icons
   static final Map<String, DomainIcon> _iconCache = {};
@@ -22,7 +27,7 @@ class DomainIcon {
   DomainIcon({
     required this.domain,
     required this.iconUrl,
-    this.iconData,  // Make iconData optional
+    this.iconData, // Make iconData optional
   });
 
   factory DomainIcon.fromJson(Map<String, dynamic> json) {
@@ -38,7 +43,10 @@ class DomainIcon {
             // Remove the \x prefix and decode
             final hex = hexString.substring(2);
             binaryData = Uint8List.fromList(
-              List.generate(hex.length ~/ 2, (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16))
+              List.generate(
+                hex.length ~/ 2,
+                (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16),
+              ),
             );
           }
         } catch (e) {
@@ -49,7 +57,7 @@ class DomainIcon {
         binaryData = Uint8List.fromList(List<int>.from(json['data']));
       }
     }
-    
+
     return DomainIcon(
       domain: domain,
       iconUrl: 'https://img.logo.dev/$domain?token=pk_fcBZeEBkTBGgXlL2PvgA_Q',
@@ -60,7 +68,7 @@ class DomainIcon {
   Map<String, dynamic> toJson() {
     return {
       'domain': domain,
-      'data': iconData?.toList(),  // Store binary data in 'data' column
+      'data': iconData?.toList(), // Store binary data in 'data' column
     };
   }
 
@@ -76,11 +84,11 @@ class DomainIcon {
       }
 
       print('Original image size: ${image.width}x${image.height}');
-      
+
       // Calculate new dimensions while maintaining aspect ratio
       int newWidth = image.width;
       int newHeight = image.height;
-      
+
       if (image.width > maxIconSize || image.height > maxIconSize) {
         if (image.width > image.height) {
           newWidth = maxIconSize;
@@ -98,16 +106,18 @@ class DomainIcon {
           image,
           width: newWidth,
           height: newHeight,
-          interpolation: img.Interpolation.linear,  // Better quality for icons
+          interpolation: img.Interpolation.linear, // Better quality for icons
         );
-        
+
         // Convert back to bytes
-        final resizedBytes = img.encodePng(resized);  // Using PNG for better quality
+        final resizedBytes = img.encodePng(
+          resized,
+        ); // Using PNG for better quality
         print('Resized image size: ${resizedBytes.length} bytes');
         return resizedBytes;
       } else {
         print('Image already within size limits');
-        return imageData;  // Return original if no resize needed
+        return imageData; // Return original if no resize needed
       }
     } catch (e) {
       print('Error resizing image:');
@@ -127,11 +137,12 @@ class DomainIcon {
     try {
       print('Fetching icon data from URL: $iconUrl');
       final response = await http.get(Uri.parse(iconUrl));
-      if (response.statusCode == 200 && response.headers['content-type']?.startsWith('image/') == true) {
+      if (response.statusCode == 200 &&
+          response.headers['content-type']?.startsWith('image/') == true) {
         print('Successfully fetched icon data for domain: $domain');
         print('Content-Type: ${response.headers['content-type']}');
         print('Original data size: ${response.bodyBytes.length} bytes');
-        
+
         // Resize the image if needed
         final resizedData = _resizeImage(response.bodyBytes);
         if (resizedData != null) {
@@ -157,9 +168,9 @@ class DomainIcon {
 
   Future<bool> saveToDatabase() async {
     try {
-      final user = supabase.auth.currentUser;
+      final user = AuthUtils.getCurrentUser();
       final session = supabase.auth.currentSession;
-      
+
       // Check authentication state first
       if (user == null || session == null) {
         print('\n=== Authentication Error ===');
@@ -169,10 +180,12 @@ class DomainIcon {
         print('Session expires: ${session?.expiresAt}');
         return false;
       }
-      
+
       // Check if session is expired
       if (session.expiresAt != null) {
-        final expirationTime = DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000);
+        final expirationTime = DateTime.fromMillisecondsSinceEpoch(
+          session.expiresAt! * 1000,
+        );
         if (expirationTime.isBefore(DateTime.now())) {
           print('\n=== Session Expired ===');
           print('Session expired at: $expirationTime');
@@ -181,43 +194,46 @@ class DomainIcon {
         }
         print('Session valid until: $expirationTime');
       }
-      
+
       print('\n=== Icon Save Operation ===');
       print('Domain: $domain');
       print('Icon URL: $iconUrl');
       print('Icon data size: ${iconData?.length} bytes');
-      
+
       print('\n=== Authentication State ===');
       print('User ID: ${user.id}');
       print('User Email: ${user.email}');
       print('User Role: ${user.appMetadata['role']}');
       print('Session Token: ${session.accessToken.substring(0, 10)}...');
-      print('Session Expires: ${DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)}');
-      print('Session Refresh Token: ${session.refreshToken != null ? 'Present' : 'None'}');
-      
+      print(
+        'Session Expires: ${DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)}',
+      );
+      print(
+        'Session Refresh Token: ${session.refreshToken != null ? 'Present' : 'None'}',
+      );
+
       print('\n=== Initial Database Check ===');
       print('Checking database permissions and connectivity...');
       print('Endpoint: https://zhpxdayfpysoixxjjqik.supabase.co/rest/v1/');
       print('Headers:');
-      print('  - Authorization: Bearer ${session.accessToken.substring(0, 10)}...');
-      print('  - apikey: [SUPABASE_ANON_KEY]');  // Don't log the actual key
-      
+      print(
+        '  - Authorization: Bearer ${session.accessToken.substring(0, 10)}...',
+      );
+      print('  - apikey: [SUPABASE_ANON_KEY]'); // Don't log the actual key
+
       // Check database permissions first
       try {
         print('\nAttempting initial database connection...');
-        final permissionCheck = await supabase
-            .from('Icons')
-            .select('count')
-            .limit(1)
-            .maybeSingle();
-        
+        final permissionCheck =
+            await supabase.from('Icons').select('count').limit(1).maybeSingle();
+
         print('Permission check response: $permissionCheck');
         print('Initial database connection successful');
       } catch (e) {
         print('\n=== Database Connection Error ===');
         print('Error type: ${e.runtimeType}');
         print('Error message: $e');
-        
+
         if (e.toString().contains('401')) {
           print('\n=== Authentication Failed ===');
           print('Supabase returned 401 Unauthorized');
@@ -226,57 +242,73 @@ class DomainIcon {
           print('- User Email: ${user.email}');
           print('- User Role: ${user.appMetadata['role']}');
           print('- Session Token: ${session.accessToken.substring(0, 10)}...');
-          print('- Session Expires: ${DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)}');
-          print('- Session Valid: ${session.expiresAt != null && DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000).isAfter(DateTime.now())}');
-          print('- Session Refresh Token: ${session.refreshToken != null ? 'Present' : 'None'}');
-          
+          print(
+            '- Session Expires: ${DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)}',
+          );
+          print(
+            '- Session Valid: ${session.expiresAt != null && DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000).isAfter(DateTime.now())}',
+          );
+          print(
+            '- Session Refresh Token: ${session.refreshToken != null ? 'Present' : 'None'}',
+          );
+
           print('\nRequest Details:');
-          print('- Endpoint: https://zhpxdayfpysoixxjjqik.supabase.co/rest/v1/Icons');
+          print(
+            '- Endpoint: https://zhpxdayfpysoixxjjqik.supabase.co/rest/v1/Icons',
+          );
           print('- Method: GET');
           print('- Operation: SELECT count');
           print('- Headers:');
-          print('  - Authorization: Bearer ${session.accessToken.substring(0, 10)}...');
-          print('  - apikey: [SUPABASE_ANON_KEY]');  // Don't log the actual key
-          
+          print(
+            '  - Authorization: Bearer ${session.accessToken.substring(0, 10)}...',
+          );
+          print('  - apikey: [SUPABASE_ANON_KEY]'); // Don't log the actual key
+
           print('\nPossible causes:');
           print('1. Database permissions not properly configured');
           print('2. RLS (Row Level Security) policies blocking access');
           print('3. User role does not have necessary permissions');
           print('4. Database role permissions need to be updated');
-          
+
           print('\nSuggested actions:');
           print('1. Check RLS policies for the Icons table');
           print('2. Verify user role permissions');
           print('3. Check database role settings');
           print('4. Ensure the Icons table has proper access policies');
           print('5. Verify the user has SELECT permission on the Icons table');
-          
+
           print('\nDebug Information:');
           print('- Session is valid until 2025');
           print('- User is authenticated');
           print('- Error occurred during initial database connection');
-          print('- This suggests a database permission issue rather than an authentication issue');
+          print(
+            '- This suggests a database permission issue rather than an authentication issue',
+          );
         }
         return false;
       }
-      
+
       print('\n=== Network State ===');
       print('Checking network connectivity...');
-      
+
       // Check network connectivity and DNS resolution
       try {
         print('\nChecking network connectivity...');
-        
+
         // First try DNS resolution specifically for Supabase
         try {
           final supabaseHost = 'zhpxdayfpysoixxjjqik.supabase.co';
           print('Resolving DNS for $supabaseHost...');
           final addresses = await InternetAddress.lookup(supabaseHost);
           if (addresses.isEmpty) {
-            print('DNS resolution failed: No addresses found for $supabaseHost');
+            print(
+              'DNS resolution failed: No addresses found for $supabaseHost',
+            );
             return false;
           }
-          print('DNS resolution successful: ${addresses.map((a) => a.address).join(", ")}');
+          print(
+            'DNS resolution successful: ${addresses.map((a) => a.address).join(", ")}',
+          );
         } on SocketException catch (e) {
           print('\n=== DNS Resolution Error ===');
           print('Failed to resolve Supabase hostname: $e');
@@ -284,7 +316,9 @@ class DomainIcon {
           print('1. Check your internet connection');
           print('2. Try switching between WiFi and mobile data');
           print('3. Check your DNS settings');
-          print('4. Try using a different DNS server (e.g., 8.8.8.8 or 1.1.1.1)');
+          print(
+            '4. Try using a different DNS server (e.g., 8.8.8.8 or 1.1.1.1)',
+          );
           print('5. Disable VPN if enabled');
           print('6. Check if you can access other websites');
           print('\nDetailed Error:');
@@ -292,24 +326,29 @@ class DomainIcon {
           print('Error Code: ${e.osError?.errorCode}');
           return false;
         }
-        
+
         // Then try a basic internet connectivity check
         print('Checking general internet connectivity...');
-        final internetCheck = await http.get(Uri.parse('https://www.google.com'))
+        final internetCheck = await http
+            .get(Uri.parse('https://www.google.com'))
             .timeout(const Duration(seconds: 5));
         if (internetCheck.statusCode != 200) {
-          print('Internet connectivity check failed: ${internetCheck.statusCode}');
+          print(
+            'Internet connectivity check failed: ${internetCheck.statusCode}',
+          );
           return false;
         }
         print('General internet connectivity confirmed');
-        
+
         // Finally check Supabase connectivity using the client
         print('Checking Supabase connectivity...');
         print('\nRequest Details:');
         print('- Using Supabase client for connectivity check');
         print('- User ID: ${user.id}');
-        print('- Session valid until: ${DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)}');
-        
+        print(
+          '- Session valid until: ${DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)}',
+        );
+
         // Use the Supabase client to check connectivity
         try {
           // Try a simple query that should work with the client
@@ -319,14 +358,14 @@ class DomainIcon {
               .limit(1)
               .maybeSingle()
               .timeout(const Duration(seconds: 5));
-              
+
           print('Supabase connectivity check response: $connectivityCheck');
           print('Supabase connectivity confirmed');
         } catch (e) {
           print('\n=== Supabase Connectivity Error ===');
           print('Error type: ${e.runtimeType}');
           print('Error message: $e');
-          
+
           if (e.toString().contains('401')) {
             print('\n=== Authentication Failed ===');
             print('Supabase returned 401 Unauthorized');
@@ -334,11 +373,19 @@ class DomainIcon {
             print('- User ID: ${user.id}');
             print('- User Email: ${user.email}');
             print('- User Role: ${user.appMetadata['role']}');
-            print('- Session Token: ${session.accessToken.substring(0, 10)}...');
-            print('- Session Expires: ${DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)}');
-            print('- Session Valid: ${session.expiresAt != null && DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000).isAfter(DateTime.now())}');
-            print('- Session Refresh Token: ${session.refreshToken != null ? 'Present' : 'None'}');
-            
+            print(
+              '- Session Token: ${session.accessToken.substring(0, 10)}...',
+            );
+            print(
+              '- Session Expires: ${DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)}',
+            );
+            print(
+              '- Session Valid: ${session.expiresAt != null && DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000).isAfter(DateTime.now())}',
+            );
+            print(
+              '- Session Refresh Token: ${session.refreshToken != null ? 'Present' : 'None'}',
+            );
+
             print('\nDebug Information:');
             print('- Session is valid until 2025');
             print('- User is authenticated');
@@ -346,24 +393,25 @@ class DomainIcon {
             print('- DNS resolution was successful');
             print('- General internet connectivity is working');
             print('- Using Supabase client for all operations');
-            
+
             print('\nPossible causes:');
             print('1. Database permissions not properly configured');
             print('2. RLS (Row Level Security) policies blocking access');
             print('3. User role does not have necessary permissions');
             print('4. Database role permissions need to be updated');
-            
+
             print('\nSuggested actions:');
             print('1. Check RLS policies for the Icons table');
             print('2. Verify user role permissions');
             print('3. Check database role settings');
             print('4. Ensure the Icons table has proper access policies');
-            print('5. Verify the user has SELECT permission on the Icons table');
+            print(
+              '5. Verify the user has SELECT permission on the Icons table',
+            );
           }
           return false;
         }
-        
-      } on TimeoutException catch (e) {
+      } on TimeoutException {
         print('\n=== Connection Timeout ===');
         print('Request timed out after 5 seconds');
         print('This usually means:');
@@ -377,9 +425,9 @@ class DomainIcon {
         print('Unexpected network error: $e');
         return false;
       }
-      
+
       print('\nNetwork checks passed, proceeding with database operation...');
-      
+
       // Check if icon exists before attempting operation
       bool isExistingIcon = false;
       try {
@@ -388,14 +436,14 @@ class DomainIcon {
             .select()
             .eq('domain', domain)
             .maybeSingle();
-            
+
         isExistingIcon = existingIcon != null;
         print('Existing icon check: ${isExistingIcon ? 'Found' : 'Not found'}');
       } catch (e) {
         print('Error checking for existing icon: $e');
         // Continue with operation even if check fails
       }
-      
+
       print('\n=== Database Query Details ===');
       if (!isExistingIcon) {
         print('Operation: INSERT');
@@ -403,7 +451,9 @@ class DomainIcon {
         print('Data:');
         print('  - domain: $domain');
         print('  - data: ${iconData?.length} bytes of binary data');
-        print('Query: INSERT INTO "Icons" (domain, data) VALUES ($domain, $iconData)');
+        print(
+          'Query: INSERT INTO "Icons" (domain, data) VALUES ($domain, $iconData)',
+        );
       } else {
         print('Operation: UPSERT');
         print('Table: Icons');
@@ -411,47 +461,42 @@ class DomainIcon {
         print('Data:');
         print('  - domain: $domain');
         print('  - data: ${iconData?.length} bytes of binary data');
-        print('Query: INSERT INTO "Icons" (domain, data) VALUES ($domain, $iconData) ON CONFLICT (domain) DO UPDATE SET data = $iconData');
+        print(
+          'Query: INSERT INTO "Icons" (domain, data) VALUES ($domain, $iconData) ON CONFLICT (domain) DO UPDATE SET data = $iconData',
+        );
       }
-      
+
       print('\n=== Database Permissions ===');
       print('Required Permissions:');
       print('1. SELECT (for checking existing icon)');
       print('2. ${isExistingIcon ? 'UPDATE' : 'INSERT'} (for saving icon)');
       print('3. RLS Policies:');
-      print('   - Must allow ${isExistingIcon ? 'UPDATE' : 'INSERT'} for authenticated users');
+      print(
+        '   - Must allow ${isExistingIcon ? 'UPDATE' : 'INSERT'} for authenticated users',
+      );
       print('   - Must allow SELECT for checking existing icons');
-      
+
       try {
         dynamic response;
-        
+
         if (!isExistingIcon) {
           // Try a pure INSERT first
           print('Attempting pure INSERT operation...');
           try {
-            response = await supabase
-                .from('Icons')
-                .insert({
-                  'domain': domain,
-                  'data': iconData,  // Store binary data in 'data' column
-                })
-                .select();
+            response = await supabase.from('Icons').insert({
+              'domain': domain,
+              'data': iconData, // Store binary data in 'data' column
+            }).select();
             print('Pure INSERT operation successful');
           } catch (insertError) {
             print('Pure INSERT failed: $insertError');
             if (insertError.toString().contains('401')) {
               print('INSERT permission denied - falling back to upsert');
               // Fall back to upsert using the Supabase client
-              response = await supabase
-                  .from('Icons')
-                  .upsert(
-                    {
-                      'domain': domain,
-                      'data': iconData,  // Store binary data in 'data' column
-                    },
-                    onConflict: 'domain',
-                  )
-                  .select();
+              response = await supabase.from('Icons').upsert({
+                'domain': domain,
+                'data': iconData, // Store binary data in 'data' column
+              }, onConflict: 'domain').select();
             } else {
               rethrow;
             }
@@ -459,36 +504,32 @@ class DomainIcon {
         } else {
           // If icon exists, use upsert for update
           print('Icon exists, using upsert for update...');
-          response = await supabase
-              .from('Icons')
-              .upsert(
-                {
-                  'domain': domain,
-                  'data': iconData,  // Store binary data in 'data' column
-                },
-                onConflict: 'domain',
-              )
-              .select();
+          response = await supabase.from('Icons').upsert({
+            'domain': domain,
+            'data': iconData, // Store binary data in 'data' column
+          }, onConflict: 'domain').select();
         }
-        
+
         print('Database operation details:');
         print('- Operation: ${isExistingIcon ? 'Update' : 'Insert'}');
         print('- Domain: $domain');
         print('- Icon URL: $iconUrl');
         print('- Icon data size: ${iconData?.length} bytes');
         print('- Response: $response');
-        
+
         if (response == null) {
           print('Database operation returned null response');
           return false;
         }
-        
+
         if (response is List && response.isEmpty) {
           print('Database operation returned empty list');
           return false;
         }
-        
-        print('Successfully ${isExistingIcon ? 'updated' : 'inserted'} icon for domain $domain');
+
+        print(
+          'Successfully ${isExistingIcon ? 'updated' : 'inserted'} icon for domain $domain',
+        );
         print('Response type: ${response.runtimeType}');
         print('Response data: $response');
         return true;
@@ -497,9 +538,11 @@ class DomainIcon {
           print('\n=== Database Authentication Error ===');
           print('Received 401 Unauthorized from database operation');
           print('Session token: ${session.accessToken.substring(0, 10)}...');
-          print('Anon key: [SUPABASE_ANON_KEY]');  // Don't log the actual key
+          print('Anon key: [SUPABASE_ANON_KEY]'); // Don't log the actual key
           if (session.expiresAt != null) {
-            print('Session expires: ${DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)}');
+            print(
+              'Session expires: ${DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)}',
+            );
           }
           print('User ID: ${user.id}');
           print('Error details: $e');
@@ -507,16 +550,22 @@ class DomainIcon {
           print('- Table: Icons');
           print('- Operation: ${isExistingIcon ? 'Update' : 'Insert'}');
           print('- Domain: $domain');
-          print('- Operation Type: ${isExistingIcon ? 'Upsert' : 'Pure Insert (with upsert fallback)'}');
+          print(
+            '- Operation Type: ${isExistingIcon ? 'Upsert' : 'Pure Insert (with upsert fallback)'}',
+          );
           print('\nPermission Analysis:');
           print('1. Session is valid (expires in 2025)');
           print('2. User is authenticated (ID: ${user.id})');
           print('3. Error is 401 Unauthorized');
-          print('4. Operation attempted: ${isExistingIcon ? 'Update' : 'Insert'}');
+          print(
+            '4. Operation attempted: ${isExistingIcon ? 'Update' : 'Insert'}',
+          );
           print('\nThis suggests a database permission issue.');
           print('Please verify:');
           print('1. User has INSERT permission on the Icons table');
-          print('2. User has UPDATE permission on the Icons table (for upsert)');
+          print(
+            '2. User has UPDATE permission on the Icons table (for upsert)',
+          );
           print('3. RLS policies allow both INSERT and UPDATE operations');
           print('\nNext steps:');
           print('1. Check if the user has basic INSERT permission');
@@ -528,9 +577,9 @@ class DomainIcon {
         rethrow;
       }
     } catch (e, stackTrace) {
-      final user = supabase.auth.currentUser;
+      final user = AuthUtils.getCurrentUser();
       final session = supabase.auth.currentSession;
-      
+
       print('\n=== Database Save Error ===');
       print('Domain: $domain');
       print('Icon URL: $iconUrl');
@@ -538,19 +587,21 @@ class DomainIcon {
       print('Error type: ${e.runtimeType}');
       print('Error message: $e');
       print('Stack trace: $stackTrace');
-      
+
       print('\nAuthentication State:');
       print('- User ID: ${user?.id}');
       print('- User email: ${user?.email}');
       print('- Session exists: ${session != null}');
       print('- Session valid: ${session?.accessToken != null}');
       if (session?.expiresAt != null) {
-        print('- Session expires: ${DateTime.fromMillisecondsSinceEpoch(session!.expiresAt! * 1000)}');
+        print(
+          '- Session expires: ${DateTime.fromMillisecondsSinceEpoch(session!.expiresAt! * 1000)}',
+        );
       }
       if (session != null) {
         print('- Session token: ${session.accessToken.substring(0, 10)}...');
       }
-      
+
       // Additional network error context
       if (e is SocketException) {
         print('\nNetwork Error Details:');
@@ -566,7 +617,7 @@ class DomainIcon {
           print('5. Disable VPN if enabled');
         }
       }
-      
+
       // Check for database-specific errors
       if (e.toString().contains('duplicate key')) {
         print('\nDatabase Error: Duplicate key violation');
@@ -579,7 +630,7 @@ class DomainIcon {
         print('\nDatabase Error: Not-null constraint violation');
         print('Required fields are missing in the save operation');
       }
-      
+
       print('\n=== End Error Report ===\n');
       return false;
     }
@@ -600,7 +651,7 @@ class DomainIcon {
           .select()
           .eq('domain', domain)
           .maybeSingle();
-      
+
       if (response != null) {
         print('Found icon in database for domain: $domain');
         try {
@@ -608,7 +659,9 @@ class DomainIcon {
           if (icon.iconData != null) {
             // Only cache and return if we successfully got the binary data
             _iconCache[domain] = icon;
-            print('Icon data size from database: ${icon.iconData!.length} bytes');
+            print(
+              'Icon data size from database: ${icon.iconData!.length} bytes',
+            );
             return icon;
           } else {
             print('Icon found in database but binary data is null or invalid');
@@ -626,14 +679,12 @@ class DomainIcon {
     // 3. If not in cache or database, fetch from logo.dev
     print('Fetching icon from logo.dev for domain: $domain');
     try {
-      final logoDevUrl = 'https://img.logo.dev/$domain?token=pk_fcBZeEBkTBGgXlL2PvgA_Q';
-      
+      final logoDevUrl =
+          'https://img.logo.dev/$domain?token=pk_fcBZeEBkTBGgXlL2PvgA_Q';
+
       // Create icon object first
-      final icon = DomainIcon(
-        domain: domain,
-        iconUrl: logoDevUrl,
-      );
-      
+      final icon = DomainIcon(domain: domain, iconUrl: logoDevUrl);
+
       // Fetch the icon data
       final iconData = await icon.fetchIconData();
       if (iconData != null) {
@@ -643,22 +694,26 @@ class DomainIcon {
           iconUrl: logoDevUrl,
           iconData: iconData,
         );
-        
+
         // Cache the icon
         _iconCache[domain] = iconWithData;
-        print('Successfully fetched and cached icon from logo.dev for domain: $domain');
-        
+        print(
+          'Successfully fetched and cached icon from logo.dev for domain: $domain',
+        );
+
         // Only try to save to database once
         print('Attempting to save newly fetched icon to database...');
         final saveResult = await iconWithData.saveToDatabase();
         if (saveResult) {
           print('Successfully saved new icon for domain $domain to database');
         } else {
-          print('Failed to save new icon for domain $domain to database - will retry next time');
+          print(
+            'Failed to save new icon for domain $domain to database - will retry next time',
+          );
           // Remove from cache so we'll try to save again next time
           _iconCache.remove(domain);
         }
-        
+
         return iconWithData;
       } else {
         print('Failed to fetch icon data from logo.dev');
@@ -676,8 +731,8 @@ class DomainIcon {
     try {
       print('Validating icon URL: $url');
       final response = await http.head(Uri.parse(url));
-      final isValid = response.statusCode == 200 && 
-                      response.headers['content-type']?.startsWith('image/') == true;
+      final isValid = response.statusCode == 200 &&
+          response.headers['content-type']?.startsWith('image/') == true;
       if (!isValid) {
         print('Invalid icon URL: $url');
         print('Status code: ${response.statusCode}');
@@ -705,4 +760,4 @@ class DomainIcon {
       'domains': _iconCache.keys.toList(),
     };
   }
-} 
+}

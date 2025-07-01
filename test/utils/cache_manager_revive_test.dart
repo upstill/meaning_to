@@ -39,7 +39,7 @@ void main() {
       cacheManager.initializeWithUnsavedCategory(category, [task], 'user123');
 
       // Verify task is deferred
-      expect(task.suggestibleAt!.isAfter(DateTime.now()), true);
+      expect(task.isDeferred, true);
 
       // Revive the task
       await cacheManager.reviveTask(task.id);
