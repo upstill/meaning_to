@@ -14,8 +14,8 @@ import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/widgets/task_display.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-
-final supabase = Supabase.instance.client;
+import 'package:meaning_to/utils/auth.dart';
+import 'package:meaning_to/utils/supabase_client.dart';
 
 class EditCategoryScreen extends StatefulWidget {
   static VoidCallback? onEditComplete; // Static callback for edit completion
@@ -24,11 +24,7 @@ class EditCategoryScreen extends StatefulWidget {
   final bool tasksOnly;
 
   // Remove onComplete from constructor since we'll use static callback
-  EditCategoryScreen({
-    super.key,
-    this.category,
-    this.tasksOnly = false,
-  });
+  EditCategoryScreen({super.key, this.category, this.tasksOnly = false});
 
   // Add a factory constructor to handle arguments from Navigator
   static Route routeFromArgs(RouteSettings settings) {
@@ -47,15 +43,14 @@ class EditCategoryScreen extends StatefulWidget {
   EditCategoryScreenState createState() => EditCategoryScreenState();
 }
 
-class EditCategoryScreenState extends State<EditCategoryScreen> {
+class EditCategoryScreenState extends State<EditCategoryScreen>
+    with WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _headlineController;
   late TextEditingController _invitationController;
   bool _isLoading = false;
-  String? _error;
-  bool _isLoadingTasks = false;
-  late bool _editTasksLocal;
-  bool _isEditing = false; // New state to track edit mode
+  bool _editTasksLocal = false;
+  bool _isEditing = false;
   List<Task> _newTasks = []; // Temporary list for tasks in new categories
 
   // Add a getter for tasks from the cache
@@ -64,53 +59,40 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     print('EditCategoryScreen: initState called');
     print(
-        'EditCategoryScreen: Static callback available: ${EditCategoryScreen.onEditComplete != null}');
+      'EditCategoryScreen: Static callback available: ${EditCategoryScreen.onEditComplete != null}',
+    );
     print('EditCategoryScreen: Current category: ${widget.category?.headline}');
 
-    _headlineController =
-        TextEditingController(text: widget.category?.headline);
-    _invitationController =
-        TextEditingController(text: widget.category?.invitation);
-    if (widget.category != null) {
-      _loadTasks();
-    }
+    _headlineController = TextEditingController(
+      text: widget.category?.headline,
+    );
+    _invitationController = TextEditingController(
+      text: widget.category?.invitation,
+    );
     _editTasksLocal = widget.tasksOnly;
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // No cache refresh needed - tasks are loaded via getter
+  }
+
+  @override
+  void didUpdateWidget(EditCategoryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // No cache refresh needed - tasks are loaded via getter
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _headlineController.dispose();
     _invitationController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadTasks() async {
-    if (widget.category == null) return;
-
-    setState(() {
-      _isLoadingTasks = true;
-      _error = null;
-    });
-
-    try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) throw Exception('No user logged in');
-
-      // Use CacheManager to initialize the cache for the selected category
-      await CacheManager()
-          .initializeWithSavedCategory(widget.category!, userId);
-      setState(() {
-        _isLoadingTasks = false;
-      });
-    } catch (e) {
-      print('Error loading tasks: $e');
-      setState(() {
-        _error = e.toString();
-        _isLoadingTasks = false;
-      });
-    }
   }
 
   Future<void> _saveCategory() async {
@@ -118,11 +100,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
     setState(() {
       _isLoading = true;
-      _error = null;
     });
 
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final userId = AuthUtils.getCurrentUserId();
       if (userId == null) throw Exception('No user logged in');
 
       final data = {
@@ -185,10 +166,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
           try {
             EditCategoryScreen.onEditComplete!();
             print(
-                'EditCategoryScreen: Edit complete callback executed successfully');
+              'EditCategoryScreen: Edit complete callback executed successfully',
+            );
           } catch (e) {
             print(
-                'EditCategoryScreen: Error executing edit complete callback: $e');
+              'EditCategoryScreen: Error executing edit complete callback: $e',
+            );
           }
         } else {
           print('EditCategoryScreen: No edit complete callback available');
@@ -205,7 +188,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     } catch (e) {
       print('Error saving category: $e');
       setState(() {
-        _error = e.toString();
         _isLoading = false;
       });
     }
@@ -217,8 +199,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content:
-                Text('Please save the category first before editing tasks'),
+            content: Text(
+              'Please save the category first before editing tasks',
+            ),
             backgroundColor: Colors.orange,
           ),
         );
@@ -229,23 +212,14 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => TaskEditScreen(
-            category: widget.category!,
-            task: task,
-          ),
+          builder: (context) =>
+              TaskEditScreen(category: widget.category!, task: task),
         ),
       );
 
       if (result == true) {
-        // Refresh the cache to get updated task data
-        final userId = supabase.auth.currentUser?.id;
-        if (userId != null) {
-          await CacheManager()
-              .initializeWithSavedCategory(widget.category!, userId);
-          setState(() {
-            // Trigger rebuild to reflect changes
-          });
-        }
+        // Just trigger a rebuild to reflect changes
+        setState(() {});
       }
     }
   }
@@ -273,22 +247,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       final result = await Navigator.pushNamed(
         context,
         '/edit-task',
-        arguments: {
-          'category': widget.category!,
-          'task': null,
-        },
+        arguments: {'category': widget.category!, 'task': null},
       );
 
       if (result == true) {
-        // Refresh the cache to get the new task
-        final userId = supabase.auth.currentUser?.id;
-        if (userId != null) {
-          await CacheManager()
-              .initializeWithSavedCategory(widget.category!, userId);
-          setState(() {
-            // Trigger rebuild to reflect changes
-          });
-        }
+        // Just trigger a rebuild to reflect changes
+        setState(() {});
       }
     }
   }
@@ -302,8 +266,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       }
 
       final document = html_parser.parse(response.body);
-      final titleElement =
-          document.querySelector('h1.title-detail-hero__details__title');
+      final titleElement = document.querySelector(
+        'h1.title-detail-hero__details__title',
+      );
       if (titleElement != null) {
         // Get only the direct text nodes, ignoring text from child elements
         final directText = titleElement.nodes
@@ -329,14 +294,16 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         throw Exception('Clipboard is empty');
       }
 
-      final extractedLink =
-          await LinkExtractor.extractLinkFromString(clipboardData!.text!);
+      final extractedLink = await LinkExtractor.extractLinkFromString(
+        clipboardData!.text!,
+      );
       if (extractedLink == null) {
         throw Exception(
-            'Clipboard content must be either a URL or an HTML <a> tag');
+          'Clipboard content must be either a URL or an HTML <a> tag',
+        );
       }
 
-      final userId = supabase.auth.currentUser?.id;
+      final userId = AuthUtils.getCurrentUserId();
       if (userId == null) {
         throw Exception('No user logged in');
       }
@@ -394,7 +361,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     print('EditCategoryScreen: Back button pressed');
     print('EditCategoryScreen: Current category: ${widget.category?.headline}');
     print(
-        'EditCategoryScreen: Static callback available: ${EditCategoryScreen.onEditComplete != null}');
+      'EditCategoryScreen: Static callback available: ${EditCategoryScreen.onEditComplete != null}',
+    );
 
     // Call the static callback before popping
     if (EditCategoryScreen.onEditComplete != null) {
@@ -411,8 +379,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
     // Pop after executing the callback
     if (mounted) {
-      Navigator.of(context)
-          .pop(true); // Always return true to indicate completion
+      Navigator.of(
+        context,
+      ).pop(true); // Always return true to indicate completion
       print('EditCategoryScreen: Popped screen with true result');
     } else {
       print('EditCategoryScreen: Widget not mounted, cannot pop');
@@ -421,7 +390,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
   Future<void> _deleteTask(Task task) async {
     print(
-        '=== Starting delete task for: ${task.headline} (ID: ${task.id}) ===');
+      '=== Starting delete task for: ${task.headline} (ID: ${task.id}) ===',
+    );
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -452,15 +422,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
       // Trigger a rebuild to reflect the changes
       setState(() {
-        _error = null; // Clear any previous errors
+        // No need to update _error as it's no longer used
       });
 
       print('Successfully deleted task: ${task.headline}');
     } catch (e) {
       print('Error deleting task: $e');
-      setState(() {
-        _error = 'Error deleting task: $e';
-      });
 
       // Show error to user
       if (mounted) {
@@ -477,35 +444,98 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   }
 
   /// Toggle task completion status
-  void _toggleTaskCompletion(Task task) {
-    if (task.finished) {
-      CacheManager().unfinishTask(task.id);
-    } else {
-      CacheManager().finishTask(task.id);
+  Future<void> _toggleTaskCompletion(Task task) async {
+    try {
+      if (task.finished) {
+        await CacheManager().unfinishTask(task.id);
+      } else {
+        await CacheManager().finishTask(task.id);
+      }
+      setState(() {}); // Trigger rebuild to reflect cache changes
+    } catch (e) {
+      print('Error toggling task completion: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating task: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
-    setState(() {});
   }
 
   /// Update task suggestibleAt time to current time (make available immediately)
   Future<void> _makeTaskAvailable(Task task) async {
-    await CacheManager().reviveTask(task.id);
-    setState(() {});
+    try {
+      print(
+          'EditCategoryScreen: _makeTaskAvailable called for task: ${task.headline}');
+      print('EditCategoryScreen: Task ID: ${task.id}');
+
+      // Use the existing CacheManager instance that's already initialized
+      final cacheManager = CacheManager();
+      print('EditCategoryScreen: CacheManager instance created');
+      print(
+          'EditCategoryScreen: CacheManager isInitialized: ${cacheManager.isInitialized}');
+
+      if (!cacheManager.isInitialized) {
+        print(
+            'EditCategoryScreen: CacheManager not initialized, initializing now...');
+        final userId = AuthUtils.getCurrentUserId();
+        await cacheManager.initializeWithSavedCategory(
+            widget.category!, userId);
+      }
+
+      // Test the database update first
+      print('EditCategoryScreen: Testing database update...');
+      await cacheManager.testDatabaseUpdate(task.id);
+
+      print(
+          'EditCategoryScreen: About to call cacheManager.reviveTask(${task.id})');
+      await cacheManager.reviveTask(task.id);
+      print('EditCategoryScreen: cacheManager.reviveTask completed');
+
+      // Update the local task list to reflect the change
+      final taskIndex = _tasks.indexWhere((t) => t.id == task.id);
+      if (taskIndex != -1) {
+        final updatedTask = cacheManager.currentTasks?.firstWhere(
+          (t) => t.id == task.id,
+          orElse: () => task,
+        );
+        if (updatedTask != null) {
+          _tasks[taskIndex] = updatedTask;
+        }
+      }
+
+      setState(() {}); // Trigger rebuild to reflect cache changes
+      print('EditCategoryScreen: Task made available successfully');
+    } catch (e) {
+      print('Error making task available: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating task: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildTaskList() {
     if (_tasks.isEmpty) {
       print('EditCategoryScreen: No tasks to display');
-      return const Center(
-        child: Text('No tasks yet. Add one to get started!'),
-      );
+      return const Center(child: Text('No tasks yet. Add one to get started!'));
     }
 
-    // Debug log to check task links
+    // Debug log to check task links and suggestibleAt times
     print(
-        '\n=== EditCategoryScreen: Building task list with ${_tasks.length} tasks ===');
+      '\n=== EditCategoryScreen: Building task list with ${_tasks.length} tasks ===',
+    );
     for (final task in _tasks) {
       print(
-          'Task "${task.headline}" has ${task.links?.length ?? 0} links: ${task.links}');
+        'Task "${task.headline}" - isDeferred: ${task.isDeferred}, isSuggestible: ${task.isSuggestible}',
+      );
     }
 
     print('EditCategoryScreen: Creating ListView.builder...');
@@ -517,7 +547,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       itemBuilder: (context, index) {
         final task = _tasks[index];
         print(
-            '\n=== EditCategoryScreen: Building TaskDisplay for "${task.headline}" at index $index ===');
+          '\n=== EditCategoryScreen: Building TaskDisplay for "${task.headline}" at index $index ===',
+        );
         print('Task links: ${task.links}');
         print('Task links type: ${task.links?.runtimeType}');
         print('Task links length: ${task.links?.length ?? 0}');
@@ -525,7 +556,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
         final taskDisplay = TaskDisplay(
           key: ValueKey(
-              'task-${task.id}'), // Add a key to help Flutter track the widget
+            'task-${task.id}',
+          ), // Add a key to help Flutter track the widget
           task: task,
           withControls: true,
           onEdit: () => _editTask(task),
@@ -559,8 +591,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               _handleBack();
             },
           ),
-          title:
-              Text(widget.category == null ? 'New Endeavor' : 'Edit Endeavor'),
+          title: Text(
+            widget.category == null ? 'New Endeavor' : 'Edit Endeavor',
+          ),
           actions: [
             if (widget.category != null && !_editTasksLocal && _isEditing)
               IconButton(
@@ -588,7 +621,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           builder: (context) => AlertDialog(
                             title: const Text('Delete Endeavor?'),
                             content: const Text(
-                                'This will also delete all tasks in this category. This action cannot be undone.'),
+                              'This will also delete all tasks in this category. This action cannot be undone.',
+                            ),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(context),
@@ -624,7 +658,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                       child: Text(
                         widget.category!.headline,
                         style: const TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.bold),
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                     IconButton(
@@ -643,7 +679,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                   Text(
                     widget.category!.invitation!,
                     style: const TextStyle(
-                        fontSize: 16, fontStyle: FontStyle.italic),
+                      fontSize: 16,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 const SizedBox(height: 16),
               ] else if (widget.category != null && !_isEditing) ...[
@@ -680,7 +718,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                                 onPressed: () {
                                   print('Import JustWatch button pressed');
                                   print(
-                                      'Category: ${widget.category?.headline}');
+                                    'Category: ${widget.category?.headline}',
+                                  );
 
                                   // Navigate to Import JustWatch screen, replacing the current screen
                                   Navigator.pushReplacement(
@@ -698,7 +737,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                                             result.headline;
                                         widget.category!.invitation =
                                             result.invitation;
-                                        _loadTasks();
                                       });
                                     }
                                   });
@@ -813,9 +851,11 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                               width: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Text(widget.category == null
-                              ? 'Create Endeavor'
-                              : 'Save Changes'),
+                          : Text(
+                              widget.category == null
+                                  ? 'Create Endeavor'
+                                  : 'Save Changes',
+                            ),
                     ),
                   ],
                 ),
@@ -828,10 +868,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                 children: [
                   const Text(
                     'Choices for this endeavor:',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   TextButton.icon(
                     onPressed: _handleClipboardContent,
@@ -844,27 +881,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              if (_isLoadingTasks)
-                const Center(child: CircularProgressIndicator())
-              else if (_error != null)
-                Center(
-                  child: Column(
-                    children: [
-                      Text(
-                        'Error: $_error',
-                        style: const TextStyle(color: Colors.red),
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadTasks,
-                        child: const Text('Try Again'),
-                      ),
-                    ],
-                  ),
-                )
-              else if (widget.category == null
-                  ? _newTasks.isEmpty
-                  : _tasks.isEmpty)
+              if (widget.category == null ? _newTasks.isEmpty : _tasks.isEmpty)
                 const Center(
                   child: Text(
                     'No tasks yet. Add some tasks to get started!',
@@ -873,13 +890,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                 )
               else
                 _buildTaskList(), // Remove Expanded since we're in a ListView
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Text(
-                  'Error: $_error',
-                  style: const TextStyle(color: Colors.red),
-                ),
-              ],
             ],
           ),
         ),

@@ -83,11 +83,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // Debug logging for suggestibleAt and color logic
-    final isDeferred = widget.task.suggestibleAt != null &&
-        widget.task.suggestibleAt!.isAfter(DateTime.now());
-    print(
-        'TaskDisplay: "${widget.task.headline}" - suggestibleAt: ${widget.task.suggestibleAt}');
+    // Use the new method from Task class for consistent evaluation
+    final isDeferred = widget.task.isDeferred;
     print('TaskDisplay: "${widget.task.headline}" - isDeferred: $isDeferred');
     print(
         'TaskDisplay: "${widget.task.headline}" - current time: ${DateTime.now()}');
@@ -151,14 +148,9 @@ class _TaskDisplayState extends State<TaskDisplay> {
                               child: Builder(
                                 builder: (context) {
                                   // Use gray for deferred tasks, black for available tasks
-                                  final now = DateTime.now()
-                                      .toUtc(); // Convert to UTC for proper comparison
-                                  final suggestibleAt =
-                                      widget.task.suggestibleAt;
-                                  final isDeferred = suggestibleAt != null &&
-                                      suggestibleAt.isAfter(now);
-                                  final textColor =
-                                      isDeferred ? Colors.grey : Colors.black;
+                                  final textColor = widget.task.isDeferred
+                                      ? Colors.grey
+                                      : Colors.black;
 
                                   return Text(
                                     widget.task.headline,
@@ -279,9 +271,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                   ],
                 ),
                 // Show suggestible time for deferred tasks
-                if (widget.task.suggestibleAt != null &&
-                    widget.task.suggestibleAt!
-                        .isAfter(DateTime.now().toUtc())) ...[
+                if (widget.task.isDeferred) ...[
                   const SizedBox(height: 4),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -293,18 +283,22 @@ class _TaskDisplayState extends State<TaskDisplay> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Available ${_formatSuggestibleTime(widget.task.suggestibleAt!)}',
-                        style: theme.textTheme.bodySmall?.copyWith(
+                        'Available again in ${_formatSuggestibleTime(widget.task.suggestibleAt!.toLocal())}  ',
+                        style: theme.textTheme.bodyMedium?.copyWith(
                           color: Colors.grey[600],
                           fontStyle: FontStyle.italic,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      if (widget.onUpdateSuggestibleAt != null)
+                      if (widget.onUpdateSuggestibleAt != null) ...[
                         ElevatedButton(
                           onPressed: () {
-                            widget
-                                .onUpdateSuggestibleAt!(DateTime.now().toUtc());
+                            print(
+                                'TaskDisplay: "Make Available Now" button pressed for "${widget.task.headline}"');
+                            print(
+                                'TaskDisplay: Calling onUpdateSuggestibleAt callback');
+                            widget.onUpdateSuggestibleAt!(DateTime.now());
+                            print(
+                                'TaskDisplay: onUpdateSuggestibleAt callback completed');
                           },
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
@@ -316,7 +310,21 @@ class _TaskDisplayState extends State<TaskDisplay> {
                           ),
                           child: const Text('Make Available Now'),
                         ),
+                      ],
                     ],
+                  ),
+                ] else ...[
+                  // Debug logging for when button doesn't show
+                  Builder(
+                    builder: (context) {
+                      print(
+                          'TaskDisplay: "${widget.task.headline}" - isDeferred: ${widget.task.isDeferred}');
+                      print(
+                          'TaskDisplay: "${widget.task.headline}" - current time: ${DateTime.now()}');
+                      print(
+                          'TaskDisplay: "${widget.task.headline}" - onUpdateSuggestibleAt != null: ${widget.onUpdateSuggestibleAt != null}');
+                      return const SizedBox.shrink();
+                    },
                   ),
                 ],
                 // Show links if expanded
@@ -379,7 +387,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
   /// Format a suggestible time for display
   static String _formatSuggestibleTime(DateTime date) {
-    final now = DateTime.now().toUtc();
+    final now = DateTime.now();
     final difference = date.difference(now);
 
     if (difference.inDays == 0) {

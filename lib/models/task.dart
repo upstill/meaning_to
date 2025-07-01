@@ -5,8 +5,7 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/link.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-
-final supabase = Supabase.instance.client;
+import 'package:meaning_to/utils/supabase_client.dart';
 
 class Task {
   final int id;
@@ -490,9 +489,9 @@ class Task {
   /// - Otherwise: days and hours
   String? getSuggestibleTimeDisplay() {
     if (suggestibleAt == null) return null;
-    if (!suggestibleAt!.isAfter(DateTime.now())) return null;
+    if (!suggestibleAt!.isAfter(DateTime.now().toUtc())) return null;
 
-    final difference = suggestibleAt!.difference(DateTime.now());
+    final difference = suggestibleAt!.difference(DateTime.now().toUtc());
     final seconds = difference.inSeconds;
     final minutes = difference.inMinutes;
     final hours = difference.inHours;
@@ -547,14 +546,17 @@ class Task {
   /// Updates both the database and cache.
   static Future<void> reviveTask(Task task, String userId) async {
     try {
+      print('Task.reviveTask() called for task: ${task.headline}');
       final now = DateTime.now();
 
       // Update in database
+      print('Task.reviveTask(): Updating database for task ${task.id}');
       await supabase
           .from('Tasks')
           .update({'suggestible_at': now.toIso8601String()})
           .eq('id', task.id)
           .eq('owner_id', userId);
+      print('Task.reviveTask(): Database update completed');
 
       // Update cache
       final updatedTask = Task(
@@ -577,12 +579,14 @@ class Task {
         final index = _currentTaskSet!.indexWhere((t) => t.id == task.id);
         if (index != -1) {
           _currentTaskSet![index] = updatedTask;
+          print('Task.reviveTask(): Updated task in _currentTaskSet cache');
         }
         // Resort the cache after modification
         sortTaskSet(_currentTaskSet!);
       }
       if (_currentTask?.id == task.id) {
         _currentTask = updatedTask;
+        print('Task.reviveTask(): Updated _currentTask cache');
       }
 
       print('Task ${task.headline} revived at ${now.toLocal()}');
@@ -591,5 +595,44 @@ class Task {
       print('Stack trace: $stackTrace');
       rethrow;
     }
+  }
+
+  /// Evaluates whether this task is currently suggestible.
+  /// A task is suggestible if:
+  /// 1. It is not finished
+  /// 2. It has no suggestibleAt time set, OR the suggestibleAt time has passed
+  ///
+  /// This method handles timezone conversion from UTC to local time for consistent comparison.
+  bool get isSuggestible {
+    if (finished) return false;
+
+    if (suggestibleAt == null) return true;
+
+    // Compare UTC times directly to avoid timezone conversion issues
+    final now = DateTime.now().toUtc();
+
+    // Debug logging
+    print('Task.isSuggestible for "${headline}":');
+    print('  suggestibleAt (UTC): $suggestibleAt');
+    print('  now (UTC): $now');
+    print('  isAfter: ${suggestibleAt!.isAfter(now)}');
+    print('  result: ${!suggestibleAt!.isAfter(now)}');
+
+    return !suggestibleAt!.isAfter(now);
+  }
+
+  /// Evaluates whether this task is currently deferred (not suggestible).
+  /// A task is deferred if it has a suggestibleAt time that is in the future.
+  ///
+  /// This method handles timezone conversion from UTC to local time for consistent comparison.
+  bool get isDeferred {
+    if (finished) return false;
+
+    if (suggestibleAt == null) return false;
+
+    // Compare UTC times directly to avoid timezone conversion issues
+    final now = DateTime.now().toUtc();
+
+    return suggestibleAt!.isAfter(now);
   }
 }

@@ -6,20 +6,19 @@ import 'package:flutter/services.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/link_edit_screen.dart';
 import 'dart:convert';
-
-final supabase = Supabase.instance.client;
+import 'package:meaning_to/utils/auth.dart';
+import 'package:meaning_to/utils/link_extractor.dart';
+import 'package:meaning_to/widgets/link_display.dart';
+import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/supabase_client.dart';
 
 class TaskEditScreen extends StatefulWidget {
-  static VoidCallback? onEditComplete;  // Static callback for edit completion
-  
-  final Category category;
-  final Task? task;  // null for new task, existing task for edit
+  static VoidCallback? onEditComplete; // Static callback for edit completion
 
-  const TaskEditScreen({
-    super.key,
-    required this.category,
-    this.task,
-  });
+  final Category category;
+  final Task? task; // null for new task, existing task for edit
+
+  const TaskEditScreen({super.key, required this.category, this.task});
 
   @override
   State<TaskEditScreen> createState() => _TaskEditScreenState();
@@ -38,7 +37,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     super.initState();
     _headlineController = TextEditingController(text: widget.task?.headline);
     _notesController = TextEditingController(text: widget.task?.notes);
-    _links = widget.task?.links != null ? List<String>.from(widget.task!.links!) : [];
+    _links = widget.task?.links != null
+        ? List<String>.from(widget.task!.links!)
+        : [];
   }
 
   @override
@@ -51,9 +52,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   Future<void> _addLink() async {
     final result = await Navigator.push<String>(
       context,
-      MaterialPageRoute(
-        builder: (context) => const LinkEditScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const LinkEditScreen()),
     );
 
     if (result != null) {
@@ -67,9 +66,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     final result = await Navigator.push<String>(
       context,
       MaterialPageRoute(
-        builder: (context) => LinkEditScreen(
-          initialLink: _links[index],
-        ),
+        builder: (context) => LinkEditScreen(initialLink: _links[index]),
       ),
     );
 
@@ -105,15 +102,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       try {
         // Parse the text as HTML link
         final (url, linkText) = LinkProcessor.parseHtmlLink(text);
-        
+
         // If it's not an HTML link, treat it as a plain URL
         if (url == text) {
           if (LinkProcessor.isValidUrl(text)) {
             // Validate the URL
-            final processedLink = await LinkProcessor.validateAndProcessLink(text);
-            
+            final processedLink = await LinkProcessor.validateAndProcessLink(
+              text,
+            );
+
             // Create an HTML link with the fetched title
-            final htmlLink = '<a href="$text">${processedLink.title ?? text}</a>';
+            final htmlLink =
+                '<a href="$text">${processedLink.title ?? text}</a>';
             setState(() {
               _links.add(htmlLink);
               _error = null;
@@ -125,7 +125,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               MaterialPageRoute(
                 builder: (context) => LinkEditScreen(
                   initialLink: text,
-                  errorMessage: 'Clipboard text is not a valid URL or HTML link',
+                  errorMessage:
+                      'Clipboard text is not a valid URL or HTML link',
                 ),
               ),
             );
@@ -142,9 +143,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             url,
             linkText: linkText,
           );
-          
+
           // Create a new HTML link with the validated data
-          final htmlLink = '<a href="$url">${linkText ?? processedLink.title ?? url}</a>';
+          final htmlLink =
+              '<a href="$url">${linkText ?? processedLink.title ?? url}</a>';
           setState(() {
             _links.add(htmlLink);
             _error = null;
@@ -156,10 +158,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         final result = await Navigator.push<String>(
           context,
           MaterialPageRoute(
-            builder: (context) => LinkEditScreen(
-              initialLink: text,
-              errorMessage: e.toString(),
-            ),
+            builder: (context) =>
+                LinkEditScreen(initialLink: text, errorMessage: e.toString()),
           ),
         );
         if (result != null) {
@@ -191,7 +191,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     });
 
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final userId = AuthUtils.getCurrentUserId();
       if (userId == null) throw Exception('No user logged in');
 
       final data = {
@@ -200,19 +200,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         'category_id': widget.category.id,
         'owner_id': userId,
         'finished': widget.task?.finished ?? false,
-        'links': _links.isEmpty ? null : (_links.length == 1 ? _links[0] : jsonEncode(_links)),
+        'links': _links.isEmpty
+            ? null
+            : (_links.length == 1 ? _links[0] : jsonEncode(_links)),
       };
 
       Task? updatedTask;
       if (widget.task == null) {
         // Create new task
         print('TaskEditScreen: Creating new task...');
-        final response = await supabase
-            .from('Tasks')
-            .insert(data)
-            .select()
-            .single();
-        
+        final response =
+            await supabase.from('Tasks').insert(data).select().single();
+
         updatedTask = Task.fromJson(response);
         print('TaskEditScreen: Created new task: ${updatedTask.headline}');
       } else {
@@ -225,17 +224,17 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             .eq('owner_id', userId)
             .select()
             .single();
-        
+
         updatedTask = Task.fromJson(response);
         print('TaskEditScreen: Updated task: ${updatedTask.headline}');
       }
-      
+
       // Update the task cache
       print('TaskEditScreen: Updating task cache...');
       if (Task.currentCategory?.id == widget.category.id) {
         print('TaskEditScreen: Reloading task set for current category...');
         await Task.loadTaskSet(widget.category, userId);
-        
+
         // If this was the current task, update it in the cache
         if (widget.task != null && Task.currentTask?.id == widget.task!.id) {
           print('TaskEditScreen: Updating current task in cache...');
@@ -243,7 +242,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         }
       }
 
-      print('TaskEditScreen: Task saved successfully, calling edit complete callback...');
+      print(
+        'TaskEditScreen: Task saved successfully, calling edit complete callback...',
+      );
       // Call the edit complete callback before popping
       if (TaskEditScreen.onEditComplete != null) {
         print('TaskEditScreen: Static callback available, calling it...');
@@ -259,7 +260,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
       if (mounted) {
         print('TaskEditScreen: Popping screen with true result...');
-        Navigator.pop(context, true);  // Return true to indicate success
+        Navigator.pop(context, true); // Return true to indicate success
       }
     } catch (e) {
       print('TaskEditScreen: Error saving task: $e');
@@ -285,9 +286,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),
           ),
         ],
@@ -302,7 +301,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     });
 
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final userId = AuthUtils.getCurrentUserId();
       if (userId == null) throw Exception('No user logged in');
 
       await supabase
@@ -310,16 +309,16 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           .delete()
           .eq('id', widget.task!.id)
           .eq('owner_id', userId);
-      
+
       print('Deleted task: ${widget.task!.headline}');
-      
+
       // Update the task cache
       if (Task.currentCategory?.id == widget.category.id) {
         await Task.loadTaskSet(widget.category, userId);
       }
 
       if (mounted) {
-        Navigator.pop(context, true);  // Return true to indicate success
+        Navigator.pop(context, true); // Return true to indicate success
       }
     } catch (e) {
       print('Error deleting task: $e');
@@ -333,8 +332,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   void _handleBack() {
     print('TaskEditScreen: Back button pressed');
     print('TaskEditScreen: Current task: ${widget.task?.headline}');
-    print('TaskEditScreen: Static callback available: ${TaskEditScreen.onEditComplete != null}');
-    
+    print(
+      'TaskEditScreen: Static callback available: ${TaskEditScreen.onEditComplete != null}',
+    );
+
     // Call the static callback before popping
     if (TaskEditScreen.onEditComplete != null) {
       print('TaskEditScreen: Calling static callback');
@@ -347,10 +348,12 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     } else {
       print('TaskEditScreen: No static callback available');
     }
-    
+
     // Pop after executing the callback
     if (mounted) {
-      Navigator.of(context).pop(true);  // Always return true to indicate completion
+      Navigator.of(
+        context,
+      ).pop(true); // Always return true to indicate completion
       print('TaskEditScreen: Popped screen with true result');
     } else {
       print('TaskEditScreen: Widget not mounted, cannot pop');
@@ -365,10 +368,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Links:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            const Text('Links:', style: TextStyle(fontWeight: FontWeight.bold)),
             IconButton(
               icon: const Icon(Icons.add),
               tooltip: 'Add link',
@@ -433,12 +433,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             children: [
               Text(
                 widget.category.headline,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               if (widget.task != null)
                 Text(
                   'Edit Task',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.normal,
+                  ),
                 ),
             ],
           ),
@@ -495,14 +501,16 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   Container(
-                    width: 80,  // Fixed width container - enough for two 32px icons plus gap
+                    width:
+                        80, // Fixed width container - enough for two 32px icons plus gap
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         IconButton(
                           icon: const Icon(Icons.content_paste),
                           tooltip: 'Paste link from clipboard',
-                          onPressed: _isLoading ? null : _pasteLinkFromClipboard,
+                          onPressed:
+                              _isLoading ? null : _pasteLinkFromClipboard,
                           iconSize: 32,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
@@ -522,7 +530,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Text(widget.task == null ? 'Create Task' : 'Save Changes'),
+                    : Text(
+                        widget.task == null ? 'Create Task' : 'Save Changes',
+                      ),
               ),
             ],
           ),
@@ -530,4 +540,4 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       ),
     );
   }
-} 
+}
