@@ -609,7 +609,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                 },
                 tooltip: 'Cancel edit',
               ),
-            if (widget.category != null && !_editTasksLocal)
+            // Only show category delete button for authenticated users
+            if (widget.category != null &&
+                !_editTasksLocal &&
+                !AuthUtils.isGuestUser())
               IconButton(
                 icon: const Icon(Icons.delete),
                 onPressed: _isLoading
