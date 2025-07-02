@@ -635,4 +635,36 @@ class Task {
 
     return suggestibleAt!.isAfter(now);
   }
+
+  /// Reset all guest tasks to their initial state.
+  /// This method is called when guest mode is requested to ensure a fresh start.
+  /// Updates all tasks owned by the guest user to have:
+  /// - suggestible_at: null (immediately suggestible)
+  /// - deferral: null (reset deferral counter)
+  /// - finished: false (mark as unfinished)
+  static Future<void> resetGuestTasks() async {
+    try {
+      print('Task.resetGuestTasks(): Resetting guest tasks...');
+      final guestUserId =
+          '35ed4d18-84b4-481d-96f4-1405c2f2f1ae'; // Guest user ID
+
+      // Update all tasks owned by the guest user
+      final response = await supabase.from('Tasks').update({
+        'suggestible_at': null,
+        'deferral': null,
+        'finished': false,
+      }).eq('owner_id', guestUserId);
+
+      print('Task.resetGuestTasks(): Guest tasks reset successfully');
+      print('Task.resetGuestTasks(): Reset response: $response');
+
+      // Clear the cache since we've modified the database
+      clearCache();
+      print('Task.resetGuestTasks(): Cache cleared after reset');
+    } catch (e) {
+      print('Task.resetGuestTasks(): Error resetting guest tasks: $e');
+      // Don't throw the error - we still want to proceed with guest mode
+      // even if the reset fails
+    }
+  }
 }

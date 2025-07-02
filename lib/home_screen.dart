@@ -1152,11 +1152,13 @@ class HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _navigateToEditCategory(),
-        child: const Icon(Icons.add),
-        tooltip: 'Create new endeavor',
-      ),
+      floatingActionButton: !AuthUtils.isGuestUser()
+          ? FloatingActionButton(
+              onPressed: () => _navigateToEditCategory(),
+              child: const Icon(Icons.add),
+              tooltip: 'Create new endeavor',
+            )
+          : null,
     );
   }
 }
