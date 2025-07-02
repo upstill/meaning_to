@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/main.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/models/task.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -72,33 +73,11 @@ class _SplashScreenState extends State<SplashScreen> {
     Navigator.of(context).pushReplacementNamed('/auth');
   }
 
-  /// Reset all guest tasks to their initial state
-  Future<void> _resetGuestTasks() async {
-    try {
-      print('SplashScreen: Resetting guest tasks...');
-      final guestUserId = AuthUtils.guestUserId;
-
-      // Update all tasks owned by the guest user
-      final response = await supabase.from('Tasks').update({
-        'suggestible_at': null,
-        'deferral': null,
-        'finished': false,
-      }).eq('owner_id', guestUserId);
-
-      print('SplashScreen: Guest tasks reset successfully');
-      print('SplashScreen: Reset response: $response');
-    } catch (e) {
-      print('SplashScreen: Error resetting guest tasks: $e');
-      // Don't throw the error - we still want to navigate to guest mode
-      // even if the reset fails
-    }
-  }
-
   void _navigateAsGuest() async {
     print('SplashScreen: Guest mode requested, resetting tasks first...');
 
     // Reset all guest tasks before navigating
-    await _resetGuestTasks();
+    await Task.resetGuestTasks();
 
     print('SplashScreen: Navigating to home screen as guest');
     Navigator.of(context).pushReplacementNamed('/home');

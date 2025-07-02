@@ -209,32 +209,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
                         ),
                         // Edit and Delete buttons grouped tightly together
                         if (widget.withControls) ...[
-                          // Debug logging for authentication state
-                          Builder(
-                            builder: (context) {
-                              final isGuest = AuthUtils.isGuestUser();
-                              print(
-                                  'TaskDisplay: Authentication check for "${widget.task.headline}":');
-                              print('  isGuest: $isGuest');
-                              print('  withControls: ${widget.withControls}');
-                              print('  willShowDeleteButton: ${!isGuest}');
-                              return Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: isGuest ? Colors.red : Colors.green,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  isGuest ? 'GUEST' : 'AUTH',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
                           Builder(
                             builder: (context) {
                               print(
