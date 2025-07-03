@@ -83,44 +83,70 @@ class TextImporter {
     String text,
     Category? category,
   ) async {
+    print('=== TextImporter._parseTextData ===');
+    print('Input text: "${text}"');
+    print('Text length: ${text.length}');
+
     final lines = text.split('\n');
+    print('Split into ${lines.length} lines');
+
     final items = <ImportItem?>[];
 
-    for (final line in lines) {
-      if (line.trim().isEmpty) continue;
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      print('Processing line $i: "${line}"');
+
+      if (line.trim().isEmpty) {
+        print('  -> Skipping empty line');
+        continue;
+      }
 
       ImportItem? item;
       final trimmedLine = line.trim();
       if (trimmedLine.startsWith('{') || trimmedLine.startsWith('[')) {
+        print('  -> Attempting JSON parsing');
         // Try parsing as JSON
         try {
           final jsonData = jsonDecode(trimmedLine);
           if (jsonData is List) {
             // Handle JSON array - process all items
+            print(
+                '  -> JSON array detected, processing ${jsonData.length} items');
             for (final arrayItem in jsonData) {
               final parsedItem = parseJsonItem(arrayItem);
               if (parsedItem != null) {
+                print(
+                    '  -> Created item from JSON array: "${parsedItem.title}"');
                 items.add(parsedItem);
               }
             }
             continue; // Skip adding a single item since we processed the array
           } else {
             item = parseJsonItem(jsonData);
+            if (item != null) {
+              print('  -> Created item from JSON: "${item.title}"');
+            }
           }
         } catch (e) {
+          print('  -> JSON parsing failed: $e, trying as plain text');
           // If JSON parsing fails, try as plain text
           item = importFromText(line);
         }
       } else {
+        print('  -> Attempting plain text parsing');
         // Try parsing as plain text
         item = importFromText(line);
       }
 
       if (item != null) {
+        print('  -> Created item: "${item.title}"');
         items.add(item);
+      } else {
+        print('  -> No item created for this line');
       }
     }
 
+    print('Total items created: ${items.length}');
     return items;
   }
 
@@ -282,7 +308,10 @@ class TextImporter {
   /// Parses plain text into an ImportItem
   /// This method is public for testing purposes
   static ImportItem? importFromText(String text) {
+    print('    importFromText called with: "${text}"');
+
     if (text.trim().isEmpty) {
+      print('    -> Text is empty, returning null');
       return null;
     }
 
@@ -291,6 +320,7 @@ class TextImporter {
     final urlMatch = RegExp(r'https?://[^\s:]+').firstMatch(text);
     if (urlMatch != null) {
       extractedURL = urlMatch.group(0)!;
+      print('    -> Found URL: $extractedURL');
       // Remove trailing colon if present
       if (extractedURL!.endsWith(':')) {
         extractedURL = extractedURL.substring(0, extractedURL.length - 1);
@@ -304,6 +334,7 @@ class TextImporter {
               ? ''
               : ':';
       text = beforeURL + colonMaybe + afterURL;
+      print('    -> Text after URL extraction: "${text}"');
     }
 
     // Check if text contains a colon separator (title: description)
@@ -313,9 +344,11 @@ class TextImporter {
         !text.trim().startsWith('[')) {
       final title = text.substring(0, colonIndex).trim();
       final description = text.substring(colonIndex + 1).trim();
+      print(
+          '    -> Found colon separator - title: "${title}", description: "${description}"');
 
       if (title.isNotEmpty) {
-        return ImportItem(
+        final item = ImportItem(
           title: title,
           description: description.isNotEmpty ? description : null,
           link: extractedURL,
@@ -325,25 +358,31 @@ class TextImporter {
                 : 'plain_text_with_colon'
           },
         );
+        print('    -> Created ImportItem with colon: "${item.title}"');
+        return item;
       }
     }
 
     // Check if text is an HTML link
     if (text.trim().startsWith('<a') && text.trim().endsWith('</a>')) {
+      print('    -> Attempting HTML link parsing');
       final (url, title) = LinkProcessor.parseHtmlLink(text);
       if (url != text) {
         // If it was successfully parsed as an HTML link
-        return ImportItem(
+        final item = ImportItem(
           title: title ?? 'Link',
           link: url,
           metadata: {'source': 'html_link'},
         );
+        print('    -> Created ImportItem from HTML link: "${item.title}"');
+        return item;
       }
     }
 
     // Check if text is a markdown list item
     if (text.trim().startsWith('- ') || text.trim().startsWith('* ')) {
       text = text.trim().substring(2);
+      print('    -> Removed markdown list prefix, text now: "${text}"');
     }
 
     // Check if text looks like a markdown link [title](url) with optional description
@@ -353,20 +392,26 @@ class TextImporter {
       final title = markdownMatch.group(1) ?? 'Link';
       final url = markdownMatch.group(2) ?? '';
       final description = markdownMatch.group(3)?.trim();
+      print('    -> Found markdown link - title: "${title}", url: "$url"');
 
-      return ImportItem(
+      final item = ImportItem(
         title: title,
         link: url,
         description: description?.isNotEmpty == true ? description : null,
         metadata: {'source': 'markdown_link'},
       );
+      print('    -> Created ImportItem from markdown: "${item.title}"');
+      return item;
     }
 
     // Treat as plain text
-    return ImportItem(
+    print('    -> Treating as plain text: "${text.trim()}"');
+    final item = ImportItem(
       title: text.trim(),
       metadata: {'source': 'plain_text'},
     );
+    print('    -> Created ImportItem from plain text: "${item.title}"');
+    return item;
   }
 
   /// Convert an ImportItem to a Task

@@ -16,6 +16,8 @@ import 'package:meaning_to/widgets/task_display.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/text_importer.dart';
+import 'package:meaning_to/add_tasks_screen.dart';
 
 class EditCategoryScreen extends StatefulWidget {
   static VoidCallback? onEditComplete; // Static callback for edit completion
@@ -46,12 +48,16 @@ class EditCategoryScreen extends StatefulWidget {
 class EditCategoryScreenState extends State<EditCategoryScreen>
     with WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
-  late TextEditingController _headlineController;
-  late TextEditingController _invitationController;
+  final _headlineController = TextEditingController();
+  final _invitationController = TextEditingController();
   bool _isLoading = false;
   bool _editTasksLocal = false;
   bool _isEditing = false;
-  List<Task> _newTasks = []; // Temporary list for tasks in new categories
+  bool _categorySaved = false; // Track if category has been saved
+  bool _isPrivate = false; // Private flag for categories
+  List<Task> _newTasks = []; // For new categories
+  Category?
+      _currentCategory; // Track the current category (for new categories after creation)
 
   // Add a getter for tasks from the cache
   List<Task> get _tasks => CacheManager().currentTasks ?? [];
@@ -62,17 +68,23 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
     WidgetsBinding.instance.addObserver(this);
     print('EditCategoryScreen: initState called');
     print(
-      'EditCategoryScreen: Static callback available: ${EditCategoryScreen.onEditComplete != null}',
-    );
+        'EditCategoryScreen: Static callback available: ${EditCategoryScreen.onEditComplete != null}');
     print('EditCategoryScreen: Current category: ${widget.category?.headline}');
 
-    _headlineController = TextEditingController(
-      text: widget.category?.headline,
-    );
-    _invitationController = TextEditingController(
-      text: widget.category?.invitation,
-    );
+    _headlineController.text = widget.category?.headline ?? '';
+    _invitationController.text = widget.category?.invitation ?? '';
+    _isPrivate = widget.category?.isPrivate ?? false;
     _editTasksLocal = widget.tasksOnly;
+
+    // Set category as saved if it already exists
+    _categorySaved = widget.category != null;
+
+    // Add listener to track headline changes for button state
+    _headlineController.addListener(() {
+      setState(() {
+        // Trigger rebuild when headline changes to update button state
+      });
+    });
   }
 
   @override
@@ -112,7 +124,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
             ? null
             : _invitationController.text,
         'owner_id': userId,
-        'original_id': 1, // Default to movies (1) for now
+        'original_id': null, // Custom categories should have null original_id
+        'private': _isPrivate,
       };
 
       if (widget.category == null) {
@@ -139,9 +152,15 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
           }
         }
 
-        // For new categories, pop back to home screen
+        // For new categories, update the widget's category reference and switch to view mode
         if (mounted) {
-          Navigator.pop(context, true);
+          setState(() {
+            // Store the new category locally and switch to view mode
+            _currentCategory = newCategory;
+            _categorySaved = true;
+            _isLoading = false;
+            _isEditing = false; // Switch to view mode
+          });
         }
       } else {
         // Update existing category
@@ -194,7 +213,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
   }
 
   Future<void> _editTask(Task task) async {
-    if (widget.category == null) {
+    final currentCategory = widget.category ?? _currentCategory;
+    if (currentCategory == null) {
       // For new categories, show error message - category must be saved first
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -213,45 +233,134 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
         context,
         MaterialPageRoute(
           builder: (context) =>
-              TaskEditScreen(category: widget.category!, task: task),
+              TaskEditScreen(category: currentCategory, task: task),
         ),
       );
 
       if (result == true) {
-        // Just trigger a rebuild to reflect changes
+        // Refresh the cache to get the new task
+        try {
+          final userId = AuthUtils.getCurrentUserId();
+          if (userId != null) {
+            await CacheManager().refreshFromDatabase();
+            print('EditCategoryScreen: Cache refreshed after task creation');
+          }
+        } catch (e) {
+          print('EditCategoryScreen: Error refreshing cache: $e');
+        }
         setState(() {});
       }
     }
   }
 
-  Future<void> _createTask() async {
-    if (widget.category == null) {
-      // For new categories, add to _newTasks
-      final result = await Navigator.pushNamed(
-        context,
-        '/edit-task',
-        arguments: {
-          'category': null, // No category yet
-          'task': null,
-          'isNewCategory': true,
-        },
-      );
+  /// Check if a task with the same headline already exists and merge information if needed
+  Future<Task?> _checkForDuplicateAndMerge(
+      Task newTask, List<Task> existingTasks) async {
+    final existingTask = existingTasks.firstWhere(
+      (task) =>
+          task.headline.toLowerCase().trim() ==
+          newTask.headline.toLowerCase().trim(),
+      orElse: () => newTask, // Return the new task if no duplicate found
+    );
 
-      if (result is Task) {
-        setState(() {
-          _newTasks.add(result);
-        });
+    if (existingTask.id != newTask.id) {
+      // Found a duplicate - merge information
+      print('Found duplicate task: "${newTask.headline}"');
+
+      // Check if we need to update the existing task with new information
+      bool needsUpdate = false;
+      Map<String, dynamic> updateData = {};
+
+      // Add links if the new task has them and the existing task doesn't
+      if (newTask.links != null &&
+          newTask.links!.isNotEmpty &&
+          (existingTask.links == null || existingTask.links!.isEmpty)) {
+        updateData['links'] = newTask.links;
+        needsUpdate = true;
+        print('  -> Adding links to existing task');
       }
+
+      // Add notes if the new task has them and the existing task doesn't
+      if (newTask.notes != null &&
+          newTask.notes!.isNotEmpty &&
+          (existingTask.notes == null || existingTask.notes!.isEmpty)) {
+        updateData['notes'] = newTask.notes;
+        needsUpdate = true;
+        print('  -> Adding notes to existing task');
+      }
+
+      // Update the existing task if needed
+      if (needsUpdate) {
+        try {
+          final userId = AuthUtils.getCurrentUserId();
+          if (userId == null) throw Exception('No user logged in');
+
+          await supabase
+              .from('Tasks')
+              .update(updateData)
+              .eq('id', existingTask.id)
+              .eq('owner_id', userId);
+
+          print('  -> Updated existing task with new information');
+
+          // Return the updated existing task
+          return Task(
+            id: existingTask.id,
+            categoryId: existingTask.categoryId,
+            ownerId: existingTask.ownerId,
+            headline: existingTask.headline,
+            notes: updateData['notes'] ?? existingTask.notes,
+            links: updateData['links'] ?? existingTask.links,
+            processedLinks: existingTask.processedLinks,
+            createdAt: existingTask.createdAt,
+            suggestibleAt: existingTask.suggestibleAt,
+            finished: existingTask.finished,
+          );
+        } catch (e) {
+          print('Error updating existing task: $e');
+        }
+      }
+
+      return existingTask; // Return existing task without changes
+    }
+
+    return null; // No duplicate found
+  }
+
+  Future<void> _createTask() async {
+    final currentCategory = widget.category ?? _currentCategory;
+    if (currentCategory == null) {
+      // For new categories, show error message - category must be saved first
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Please save the category first before adding tasks',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
     } else {
       // For existing categories, use the normal flow
       final result = await Navigator.pushNamed(
         context,
         '/edit-task',
-        arguments: {'category': widget.category!, 'task': null},
+        arguments: {'category': currentCategory, 'task': null},
       );
 
       if (result == true) {
-        // Just trigger a rebuild to reflect changes
+        // Refresh the cache to get the new task
+        try {
+          final userId = AuthUtils.getCurrentUserId();
+          if (userId != null) {
+            await CacheManager().refreshFromDatabase();
+            print('EditCategoryScreen: Cache refreshed after task creation');
+          }
+        } catch (e) {
+          print('EditCategoryScreen: Error refreshing cache: $e');
+        }
         setState(() {});
       }
     }
@@ -284,76 +393,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
     } catch (e) {
       print('Error fetching JustWatch title: $e');
       return null;
-    }
-  }
-
-  Future<void> _handleClipboardContent() async {
-    try {
-      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-      if (clipboardData?.text == null) {
-        throw Exception('Clipboard is empty');
-      }
-
-      final extractedLink = await LinkExtractor.extractLinkFromString(
-        clipboardData!.text!,
-      );
-      if (extractedLink == null) {
-        throw Exception(
-          'Clipboard content must be either a URL or an HTML <a> tag',
-        );
-      }
-
-      final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        throw Exception('No user logged in');
-      }
-
-      // Create a new task with this link
-      final task = Task(
-        id: -1, // Temporary ID for new task
-        categoryId: widget.category?.id ?? -1,
-        headline: extractedLink.title,
-        notes: null,
-        ownerId: userId,
-        createdAt: DateTime.now(),
-        suggestibleAt: null,
-        triggersAt: null,
-        deferral: null,
-        links: [extractedLink.html], // Store as HTML <a> tag
-        finished: false,
-      );
-
-      if (widget.category == null) {
-        // For new categories, add to _newTasks
-        setState(() {
-          _newTasks.add(task);
-        });
-      } else {
-        // For existing categories, use CacheManager to add the task
-        await CacheManager().addTask(task);
-        setState(() {
-          // Trigger rebuild to reflect changes
-        });
-      }
-
-      // Show success message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Task created from link'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
     }
   }
 
@@ -574,6 +613,123 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
     );
   }
 
+  Widget _buildNewTaskList() {
+    if (_newTasks.isEmpty) {
+      print('EditCategoryScreen: No new tasks to display');
+      return const Center(child: Text('No tasks yet. Add one to get started!'));
+    }
+
+    print(
+        'EditCategoryScreen: Building new task list with ${_newTasks.length} tasks');
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _newTasks.length,
+      itemBuilder: (context, index) {
+        final task = _newTasks[index];
+        print(
+            'EditCategoryScreen: Building new task "${task.headline}" at index $index');
+
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            title: Text(task.headline),
+            subtitle: task.notes != null ? Text(task.notes!) : null,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  onPressed: () => _editNewTask(task),
+                  tooltip: 'Edit task',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: () => _removeNewTask(index),
+                  tooltip: 'Remove task',
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _editNewTask(Task task) {
+    // For new tasks, we can edit them directly
+    showDialog(
+      context: context,
+      builder: (context) {
+        final headlineController = TextEditingController(text: task.headline);
+        final notesController = TextEditingController(text: task.notes ?? '');
+
+        return AlertDialog(
+          title: const Text('Edit Task'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: headlineController,
+                decoration: const InputDecoration(
+                  labelText: 'Task Title',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final taskIndex = _newTasks.indexWhere((t) => t.id == task.id);
+                if (taskIndex != -1) {
+                  setState(() {
+                    _newTasks[taskIndex] = Task(
+                      id: task.id,
+                      categoryId: task.categoryId,
+                      ownerId: task.ownerId,
+                      headline: headlineController.text,
+                      notes: notesController.text.isEmpty
+                          ? null
+                          : notesController.text,
+                      links: task.links,
+                      processedLinks: task.processedLinks,
+                      createdAt: task.createdAt,
+                      suggestibleAt: task.suggestibleAt,
+                      finished: task.finished,
+                    );
+                  });
+                }
+                Navigator.of(context).pop();
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _removeNewTask(int index) {
+    setState(() {
+      _newTasks.removeAt(index);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -687,7 +843,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                     ),
                   ),
                 const SizedBox(height: 16),
-              ] else if (widget.category != null && !_isEditing) ...[
+              ] else if ((widget.category != null ||
+                      _currentCategory != null) &&
+                  !_isEditing) ...[
                 // View mode - show category details in a card
                 Card(
                   child: Stack(
@@ -698,30 +856,37 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              widget.category!.headline,
+                              (widget.category ?? _currentCategory)!.headline,
                               style: const TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            if (widget.category!.invitation != null) ...[
+                            if ((widget.category ?? _currentCategory)!
+                                    .invitation !=
+                                null) ...[
                               const SizedBox(height: 8),
                               Text(
-                                widget.category!.invitation!,
+                                (widget.category ?? _currentCategory)!
+                                    .invitation!,
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontStyle: FontStyle.italic,
                                 ),
                               ),
                             ],
-                            if (widget.category!.originalId == 1 ||
-                                widget.category!.originalId == 2) ...[
+                            if ((widget.category ?? _currentCategory)!
+                                        .originalId ==
+                                    1 ||
+                                (widget.category ?? _currentCategory)!
+                                        .originalId ==
+                                    2) ...[
                               const SizedBox(height: 16),
                               ElevatedButton.icon(
                                 onPressed: () {
                                   print('Import JustWatch button pressed');
                                   print(
-                                    'Category: ${widget.category?.headline}',
+                                    'Category: ${(widget.category ?? _currentCategory)?.headline}',
                                   );
 
                                   // Navigate to Import JustWatch screen, replacing the current screen
@@ -730,7 +895,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                                     MaterialPageRoute(
                                       builder: (context) =>
                                           ImportJustWatchScreen(
-                                        category: widget.category!,
+                                        category: (widget.category ??
+                                            _currentCategory)!,
                                       ),
                                     ),
                                   ).then((result) {
@@ -794,12 +960,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                 TextFormField(
                   controller: _headlineController,
                   decoration: const InputDecoration(
-                    labelText: 'Endeavor',
+                    labelText: 'Endeavor (required)',
                     hintText: 'What have you been meaning to do?',
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) {
+                    if (value == null || value.trim().isEmpty) {
                       return 'Please name your endeavor';
                     }
                     return null;
@@ -816,6 +982,21 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                   ),
                   maxLines: 3,
                   enabled: !_isLoading,
+                ),
+                const SizedBox(height: 16),
+                CheckboxListTile(
+                  title: const Text('Private'),
+                  subtitle:
+                      const Text('I want to keep this endeavor to myself'),
+                  value: _isPrivate,
+                  onChanged: _isLoading
+                      ? null
+                      : (bool? value) {
+                          setState(() {
+                            _isPrivate = value ?? false;
+                          });
+                        },
+                  controlAffinity: ListTileControlAffinity.leading,
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -837,7 +1018,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                     if (widget.category != null && _isEditing)
                       const SizedBox(width: 16),
                     ElevatedButton(
-                      onPressed: _isLoading
+                      onPressed: (_isLoading ||
+                              _headlineController.text.trim().isEmpty)
                           ? null
                           : () async {
                               if (!_formKey.currentState!.validate()) return;
@@ -866,40 +1048,128 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
               ],
               // Show tasks section for both new and existing categories
               const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Choices for this endeavor:',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  TextButton.icon(
-                    onPressed: _handleClipboardContent,
-                    icon: const Icon(Icons.content_paste),
-                    label: const Text('Add from Clipboard'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.primary,
+
+              // Add Tasks section (only for saved categories)
+              if (_categorySaved &&
+                  (widget.category != null || _currentCategory != null)) ...[
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Add More Tasks:',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Add multiple tasks at once or create them individually',
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => AddTasksScreen(
+                                        category: (widget.category ??
+                                            _currentCategory)!,
+                                      ),
+                                    ),
+                                  );
+                                  if (result == true) {
+                                    // Refresh the cache to get updated tasks
+                                    await CacheManager().refreshFromDatabase();
+                                    setState(() {});
+                                  }
+                                },
+                                icon: const Icon(Icons.add_task),
+                                label: const Text('Add a List of Tasks'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor:
+                                      Theme.of(context).colorScheme.primary,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _createTask,
+                                icon: const Icon(Icons.add),
+                                label: const Text('Add a Task Manually'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              if (widget.category == null ? _newTasks.isEmpty : _tasks.isEmpty)
-                const Center(
-                  child: Text(
-                    'No tasks yet. Add some tasks to get started!',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                )
-              else
-                _buildTaskList(), // Remove Expanded since we're in a ListView
+                ),
+                const SizedBox(height: 24),
+              ],
+
+              // Task list section (only for saved categories)
+              if (_categorySaved &&
+                  (widget.category != null || _currentCategory != null)) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Current tasks:',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    if (widget.category == null
+                        ? _newTasks.isNotEmpty
+                        : _tasks.isNotEmpty)
+                      Text(
+                        '${widget.category == null ? _newTasks.length : _tasks.length} task${widget.category == null ? (_newTasks.length == 1 ? '' : 's') : (_tasks.length == 1 ? '' : 's')}',
+                        style:
+                            const TextStyle(fontSize: 14, color: Colors.grey),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (widget.category == null
+                    ? _newTasks.isEmpty
+                    : _tasks.isEmpty)
+                  Center(
+                    child: Column(
+                      children: [
+                        const Text(
+                          'No tasks yet.',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                        if (widget.category != null) ...[
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Use the "Add Task(s)" button above to get started!',
+                            style: TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                        ] else ...[
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Add some tasks above to get started!',
+                            style: TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                        ],
+                      ],
+                    ),
+                  )
+                else
+                  widget.category == null
+                      ? _buildNewTaskList()
+                      : _buildTaskList(),
+              ],
             ],
           ),
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _createTask,
-          child: const Icon(Icons.add),
-          tooltip: 'Add task',
         ),
       ),
     );

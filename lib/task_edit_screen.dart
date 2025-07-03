@@ -40,6 +40,13 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     _links = widget.task?.links != null
         ? List<String>.from(widget.task!.links!)
         : [];
+
+    // Add listener to track headline changes for button state
+    _headlineController.addListener(() {
+      setState(() {
+        // Trigger rebuild when headline changes to update button state
+      });
+    });
   }
 
   @override
@@ -204,6 +211,12 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             ? null
             : (_links.length == 1 ? _links[0] : jsonEncode(_links)),
       };
+
+      // For new tasks, set suggestible_at to null to appear at the top
+      if (widget.task == null) {
+        data['suggestible_at'] = null;
+        print('TaskEditScreen: Setting suggestible_at to null for new task');
+      }
 
       Task? updatedTask;
       if (widget.task == null) {
@@ -468,12 +481,12 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               TextFormField(
                 controller: _headlineController,
                 decoration: const InputDecoration(
-                  labelText: 'Task',
+                  labelText: 'Task (required)',
                   hintText: 'What have you been meaning to do?',
                   border: OutlineInputBorder(),
                 ),
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
+                  if (value == null || value.trim().isEmpty) {
                     return 'Please enter a task';
                   }
                   return null;
@@ -499,34 +512,12 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 ),
               ],
               _buildLinksList(),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  Container(
-                    width:
-                        80, // Fixed width container - enough for two 32px icons plus gap
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.content_paste),
-                          tooltip: 'Paste link from clipboard',
-                          onPressed:
-                              _isLoading ? null : _pasteLinkFromClipboard,
-                          iconSize: 32,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                        const Icon(Icons.arrow_forward, size: 32),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: _isLoading ? null : _saveTask,
+                onPressed:
+                    (_isLoading || _headlineController.text.trim().isEmpty)
+                        ? null
+                        : _saveTask,
                 child: _isLoading
                     ? const SizedBox(
                         height: 20,
