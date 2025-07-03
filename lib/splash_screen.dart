@@ -30,8 +30,8 @@ class _SplashScreenState extends State<SplashScreen> {
       return; // Don't navigate if deep link is being handled
     }
 
-    // Add a small delay to ensure Supabase is fully initialized
-    Future.delayed(const Duration(milliseconds: 500), () {
+    // Add a longer delay to ensure Supabase is fully initialized and auth events are processed
+    Future.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
 
       // Check authentication status

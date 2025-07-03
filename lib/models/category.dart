@@ -8,6 +8,7 @@ class Category {
   final int? originalId;
   final DateTime? triggersAt;
   final String? template;
+  bool isPrivate;
 
   Category({
     required this.id,
@@ -19,6 +20,7 @@ class Category {
     this.originalId,
     this.triggersAt,
     this.template,
+    this.isPrivate = false,
   });
 
   @override
@@ -37,14 +39,15 @@ class Category {
       invitation: json['invitation'] as String?,
       ownerId: json['owner_id'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: json['updated_at'] != null 
+      updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
           : null,
       originalId: json['original_id'] as int?,
-      triggersAt: json['triggers_at'] != null 
+      triggersAt: json['triggers_at'] != null
           ? DateTime.parse(json['triggers_at'] as String)
           : null,
       template: json['template'] as String?,
+      isPrivate: json['private'] as bool? ?? false,
     );
   }
 
@@ -59,6 +62,7 @@ class Category {
       'original_id': originalId,
       'triggers_at': triggersAt?.toIso8601String(),
       'template': template,
+      'private': isPrivate,
     };
   }
-} 
+}

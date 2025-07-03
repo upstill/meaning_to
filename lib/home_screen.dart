@@ -436,6 +436,23 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _navigateToNewCategory() {
+    print('HomeScreen: Starting navigation to new category screen...');
+
+    if (!mounted) {
+      print('HomeScreen: Not mounted before navigation');
+      return;
+    }
+
+    Navigator.pushNamed(context, '/new-category').then((result) {
+      // If we got a result (true), reload categories
+      if (result == true) {
+        print('HomeScreen: Category was created, reloading categories');
+        _loadCategories();
+      }
+    });
+  }
+
   Future<void> _navigateToEditCategory([Category? category]) async {
     print('HomeScreen: Starting navigation to edit category screen...');
     print('HomeScreen: Current category: \'${_selectedCategory?.headline}\'');
@@ -1154,7 +1171,7 @@ class HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: !AuthUtils.isGuestUser()
           ? FloatingActionButton(
-              onPressed: () => _navigateToEditCategory(),
+              onPressed: () => _navigateToNewCategory(),
               child: const Icon(Icons.add),
               tooltip: 'Create new endeavor',
             )

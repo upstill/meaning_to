@@ -27,16 +27,27 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
   String? _recoveryToken;
+  bool _obscurePassword = false;
+  bool _obscureConfirmPassword = false;
 
   @override
   void initState() {
     super.initState();
-    print('ResetPasswordScreen - initState');
+    print('🚨🚨🚨 ResetPasswordScreen - initState - NEW CODE RUNNING 🚨🚨🚨');
 
-    // Pre-fill email if provided
+    // Pre-fill email if provided, otherwise use default for testing
     if (widget.email != null) {
       _emailController.text = widget.email!;
+      print('ResetPasswordScreen - Using provided email: ${widget.email}');
+    } else {
+      _emailController.text = 'steve@upstill.net';
+      print('ResetPasswordScreen - Using default email: steve@upstill.net');
     }
+
+    // Pre-fill password fields for testing
+    _passwordController.text = 'vw541sim';
+    _confirmPasswordController.text = 'vw541sim';
+    print('ResetPasswordScreen - Prefilled password fields with: vw541sim');
 
     _checkSession();
 
@@ -89,140 +100,239 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         final email = _emailController.text.trim();
         final newPassword = _passwordController.text;
 
-        if (supabase.auth.currentUser != null) {
-          // User is authenticated, update password directly
+        // Check if we're in a recovery session (from PASSWORD_RECOVERY event)
+        final session = supabase.auth.currentSession;
+        final user = supabase.auth.currentUser;
+
+        if (session != null && user != null) {
+          // We have a session, check if it's a recovery session
           print(
-              'ResetPasswordScreen - User is authenticated, updating password directly');
-          await supabase.auth.updateUser(
-            UserAttributes(
-              password: newPassword,
-            ),
-          );
-          print('ResetPasswordScreen - Password updated successfully');
+              'ResetPasswordScreen - Session exists, checking if it\'s a recovery session');
 
-          _showSuccessDialog();
-        } else {
-          // No authenticated user, try token-based recovery
-          print(
-              'ResetPasswordScreen - No authenticated user, attempting token-based recovery');
-
-          if (widget.token.isNotEmpty) {
-            print('ResetPasswordScreen - Attempting to verify recovery token');
-            print(
-                'ResetPasswordScreen - Timestamp: ${DateTime.now().toIso8601String()}');
-            print('ResetPasswordScreen - Email: $email');
-            print('ResetPasswordScreen - Token length: ${widget.token.length}');
-            print(
-                'ResetPasswordScreen - Token: ${widget.token.substring(0, 8)}...');
-            print('ResetPasswordScreen - Full token: ${widget.token}');
-            print(
-                'ResetPasswordScreen - Token contains special chars: ${widget.token.contains(RegExp(r'[^a-zA-Z0-9\-]'))}');
-            print('ResetPasswordScreen - Current time: ${DateTime.now()}');
-            print(
-                'ResetPasswordScreen - Note: Token verification should happen within 1-2 minutes of receiving the link');
-            print('ResetPasswordScreen - Token type: ${widget.tokenType}');
-
-            try {
-              // Check if this is a PKCE token from the verify endpoint
-              if (widget.tokenType == 'pkce' ||
-                  widget.token.startsWith('pkce_')) {
-                print(
-                    'ResetPasswordScreen - Handling PKCE token from verify endpoint');
-
-                // For PKCE tokens, we need to use the verify endpoint
-                // This should establish a session that allows password update
-                await supabase.auth.verifyOTP(
-                  email: email,
-                  token: widget.token,
-                  type: OtpType.recovery,
-                );
-                print(
-                    'ResetPasswordScreen - PKCE token verification successful');
-
-                // Now update the password
-                await supabase.auth.updateUser(
-                  UserAttributes(
-                    password: newPassword,
-                  ),
-                );
-                print(
-                    'ResetPasswordScreen - Password updated successfully after PKCE verification');
-
-                _showSuccessDialog();
-              } else {
-                // Regular recovery token handling
-                print('ResetPasswordScreen - Handling regular recovery token');
-
-                // Try recovery verification first
-                await supabase.auth.verifyOTP(
-                  email: email,
-                  token: widget.token,
-                  type: OtpType.recovery,
-                );
-                print('ResetPasswordScreen - Recovery verification successful');
-
-                // Now update the password
-                await supabase.auth.updateUser(
-                  UserAttributes(
-                    password: newPassword,
-                  ),
-                );
-                print(
-                    'ResetPasswordScreen - Password updated successfully after recovery verification');
-
-                _showSuccessDialog();
-              }
-            } catch (e) {
-              print('ResetPasswordScreen - Recovery verification failed: $e');
-              print('ResetPasswordScreen - Error type: ${e.runtimeType}');
-              print('ResetPasswordScreen - Error message: $e');
-
-              // Try signup verification as fallback
-              print(
-                  'ResetPasswordScreen - Trying signup verification as fallback');
-              try {
-                await supabase.auth.verifyOTP(
-                  email: email,
-                  token: widget.token,
-                  type: OtpType.signup,
-                );
-                print('ResetPasswordScreen - Signup verification successful');
-
-                // Now update the password
-                await supabase.auth.updateUser(
-                  UserAttributes(
-                    password: newPassword,
-                  ),
-                );
-                print(
-                    'ResetPasswordScreen - Password updated successfully after signup verification');
-
-                _showSuccessDialog();
-              } catch (signupError) {
-                print(
-                    'ResetPasswordScreen - Signup verification also failed: $signupError');
-                print(
-                    'ResetPasswordScreen - Signup error type: ${signupError.runtimeType}');
-                print(
-                    'ResetPasswordScreen - Signup error message: $signupError');
-
-                // Show error dialog
-                _showErrorDialog(
-                    'This password reset link has expired. Please request a new password reset link from the login screen.');
-              }
-            }
-          } else {
-            // No token provided, try to send a new recovery email
-            print(
-                'ResetPasswordScreen - No recovery token provided, sending new recovery email');
-            await supabase.auth.resetPasswordForEmail(email);
-            print('ResetPasswordScreen - Recovery email sent successfully');
-
-            _showInfoDialog(
-              'Password Reset Email Sent',
-              'A new password reset link has been sent to your email. Please check your inbox and click the link to reset your password.',
+          // Try to update password directly if we have a valid session
+          try {
+            await supabase.auth.updateUser(
+              UserAttributes(
+                password: newPassword,
+              ),
             );
+            print(
+                'ResetPasswordScreen - Password updated successfully with existing session');
+            _showSuccessDialog();
+            return;
+          } catch (e) {
+            print(
+                'ResetPasswordScreen - Failed to update password with existing session: $e');
+            // Continue with token-based recovery if direct update fails
           }
+        }
+
+        // No valid session or direct update failed, try token-based recovery
+        print('ResetPasswordScreen - Attempting token-based recovery');
+
+        if (widget.token.isNotEmpty) {
+          print('ResetPasswordScreen - Attempting to verify recovery token');
+          print(
+              'ResetPasswordScreen - Timestamp: ${DateTime.now().toIso8601String()}');
+          print('ResetPasswordScreen - Email: $email');
+          print('ResetPasswordScreen - Token length: ${widget.token.length}');
+          print(
+              'ResetPasswordScreen - Token: ${widget.token.substring(0, 8)}...');
+          print('ResetPasswordScreen - Full token: ${widget.token}');
+          print(
+              'ResetPasswordScreen - Token contains special chars: ${widget.token.contains(RegExp(r'[^a-zA-Z0-9\-]'))}');
+          print('ResetPasswordScreen - Current time: ${DateTime.now()}');
+          print(
+              'ResetPasswordScreen - Note: Token verification should happen within 1-2 minutes of receiving the link');
+          print('ResetPasswordScreen - Token type: ${widget.tokenType}');
+
+          try {
+            // Check if this is a PKCE token from the verify endpoint
+            if (widget.tokenType == 'pkce' ||
+                widget.token.startsWith('pkce_')) {
+              print(
+                  'ResetPasswordScreen - Handling PKCE token from verify endpoint');
+
+              // For PKCE tokens, we need to use the verify endpoint
+              // This should establish a session that allows password update
+              await supabase.auth.verifyOTP(
+                email: email,
+                token: widget.token,
+                type: OtpType.recovery,
+              );
+              print('ResetPasswordScreen - PKCE token verification successful');
+
+              // Now update the password
+              await supabase.auth.updateUser(
+                UserAttributes(
+                  password: newPassword,
+                ),
+              );
+              print(
+                  'ResetPasswordScreen - Password updated successfully after PKCE verification');
+
+              _showSuccessDialog();
+            } else {
+              // Regular recovery token handling
+              print('ResetPasswordScreen - Handling regular recovery token');
+
+              // Try recovery verification first
+              await supabase.auth.verifyOTP(
+                email: email,
+                token: widget.token,
+                type: OtpType.recovery,
+              );
+              print('ResetPasswordScreen - Recovery verification successful');
+
+              // Now update the password
+              await supabase.auth.updateUser(
+                UserAttributes(
+                  password: newPassword,
+                ),
+              );
+              print(
+                  'ResetPasswordScreen - Password updated successfully after recovery verification');
+
+              _showSuccessDialog();
+            }
+          } catch (e) {
+            print('ResetPasswordScreen - Recovery verification failed: $e');
+            print('ResetPasswordScreen - Error type: ${e.runtimeType}');
+            print('ResetPasswordScreen - Error message: $e');
+            print('🚨🚨🚨 ENHANCED DEBUGGING ACTIVE 🚨🚨🚨');
+
+            // Enhanced error debugging
+            if (e is AuthException) {
+              print('ResetPasswordScreen - AuthException details:');
+              print('  Status code: ${e.statusCode}');
+              print('  Message: ${e.message}');
+            } else if (e is AuthApiException) {
+              print('ResetPasswordScreen - AuthApiException details:');
+              print('  Status code: ${e.statusCode}');
+              print('  Message: ${e.message}');
+            }
+
+            // Log the exact parameters being sent
+            print('ResetPasswordScreen - Parameters sent:');
+            print('  Email: $email');
+            print('  Token: ${widget.token}');
+            print('  Token length: ${widget.token.length}');
+            print(
+                '  Token format valid: ${RegExp(r'^[a-f0-9\-]{36}$').hasMatch(widget.token)}');
+
+            // Try signup verification as fallback
+            print(
+                'ResetPasswordScreen - Trying signup verification as fallback');
+            try {
+              await supabase.auth.verifyOTP(
+                email: email,
+                token: widget.token,
+                type: OtpType.signup,
+              );
+              print('ResetPasswordScreen - Signup verification successful');
+
+              // Now update the password
+              await supabase.auth.updateUser(
+                UserAttributes(
+                  password: newPassword,
+                ),
+              );
+              print(
+                  'ResetPasswordScreen - Password updated successfully after signup verification');
+
+              _showSuccessDialog();
+            } catch (signupError) {
+              print(
+                  'ResetPasswordScreen - Signup verification also failed: $signupError');
+              print(
+                  'ResetPasswordScreen - Signup error type: ${signupError.runtimeType}');
+              print('ResetPasswordScreen - Signup error message: $signupError');
+
+              // Try to get more diagnostic information
+              print('ResetPasswordScreen - Attempting diagnostic tests...');
+
+              // Test 1: Try with a different email format
+              try {
+                print(
+                    'ResetPasswordScreen - Test 1: Trying with email in different case');
+                await supabase.auth.verifyOTP(
+                  email: email.toUpperCase(),
+                  token: widget.token,
+                  type: OtpType.recovery,
+                );
+                print(
+                    'ResetPasswordScreen - Test 1 succeeded with uppercase email!');
+              } catch (test1Error) {
+                print('ResetPasswordScreen - Test 1 failed: $test1Error');
+              }
+
+              // Test 2: Try with trimmed token
+              try {
+                print(
+                    'ResetPasswordScreen - Test 2: Trying with trimmed token');
+                await supabase.auth.verifyOTP(
+                  email: email,
+                  token: widget.token.trim(),
+                  type: OtpType.recovery,
+                );
+                print(
+                    'ResetPasswordScreen - Test 2 succeeded with trimmed token!');
+              } catch (test2Error) {
+                print('ResetPasswordScreen - Test 2 failed: $test2Error');
+              }
+
+              // Test 3: Try to send a new reset email to see if the account exists
+              try {
+                print(
+                    'ResetPasswordScreen - Test 3: Trying to send new reset email');
+                await supabase.auth.resetPasswordForEmail(email);
+                print(
+                    'ResetPasswordScreen - Test 3 succeeded: New reset email sent successfully');
+              } catch (test3Error) {
+                print('ResetPasswordScreen - Test 3 failed: $test3Error');
+                print(
+                    'ResetPasswordScreen - This suggests the email/account might not exist');
+              }
+
+              // Test 4: Check if we can sign up with this email (to see if account exists)
+              try {
+                print(
+                    'ResetPasswordScreen - Test 4: Trying to sign up with email to check if account exists');
+                await supabase.auth.signUp(
+                  email: email,
+                  password: 'temporary_password_for_test',
+                );
+                print(
+                    'ResetPasswordScreen - Test 4 succeeded: Account does not exist, signup worked');
+              } catch (test4Error) {
+                print('ResetPasswordScreen - Test 4 failed: $test4Error');
+                if (test4Error.toString().contains('already registered')) {
+                  print(
+                      'ResetPasswordScreen - Account exists but is already registered');
+                }
+              }
+
+              // Show error dialog with more specific guidance
+              _showErrorDialog(
+                  'Password reset failed. This could be due to:\n\n'
+                  '• Token expiration (most likely)\n'
+                  '• Email mismatch\n'
+                  '• Invalid token format\n'
+                  '• Account doesn\'t exist\n\n'
+                  'Please try requesting a new reset link, or contact support if the issue persists.');
+            }
+          }
+        } else {
+          // No token provided, try to send a new recovery email
+          print(
+              'ResetPasswordScreen - No recovery token provided, sending new recovery email');
+          await supabase.auth.resetPasswordForEmail(email);
+          print('ResetPasswordScreen - Recovery email sent successfully');
+
+          _showInfoDialog(
+            'Password Reset Email Sent',
+            'A new password reset link has been sent to your email. Please check your inbox and click the link to reset your password.',
+          );
         }
       } catch (e) {
         print('ResetPasswordScreen - Error: $e');
@@ -366,6 +476,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   style: TextStyle(fontSize: 12, color: Colors.orange),
                 ),
                 const SizedBox(height: 24),
+                // Debug info
+                Text(
+                  'Debug: Email="${_emailController.text}", Password="${_passwordController.text}"',
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: _emailController,
                   decoration: const InputDecoration(
@@ -383,11 +499,23 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _passwordController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'New Password',
-                    border: OutlineInputBorder(),
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                    ),
                   ),
-                  obscureText: true,
+                  obscureText: _obscurePassword,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please enter a password';
@@ -401,11 +529,23 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _confirmPasswordController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Confirm Password',
-                    border: OutlineInputBorder(),
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscureConfirmPassword = !_obscureConfirmPassword;
+                        });
+                      },
+                    ),
                   ),
-                  obscureText: true,
+                  obscureText: _obscureConfirmPassword,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please confirm your password';

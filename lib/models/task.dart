@@ -78,10 +78,27 @@ class Task {
     final links = parseLinks(json['links']);
     print('Parsed links from JSON: $links');
 
-    // Get suggestibleAt, defaulting to current time if null
-    final suggestibleAt = json['suggestible_at'] != null
-        ? DateTime.parse(json['suggestible_at'] as String)
-        : DateTime.now();
+    // Get suggestibleAt, preserving null if it's intentionally null
+    // Only default to current time for legacy tasks that don't have this field set
+    DateTime? suggestibleAt;
+    if (json['suggestible_at'] != null) {
+      suggestibleAt = DateTime.parse(json['suggestible_at'] as String);
+    } else {
+      // Only set to current time for very old tasks (created before suggestible_at was introduced)
+      // For newer tasks, preserve null to allow them to appear at the top
+      final createdAt = DateTime.parse(json['created_at'] as String);
+      final cutoffDate =
+          DateTime(2024, 1, 1); // Arbitrary cutoff for "old" tasks
+
+      if (createdAt.isBefore(cutoffDate)) {
+        suggestibleAt = DateTime.now();
+        print(
+            'Setting suggestible_at to now for legacy task ${json['headline']}');
+      } else {
+        suggestibleAt = null;
+        print('Preserving null suggestible_at for task ${json['headline']}');
+      }
+    }
 
     // Create the task with the links
     final task = Task(
@@ -101,9 +118,9 @@ class Task {
       finished: json['finished'] as bool,
     );
 
-    // If we had to set suggestibleAt to now, update it in the database
-    if (json['suggestible_at'] == null) {
-      print('Updating suggestible_at to now for task ${task.headline}');
+    // Only update database for legacy tasks that needed suggestible_at set
+    if (json['suggestible_at'] == null && suggestibleAt != null) {
+      print('Updating suggestible_at to now for legacy task ${task.headline}');
       supabase
           .from('Tasks')
           .update({'suggestible_at': suggestibleAt.toIso8601String()})
@@ -438,10 +455,10 @@ class Task {
       if (a.finished != b.finished) {
         return a.finished ? 1 : -1;
       }
-      // 2. Ascending suggestibleAt (nulls last)
+      // 2. Ascending suggestibleAt (nulls first - for immediate availability)
       if (a.suggestibleAt == null && b.suggestibleAt == null) return 0;
-      if (a.suggestibleAt == null) return 1;
-      if (b.suggestibleAt == null) return -1;
+      if (a.suggestibleAt == null) return -1; // nulls first
+      if (b.suggestibleAt == null) return 1; // nulls first
       return a.suggestibleAt!.compareTo(b.suggestibleAt!);
     });
     // Print a report of the sorted tasks

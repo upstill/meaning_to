@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' as foundation;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/splash_screen.dart';
@@ -10,12 +11,36 @@ import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
+import 'package:meaning_to/new_category_screen.dart';
+import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/share_handler.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 
 // Remove the instance creation since we'll use static methods
 // final _receiveSharingIntent = ReceiveSharingIntent();
+
+/// Widget that constrains width on web platform
+class WebWidthWrapper extends StatelessWidget {
+  final Widget child;
+
+  const WebWidthWrapper({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (foundation.kIsWeb) {
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+              maxWidth: 500), // 50% of typical 1000px width
+          child: child,
+        ),
+      );
+    }
+    return child;
+  }
+}
 
 void main() async {
   try {
@@ -138,11 +163,50 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _initDeepLinkListener();
+    _initAuthStateListener();
     _shareHandler.initialize(
       onIntentReceived: _logIntent,
       scaffoldKey: _scaffoldKey,
       navigatorKey: MyApp.navigatorKey,
     );
+  }
+
+  void _initAuthStateListener() {
+    supabase.auth.onAuthStateChange.listen((data) {
+      final event = data.event;
+      final session = data.session;
+
+      print('=== Auth State Change ===');
+      print('Event: $event');
+      print('Session: ${session != null ? 'exists' : 'null'}');
+      print('User: ${session?.user.id ?? 'null'}');
+      print('User email: ${session?.user.email ?? 'null'}');
+      print('Timestamp: ${DateTime.now().toIso8601String()}');
+
+      if (event == AuthChangeEvent.passwordRecovery) {
+        print('=== PASSWORD_RECOVERY Event Detected ===');
+        print('Navigating to reset password screen');
+
+        // Navigate to reset password screen
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          MyApp.navigatorKey.currentState?.pushReplacementNamed(
+            '/reset-password',
+            arguments: {
+              'token': '', // Will be handled by the reset password screen
+              'email': null,
+              'verified': false,
+            },
+          );
+        });
+      } else if (event == AuthChangeEvent.initialSession) {
+        print('=== INITIAL_SESSION Event Detected ===');
+        print(
+            'This is normal on app startup when user is already authenticated');
+        print('Splash screen will handle navigation after delay');
+      } else {
+        print('=== Other Auth Event: $event ===');
+      }
+    });
   }
 
   @override
@@ -461,109 +525,123 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Meaning To',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+    return WebWidthWrapper(
+      child: MaterialApp(
+        title: 'Meaning To',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+          useMaterial3: true,
+        ),
+        scaffoldMessengerKey: _scaffoldKey,
+        navigatorKey: MyApp.navigatorKey,
+        localizationsDelegates: const [
+          DefaultMaterialLocalizations.delegate,
+          DefaultWidgetsLocalizations.delegate,
+          DefaultCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('en', 'US'),
+        ],
+        initialRoute: '/',
+        onGenerateRoute: (settings) {
+          print('onGenerateRoute called with: ${settings.name}');
+          print('Arguments: ${settings.arguments}');
+          print('Handling deep link: ${MyApp.isHandlingDeepLink}');
+          print(
+              'Current route stack: ${MyApp.navigatorKey.currentState?.widget.runtimeType}');
+
+          // If we're handling a deep link, don't process normal routes
+          if (MyApp.isHandlingDeepLink) {
+            // Allow reset-password route to be processed even during deep link handling
+            if (settings.name == '/reset-password') {
+              print('Deep link in progress, but allowing reset-password route');
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => ResetPasswordScreen(
+                  token: args['token'] as String,
+                  email: args['email'] as String?,
+                  verified: args['verified'] as bool? ?? false,
+                ),
+              );
+            }
+            print('Deep link in progress, returning splash screen');
+            return MaterialPageRoute(
+              builder: (context) => const SplashScreen(),
+            );
+          }
+
+          // Check if this is a deep link that should override normal routing
+          if (settings.name == '/') {
+            // Check for pending deep link
+            final pendingDeepLink = _getPendingDeepLink();
+            if (pendingDeepLink != null) {
+              print('Found pending deep link: $pendingDeepLink');
+              _handleDeepLink(pendingDeepLink);
+              // Return splash screen - deep link will handle navigation
+              return MaterialPageRoute(
+                builder: (context) => const SplashScreen(),
+              );
+            }
+          }
+
+          // Normal route handling
+          switch (settings.name) {
+            case '/':
+              return MaterialPageRoute(
+                builder: (context) => const SplashScreen(),
+              );
+            case '/auth':
+              return MaterialPageRoute(
+                builder: (context) => const AuthScreen(),
+              );
+            case '/home':
+              return MaterialPageRoute(
+                builder: (context) => const HomeScreen(),
+              );
+            case '/reset-password':
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => ResetPasswordScreen(
+                  token: args['token'] as String,
+                  email: args['email'] as String?,
+                  verified: args['verified'] as bool? ?? false,
+                ),
+              );
+            case '/edit-category':
+              final args = settings.arguments as Map<String, dynamic>?;
+              return MaterialPageRoute(
+                builder: (context) => EditCategoryScreen(
+                  category: args?['category'] as Category?,
+                  tasksOnly: args?['tasksOnly'] == true,
+                ),
+              );
+            case '/new-category':
+              return MaterialPageRoute(
+                builder: (context) => const NewCategoryScreen(),
+              );
+            case '/import-justwatch':
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => ImportJustWatchScreen(
+                  category: args['category'] as Category,
+                  jsonData: args['jsonData'],
+                ),
+              );
+            case '/edit-task':
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => TaskEditScreen(
+                  category: args['category'] as Category,
+                  task: args['task'] as Task?,
+                ),
+              );
+            default:
+              return MaterialPageRoute(
+                builder: (context) => const SplashScreen(),
+              );
+          }
+        },
       ),
-      scaffoldMessengerKey: _scaffoldKey,
-      navigatorKey: MyApp.navigatorKey,
-      localizationsDelegates: const [
-        DefaultMaterialLocalizations.delegate,
-        DefaultWidgetsLocalizations.delegate,
-        DefaultCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('en', 'US'),
-      ],
-      initialRoute: '/',
-      onGenerateRoute: (settings) {
-        print('onGenerateRoute called with: ${settings.name}');
-        print('Arguments: ${settings.arguments}');
-        print('Handling deep link: ${MyApp.isHandlingDeepLink}');
-        print(
-            'Current route stack: ${MyApp.navigatorKey.currentState?.widget.runtimeType}');
-
-        // If we're handling a deep link, don't process normal routes
-        if (MyApp.isHandlingDeepLink) {
-          // Allow reset-password route to be processed even during deep link handling
-          if (settings.name == '/reset-password') {
-            print('Deep link in progress, but allowing reset-password route');
-            final args = settings.arguments as Map<String, dynamic>;
-            return MaterialPageRoute(
-              builder: (context) => ResetPasswordScreen(
-                token: args['token'] as String,
-                email: args['email'] as String?,
-                verified: args['verified'] as bool? ?? false,
-              ),
-            );
-          }
-          print('Deep link in progress, returning splash screen');
-          return MaterialPageRoute(
-            builder: (context) => const SplashScreen(),
-          );
-        }
-
-        // Check if this is a deep link that should override normal routing
-        if (settings.name == '/') {
-          // Check for pending deep link
-          final pendingDeepLink = _getPendingDeepLink();
-          if (pendingDeepLink != null) {
-            print('Found pending deep link: $pendingDeepLink');
-            _handleDeepLink(pendingDeepLink);
-            // Return splash screen - deep link will handle navigation
-            return MaterialPageRoute(
-              builder: (context) => const SplashScreen(),
-            );
-          }
-        }
-
-        // Normal route handling
-        switch (settings.name) {
-          case '/':
-            return MaterialPageRoute(
-              builder: (context) => const SplashScreen(),
-            );
-          case '/auth':
-            return MaterialPageRoute(
-              builder: (context) => const AuthScreen(),
-            );
-          case '/home':
-            return MaterialPageRoute(
-              builder: (context) => const HomeScreen(),
-            );
-          case '/reset-password':
-            final args = settings.arguments as Map<String, dynamic>;
-            return MaterialPageRoute(
-              builder: (context) => ResetPasswordScreen(
-                token: args['token'] as String,
-                email: args['email'] as String?,
-                verified: args['verified'] as bool? ?? false,
-              ),
-            );
-          case '/edit-category':
-            final args = settings.arguments as Map<String, dynamic>?;
-            return MaterialPageRoute(
-              builder: (context) => EditCategoryScreen(
-                category: args?['category'] as Category?,
-                tasksOnly: args?['tasksOnly'] == true,
-              ),
-            );
-          case '/import-justwatch':
-            final args = settings.arguments as Map<String, dynamic>;
-            return MaterialPageRoute(
-              builder: (context) => ImportJustWatchScreen(
-                category: args['category'] as Category,
-                jsonData: args['jsonData'],
-              ),
-            );
-          default:
-            return MaterialPageRoute(
-              builder: (context) => const SplashScreen(),
-            );
-        }
-      },
     );
   }
 }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' as foundation;
 import 'package:supabase_auth_ui/supabase_auth_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -12,8 +12,10 @@ class AuthScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // Define the redirect URL based on platform
     final supabaseUrl = dotenv.env['SUPABASE_URL']!;
-    // Use the app's custom URL scheme for deep linking
-    final redirectUrl = 'meaningto://auth/callback';
+    // Use the app's custom URL scheme for deep linking on mobile, http for web
+    final redirectUrl = foundation.kIsWeb
+        ? 'http://localhost:64085/auth/callback'
+        : 'meaningto://auth/callback';
 
     return Scaffold(
       body: ListView(
