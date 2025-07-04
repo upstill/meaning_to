@@ -148,8 +148,9 @@ class _TaskDisplayState extends State<TaskDisplay> {
                             Flexible(
                               child: Builder(
                                 builder: (context) {
-                                  // Use gray for deferred tasks, black for available tasks
-                                  final textColor = widget.task.isDeferred
+                                  // Use gray for deferred or finished tasks, black for available tasks
+                                  final textColor = (widget.task.isDeferred ||
+                                          widget.task.finished)
                                       ? Colors.grey
                                       : Colors.black;
 

@@ -273,7 +273,13 @@ class LinkProcessor {
 
   static Future<String?> fetchWebpageTitle(String url) async {
     try {
-      final response = await http.get(Uri.parse(url));
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
+        },
+      );
       if (response.statusCode != 200) return null;
 
       final document = html_parser.parse(response.body);
@@ -404,8 +410,43 @@ class LinkProcessor {
     final processedLink =
         await processLinkForDisplay('<a href="$url">${linkText ?? ""}</a>');
 
+    // If we couldn't fetch the title but the URL is valid, still return the processed link
+    // The caller can decide how to handle missing titles
     if (processedLink.title == null) {
-      throw Exception('Sorry, but this link doesn\'t lead to a page.');
+      // Try to extract a reasonable title from the URL itself
+      final uri = Uri.parse(url);
+      final domain = uri.host;
+      final path = uri.path;
+
+      String fallbackTitle = domain;
+      if (path.isNotEmpty && path != '/') {
+        // Extract the last part of the path as a title
+        final pathParts =
+            path.split('/').where((part) => part.isNotEmpty).toList();
+        if (pathParts.isNotEmpty) {
+          final lastPart = pathParts.last;
+          // Clean up the path part (remove file extensions, replace dashes/underscores with spaces)
+          fallbackTitle = lastPart
+              .replaceAll(RegExp(r'\.(html|htm|php|asp|aspx)$'), '')
+              .replaceAll(RegExp(r'[-_]'), ' ')
+              .replaceAll(RegExp(r'\s+'), ' ')
+              .trim();
+
+          // If the cleaned title is too short, use the domain
+          if (fallbackTitle.length < 3) {
+            fallbackTitle = domain;
+          }
+        }
+      }
+
+      return ProcessedLink(
+        url: url,
+        title: fallbackTitle,
+        favicon: processedLink.favicon,
+        type: processedLink.type,
+        domain: processedLink.domain,
+        originalLink: '<a href="$url">$fallbackTitle</a>',
+      );
     }
 
     return processedLink;

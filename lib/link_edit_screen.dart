@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 
 class LinkEditScreen extends StatefulWidget {
-  final String? initialLink;  // HTML link to edit, or null for new link
-  final String? errorMessage;  // Add error message parameter
+  final String? initialLink; // HTML link to edit, or null for new link
+  final String? errorMessage; // Add error message parameter
 
   const LinkEditScreen({
     super.key,
     this.initialLink,
-    this.errorMessage,  // Add to constructor
+    this.errorMessage, // Add to constructor
   });
 
   @override
@@ -23,15 +23,17 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
   String? _error;
   String? _testedUrl;
   String? _testedIcon;
-  bool _hasUrlText = false;  // Add state for URL text presence
+  bool _hasUrlText = false; // Add state for URL text presence
 
   @override
   void initState() {
     super.initState();
     print('LinkEditScreen: initState called');
     // Parse initial link if provided
-    if (widget.initialLink != null && widget.initialLink!.startsWith('<a href="')) {
-      final linkMatch = RegExp(r'<a href="([^"]+)"[^>]*>(.*?)</a>').firstMatch(widget.initialLink!);
+    if (widget.initialLink != null &&
+        widget.initialLink!.startsWith('<a href="')) {
+      final linkMatch = RegExp(r'<a href="([^"]+)"[^>]*>(.*?)</a>')
+          .firstMatch(widget.initialLink!);
       if (linkMatch != null) {
         _urlController = TextEditingController(text: linkMatch.group(1));
         _textController = TextEditingController(text: linkMatch.group(2));
@@ -94,8 +96,7 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
 
       // Test the link by processing it
       final processedLink = await LinkProcessor.processLinkForDisplay(
-        '<a href="$url">${_textController.text.trim()}</a>'
-      );
+          '<a href="$url">${_textController.text.trim()}</a>');
 
       // If we got a title from the webpage and the text field was empty,
       // update the text field with the fetched title
@@ -158,9 +159,41 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
     }
   }
 
+  Future<void> _saveLinkAnyway() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_urlController.text.trim().isEmpty) {
+      setState(() {
+        _error = 'Please enter a URL';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final url = _urlController.text.trim();
+
+      // Create HTML link without validation and return
+      final htmlLink = '<a href="$url">${_textController.text.trim()}</a>';
+      if (mounted) {
+        Navigator.pop(context, htmlLink);
+      }
+    } catch (e) {
+      print('Error saving link anyway: $e');
+      setState(() {
+        _error = 'Failed to save link: ${e.toString()}';
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    print('LinkEditScreen: Building with _hasUrlText: $_hasUrlText, URL text: "${_urlController.text}"');
+    print(
+        'LinkEditScreen: Building with _hasUrlText: $_hasUrlText, URL text: "${_urlController.text}"');
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.initialLink == null ? 'New Link' : 'Edit Link'),
@@ -172,9 +205,37 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
           children: [
             if (_error != null) ...[
               const SizedBox(height: 8),
-              Text(
-                _error!,
-                style: const TextStyle(color: Colors.red),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _isLoading ? null : _saveLinkAnyway,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                            ),
+                            child: const Text('Save Anyway'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
             ],
@@ -254,4 +315,4 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
       ),
     );
   }
-} 
+}

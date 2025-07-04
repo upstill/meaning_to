@@ -7,6 +7,8 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/text_importer.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/widgets/add_task_manually_button.dart';
 
 class AddTasksScreen extends StatefulWidget {
   final Category category;
@@ -19,7 +21,6 @@ class AddTasksScreen extends StatefulWidget {
 
 class AddTasksScreenState extends State<AddTasksScreen> {
   final _textInputController = TextEditingController();
-  final _linkInputController = TextEditingController();
   bool _isLoading = false;
 
   @override
@@ -30,17 +31,11 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         // Trigger rebuild when text changes to update button state
       });
     });
-    _linkInputController.addListener(() {
-      setState(() {
-        // Trigger rebuild when text changes to update button state
-      });
-    });
   }
 
   @override
   void dispose() {
     _textInputController.dispose();
-    _linkInputController.dispose();
     super.dispose();
   }
 
@@ -130,128 +125,6 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     return null; // No duplicate found
   }
 
-  Future<void> _processLinks() async {
-    if (_linkInputController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter some text to process for links'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        throw Exception('No user logged in');
-      }
-
-      // Get existing tasks for this category
-      final existingTasks = CacheManager().currentTasks ?? [];
-      final categoryTasks = existingTasks
-          .where((task) => task.categoryId == widget.category.id)
-          .toList();
-
-      if (categoryTasks.isEmpty) {
-        throw Exception('No tasks found in this category to add links to');
-      }
-
-      // Use TextImporter to process the text for links
-      final tasksToProcess = <Task>[];
-
-      await for (final task in TextImporter.processForNewCategory(
-        _linkInputController.text,
-        category: widget.category,
-        ownerId: userId,
-      )) {
-        tasksToProcess.add(task);
-      }
-
-      if (tasksToProcess.isEmpty) {
-        throw Exception('No valid links found in text input');
-      }
-
-      // For each processed task, find matching existing tasks and add links
-      int linksAdded = 0;
-
-      for (final newTask in tasksToProcess) {
-        // Find existing tasks with matching headlines
-        for (final existingTask in categoryTasks) {
-          if (existingTask.headline.toLowerCase().trim() ==
-              newTask.headline.toLowerCase().trim()) {
-            // Check if the existing task needs links added
-            if (newTask.links != null && newTask.links!.isNotEmpty) {
-              List<String> updatedLinks =
-                  List<String>.from(existingTask.links ?? []);
-
-              // Add new links that aren't already present
-              for (final newLink in newTask.links!) {
-                if (!updatedLinks.contains(newLink)) {
-                  updatedLinks.add(newLink);
-                }
-              }
-
-              if (updatedLinks.length > (existingTask.links?.length ?? 0)) {
-                // Update the task with new links
-                await supabase
-                    .from('Tasks')
-                    .update({'links': updatedLinks})
-                    .eq('id', existingTask.id)
-                    .eq('owner_id', userId);
-
-                linksAdded++;
-                print('Added links to task: "${existingTask.headline}"');
-              }
-            }
-          }
-        }
-      }
-
-      // Show success message
-      String message;
-      if (linksAdded > 0) {
-        message = 'Added links to $linksAdded tasks';
-      } else {
-        message = 'No new links were added (they may already exist)';
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      // Clear the link input
-      _linkInputController.clear();
-
-      // Return success to trigger refresh
-      if (mounted) {
-        Navigator.pop(context, true);
-      }
-    } catch (e) {
-      print('=== Link Processing Error ===');
-      print('Error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
   Future<void> _processTextInput() async {
     if (_textInputController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -275,6 +148,80 @@ class AddTasksScreenState extends State<AddTasksScreen> {
 
       // Get existing tasks for duplicate checking
       final existingTasks = CacheManager().currentTasks ?? [];
+
+      // Check if the input is a single URL
+      final trimmedText = _textInputController.text.trim();
+      if (LinkProcessor.isValidUrl(trimmedText)) {
+        // Single URL detected - process it through LinkProcessor
+        print('Single URL detected: $trimmedText');
+
+        try {
+          final processedLink = await LinkProcessor.validateAndProcessLink(
+            trimmedText,
+            linkText: '', // Let LinkProcessor fetch the title
+          );
+
+          // Create a task with the link's title and the URL
+          final taskData = {
+            'headline': processedLink.title ?? 'Link Task',
+            'notes': null,
+            'category_id': widget.category.id,
+            'owner_id': userId,
+            'links': [trimmedText], // Store the original URL
+            'suggestible_at': null, // Set to null to appear at the beginning
+          };
+
+          await supabase.from('Tasks').insert(taskData);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text('Created task: "${processedLink.title ?? 'Link Task'}"'),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          // Clear the text input
+          _textInputController.clear();
+
+          // Return success to trigger refresh
+          if (mounted) {
+            Navigator.pop(context, true);
+          }
+          return;
+        } catch (e) {
+          print('Error processing single URL: $e');
+
+          // If URL processing fails, create a task with the URL as the title
+          // This is better than falling back to text processing which can create malformed tasks
+          final taskData = {
+            'headline': trimmedText, // Use the URL as the title
+            'notes': 'Failed to fetch webpage title',
+            'category_id': widget.category.id,
+            'owner_id': userId,
+            'links': [trimmedText], // Store the original URL
+            'suggestible_at': null, // Set to null to appear at the beginning
+          };
+
+          await supabase.from('Tasks').insert(taskData);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Created task with URL: "$trimmedText"'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+
+          // Clear the text input
+          _textInputController.clear();
+
+          // Return success to trigger refresh
+          if (mounted) {
+            Navigator.pop(context, true);
+          }
+          return;
+        }
+      }
 
       // Use TextImporter to process the text input
       final tasksToProcess = <Task>[];
@@ -425,7 +372,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      'List multiple tasks below (one per line) or add them individually:',
+                      'List one or more tasks, one per line:',
                       style: TextStyle(fontSize: 14, color: Colors.grey),
                     ),
                     const SizedBox(height: 12),
@@ -468,7 +415,21 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            // Link addition section
+            const Text(
+              'Tips:',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '• Enter one task per line\n'
+              '• Use "Task: Note" format to include a note\n'
+              '• Pasting a Share from elsewhere will do the right thing\n'
+              '• Ditto a URL (address-bar gobbledygook from a web page)\n'
+              '• New Tasks will appear at the beginning of your list',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            // Single task addition section
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -476,73 +437,26 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Add Links to Existing Tasks:',
+                      'For adding a single task:',
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Paste text with task names and URLs to add links to existing tasks:',
-                      style: TextStyle(fontSize: 14, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _linkInputController,
-                      maxLines: 4,
-                      decoration: const InputDecoration(
-                        hintText:
-                            'Task Name: https://example.com/link1\nAnother Task: https://example.com/link2',
-                        border: OutlineInputBorder(),
-                        labelText: 'Paste links here',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _isLoading ||
-                                _linkInputController.text.trim().isEmpty
-                            ? null
-                            : _processLinks,
-                        icon: _isLoading
-                            ? const SizedBox(
-                                height: 16,
-                                width: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.link),
-                        label: Text(_isLoading ? 'Adding...' : 'Add Link(s)'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              Theme.of(context).colorScheme.secondary,
-                          foregroundColor: Colors.white,
-                        ),
+                      child: AddTaskManuallyButton(
+                        category: widget.category,
+                        isLoading: _isLoading,
+                        onTaskAdded: () {
+                          setState(() {
+                            // Refresh the UI after task is added
+                          });
+                        },
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Tips:',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Adding Tasks:\n'
-              '• Enter one task per line\n'
-              '• Use "Task: Notes" format to add notes\n'
-              '• Include URLs to automatically create links\n'
-              '• Tasks will be added to the beginning of your list\n'
-              '• For single tasks, use "Add Task Manually" on the previous screen\n\n'
-              'Adding Links:\n'
-              '• Use "Task Name: URL" format to add links to existing tasks\n'
-              '• Links will be matched by task headline (case-insensitive)\n'
-              '• Duplicate links will be ignored\n'
-              '• Only tasks in this category will be updated',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
           ],
         ),

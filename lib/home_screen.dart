@@ -806,22 +806,12 @@ class HomeScreenState extends State<HomeScreen> {
                     value: _selectedCategory,
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                    hint: const Text(
-                      'Choose an endeavor',
-                      style: TextStyle(fontSize: 20),
+                      hintText: 'Choose an endeavor',
                     ),
                     items: _categories.map((category) {
                       return DropdownMenuItem(
                         value: category,
-                        child: Text(
-                          category.headline,
-                          style: const TextStyle(fontSize: 20),
-                        ),
+                        child: Text(category.headline),
                       );
                     }).toList(),
                     onChanged: (Category? newValue) {
@@ -884,7 +874,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                                     .bodyLarge
                                                                     ?.fontSize ??
                                                                 16) +
-                                                            6,
+                                                            22,
                                                         fontWeight: _randomTask!
                                                                         .suggestibleAt ==
                                                                     null ||
@@ -1084,16 +1074,19 @@ class HomeScreenState extends State<HomeScreen> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green,
                                     foregroundColor: Colors.white,
+                                    minimumSize: const Size(
+                                        0, 48), // 12 points taller than default
                                   ),
                                 ),
-                                const SizedBox(height: 8),
-                                TextButton(
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
                                   onPressed: _navigateToEditTasks,
-                                  child: const Text('Manage Choices'),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Theme.of(
-                                      context,
-                                    ).colorScheme.primary,
+                                  icon: const Icon(Icons.edit),
+                                  label: const Text(
+                                      'Manage Choices/Edit Endeavor'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.grey[200],
+                                    foregroundColor: Colors.black,
                                   ),
                                 ),
                               ],
@@ -1122,7 +1115,11 @@ class HomeScreenState extends State<HomeScreen> {
                             ElevatedButton.icon(
                               onPressed: _navigateToEditTasks,
                               icon: const Icon(Icons.edit),
-                              label: const Text('Manage Choices'),
+                              label: const Text('Manage Choices/Edit Endeavor'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.grey[200],
+                                foregroundColor: Colors.black,
+                              ),
                             ),
                           ],
                         ),

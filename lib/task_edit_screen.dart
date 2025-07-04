@@ -11,6 +11,7 @@ import 'package:meaning_to/utils/link_extractor.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/add_tasks_screen.dart';
 
 class TaskEditScreen extends StatefulWidget {
   static VoidCallback? onEditComplete; // Static callback for edit completion
@@ -455,7 +456,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               ),
               if (widget.task != null)
                 Text(
-                  'Edit Task',
+                  'Edit Task for ${widget.category.headline}',
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.normal,
@@ -527,6 +528,52 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                     : Text(
                         widget.task == null ? 'Create Task' : 'Save Changes',
                       ),
+              ),
+              const SizedBox(height: 24),
+              // Separator with helpful text
+              Row(
+                children: [
+                  Expanded(child: Divider()),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Text(
+                      '** You can also bulk-add a list of tasks: **',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Add a List of Tasks button
+              ElevatedButton.icon(
+                onPressed: _isLoading
+                    ? null
+                    : () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AddTasksScreen(
+                              category: widget.category,
+                            ),
+                          ),
+                        );
+                        if (result == true) {
+                          // Refresh the cache to get updated tasks
+                          await CacheManager().refreshFromDatabase();
+                          setState(() {});
+                        }
+                      },
+                icon: const Icon(Icons.add_task),
+                label: const Text('Add a List of Tasks'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.secondary,
+                  foregroundColor: Colors.white,
+                ),
               ),
             ],
           ),
