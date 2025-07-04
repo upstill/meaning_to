@@ -33,6 +33,13 @@ class CategoryFormState extends State<CategoryForm> {
   void initState() {
     super.initState();
     _initializeControllers();
+
+    // Add listener to track headline changes for button state
+    _headlineController.addListener(() {
+      setState(() {
+        // Trigger rebuild when headline changes to update button state
+      });
+    });
   }
 
   @override
@@ -89,9 +96,9 @@ class CategoryFormState extends State<CategoryForm> {
                   Text(
                     widget.category == null
                         ? 'Create New Endeavor'
-                        : 'Endeavor',
+                        : widget.category!.headline,
                     style: const TextStyle(
-                      fontSize: 18,
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -186,13 +193,6 @@ class CategoryFormState extends State<CategoryForm> {
                 ),
               ] else ...[
                 // Display mode for existing categories
-                Text(
-                  widget.category!.headline,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
                 if (widget.category!.invitation != null &&
                     widget.category!.invitation!.isNotEmpty) ...[
                   const SizedBox(height: 8),

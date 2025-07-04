@@ -731,6 +731,68 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
     });
   }
 
+  Widget _buildSummaryItem(
+      String label, int count, Color color, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 24),
+        const SizedBox(height: 4),
+        Text(
+          count.toString(),
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: color.withOpacity(0.8),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _buildTaskCountText() {
+    final tasks = _tasks
+        .where((task) =>
+            task.categoryId == (widget.category?.id ?? _currentCategory?.id))
+        .toList();
+
+    final availableTasks =
+        tasks.where((task) => !task.finished && task.isSuggestible).length;
+    final deferredTasks =
+        tasks.where((task) => !task.finished && task.isDeferred).length;
+    final finishedTasks = tasks.where((task) => task.finished).length;
+
+    if (availableTasks == 0) {
+      final parts = <String>[];
+      if (deferredTasks > 0) parts.add('$deferredTasks Deferred');
+      if (finishedTasks > 0) parts.add('$finishedTasks Finished');
+
+      if (parts.isEmpty) {
+        return 'No Tasks On Deck';
+      }
+      return 'No Tasks On Deck (${parts.join(', ')})';
+    }
+
+    final parts = <String>[];
+    if (deferredTasks > 0) parts.add('$deferredTasks Deferred');
+    if (finishedTasks > 0) parts.add('$finishedTasks Finished');
+
+    final taskText = availableTasks == 1 ? 'Task Is Up' : 'Available Tasks';
+    final availableText =
+        availableTasks == 1 ? 'Only One' : availableTasks.toString();
+
+    if (parts.isEmpty) {
+      return '$availableText $taskText';
+    }
+    return '$availableText $taskText (${parts.join(', ')})';
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -923,79 +985,11 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
               // Show tasks section for both new and existing categories
               const SizedBox(height: 6),
 
-              // Add Tasks section (only for saved categories)
-              if (_categorySaved &&
-                  (widget.category != null || _currentCategory != null)) ...[
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          (widget.category == null
-                                  ? _newTasks.isEmpty
-                                  : _tasks.isEmpty)
-                              ? 'Add Tasks:'
-                              : 'Add More Tasks:',
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Add multiple tasks at once or add one individually',
-                          style: TextStyle(fontSize: 14, color: Colors.grey),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () async {
-                                  final result = await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => AddTasksScreen(
-                                        category: (widget.category ??
-                                            _currentCategory)!,
-                                      ),
-                                    ),
-                                  );
-                                  if (result == true) {
-                                    // Refresh the cache to get updated tasks
-                                    await CacheManager().refreshFromDatabase();
-                                    setState(() {});
-                                  }
-                                },
-                                icon: const Icon(Icons.add_task),
-                                label: const Text('Add a List of Tasks'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor:
-                                      Theme.of(context).colorScheme.primary,
-                                  foregroundColor: Colors.white,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: _createTask,
-                                icon: const Icon(Icons.add),
-                                label: const Text('Add a Task Manually'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-
               // Task list section (only for saved categories)
               if (_categorySaved &&
                   (widget.category != null || _currentCategory != null)) ...[
+                // Task summary (only for existing categories with tasks)
+
                 // Only show "Current tasks:" header if there are tasks
                 if (widget.category == null
                     ? _newTasks.isNotEmpty
@@ -1003,15 +997,23 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Current tasks:',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
                       Text(
-                        '${widget.category == null ? _newTasks.length : _tasks.length} task${widget.category == null ? (_newTasks.length == 1 ? '' : 's') : (_tasks.length == 1 ? '' : 's')}',
-                        style:
-                            const TextStyle(fontSize: 14, color: Colors.grey),
+                        widget.category == null
+                            ? '${_newTasks.length} Available tasks:'
+                            : _buildTaskCountText(),
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green),
+                      ),
+                      IconButton(
+                        onPressed: _createTask,
+                        icon: const Icon(Icons.add),
+                        tooltip: 'Add a task manually',
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                        ),
                       ),
                     ],
                   ),
