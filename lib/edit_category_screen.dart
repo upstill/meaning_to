@@ -18,6 +18,7 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/text_importer.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
+import 'package:meaning_to/widgets/category_form.dart';
 
 class EditCategoryScreen extends StatefulWidget {
   static VoidCallback? onEditComplete; // Static callback for edit completion
@@ -843,211 +844,84 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                     ),
                   ),
                 const SizedBox(height: 16),
-              ] else if ((widget.category != null ||
-                      _currentCategory != null) &&
-                  !_isEditing) ...[
-                // View mode - show category details in a card
-                Card(
-                  child: Stack(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              (widget.category ?? _currentCategory)!.headline,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            if ((widget.category ?? _currentCategory)!
-                                    .invitation !=
-                                null) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                (widget.category ?? _currentCategory)!
-                                    .invitation!,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ],
-                            if ((widget.category ?? _currentCategory)!
-                                        .originalId ==
-                                    1 ||
-                                (widget.category ?? _currentCategory)!
-                                        .originalId ==
-                                    2) ...[
-                              const SizedBox(height: 16),
-                              ElevatedButton.icon(
-                                onPressed: () {
-                                  print('Import JustWatch button pressed');
-                                  print(
-                                    'Category: ${(widget.category ?? _currentCategory)?.headline}',
-                                  );
-
-                                  // Navigate to Import JustWatch screen, replacing the current screen
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          ImportJustWatchScreen(
-                                        category: (widget.category ??
-                                            _currentCategory)!,
-                                      ),
-                                    ),
-                                  ).then((result) {
-                                    if (result is Category) {
-                                      setState(() {
-                                        widget.category!.headline =
-                                            result.headline;
-                                        widget.category!.invitation =
-                                            result.invitation;
-                                      });
-                                    }
-                                  });
-                                },
-                                icon: const Icon(Icons.movie),
-                                label: const Text('Import JustWatch list'),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(20),
-                            onTap: () {
-                              setState(() {
-                                _isEditing = true;
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surface,
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.1),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Icon(
-                                Icons.edit,
-                                size: 20,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
               ] else ...[
-                // Edit mode - show form fields
-                TextFormField(
-                  controller: _headlineController,
-                  decoration: const InputDecoration(
-                    labelText: 'Endeavor (required)',
-                    hintText: 'What have you been meaning to do?',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please name your endeavor';
+                // Category form section
+                CategoryForm(
+                  category: widget.category ?? _currentCategory,
+                  isEditing: _isEditing || widget.category == null,
+                  isLoading: _isLoading,
+                  onSave: (headline, invitation, isPrivate) async {
+                    // Update local state
+                    _headlineController.text = headline;
+                    _invitationController.text = invitation;
+                    _isPrivate = isPrivate;
+
+                    // Save the category
+                    await _saveCategory();
+
+                    // Switch to view mode for existing categories
+                    if (widget.category != null) {
+                      setState(() {
+                        _isEditing = false;
+                      });
                     }
-                    return null;
                   },
-                  enabled: !_isLoading,
+                  onEdit: () {
+                    setState(() {
+                      _isEditing = true;
+                    });
+                  },
+                  onCancel: () {
+                    // Reset controllers to current values
+                    _headlineController.text =
+                        (widget.category ?? _currentCategory)!.headline;
+                    _invitationController.text =
+                        (widget.category ?? _currentCategory)!.invitation ?? '';
+                    _isPrivate =
+                        (widget.category ?? _currentCategory)!.isPrivate;
+                    setState(() {
+                      _isEditing = false;
+                    });
+                  },
                 ),
+              ],
+
+              // Import JustWatch button (only for view mode and specific categories)
+              if (!_isEditing &&
+                  (widget.category != null || _currentCategory != null) &&
+                  ((widget.category ?? _currentCategory)!.originalId == 1 ||
+                      (widget.category ?? _currentCategory)!.originalId ==
+                          2)) ...[
                 const SizedBox(height: 16),
-                TextFormField(
-                  controller: _invitationController,
-                  decoration: const InputDecoration(
-                    labelText: 'Invitation (optional)',
-                    hintText: 'What would you like to say to yourself?',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 3,
-                  enabled: !_isLoading,
-                ),
-                const SizedBox(height: 16),
-                CheckboxListTile(
-                  title: const Text('Private'),
-                  subtitle:
-                      const Text('I want to keep this endeavor to myself'),
-                  value: _isPrivate,
-                  onChanged: _isLoading
-                      ? null
-                      : (bool? value) {
-                          setState(() {
-                            _isPrivate = value ?? false;
-                          });
-                        },
-                  controlAffinity: ListTileControlAffinity.leading,
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (widget.category != null && _isEditing)
-                      TextButton(
-                        onPressed: () {
-                          // Reset controllers to current values
-                          _headlineController.text = widget.category!.headline;
-                          _invitationController.text =
-                              widget.category!.invitation ?? '';
-                          setState(() {
-                            _isEditing = false;
-                          });
-                        },
-                        child: const Text('Cancel'),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    print('Import JustWatch button pressed');
+                    print(
+                        'Category: ${(widget.category ?? _currentCategory)?.headline}');
+
+                    // Navigate to Import JustWatch screen, replacing the current screen
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ImportJustWatchScreen(
+                          category: (widget.category ?? _currentCategory)!,
+                        ),
                       ),
-                    if (widget.category != null && _isEditing)
-                      const SizedBox(width: 16),
-                    ElevatedButton(
-                      onPressed: (_isLoading ||
-                              _headlineController.text.trim().isEmpty)
-                          ? null
-                          : () async {
-                              if (!_formKey.currentState!.validate()) return;
-                              await _saveCategory();
-                              if (widget.category != null) {
-                                setState(() {
-                                  _isEditing = false;
-                                });
-                              }
-                            },
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(
-                              widget.category == null
-                                  ? 'Create Endeavor'
-                                  : 'Save Changes',
-                            ),
-                    ),
-                  ],
+                    ).then((result) {
+                      if (result is Category) {
+                        setState(() {
+                          widget.category!.headline = result.headline;
+                          widget.category!.invitation = result.invitation;
+                        });
+                      }
+                    });
+                  },
+                  icon: const Icon(Icons.movie),
+                  label: const Text('Import JustWatch list'),
                 ),
-                const SizedBox(height: 16),
               ],
               // Show tasks section for both new and existing categories
-              const SizedBox(height: 24),
+              const SizedBox(height: 6),
 
               // Add Tasks section (only for saved categories)
               if (_categorySaved &&
@@ -1058,14 +932,18 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Add More Tasks:',
-                          style: TextStyle(
+                        Text(
+                          (widget.category == null
+                                  ? _newTasks.isEmpty
+                                  : _tasks.isEmpty)
+                              ? 'Add Tasks:'
+                              : 'Add More Tasks:',
+                          style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 12),
                         const Text(
-                          'Add multiple tasks at once or create them individually',
+                          'Add multiple tasks at once or add one individually',
                           style: TextStyle(fontSize: 14, color: Colors.grey),
                         ),
                         const SizedBox(height: 12),
@@ -1118,24 +996,27 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
               // Task list section (only for saved categories)
               if (_categorySaved &&
                   (widget.category != null || _currentCategory != null)) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Current tasks:',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    if (widget.category == null
-                        ? _newTasks.isNotEmpty
-                        : _tasks.isNotEmpty)
+                // Only show "Current tasks:" header if there are tasks
+                if (widget.category == null
+                    ? _newTasks.isNotEmpty
+                    : _tasks.isNotEmpty) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Current tasks:',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
                       Text(
                         '${widget.category == null ? _newTasks.length : _tasks.length} task${widget.category == null ? (_newTasks.length == 1 ? '' : 's') : (_tasks.length == 1 ? '' : 's')}',
                         style:
                             const TextStyle(fontSize: 14, color: Colors.grey),
                       ),
-                  ],
-                ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 const SizedBox(height: 8),
                 if (widget.category == null
                     ? _newTasks.isEmpty
@@ -1150,7 +1031,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                         if (widget.category != null) ...[
                           const SizedBox(height: 8),
                           const Text(
-                            'Use the "Add Task(s)" button above to get started!',
+                            'See above to get started',
                             style: TextStyle(fontSize: 14, color: Colors.grey),
                           ),
                         ] else ...[
