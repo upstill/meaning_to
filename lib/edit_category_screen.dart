@@ -949,41 +949,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                 ),
               ],
 
-              // Import JustWatch button (only for view mode and specific categories)
-              if (!_isEditing &&
-                  (widget.category != null || _currentCategory != null) &&
-                  ((widget.category ?? _currentCategory)!.originalId == 1 ||
-                      (widget.category ?? _currentCategory)!.originalId ==
-                          2)) ...[
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    print('Import JustWatch button pressed');
-                    print(
-                        'Category: ${(widget.category ?? _currentCategory)?.headline}');
-
-                    // Navigate to Import JustWatch screen, replacing the current screen
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ImportJustWatchScreen(
-                          category: (widget.category ?? _currentCategory)!,
-                        ),
-                      ),
-                    ).then((result) {
-                      if (result is Category) {
-                        setState(() {
-                          widget.category!.headline = result.headline;
-                          widget.category!.invitation = result.invitation;
-                        });
-                      }
-                    });
-                  },
-                  icon: const Icon(Icons.movie),
-                  label: const Text('Import JustWatch list'),
-                ),
-              ],
-
               // Show tasks section for both new and existing categories
               const SizedBox(height: 6),
 
