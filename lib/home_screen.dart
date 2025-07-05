@@ -719,23 +719,6 @@ class HomeScreenState extends State<HomeScreen> {
         title: const Text(''), // Blank header
         actions: [
           IconButton(
-            icon: const Icon(Icons.bug_report),
-            onPressed: () {
-              _forceRefreshAndVerify();
-            },
-            tooltip: 'Debug: Force Refresh',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadCategories();
-              if (_selectedCategory != null) {
-                _loadRandomTask(_selectedCategory!);
-              }
-            },
-            tooltip: 'Refresh',
-          ),
-          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
               await supabase.auth.signOut();
@@ -793,7 +776,7 @@ class HomeScreenState extends State<HomeScreen> {
                 children: [
                   const Center(
                     child: Text(
-                      'I\'ve been meaning to...?',
+                      'I\'ve Been Meaning to...?',
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -804,6 +787,8 @@ class HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 16),
                   DropdownButtonFormField<Category>(
                     value: _selectedCategory,
+                    style: const TextStyle(
+                        fontSize: 20), // Increased by 8 points from default 12
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
                       hintText: 'Choose an endeavor',
@@ -811,7 +796,14 @@ class HomeScreenState extends State<HomeScreen> {
                     items: _categories.map((category) {
                       return DropdownMenuItem(
                         value: category,
-                        child: Text(category.headline),
+                        child: Text(
+                          '...${category.headline}',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1A237E),
+                          ),
+                        ),
                       );
                     }).toList(),
                     onChanged: (Category? newValue) {
@@ -825,7 +817,7 @@ class HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                   if (_selectedCategory != null) ...[
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 12),
                     if (_isLoadingTask)
                       const Center(child: CircularProgressIndicator())
                     else if (_randomTask != null)
@@ -1037,7 +1029,7 @@ class HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 20),
                           Center(
                             child: Column(
                               children: [
@@ -1078,7 +1070,7 @@ class HomeScreenState extends State<HomeScreen> {
                                         0, 48), // 12 points taller than default
                                   ),
                                 ),
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 20),
                                 ElevatedButton.icon(
                                   onPressed: _navigateToEditTasks,
                                   icon: const Icon(Icons.edit),

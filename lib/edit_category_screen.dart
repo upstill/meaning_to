@@ -19,6 +19,7 @@ import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/text_importer.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/widgets/category_form.dart';
+import 'package:meaning_to/shop_endeavors_screen.dart';
 
 class EditCategoryScreen extends StatefulWidget {
   static VoidCallback? onEditComplete; // Static callback for edit completion
@@ -982,6 +983,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                   label: const Text('Import JustWatch list'),
                 ),
               ],
+
               // Show tasks section for both new and existing categories
               const SizedBox(height: 6),
 
