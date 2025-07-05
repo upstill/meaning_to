@@ -88,6 +88,22 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pushNamed(context, '/shop-endeavors');
+            },
+            icon: const Icon(Icons.shopping_cart),
+            label: const Text(
+              '...Shop for Endeavors',
+              style: TextStyle(fontSize: 18),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 50),
+            ),
+          ),
+          const SizedBox(height: 24),
           CategoryForm(
             category: null, // New category
             isEditing: true, // Always in editing mode for new categories

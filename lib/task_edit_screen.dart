@@ -12,6 +12,7 @@ import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
+import 'package:meaning_to/shop_endeavors_screen.dart';
 
 class TaskEditScreen extends StatefulWidget {
   static VoidCallback? onEditComplete; // Static callback for edit completion
@@ -572,6 +573,47 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 label: const Text('Add a List of Tasks'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.secondary,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Separator with helpful text for shop suggestions
+              Row(
+                children: [
+                  Expanded(child: Divider()),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Text(
+                      '** You can also get ideas from other people! **',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Shop for Suggestions button
+              ElevatedButton.icon(
+                onPressed: _isLoading
+                    ? null
+                    : () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ShopEndeavorsScreen(
+                              existingCategory: widget.category,
+                            ),
+                          ),
+                        );
+                      },
+                icon: const Icon(Icons.shopping_cart),
+                label: const Text('Shop for Suggestions'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
                 ),
               ),

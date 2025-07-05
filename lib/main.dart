@@ -12,6 +12,7 @@ import 'dart:async';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/new_category_screen.dart';
+import 'package:meaning_to/shop_endeavors_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
@@ -528,6 +529,7 @@ class _MyAppState extends State<MyApp> {
     return WebWidthWrapper(
       child: MaterialApp(
         title: 'Meaning To',
+        debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
           useMaterial3: true,
@@ -618,6 +620,13 @@ class _MyAppState extends State<MyApp> {
             case '/new-category':
               return MaterialPageRoute(
                 builder: (context) => const NewCategoryScreen(),
+              );
+            case '/shop-endeavors':
+              final args = settings.arguments as Map<String, dynamic>?;
+              return MaterialPageRoute(
+                builder: (context) => ShopEndeavorsScreen(
+                  existingCategory: args?['category'] as Category?,
+                ),
               );
             case '/import-justwatch':
               final args = settings.arguments as Map<String, dynamic>;
