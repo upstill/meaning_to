@@ -13,6 +13,7 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
+import 'package:meaning_to/import_justwatch_screen.dart';
 
 class TaskEditScreen extends StatefulWidget {
   static VoidCallback? onEditComplete; // Static callback for edit completion
@@ -576,6 +577,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   foregroundColor: Colors.white,
                 ),
               ),
+
               const SizedBox(height: 24),
               // Separator with helpful text for shop suggestions
               Row(
@@ -617,6 +619,60 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   foregroundColor: Colors.white,
                 ),
               ),
+              // JustWatch import section (only for specific categories)
+              if (widget.category.originalId != null &&
+                  (widget.category.originalId == 1 ||
+                      widget.category.originalId == 2)) ...[
+                const SizedBox(height: 24),
+                // Separator with helpful text for JustWatch import
+                Row(
+                  children: [
+                    Expanded(child: Divider()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                        '** OR...You can import your list from JustWatch. **',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: _isLoading
+                      ? null
+                      : () {
+                          print('Import JustWatch button pressed');
+                          print('Category: ${widget.category.headline}');
+
+                          // Navigate to Import JustWatch screen, replacing the current screen
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ImportJustWatchScreen(
+                                category: widget.category,
+                              ),
+                            ),
+                          ).then((result) {
+                            if (result is Category) {
+                              // Handle any updates if needed
+                              print('JustWatch import completed');
+                            }
+                          });
+                        },
+                  icon: const Icon(Icons.movie),
+                  label: const Text('Import JustWatch list'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

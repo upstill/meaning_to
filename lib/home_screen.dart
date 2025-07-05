@@ -866,7 +866,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                                     .bodyLarge
                                                                     ?.fontSize ??
                                                                 16) +
-                                                            22,
+                                                            10,
                                                         fontWeight: _randomTask!
                                                                         .suggestibleAt ==
                                                                     null ||

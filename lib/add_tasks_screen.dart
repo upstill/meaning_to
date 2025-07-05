@@ -9,6 +9,7 @@ import 'package:meaning_to/utils/text_importer.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/widgets/add_task_manually_button.dart';
+import 'package:meaning_to/import_justwatch_screen.dart';
 
 class AddTasksScreen extends StatefulWidget {
   final Category category;
