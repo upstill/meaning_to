@@ -625,10 +625,29 @@ class HomeScreenState extends State<HomeScreen> {
   void _handleEditComplete() async {
     print('HomeScreen: Handling edit complete');
     try {
+      // Store the current selected category before reloading
+      final previousSelectedCategory = _selectedCategory;
+
       // Reload categories first
       print('HomeScreen: Reloading categories...');
       await _loadCategories();
       print('HomeScreen: Categories reloaded');
+
+      // Check if the previously selected category still exists
+      if (previousSelectedCategory != null) {
+        final categoryStillExists = _categories
+            .any((category) => category.id == previousSelectedCategory.id);
+
+        if (!categoryStillExists) {
+          print(
+              'HomeScreen: Previously selected category was deleted, clearing selection');
+          setState(() {
+            _selectedCategory = null;
+            _randomTask = null;
+          });
+          return; // Exit early since the category was deleted
+        }
+      }
 
       // Then reload task if we have a selected category
       if (_selectedCategory != null) {
@@ -670,10 +689,29 @@ class HomeScreenState extends State<HomeScreen> {
   void _handleCategoryEditComplete() async {
     print('HomeScreen: Handling category edit complete');
     try {
+      // Store the current selected category before reloading
+      final previousSelectedCategory = _selectedCategory;
+
       // Reload categories first
       print('HomeScreen: Reloading categories...');
       await _loadCategories();
       print('HomeScreen: Categories reloaded');
+
+      // Check if the previously selected category still exists
+      if (previousSelectedCategory != null) {
+        final categoryStillExists = _categories
+            .any((category) => category.id == previousSelectedCategory.id);
+
+        if (!categoryStillExists) {
+          print(
+              'HomeScreen: Previously selected category was deleted, clearing selection');
+          setState(() {
+            _selectedCategory = null;
+            _randomTask = null;
+          });
+          return; // Exit early since the category was deleted
+        }
+      }
 
       // Then load a new random task if we have a selected category
       if (_selectedCategory != null) {

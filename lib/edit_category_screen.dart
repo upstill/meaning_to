@@ -794,6 +794,84 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
     return '$availableText $taskText (${parts.join(', ')})';
   }
 
+  Future<void> _deleteCategory() async {
+    if (widget.category == null) {
+      print('EditCategoryScreen: Cannot delete - no category provided');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+      if (userId == null) throw Exception('No user logged in');
+
+      print(
+          'EditCategoryScreen: Deleting category ${widget.category!.headline}');
+
+      // First, delete all tasks in the category
+      await supabase
+          .from('Tasks')
+          .delete()
+          .eq('category_id', widget.category!.id)
+          .eq('owner_id', userId);
+
+      print('EditCategoryScreen: Deleted all tasks for category');
+
+      // Then delete the category itself
+      await supabase
+          .from('Categories')
+          .delete()
+          .eq('id', widget.category!.id)
+          .eq('owner_id', userId);
+
+      print('EditCategoryScreen: Deleted category successfully');
+
+      // Clear the cache
+      CacheManager().clearCache();
+      print('EditCategoryScreen: Cache cleared');
+
+      // Call the edit complete callback to update home screen
+      if (EditCategoryScreen.onEditComplete != null) {
+        print(
+            'EditCategoryScreen: Calling edit complete callback after deletion');
+        try {
+          EditCategoryScreen.onEditComplete!();
+          print(
+              'EditCategoryScreen: Edit complete callback executed successfully');
+        } catch (e) {
+          print(
+              'EditCategoryScreen: Error executing edit complete callback: $e');
+        }
+      } else {
+        print('EditCategoryScreen: No edit complete callback available');
+      }
+
+      // Navigate back to home screen
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        print('EditCategoryScreen: Navigated back to home screen');
+      }
+    } catch (e) {
+      print('EditCategoryScreen: Error deleting category: $e');
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Show error message to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting category: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -852,9 +930,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                                 child: const Text('Cancel'),
                               ),
                               TextButton(
-                                onPressed: () {
-                                  // TODO: Implement deletion
+                                onPressed: () async {
                                   Navigator.pop(context);
+                                  await _deleteCategory();
                                 },
                                 style: TextButton.styleFrom(
                                   foregroundColor: Colors.red,
@@ -1000,8 +1078,22 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                         if (widget.category != null) ...[
                           const SizedBox(height: 8),
                           const Text(
-                            'See above to get started',
+                            'Add your first task to get started',
                             style: TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _createTask,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add a Task'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
+                            ),
                           ),
                         ] else ...[
                           const SizedBox(height: 8),
