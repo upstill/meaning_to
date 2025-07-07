@@ -10,11 +10,17 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/widgets/add_task_manually_button.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
+import 'package:meaning_to/edit_category_screen.dart';
 
 class AddTasksScreen extends StatefulWidget {
   final Category category;
+  final Task? currentTask; // Optional current task being edited
 
-  const AddTasksScreen({super.key, required this.category});
+  const AddTasksScreen({
+    super.key,
+    required this.category,
+    this.currentTask,
+  });
 
   @override
   AddTasksScreenState createState() => AddTasksScreenState();
@@ -40,30 +46,100 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     super.dispose();
   }
 
-  /// Check if a task with the same headline already exists and merge information if needed
+  /// Navigate to Edit Category screen for the cached category
+  void _navigateToEditCategory() async {
+    final cachedCategory = CacheManager().currentCategory;
+    if (cachedCategory != null) {
+      // Refresh the cache to include newly created tasks
+      try {
+        await CacheManager().refreshFromDatabase();
+        print('AddTasksScreen: Cache refreshed before navigation');
+      } catch (e) {
+        print('AddTasksScreen: Error refreshing cache: $e');
+      }
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => EditCategoryScreen(category: cachedCategory),
+        ),
+      );
+    } else {
+      // Fallback to just popping if no cached category
+      Navigator.pop(context, true);
+    }
+  }
+
+  /// Check if a task with the same headline or same link already exists and merge information if needed
   Future<Task?> _checkForDuplicateAndMerge(
       Task newTask, List<Task> existingTasks) async {
+    print('=== DUPLICATE DETECTION START ===');
     print('Checking for duplicates of: "${newTask.headline}"');
+    print('New task links: ${newTask.links}');
+    print('Existing tasks count: ${existingTasks.length}');
     print('Existing tasks:');
     for (final task in existingTasks) {
-      print('  - "${task.headline}" (ID: ${task.id})');
+      print('  - "${task.headline}" (ID: ${task.id}, links: ${task.links})');
     }
 
-    final existingTask = existingTasks.firstWhere(
+    // First, check for tasks with the same headline
+    Task? existingTask = existingTasks.firstWhere(
       (task) =>
           task.headline.toLowerCase().trim() ==
           newTask.headline.toLowerCase().trim(),
       orElse: () => newTask, // Return the new task if no duplicate found
     );
 
+    // If no headline match found, check for tasks with the same link
+    if (existingTask.id == newTask.id &&
+        newTask.links != null &&
+        newTask.links!.isNotEmpty) {
+      print('No headline match found, checking for link matches...');
+
+      for (final task in existingTasks) {
+        print('  Checking task: "${task.headline}" (ID: ${task.id})');
+        if (task.links != null && task.links!.isNotEmpty) {
+          print('    Task has ${task.links!.length} links: ${task.links}');
+          // Check if any of the new task's links match any of the existing task's links
+          for (final newLink in newTask.links!) {
+            print('    Checking new link: $newLink');
+            for (final existingLink in task.links!) {
+              print('    Against existing link: $existingLink');
+              // Extract URLs from HTML links for comparison
+              final newUrl = _extractUrlFromHtmlLink(newLink);
+              final existingUrl = _extractUrlFromHtmlLink(existingLink);
+              print('    Extracted new URL: $newUrl');
+              print('    Extracted existing URL: $existingUrl');
+
+              if (newUrl != null &&
+                  existingUrl != null &&
+                  newUrl == existingUrl) {
+                print(
+                    'Found existing task with matching link: "${task.headline}" (ID: ${task.id})');
+                print('  New link: $newUrl');
+                print('  Existing link: $existingUrl');
+                existingTask = task;
+                break;
+              }
+            }
+            if (existingTask!.id != newTask.id) break;
+          }
+          if (existingTask!.id != newTask.id) break;
+        } else {
+          print('    Task has no links');
+        }
+      }
+    }
+
     print(
-        'Found existing task: "${existingTask.headline}" (ID: ${existingTask.id})');
+        'Found existing task: "${existingTask!.headline}" (ID: ${existingTask.id})');
     print('New task: "${newTask.headline}" (ID: ${newTask.id})');
     print('Are they the same? ${existingTask.id == newTask.id}');
 
     if (existingTask.id != newTask.id) {
       // Found a duplicate - merge information
       print('Found duplicate task: "${newTask.headline}"');
+      print('=== DUPLICATE DETECTION END - DUPLICATE FOUND ===');
 
       // Check if we need to update the existing task with new information
       bool needsUpdate = false;
@@ -91,7 +167,6 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       // Set suggestibleAt to null to make it appear first
       try {
         final userId = AuthUtils.getCurrentUserId();
-        if (userId == null) throw Exception('No user logged in');
 
         // Add suggestibleAt: null to the update data to move task to top
         updateData['suggestible_at'] = null;
@@ -121,12 +196,38 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         print('Error updating existing task: $e');
         return existingTask; // Return existing task without changes on error
       }
+    } else {
+      print('=== DUPLICATE DETECTION END - NO DUPLICATE FOUND ===');
     }
 
     return null; // No duplicate found
   }
 
+  /// Extract URL from HTML link string
+  String? _extractUrlFromHtmlLink(String htmlLink) {
+    print('    _extractUrlFromHtmlLink called with: "$htmlLink"');
+    if (htmlLink.startsWith('<a href="') && htmlLink.contains('">')) {
+      final startIndex = htmlLink.indexOf('href="') + 6;
+      final endIndex = htmlLink.indexOf('">', startIndex);
+      if (endIndex > startIndex) {
+        final url = htmlLink.substring(startIndex, endIndex);
+        print('    Extracted URL from HTML: "$url"');
+        return url;
+      }
+    }
+    // If it's not an HTML link, return as is (might be a plain URL)
+    if (htmlLink.startsWith('http')) {
+      print('    Using plain URL: "$htmlLink"');
+      return htmlLink;
+    }
+    print('    No valid URL found in: "$htmlLink"');
+    return null;
+  }
+
   Future<void> _processTextInput() async {
+    print('=== _processTextInput START ===');
+    print('Input text: "${_textInputController.text}"');
+
     if (_textInputController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -143,51 +244,140 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       });
 
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        throw Exception('No user logged in');
+
+      // Get existing tasks for duplicate checking - refresh cache first
+      print('AddTasksScreen: About to refresh cache...');
+      print(
+          'AddTasksScreen: Category: ${widget.category.headline} (ID: ${widget.category.id})');
+      print('AddTasksScreen: User ID: $userId');
+
+      // Initialize cache manager with current category and user
+      final cacheManager = CacheManager();
+      print('AddTasksScreen: CacheManager created, about to initialize...');
+      await cacheManager.initializeWithSavedCategory(widget.category, userId);
+      print('AddTasksScreen: Cache initialization completed');
+
+      final existingTasks = cacheManager.currentTasks ?? [];
+
+      // If we have a current task being edited, create a copy with its current state
+      // and add it to the list for duplicate checking
+      List<Task> tasksForDuplicateChecking = List.from(existingTasks);
+      if (widget.currentTask != null) {
+        print(
+            'AddTasksScreen: Including current task in duplicate checking: "${widget.currentTask!.headline}"');
+        print(
+            'AddTasksScreen: Current task links: ${widget.currentTask!.links}');
+        tasksForDuplicateChecking.add(widget.currentTask!);
       }
 
-      // Get existing tasks for duplicate checking
-      final existingTasks = CacheManager().currentTasks ?? [];
+      print(
+          'AddTasksScreen: Existing tasks for duplicate checking: ${existingTasks.length}');
+      print(
+          'AddTasksScreen: Including current task: ${widget.currentTask != null}');
+      print(
+          'AddTasksScreen: Total tasks for duplicate checking: ${tasksForDuplicateChecking.length}');
+      print(
+          'AddTasksScreen: CacheManager currentCategory: ${cacheManager.currentCategory?.headline}');
+      print(
+          'AddTasksScreen: CacheManager currentUserId: ${cacheManager.currentUserId}');
+      for (final task in tasksForDuplicateChecking) {
+        print('  - "${task.headline}" (ID: ${task.id})');
+        print('    Links: ${task.links}');
+        print('    Links type: ${task.links?.runtimeType}');
+        print('    Links length: ${task.links?.length ?? 0}');
+        if (task.links != null && task.links!.isNotEmpty) {
+          for (int i = 0; i < task.links!.length; i++) {
+            print('      Link $i: "${task.links![i]}"');
+          }
+        }
+      }
 
       // Check if the input is a single URL
       final trimmedText = _textInputController.text.trim();
+      print('Checking if "$trimmedText" is a valid URL...');
+      print(
+          'LinkProcessor.isValidUrl result: ${LinkProcessor.isValidUrl(trimmedText)}');
+
       if (LinkProcessor.isValidUrl(trimmedText)) {
         // Single URL detected - process it through LinkProcessor
         print('Single URL detected: $trimmedText');
+        print('Taking single URL processing path...');
 
         try {
+          print('AddTasksScreen: Processing URL: $trimmedText');
           final processedLink = await LinkProcessor.validateAndProcessLink(
             trimmedText,
             linkText: '', // Let LinkProcessor fetch the title
           );
 
-          // Create a task with the link's title and the URL
-          final taskData = {
-            'headline': processedLink.title ?? 'Link Task',
-            'notes': null,
-            'category_id': widget.category.id,
-            'owner_id': userId,
-            'links': [trimmedText], // Store the original URL
-            'suggestible_at': null, // Set to null to appear at the beginning
-          };
-
-          await supabase.from('Tasks').insert(taskData);
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content:
-                  Text('Created task: "${processedLink.title ?? 'Link Task'}"'),
-              backgroundColor: Colors.green,
-            ),
+          // Create a task object for duplicate checking
+          final newTask = Task(
+            id: DateTime.now().millisecondsSinceEpoch, // Temporary ID
+            categoryId: widget.category.id,
+            headline: processedLink.title ?? 'Link Task',
+            notes: null,
+            ownerId: userId,
+            createdAt: DateTime.now(),
+            suggestibleAt: null, // Set to null to appear at the beginning
+            links: [
+              processedLink.originalLink
+            ], // Store the processed HTML link with title
+            processedLinks: null,
+            finished: false,
           );
+
+          print(
+              'AddTasksScreen: Creating task with headline: "${newTask.headline}"');
+          print('AddTasksScreen: Task links: ${newTask.links}');
+          print('AddTasksScreen: About to call duplicate detection...');
+
+          // Check for duplicates and merge information if needed
+          final existingOrUpdatedTask = await _checkForDuplicateAndMerge(
+              newTask, tasksForDuplicateChecking);
+
+          print('Duplicate check result for "${newTask.headline}":');
+          print(
+              '  existingOrUpdatedTask: ${existingOrUpdatedTask?.headline} (ID: ${existingOrUpdatedTask?.id})');
+          print('  newTask.id: ${newTask.id}');
+          print('  existingOrUpdatedTask?.id: ${existingOrUpdatedTask?.id}');
+          print(
+              '  isDuplicate: ${existingOrUpdatedTask != null && existingOrUpdatedTask.id != newTask.id}');
+
+          if (existingOrUpdatedTask != null &&
+              existingOrUpdatedTask.id != newTask.id) {
+            // This was a duplicate - existing task was updated or found
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    'Updated existing task: "${existingOrUpdatedTask.headline}"'),
+                backgroundColor: Colors.blue,
+              ),
+            );
+          } else {
+            // No duplicate found - create new task
+            final taskData = {
+              'headline': newTask.headline,
+              'notes': newTask.notes,
+              'category_id': newTask.categoryId,
+              'owner_id': newTask.ownerId,
+              'links': newTask.links,
+              'suggestible_at': newTask.suggestibleAt?.toIso8601String(),
+            };
+            await supabase.from('Tasks').insert(taskData);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Created task: "${newTask.headline}"'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
 
           // Clear the text input
           _textInputController.clear();
 
-          // Return success to trigger refresh
+          // Navigate to Edit Category screen for cached category
           if (mounted) {
-            Navigator.pop(context, true);
+            _navigateToEditCategory();
           }
           return;
         } catch (e) {
@@ -195,30 +385,58 @@ class AddTasksScreenState extends State<AddTasksScreen> {
 
           // If URL processing fails, create a task with the URL as the title
           // This is better than falling back to text processing which can create malformed tasks
-          final taskData = {
-            'headline': trimmedText, // Use the URL as the title
-            'notes': 'Failed to fetch webpage title',
-            'category_id': widget.category.id,
-            'owner_id': userId,
-            'links': [trimmedText], // Store the original URL
-            'suggestible_at': null, // Set to null to appear at the beginning
-          };
-
-          await supabase.from('Tasks').insert(taskData);
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Created task with URL: "$trimmedText"'),
-              backgroundColor: Colors.orange,
-            ),
+          final newTask = Task(
+            id: DateTime.now().millisecondsSinceEpoch, // Temporary ID
+            categoryId: widget.category.id,
+            headline: trimmedText, // Use the URL as the title
+            notes: 'Failed to fetch webpage title',
+            ownerId: userId,
+            createdAt: DateTime.now(),
+            suggestibleAt: null, // Set to null to appear at the beginning
+            links: [trimmedText], // Store the original URL
+            processedLinks: null,
+            finished: false,
           );
+
+          // Check for duplicates and merge information if needed
+          final existingOrUpdatedTask = await _checkForDuplicateAndMerge(
+              newTask, tasksForDuplicateChecking);
+
+          if (existingOrUpdatedTask != null &&
+              existingOrUpdatedTask.id != newTask.id) {
+            // This was a duplicate - existing task was updated or found
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    'Updated existing task: "${existingOrUpdatedTask.headline}"'),
+                backgroundColor: Colors.blue,
+              ),
+            );
+          } else {
+            // No duplicate found - create new task
+            final taskData = {
+              'headline': newTask.headline,
+              'notes': newTask.notes,
+              'category_id': newTask.categoryId,
+              'owner_id': newTask.ownerId,
+              'links': newTask.links,
+              'suggestible_at': newTask.suggestibleAt?.toIso8601String(),
+            };
+            await supabase.from('Tasks').insert(taskData);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Created task with URL: "${newTask.headline}"'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
 
           // Clear the text input
           _textInputController.clear();
 
-          // Return success to trigger refresh
+          // Navigate to Edit Category screen for cached category
           if (mounted) {
-            Navigator.pop(context, true);
+            _navigateToEditCategory();
           }
           return;
         }
@@ -267,11 +485,11 @@ class AddTasksScreenState extends State<AddTasksScreen> {
 
         // Check for duplicates and merge information if needed
         final existingOrUpdatedTask =
-            await _checkForDuplicateAndMerge(task, existingTasks);
+            await _checkForDuplicateAndMerge(task, tasksForDuplicateChecking);
 
         print('Duplicate check result for "${task.headline}":');
         print(
-            '  existingOrUpdatedTask: ${existingOrUpdatedTask?.headline} (ID: ${existingOrUpdatedTask?.id})');
+            '  existingOrUpdatedTask:  [${existingOrUpdatedTask?.headline} (ID: ${existingOrUpdatedTask?.id})');
         print('  task.id: ${task.id}');
         print('  existingOrUpdatedTask?.id: ${existingOrUpdatedTask?.id}');
         print(
@@ -322,9 +540,9 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       // Clear the text input
       _textInputController.clear();
 
-      // Return success to trigger refresh
+      // Navigate to Edit Category screen for cached category
       if (mounted) {
-        Navigator.pop(context, true);
+        _navigateToEditCategory();
       }
     } catch (e) {
       print('=== Text Input Error ===');

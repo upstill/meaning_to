@@ -9,6 +9,7 @@ class Category {
   final DateTime? triggersAt;
   final String? template;
   bool isPrivate;
+  bool tasksArePrivate;
 
   Category({
     required this.id,
@@ -21,6 +22,7 @@ class Category {
     this.triggersAt,
     this.template,
     this.isPrivate = false,
+    this.tasksArePrivate = true,
   });
 
   @override
@@ -48,6 +50,7 @@ class Category {
           : null,
       template: json['template'] as String?,
       isPrivate: json['private'] as bool? ?? false,
+      tasksArePrivate: json['tasks_are_private'] as bool? ?? true,
     );
   }
 
@@ -63,6 +66,7 @@ class Category {
       'triggers_at': triggersAt?.toIso8601String(),
       'template': template,
       'private': isPrivate,
+      'tasks_are_private': tasksArePrivate,
     };
   }
 }

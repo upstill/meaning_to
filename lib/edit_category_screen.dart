@@ -28,7 +28,7 @@ class EditCategoryScreen extends StatefulWidget {
   final bool tasksOnly;
 
   // Remove onComplete from constructor since we'll use static callback
-  EditCategoryScreen({super.key, this.category, this.tasksOnly = false});
+  const EditCategoryScreen({super.key, this.category, this.tasksOnly = false});
 
   // Add a factory constructor to handle arguments from Navigator
   static Route routeFromArgs(RouteSettings settings) {
@@ -57,7 +57,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
   bool _isEditing = false;
   bool _categorySaved = false; // Track if category has been saved
   bool _isPrivate = false; // Private flag for categories
-  List<Task> _newTasks = []; // For new categories
+  final List<Task> _newTasks = []; // For new categories
   Category?
       _currentCategory; // Track the current category (for new categories after creation)
 
@@ -92,13 +92,55 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // No cache refresh needed - tasks are loaded via getter
+
+    // Refresh cache when dependencies change (screen becomes visible)
+    print('EditCategoryScreen: Dependencies changed, refreshing cache...');
+    _refreshCache();
   }
 
   @override
   void didUpdateWidget(EditCategoryScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     // No cache refresh needed - tasks are loaded via getter
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    // Refresh cache when app becomes active (user returns from another screen)
+    if (state == AppLifecycleState.resumed) {
+      print('EditCategoryScreen: App resumed, refreshing cache...');
+      _refreshCache();
+    }
+  }
+
+  Future<void> _refreshCache() async {
+    print('EditCategoryScreen: _refreshCache called');
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+      final currentCategory = widget.category ?? _currentCategory;
+      print(
+          'EditCategoryScreen: Current category: ${currentCategory?.headline} (ID: ${currentCategory?.id})');
+
+      if (currentCategory != null) {
+        final cacheManager = CacheManager();
+        await cacheManager.initializeWithSavedCategory(currentCategory, userId);
+        print('EditCategoryScreen: Cache initialized with current category');
+
+        // Trigger UI rebuild to show updated tasks
+        if (mounted) {
+          print('EditCategoryScreen: Triggering setState to rebuild UI');
+          setState(() {});
+        } else {
+          print('EditCategoryScreen: Widget not mounted, cannot rebuild UI');
+        }
+      } else {
+        print('EditCategoryScreen: No current category available for refresh');
+      }
+    } catch (e) {
+      print('EditCategoryScreen: Error refreshing cache: $e');
+    }
   }
 
   @override
@@ -109,7 +151,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
     super.dispose();
   }
 
-  Future<void> _saveCategory() async {
+  Future<void> _saveCategory({
+    String? headline,
+    String? invitation,
+    bool? isPrivate,
+    bool? tasksArePrivate,
+  }) async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -118,16 +165,16 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
 
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) throw Exception('No user logged in');
 
       final data = {
-        'headline': _headlineController.text,
-        'invitation': _invitationController.text.isEmpty
+        'headline': headline ?? _headlineController.text,
+        'invitation': (invitation ?? _invitationController.text).isEmpty
             ? null
-            : _invitationController.text,
+            : (invitation ?? _invitationController.text),
         'owner_id': userId,
         'original_id': null, // Custom categories should have null original_id
-        'private': _isPrivate,
+        'private': isPrivate ?? _isPrivate,
+        'tasks_are_private': tasksArePrivate ?? true,
       };
 
       if (widget.category == null) {
@@ -179,7 +226,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
         final updatedCategory = Category.fromJson(response);
         widget.category!.headline = updatedCategory.headline;
         widget.category!.invitation = updatedCategory.invitation;
+        widget.category!.isPrivate = updatedCategory.isPrivate;
+        widget.category!.tasksArePrivate = updatedCategory.tasksArePrivate;
         print('Updated category: ${widget.category!.headline}');
+        print('Updated category private: ${widget.category!.isPrivate}');
+        print(
+            'Updated category tasks are private: ${widget.category!.tasksArePrivate}');
 
         // Call the edit complete callback to update home screen
         if (EditCategoryScreen.onEditComplete != null) {
@@ -203,6 +255,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
           setState(() {
             _isLoading = false;
             _isEditing = false; // Return to view mode
+            // Update local state to match the saved category
+            _headlineController.text = widget.category!.headline;
+            _invitationController.text = widget.category!.invitation ?? '';
+            _isPrivate = widget.category!.isPrivate;
           });
         }
       }
@@ -243,10 +299,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
         // Refresh the cache to get the new task
         try {
           final userId = AuthUtils.getCurrentUserId();
-          if (userId != null) {
-            await CacheManager().refreshFromDatabase();
-            print('EditCategoryScreen: Cache refreshed after task creation');
-          }
+          await CacheManager().refreshFromDatabase();
+          print('EditCategoryScreen: Cache refreshed after task creation');
         } catch (e) {
           print('EditCategoryScreen: Error refreshing cache: $e');
         }
@@ -295,7 +349,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
       if (needsUpdate) {
         try {
           final userId = AuthUtils.getCurrentUserId();
-          if (userId == null) throw Exception('No user logged in');
 
           await supabase
               .from('Tasks')
@@ -356,10 +409,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
         // Refresh the cache to get the new task
         try {
           final userId = AuthUtils.getCurrentUserId();
-          if (userId != null) {
-            await CacheManager().refreshFromDatabase();
-            print('EditCategoryScreen: Cache refreshed after task creation');
-          }
+          await CacheManager().refreshFromDatabase();
+          print('EditCategoryScreen: Cache refreshed after task creation');
         } catch (e) {
           print('EditCategoryScreen: Error refreshing cache: $e');
         }
@@ -758,16 +809,31 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
   }
 
   String _buildTaskCountText() {
+    print('EditCategoryScreen: _buildTaskCountText called');
+    print('EditCategoryScreen: Total tasks in cache: ${_tasks.length}');
+    print(
+        'EditCategoryScreen: Current category ID: ${widget.category?.id ?? _currentCategory?.id}');
+
     final tasks = _tasks
         .where((task) =>
             task.categoryId == (widget.category?.id ?? _currentCategory?.id))
         .toList();
+
+    print(
+        'EditCategoryScreen: Filtered tasks for current category: ${tasks.length}');
+    for (final task in tasks) {
+      print(
+          'EditCategoryScreen: Task "${task.headline}" - finished: ${task.finished}, isSuggestible: ${task.isSuggestible}');
+    }
 
     final availableTasks =
         tasks.where((task) => !task.finished && task.isSuggestible).length;
     final deferredTasks =
         tasks.where((task) => !task.finished && task.isDeferred).length;
     final finishedTasks = tasks.where((task) => task.finished).length;
+
+    print(
+        'EditCategoryScreen: availableTasks: $availableTasks, deferredTasks: $deferredTasks, finishedTasks: $finishedTasks');
 
     if (availableTasks == 0) {
       final parts = <String>[];
@@ -806,7 +872,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
 
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) throw Exception('No user logged in');
 
       print(
           'EditCategoryScreen: Deleting category ${widget.category!.headline}');
@@ -907,6 +972,13 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                 },
                 tooltip: 'Cancel edit',
               ),
+            // Refresh button for existing categories
+            if (widget.category != null && !_editTasksLocal)
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _isLoading ? null : _refreshCache,
+                tooltip: 'Refresh tasks',
+              ),
             // Only show category delete button for authenticated users
             if (widget.category != null &&
                 !_editTasksLocal &&
@@ -991,14 +1063,19 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                   category: widget.category ?? _currentCategory,
                   isEditing: _isEditing || widget.category == null,
                   isLoading: _isLoading,
-                  onSave: (headline, invitation, isPrivate) async {
+                  onSave:
+                      (headline, invitation, isPrivate, tasksArePrivate) async {
                     // Update local state
                     _headlineController.text = headline;
                     _invitationController.text = invitation;
                     _isPrivate = isPrivate;
 
                     // Save the category
-                    await _saveCategory();
+                    await _saveCategory(
+                        headline: headline,
+                        invitation: invitation,
+                        isPrivate: isPrivate,
+                        tasksArePrivate: tasksArePrivate);
 
                     // Switch to view mode for existing categories
                     if (widget.category != null) {
@@ -1076,11 +1153,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen>
                           style: TextStyle(fontSize: 16),
                         ),
                         if (widget.category != null) ...[
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Add your first task to get started',
-                            style: TextStyle(fontSize: 14, color: Colors.grey),
-                          ),
                           const SizedBox(height: 16),
                           ElevatedButton.icon(
                             onPressed: _createTask,

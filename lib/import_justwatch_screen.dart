@@ -84,9 +84,6 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
     print('Loading existing tasks for category: ${widget.category.headline}');
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        throw Exception('No user logged in');
-      }
 
       final response = await supabase
           .from('Tasks')
@@ -94,14 +91,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
           .eq('category_id', widget.category.id)
           .eq('owner_id', userId);
 
-      if (response == null) {
-        print('No existing tasks found');
-        return;
-      }
-
-      final tasks = response
-          .map((json) => Task.fromJson(json as Map<String, dynamic>))
-          .toList();
+      final tasks = response.map((json) => Task.fromJson(json)).toList();
 
       print('Loaded ${tasks.length} existing tasks');
       setState(() {
@@ -153,7 +143,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
         try {
           await supabase
               .from('Tasks')
-              .update({'links': Task.linksToString(updatedLinks)})
+              .update({'links': Task.linksToArray(updatedLinks)})
               .eq('id', task.id)
               .eq('owner_id', task.ownerId);
 
@@ -209,8 +199,8 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
               final content = node['content'];
               if (content is Map) {
                 final title = content['title']?.toString() ?? 'Unknown Title';
-                final fullPath = 'https://www.justwatch.com' +
-                    (content['fullPath']?.toString() ?? '');
+                final fullPath =
+                    'https://www.justwatch.com${content['fullPath']?.toString() ?? ''}';
                 print('Processing item: $title with path: $fullPath');
 
                 // Create both JustWatch and IMDB links
@@ -306,7 +296,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
       try {
         // Use file_selector to pick a file
         print('Opening file picker...');
-        final typeGroup = XTypeGroup(
+        const typeGroup = XTypeGroup(
           label: 'JSON',
           extensions: ['json'],
           mimeTypes: ['application/json'],
@@ -606,9 +596,6 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
 
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        throw Exception('No user logged in');
-      }
 
       // Take first three tasks
       final tasksToImport = _tasks.take(3).toList();
@@ -624,11 +611,11 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
           'headline': task.headline,
           'notes': task.notes,
           'owner_id': userId,
-          'created_at': task.createdAt?.toIso8601String(),
+          'created_at': task.createdAt.toIso8601String(),
           'suggestible_at': task.suggestibleAt?.toIso8601String(),
           'triggers_at': task.triggersAt?.toIso8601String(),
           'deferral': task.deferral,
-          'links': Task.linksToString(task.links ?? []),
+          'links': Task.linksToArray(task.links ?? []),
           'finished': task.finished,
         };
 

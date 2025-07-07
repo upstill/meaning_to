@@ -49,7 +49,7 @@ class CacheManager {
           .eq('owner_id', userId)
           .order('created_at', ascending: false);
 
-      if (response == null || response.isEmpty) {
+      if (response.isEmpty) {
         print('CacheManager: No tasks found for category ${category.id}');
         _currentTasks = [];
         return;
@@ -143,6 +143,8 @@ class CacheManager {
             'category_id': savedCategory.id,
             'owner_id': _currentUserId,
             'links': taskJson['links'],
+            'original_id':
+                taskJson['original_id'], // Preserve original_id if it exists
           };
 
           final taskResponse =
@@ -192,11 +194,8 @@ class CacheManager {
           'notes': task.notes,
           'category_id': _currentCategory!.id,
           'owner_id': _currentUserId,
-          'links': task.links != null
-              ? (task.links!.length == 1
-                  ? task.links![0]
-                  : jsonEncode(task.links))
-              : null,
+          'links': task.links, // PostgreSQL array
+          'original_id': task.originalId, // Preserve original_id if it exists
         };
 
         final response =
@@ -238,11 +237,7 @@ class CacheManager {
         final taskData = {
           'headline': updatedTask.headline,
           'notes': updatedTask.notes,
-          'links': updatedTask.links != null
-              ? (updatedTask.links!.length == 1
-                  ? updatedTask.links![0]
-                  : jsonEncode(updatedTask.links))
-              : null,
+          'links': updatedTask.links, // PostgreSQL array
           'finished': updatedTask.finished,
           'suggestible_at': updatedTask.suggestibleAt?.toIso8601String(),
           'deferral': updatedTask.deferral,
@@ -672,14 +667,14 @@ class CacheManager {
       };
 
       // Convert to JSON string with pretty formatting
-      final jsonString = JsonEncoder.withIndent('  ').convert(exportData);
+      final jsonString = const JsonEncoder.withIndent('  ').convert(exportData);
 
       // Write to file
       final file = File(filePath);
       await file.writeAsString(jsonString);
 
       print('CacheManager: Successfully exported cache to $filePath');
-      print('CacheManager: Exported ${taskCount} tasks');
+      print('CacheManager: Exported $taskCount tasks');
 
       return filePath;
     } catch (e, stackTrace) {
@@ -756,7 +751,7 @@ class CacheManager {
         // Test update with wrong owner_id (should fail)
         print('CacheManager: Testing update with WRONG owner_id...');
         try {
-          final wrongOwnerId = '00000000-0000-0000-0000-000000000000';
+          const wrongOwnerId = '00000000-0000-0000-0000-000000000000';
           final response3 = await supabase
               .from('Tasks')
               .update({
@@ -1163,7 +1158,7 @@ class CacheManager {
           .eq('owner_id', _currentUserId!)
           .order('created_at', ascending: false);
 
-      if (response == null || response.isEmpty) {
+      if (response.isEmpty) {
         print(
             'CacheManager: No tasks found for category ${_currentCategory!.id}');
         _currentTasks = [];
@@ -1247,9 +1242,9 @@ class CacheManager {
           .eq('owner_id', _currentUserId!)
           .order('created_at', ascending: false);
 
-      print('CacheManager: Database response count: ${response?.length ?? 0}');
+      print('CacheManager: Database response count: ${response.length ?? 0}');
 
-      if (response == null || response.isEmpty) {
+      if (response.isEmpty) {
         print('CacheManager: No tasks found in database');
         _currentTasks = [];
         return;

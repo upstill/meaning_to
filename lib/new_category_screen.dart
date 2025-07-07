@@ -17,15 +17,14 @@ class NewCategoryScreen extends StatefulWidget {
 class NewCategoryScreenState extends State<NewCategoryScreen> {
   bool _isLoading = false;
 
-  Future<void> _createCategory(
-      String headline, String invitation, bool isPrivate) async {
+  Future<void> _createCategory(String headline, String invitation,
+      bool isPrivate, bool tasksArePrivate) async {
     setState(() {
       _isLoading = true;
     });
 
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) throw Exception('No user logged in');
 
       final data = {
         'headline': headline,
@@ -33,6 +32,7 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
         'owner_id': userId,
         'original_id': null, // Custom categories should have null original_id
         'private': isPrivate,
+        'tasks_are_private': tasksArePrivate,
       };
 
       // Create new category
@@ -88,13 +88,32 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          CategoryForm(
+            category: null, // New category
+            isEditing: true, // Always in editing mode for new categories
+            isLoading: _isLoading,
+            onSave: _createCategory,
+          ),
+          const SizedBox(height: 32),
+          const Center(
+            child: Text(
+              '** You can grab ideas from other people. **',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: () {
               Navigator.pushNamed(context, '/shop-endeavors');
             },
             icon: const Icon(Icons.shopping_cart),
             label: const Text(
-              '...Shop for Endeavors',
+              'Shop for Ideas',
               style: TextStyle(fontSize: 18),
             ),
             style: ElevatedButton.styleFrom(
@@ -102,13 +121,6 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
               foregroundColor: Colors.white,
               minimumSize: const Size(double.infinity, 50),
             ),
-          ),
-          const SizedBox(height: 24),
-          CategoryForm(
-            category: null, // New category
-            isEditing: true, // Always in editing mode for new categories
-            isLoading: _isLoading,
-            onSave: _createCategory,
           ),
         ],
       ),
