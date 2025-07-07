@@ -4,6 +4,7 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/auth.dart';
+import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 
 class ShopEndeavorsScreen extends StatefulWidget {
@@ -21,7 +22,8 @@ class ShopEndeavorsScreen extends StatefulWidget {
 
 class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
   List<ShopItem> _shopItems = [];
-  Map<String, bool> _taskImportSelections = {}; // Track task import selections
+  final Map<String, bool> _taskImportSelections =
+      {}; // Track task import selections
   bool _isLoading = true;
   String? _error;
   bool _hasShownPrompt = false; // Track if we've shown the prompt
@@ -41,9 +43,6 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
       // Get current user ID
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        throw Exception('No user logged in');
-      }
 
       // Build the query based on mode
       var query = supabase
@@ -60,10 +59,6 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       }
 
       final response = await query.order('headline');
-
-      if (response == null) {
-        throw Exception('No response from database');
-      }
 
       // Group categories by original_id
       final Map<String, List<Map<String, dynamic>>> groupedCategories = {};
@@ -175,22 +170,19 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           .select('*')
           .inFilter('category_id', item.categoryIds);
 
-      if (response != null) {
-        final List<Task> tasks = (response as List)
-            .map((json) => Task.fromJson(json as Map<String, dynamic>))
-            .toList();
+      final List<Task> tasks = (response as List)
+          .map((json) => Task.fromJson(json as Map<String, dynamic>))
+          .toList();
 
-        setState(() {
-          _shopItems[index].tasks = tasks;
-          // Initialize import selections for new tasks
-          for (final task in tasks) {
-            _taskImportSelections[task.id.toString()] = false;
-          }
-        });
+      setState(() {
+        _shopItems[index].tasks = tasks;
+        // Initialize import selections for new tasks
+        for (final task in tasks) {
+          _taskImportSelections[task.id.toString()] = false;
+        }
+      });
 
-        print(
-            'Loaded ${tasks.length} tasks for original_id: ${item.originalId}');
-      }
+      print('Loaded ${tasks.length} tasks for original_id: ${item.originalId}');
     } catch (e) {
       print('Error loading tasks for item $index: $e');
       // Don't show error to user, just log it
@@ -206,9 +198,6 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
   Future<void> _addSelectedTasksToCategory() async {
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        throw Exception('No user logged in');
-      }
 
       if (widget.existingCategory == null) {
         throw Exception('No existing category provided');
@@ -239,26 +228,41 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
       int importedTasks = 0;
 
-      for (final task in selectedTasks) {
-        // Create new task with the existing category's ID
-        final newTaskData = {
-          'headline': task.headline,
-          'notes': task.notes,
-          'links': task.links,
-          'triggers_at': task.triggersAt?.toIso8601String(),
-          'suggestible_at': task.suggestibleAt?.toIso8601String(),
-          'finished': false, // Start as unfinished
-          'category_id': widget.existingCategory!.id,
-          'owner_id': userId,
-        };
+      // Initialize cache manager for the current category
+      final cacheManager = CacheManager();
+      await cacheManager.initializeWithSavedCategory(
+          widget.existingCategory!, userId);
 
-        await supabase.from('Tasks').insert(newTaskData);
+      for (final task in selectedTasks) {
+        // Create new task object with the existing category's ID
+        final newTask = Task(
+          id: DateTime.now().millisecondsSinceEpoch, // Temporary ID
+          categoryId: widget.existingCategory!.id,
+          headline: task.headline,
+          notes: task.notes,
+          ownerId: userId,
+          createdAt: DateTime.now(),
+          suggestibleAt: task.suggestibleAt,
+          triggersAt: task.triggersAt,
+          deferral: task.deferral,
+          links: task.links,
+          processedLinks: task.processedLinks,
+          finished: false, // Start as unfinished
+          originalId:
+              task.originalId, // Copy the original_id from the source task
+        );
+
+        // Use CacheManager to add the task (saves to database and updates cache)
+        await cacheManager.addTask(newTask);
         importedTasks++;
       }
 
       setState(() {
         _isLoading = false;
       });
+
+      print(
+          'ShopEndeavorsScreen: Added $importedTasks tasks to cache and database');
 
       // Show success message
       if (mounted) {
@@ -271,8 +275,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           ),
         );
 
-        // Navigate back
-        Navigator.pop(context);
+        // Navigate back with result indicating tasks were added
+        Navigator.pop(context, true);
       }
     } catch (e) {
       print('Error adding tasks to category: $e');
@@ -295,9 +299,6 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
   Future<void> _importSelectedCategories() async {
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        throw Exception('No user logged in');
-      }
 
       final selectedItems =
           _shopItems.where((item) => item.isSelected).toList();
@@ -369,27 +370,27 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
               .select('*')
               .inFilter('id', selectedTaskIds);
 
-          if (originalTasksResponse != null) {
-            for (final taskData in originalTasksResponse as List) {
-              final originalTask =
-                  Task.fromJson(taskData as Map<String, dynamic>);
+          for (final taskData in originalTasksResponse as List) {
+            final originalTask =
+                Task.fromJson(taskData as Map<String, dynamic>);
 
-              // Create new task with user's category_id
-              final newTaskData = {
-                'headline': originalTask.headline,
-                'notes': originalTask.notes,
-                'links': originalTask.links,
-                'triggers_at': originalTask.triggersAt?.toIso8601String(),
-                'suggestible_at': originalTask.suggestibleAt?.toIso8601String(),
-                'finished': false, // Start as unfinished
-                'category_id': categoryId,
-                'owner_id': userId,
-              };
+            // Create new task with user's category_id
+            final newTaskData = {
+              'headline': originalTask.headline,
+              'notes': originalTask.notes,
+              'links': originalTask.links,
+              'triggers_at': originalTask.triggersAt?.toIso8601String(),
+              'suggestible_at': originalTask.suggestibleAt?.toIso8601String(),
+              'finished': false, // Start as unfinished
+              'category_id': categoryId,
+              'owner_id': userId,
+              'original_id': originalTask
+                  .originalId, // Copy the original_id from the source task
+            };
 
-              await supabase.from('Tasks').insert(newTaskData);
+            await supabase.from('Tasks').insert(newTaskData);
 
-              importedTasks++;
-            }
+            importedTasks++;
           }
         }
       }
@@ -411,7 +412,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
         );
 
         // Navigate back to home screen
-        Navigator.pop(context);
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
       print('Error importing categories: $e');

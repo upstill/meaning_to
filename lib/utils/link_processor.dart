@@ -1,4 +1,3 @@
-import 'package:uri/uri.dart';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 import 'package:meaning_to/models/icon.dart';
@@ -273,20 +272,96 @@ class LinkProcessor {
 
   static Future<String?> fetchWebpageTitle(String url) async {
     try {
+      print('LinkProcessor: Fetching title for URL: $url');
+
+      // Try with more comprehensive headers first
       final response = await http.get(
         Uri.parse(url),
         headers: {
           'User-Agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept':
+              'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'DNT': '1',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
         },
       );
-      if (response.statusCode != 200) return null;
+      if (response.statusCode != 200) {
+        print(
+            'LinkProcessor: HTTP status code ${response.statusCode} for URL: $url');
+        return null;
+      }
 
       final document = html_parser.parse(response.body);
-      final title = document.querySelector('title')?.text;
-      return title?.trim();
+
+      // First priority: <title> tag
+      var title = document.querySelector('title')?.text?.trim();
+      if (title != null && title.isNotEmpty) {
+        print('LinkProcessor: Found title from <title> tag: "$title"');
+        return title;
+      }
+
+      // Second priority: Open Graph title
+      title = document
+          .querySelector('meta[property="og:title"]')
+          ?.attributes['content']
+          ?.trim();
+      if (title != null && title.isNotEmpty) {
+        print('LinkProcessor: Found title from og:title: "$title"');
+        return title;
+      }
+
+      // Third priority: Twitter Card title
+      title = document
+          .querySelector('meta[name="twitter:title"]')
+          ?.attributes['content']
+          ?.trim();
+      if (title != null && title.isNotEmpty) {
+        print('LinkProcessor: Found title from twitter:title: "$title"');
+        return title;
+      }
+
+      // Fourth priority: First h1 tag
+      title = document.querySelector('h1')?.text?.trim();
+      if (title != null && title.isNotEmpty) {
+        print('LinkProcessor: Found title from h1: "$title"');
+        return title;
+      }
+
+      // Fifth priority: First h2 tag
+      title = document.querySelector('h2')?.text?.trim();
+      if (title != null && title.isNotEmpty) {
+        print('LinkProcessor: Found title from h2: "$title"');
+        return title;
+      }
+
+      print('LinkProcessor: No title found for URL: $url');
+      return null;
     } catch (e) {
       print('Error fetching webpage title: $e');
+
+      // For JustWatch URLs, try using Browserless as a fallback
+      if (url.contains('justwatch.com')) {
+        print('LinkProcessor: Trying Browserless for JustWatch URL: $url');
+        try {
+          final domain = extractDomain(url);
+          final links = await fetchLinksFromBrowserless(url, domain);
+          if (links.isNotEmpty) {
+            final title = links.first.title;
+            if (title != null && title.isNotEmpty) {
+              print('LinkProcessor: Found title via Browserless: "$title"');
+              return title;
+            }
+          }
+        } catch (browserlessError) {
+          print(
+              'LinkProcessor: Browserless fallback also failed: $browserlessError');
+        }
+      }
+
       return null;
     }
   }
@@ -407,12 +482,18 @@ class LinkProcessor {
   /// This is used when you need both validation and the processed link data.
   static Future<ProcessedLink> validateAndProcessLink(String url,
       {String? linkText}) async {
+    print('LinkProcessor: validateAndProcessLink called for URL: $url');
+    print('LinkProcessor: linkText: "$linkText"');
+
     final processedLink =
         await processLinkForDisplay('<a href="$url">${linkText ?? ""}</a>');
+
+    print('LinkProcessor: processedLink.title: "${processedLink.title}"');
 
     // If we couldn't fetch the title but the URL is valid, still return the processed link
     // The caller can decide how to handle missing titles
     if (processedLink.title == null) {
+      print('LinkProcessor: No title found, creating fallback title');
       // Try to extract a reasonable title from the URL itself
       final uri = Uri.parse(url);
       final domain = uri.host;
@@ -432,6 +513,14 @@ class LinkProcessor {
               .replaceAll(RegExp(r'\s+'), ' ')
               .trim();
 
+          // Properly capitalize the title (title case)
+          if (fallbackTitle.isNotEmpty) {
+            fallbackTitle = fallbackTitle.split(' ').map((word) {
+              if (word.isEmpty) return word;
+              return word[0].toUpperCase() + word.substring(1).toLowerCase();
+            }).join(' ');
+          }
+
           // If the cleaned title is too short, use the domain
           if (fallbackTitle.length < 3) {
             fallbackTitle = domain;
@@ -439,6 +528,7 @@ class LinkProcessor {
         }
       }
 
+      print('LinkProcessor: Using fallback title: "$fallbackTitle"');
       return ProcessedLink(
         url: url,
         title: fallbackTitle,
@@ -449,6 +539,8 @@ class LinkProcessor {
       );
     }
 
+    print(
+        'LinkProcessor: Returning processed link with title: "${processedLink.title}"');
     return processedLink;
   }
 }

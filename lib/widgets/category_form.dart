@@ -5,7 +5,8 @@ class CategoryForm extends StatefulWidget {
   final Category? category;
   final bool isEditing;
   final bool isLoading;
-  final Function(String headline, String invitation, bool isPrivate) onSave;
+  final Function(String headline, String invitation, bool isPrivate,
+      bool tasksArePrivate) onSave;
   final VoidCallback? onEdit;
   final VoidCallback? onCancel;
 
@@ -28,6 +29,7 @@ class CategoryFormState extends State<CategoryForm> {
   final _headlineController = TextEditingController();
   final _invitationController = TextEditingController();
   bool _isPrivate = false;
+  bool _tasksArePrivate = true;
 
   @override
   void initState() {
@@ -56,10 +58,12 @@ class CategoryFormState extends State<CategoryForm> {
       _headlineController.text = widget.category!.headline;
       _invitationController.text = widget.category!.invitation ?? '';
       _isPrivate = widget.category!.isPrivate;
+      _tasksArePrivate = widget.category!.tasksArePrivate;
     } else {
       _headlineController.clear();
       _invitationController.clear();
       _isPrivate = false;
+      _tasksArePrivate = true;
     }
   }
 
@@ -76,6 +80,7 @@ class CategoryFormState extends State<CategoryForm> {
       _headlineController.text,
       _invitationController.text,
       _isPrivate,
+      _tasksArePrivate,
     );
   }
 
@@ -157,6 +162,22 @@ class CategoryFormState extends State<CategoryForm> {
                         },
                   controlAffinity: ListTileControlAffinity.leading,
                 ),
+                if (!_isPrivate) ...[
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    title: const Text('Tasks are private'),
+                    subtitle: const Text('Keep tasks in this endeavor private'),
+                    value: _tasksArePrivate,
+                    onChanged: widget.isLoading
+                        ? null
+                        : (bool? value) {
+                            setState(() {
+                              _tasksArePrivate = value ?? true;
+                            });
+                          },
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                ],
                 const SizedBox(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,

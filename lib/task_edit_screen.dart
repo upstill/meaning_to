@@ -62,13 +62,21 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   Future<void> _addLink() async {
     final result = await Navigator.push<String>(
       context,
-      MaterialPageRoute(builder: (context) => const LinkEditScreen()),
+      MaterialPageRoute(
+        builder: (context) => LinkEditScreen(
+          currentTask: _currentTaskState,
+          currentCategory: widget.category,
+        ),
+      ),
     );
 
     if (result != null) {
-      setState(() {
-        _links.add(result);
-      });
+      final errorMessage = await _addLinkToTask(result);
+      if (errorMessage != null) {
+        setState(() {
+          _error = errorMessage;
+        });
+      }
     }
   }
 
@@ -76,14 +84,21 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     final result = await Navigator.push<String>(
       context,
       MaterialPageRoute(
-        builder: (context) => LinkEditScreen(initialLink: _links[index]),
+        builder: (context) => LinkEditScreen(
+          initialLink: _links[index],
+          currentTask: _currentTaskState,
+          currentCategory: widget.category,
+        ),
       ),
     );
 
     if (result != null) {
-      setState(() {
-        _links[index] = result;
-      });
+      final errorMessage = await _updateLinkInTask(result, index);
+      if (errorMessage != null) {
+        setState(() {
+          _error = errorMessage;
+        });
+      }
     }
   }
 
@@ -91,6 +106,73 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     setState(() {
       _links.removeAt(index);
     });
+  }
+
+  /// Get the current task state with all unsaved changes
+  Task? get _currentTaskState {
+    if (widget.task == null) return null;
+
+    return Task(
+      id: widget.task!.id,
+      categoryId: widget.task!.categoryId,
+      ownerId: widget.task!.ownerId,
+      headline: _headlineController.text,
+      notes: _notesController.text.isEmpty ? null : _notesController.text,
+      links: _links.isEmpty ? null : _links,
+      processedLinks: widget.task!.processedLinks,
+      createdAt: widget.task!.createdAt,
+      suggestibleAt: widget.task!.suggestibleAt,
+      finished: widget.task!.finished,
+    );
+  }
+
+  /// Adds a link to the current task (duplicate checking handled by LinkEditScreen).
+  /// Returns an error message if the link cannot be added, null if successful.
+  Future<String?> _addLinkToTask(String htmlLink) async {
+    print('TaskEditScreen: _addLinkToTask called with: $htmlLink');
+
+    // Add the link to the current task's links list
+    // Note: Duplicate checking is now handled by LinkEditScreen
+    setState(() {
+      _links.add(htmlLink);
+      _error = null;
+    });
+
+    print('TaskEditScreen: Link added successfully: $htmlLink');
+    return null; // No error
+  }
+
+  /// Helper method to extract URL from HTML link string
+  String? _extractUrlFromHtmlLink(String htmlLink) {
+    if (htmlLink.startsWith('<a href="') && htmlLink.contains('">')) {
+      final startIndex = htmlLink.indexOf('href="') + 6;
+      final endIndex = htmlLink.indexOf('">', startIndex);
+      if (endIndex > startIndex) {
+        return htmlLink.substring(startIndex, endIndex);
+      }
+    }
+    // If it's not an HTML link, return as is (might be a plain URL)
+    if (htmlLink.startsWith('http')) {
+      return htmlLink;
+    }
+    return null;
+  }
+
+  /// Updates a link in the current task (duplicate checking handled by LinkEditScreen).
+  /// Returns an error message if the link cannot be updated, null if successful.
+  Future<String?> _updateLinkInTask(String htmlLink, int index) async {
+    print(
+        'TaskEditScreen: _updateLinkInTask called with: $htmlLink at index $index');
+
+    // Update the link in the current task's links list
+    // Note: Duplicate checking is now handled by LinkEditScreen
+    setState(() {
+      _links[index] = htmlLink;
+      _error = null;
+    });
+
+    print('TaskEditScreen: Link updated successfully: $htmlLink');
+    return null; // No error
   }
 
   Future<void> _pasteLinkFromClipboard() async {
@@ -113,6 +195,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         // Parse the text as HTML link
         final (url, linkText) = LinkProcessor.parseHtmlLink(text);
 
+        String htmlLink;
         // If it's not an HTML link, treat it as a plain URL
         if (url == text) {
           if (LinkProcessor.isValidUrl(text)) {
@@ -122,12 +205,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             );
 
             // Create an HTML link with the fetched title
-            final htmlLink =
-                '<a href="$text">${processedLink.title ?? text}</a>';
-            setState(() {
-              _links.add(htmlLink);
-              _error = null;
-            });
+            htmlLink = '<a href="$text">${processedLink.title ?? text}</a>';
           } else {
             // Open link edit screen with the text pre-filled
             final result = await Navigator.push<String>(
@@ -137,14 +215,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   initialLink: text,
                   errorMessage:
                       'Clipboard text is not a valid URL or HTML link',
+                  currentTask: _currentTaskState,
+                  currentCategory: widget.category,
                 ),
               ),
             );
             if (result != null) {
+              htmlLink = result;
+            } else {
               setState(() {
-                _links.add(result);
-                _error = null;
+                _isLoading = false;
               });
+              return;
             }
           }
         } else {
@@ -155,28 +237,29 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           );
 
           // Create a new HTML link with the validated data
-          final htmlLink =
+          htmlLink =
               '<a href="$url">${linkText ?? processedLink.title ?? url}</a>';
-          setState(() {
-            _links.add(htmlLink);
-            _error = null;
-          });
         }
+
+        // Add the link (duplicate checking handled by LinkEditScreen)
+        await _addLinkToTask(htmlLink);
       } catch (e) {
         print('Error processing pasted link: $e');
         // Open link edit screen with error message
         final result = await Navigator.push<String>(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                LinkEditScreen(initialLink: text, errorMessage: e.toString()),
+            builder: (context) => LinkEditScreen(
+              initialLink: text,
+              errorMessage: e.toString(),
+              currentTask: _currentTaskState,
+              currentCategory: widget.category,
+            ),
           ),
         );
         if (result != null) {
-          setState(() {
-            _links.add(result);
-            _error = null;
-          });
+          // Add the link (duplicate checking handled by LinkEditScreen)
+          await _addLinkToTask(result);
         }
       } finally {
         setState(() {
@@ -192,6 +275,196 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
+  /// Check if a task with the same headline or same link already exists and merge information if needed
+  Future<Task?> _checkForDuplicateAndMerge(
+      Map<String, dynamic> newTaskData, String userId) async {
+    print('TaskEditScreen: === DUPLICATE DETECTION START ===');
+    print(
+        'TaskEditScreen: Checking for duplicates of: "${newTaskData['headline']}"');
+    print('TaskEditScreen: New task links: ${newTaskData['links']}');
+
+    // First, check if the current task (if editing) already has the same link
+    if (widget.task != null &&
+        newTaskData['links'] != null &&
+        (newTaskData['links'] as List).isNotEmpty) {
+      print('TaskEditScreen: Checking current task for duplicate links...');
+      print('TaskEditScreen: Current task links: ${widget.task!.links}');
+
+      if (widget.task!.links != null && widget.task!.links!.isNotEmpty) {
+        for (final newLink in newTaskData['links'] as List) {
+          print('TaskEditScreen: Checking new link: $newLink');
+          for (final existingLink in widget.task!.links!) {
+            print('TaskEditScreen: Against current task link: $existingLink');
+            // Extract URLs from HTML links for comparison
+            final newUrl = _extractUrlFromHtmlLink(newLink);
+            final existingUrl = _extractUrlFromHtmlLink(existingLink);
+            print('TaskEditScreen: Extracted new URL: $newUrl');
+            print('TaskEditScreen: Extracted existing URL: $existingUrl');
+
+            if (newUrl != null &&
+                existingUrl != null &&
+                newUrl == existingUrl) {
+              print('TaskEditScreen: Found duplicate link in current task!');
+              print('TaskEditScreen: New link: $newUrl');
+              print('TaskEditScreen: Existing link: $existingUrl');
+              print(
+                  'TaskEditScreen: === DUPLICATE DETECTION END - DUPLICATE IN CURRENT TASK ===');
+              return widget
+                  .task; // Return current task since it already has this link
+            }
+          }
+        }
+      }
+      print('TaskEditScreen: No duplicate links found in current task');
+    }
+
+    // Get existing tasks for the current category
+    final response = await supabase
+        .from('Tasks')
+        .select()
+        .eq('category_id', widget.category.id)
+        .eq('owner_id', userId)
+        .order('created_at', ascending: false);
+
+    final existingTasks = (response as List)
+        .map((json) => Task.fromJson(json as Map<String, dynamic>))
+        .toList();
+    print('TaskEditScreen: Existing tasks count: ${existingTasks.length}');
+
+    // First, check for tasks with the same headline
+    Task existingTask = existingTasks.firstWhere(
+      (task) =>
+          task.headline.toLowerCase().trim() ==
+          (newTaskData['headline'] as String).toLowerCase().trim(),
+      orElse: () => Task(
+        id: -1,
+        categoryId: widget.category.id,
+        headline: newTaskData['headline'] as String,
+        notes: newTaskData['notes'] as String?,
+        ownerId: userId,
+        createdAt: DateTime.now(),
+        suggestibleAt: null,
+        links: newTaskData['links'] as List<String>?,
+        processedLinks: null,
+        finished: false,
+      ), // Return a dummy task if no duplicate found
+    );
+
+    // If no headline match found, check for tasks with the same link
+    if (existingTask.id == -1 &&
+        newTaskData['links'] != null &&
+        (newTaskData['links'] as List).isNotEmpty) {
+      print(
+          'TaskEditScreen: No headline match found, checking for link matches...');
+
+      for (final task in existingTasks) {
+        print(
+            'TaskEditScreen:   Checking task: "${task.headline}" (ID: ${task.id})');
+        if (task.links != null && task.links!.isNotEmpty) {
+          print(
+              'TaskEditScreen:     Task has ${task.links!.length} links: ${task.links}');
+          // Check if any of the new task's links match any of the existing task's links
+          for (final newLink in newTaskData['links'] as List) {
+            print('TaskEditScreen:     Checking new link: $newLink');
+            for (final existingLink in task.links!) {
+              print('TaskEditScreen:     Against existing link: $existingLink');
+              // Extract URLs from HTML links for comparison
+              final newUrl = _extractUrlFromHtmlLink(newLink);
+              final existingUrl = _extractUrlFromHtmlLink(existingLink);
+              print('TaskEditScreen:     Extracted new URL: $newUrl');
+              print('TaskEditScreen:     Extracted existing URL: $existingUrl');
+
+              if (newUrl != null &&
+                  existingUrl != null &&
+                  newUrl == existingUrl) {
+                print(
+                    'TaskEditScreen: Found existing task with matching link: "${task.headline}" (ID: ${task.id})');
+                print('TaskEditScreen:   New link: $newUrl');
+                print('TaskEditScreen:   Existing link: $existingUrl');
+                existingTask = task;
+                break;
+              }
+            }
+            if (existingTask.id != -1) break;
+          }
+          if (existingTask.id != -1) break;
+        } else {
+          print('TaskEditScreen:     Task has no links');
+        }
+      }
+    }
+
+    print(
+        'TaskEditScreen: Found existing task: "${existingTask.headline}" (ID: ${existingTask.id})');
+
+    if (existingTask.id != -1) {
+      // Found a duplicate - merge information and update
+      print('TaskEditScreen: Found duplicate task: "${existingTask.headline}"');
+      print(
+          'TaskEditScreen: === DUPLICATE DETECTION END - DUPLICATE FOUND ===');
+
+      // Check if we need to update the existing task with new information
+      bool needsUpdate = false;
+      Map<String, dynamic> updateData = {};
+
+      // Add links if the new task has them and the existing task doesn't
+      if (newTaskData['links'] != null &&
+          (newTaskData['links'] as List).isNotEmpty &&
+          (existingTask.links == null || existingTask.links!.isEmpty)) {
+        updateData['links'] = newTaskData['links'];
+        needsUpdate = true;
+        print('TaskEditScreen:   -> Adding links to existing task');
+      }
+
+      // Add notes if the new task has them and the existing task doesn't
+      if (newTaskData['notes'] != null &&
+          (newTaskData['notes'] as String).isNotEmpty &&
+          (existingTask.notes == null || existingTask.notes!.isEmpty)) {
+        updateData['notes'] = newTaskData['notes'];
+        needsUpdate = true;
+        print('TaskEditScreen:   -> Adding notes to existing task');
+      }
+
+      // Always update the existing task to move it to the top of the list
+      // Set suggestibleAt to null to make it appear first
+      try {
+        // Add suggestibleAt: null to the update data to move task to top
+        updateData['suggestible_at'] = null;
+
+        await supabase
+            .from('Tasks')
+            .update(updateData)
+            .eq('id', existingTask.id)
+            .eq('owner_id', userId);
+
+        print(
+            'TaskEditScreen:   -> Updated existing task and moved to top of list');
+
+        // Return the updated existing task
+        return Task(
+          id: existingTask.id,
+          categoryId: existingTask.categoryId,
+          ownerId: existingTask.ownerId,
+          headline: existingTask.headline,
+          notes: updateData['notes'] ?? existingTask.notes,
+          links: updateData['links'] ?? existingTask.links,
+          processedLinks: existingTask.processedLinks,
+          createdAt: existingTask.createdAt,
+          suggestibleAt: null, // Set to null to move to top
+          finished: existingTask.finished,
+        );
+      } catch (e) {
+        print('TaskEditScreen: Error updating existing task: $e');
+        return existingTask; // Return existing task without changes on error
+      }
+    } else {
+      print(
+          'TaskEditScreen: === DUPLICATE DETECTION END - NO DUPLICATE FOUND ===');
+    }
+
+    return null; // No duplicate found
+  }
+
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -202,7 +475,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) throw Exception('No user logged in');
 
       final data = {
         'headline': _headlineController.text,
@@ -210,9 +482,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         'category_id': widget.category.id,
         'owner_id': userId,
         'finished': widget.task?.finished ?? false,
-        'links': _links.isEmpty
-            ? null
-            : (_links.length == 1 ? _links[0] : jsonEncode(_links)),
+        'links': _links.isEmpty ? null : _links, // PostgreSQL array
       };
 
       // For new tasks, set suggestible_at to null to appear at the top
@@ -223,13 +493,25 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
       Task? updatedTask;
       if (widget.task == null) {
-        // Create new task
-        print('TaskEditScreen: Creating new task...');
-        final response =
-            await supabase.from('Tasks').insert(data).select().single();
+        // Check for duplicates before creating new task
+        print(
+            'TaskEditScreen: Checking for duplicates before creating new task...');
+        final existingTask = await _checkForDuplicateAndMerge(data, userId);
 
-        updatedTask = Task.fromJson(response);
-        print('TaskEditScreen: Created new task: ${updatedTask.headline}');
+        if (existingTask != null) {
+          // Found a duplicate - use the existing task
+          print(
+              'TaskEditScreen: Found duplicate task, using existing: ${existingTask.headline}');
+          updatedTask = existingTask;
+        } else {
+          // No duplicate found - create new task
+          print('TaskEditScreen: No duplicate found, creating new task...');
+          final response =
+              await supabase.from('Tasks').insert(data).select().single();
+
+          updatedTask = Task.fromJson(response);
+          print('TaskEditScreen: Created new task: ${updatedTask.headline}');
+        }
       } else {
         // Update existing task
         print('TaskEditScreen: Updating existing task...');
@@ -318,7 +600,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) throw Exception('No user logged in');
 
       await supabase
           .from('Tasks')
@@ -535,11 +816,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               // Separator with helpful text
               Row(
                 children: [
-                  Expanded(child: Divider()),
+                  const Expanded(child: Divider()),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Text(
-                      '** You can also bulk-add a list of tasks: **',
+                      '** If you like, you can bulk-add a list of tasks: **',
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey[600],
@@ -547,7 +828,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       ),
                     ),
                   ),
-                  Expanded(child: Divider()),
+                  const Expanded(child: Divider()),
                 ],
               ),
               const SizedBox(height: 16),
@@ -556,19 +837,19 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 onPressed: _isLoading
                     ? null
                     : () async {
-                        final result = await Navigator.push(
+                        // Use pushReplacement so that when AddTasksScreen completes,
+                        // it navigates directly to EditCategoryScreen without TaskEditScreen in the stack
+                        final result = await Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
                             builder: (context) => AddTasksScreen(
                               category: widget.category,
+                              currentTask: _currentTaskState,
                             ),
                           ),
                         );
-                        if (result == true) {
-                          // Refresh the cache to get updated tasks
-                          await CacheManager().refreshFromDatabase();
-                          setState(() {});
-                        }
+                        // Note: We don't need to handle the result here because AddTasksScreen
+                        // will navigate to EditCategoryScreen on completion
                       },
                 icon: const Icon(Icons.add_task),
                 label: const Text('Add a List of Tasks'),
@@ -582,7 +863,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               // Separator with helpful text for shop suggestions
               Row(
                 children: [
-                  Expanded(child: Divider()),
+                  const Expanded(child: Divider()),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Text(
@@ -594,7 +875,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       ),
                     ),
                   ),
-                  Expanded(child: Divider()),
+                  const Expanded(child: Divider()),
                 ],
               ),
               const SizedBox(height: 16),
@@ -602,8 +883,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               ElevatedButton.icon(
                 onPressed: _isLoading
                     ? null
-                    : () {
-                        Navigator.push(
+                    : () async {
+                        // Use pushReplacement so that when ShopEndeavorsScreen completes,
+                        // it navigates directly to EditCategoryScreen without TaskEditScreen in the stack
+                        final result = await Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
                             builder: (context) => ShopEndeavorsScreen(
@@ -611,6 +894,12 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                             ),
                           ),
                         );
+
+                        // If tasks were added, the result will be true
+                        // Edit Category Screen will refresh via lifecycle callback
+                        // No need to pop since pushReplacement already handles navigation
+                        print(
+                            'TaskEditScreen: ShopEndeavorsScreen returned: $result');
                       },
                 icon: const Icon(Icons.shopping_cart),
                 label: const Text('Shop for Suggestions'),
@@ -627,7 +916,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 // Separator with helpful text for JustWatch import
                 Row(
                   children: [
-                    Expanded(child: Divider()),
+                    const Expanded(child: Divider()),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Text(
@@ -639,7 +928,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         ),
                       ),
                     ),
-                    Expanded(child: Divider()),
+                    const Expanded(child: Divider()),
                   ],
                 ),
                 const SizedBox(height: 16),

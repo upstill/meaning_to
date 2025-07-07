@@ -17,9 +17,10 @@ class Task {
   final DateTime? suggestibleAt;
   final DateTime? triggersAt;
   final int? deferral;
-  final List<String>? links;
+  final List<String>? links; // PostgreSQL array of link strings
   List<ProcessedLink>? processedLinks;
   final bool finished;
+  final int? originalId;
 
   // Global cache manager instance
   static final CacheManager _cacheManager = CacheManager();
@@ -49,22 +50,45 @@ class Task {
     this.links,
     this.processedLinks,
     required this.finished,
+    this.originalId,
   });
 
   factory Task.fromJson(Map<String, dynamic> json) {
     List<String>? parseLinks(dynamic linksData) {
-      if (linksData == null) return null;
+      print(
+          'Task.fromJson: parseLinks called with: $linksData (type: ${linksData.runtimeType})');
+
+      if (linksData == null) {
+        print('Task.fromJson: linksData is null, returning null');
+        return null;
+      }
+
+      // Handle PostgreSQL array (comes as List from Supabase)
       if (linksData is List) {
+        print(
+            'Task.fromJson: linksData is List with ${linksData.length} items');
         return List<String>.from(linksData);
       }
+
+      // Handle legacy JSON string format (for backward compatibility)
       if (linksData is String) {
+        print('Task.fromJson: linksData is String: "$linksData"');
+        // Handle empty PostgreSQL array string representation
+        if (linksData.trim() == '{}') {
+          print(
+              'Task.fromJson: Empty PostgreSQL array detected, returning empty list');
+          return [];
+        }
         try {
           // If it's a single HTML link, return it as is
           if (linksData.trim().startsWith('<a href="')) {
+            print('Task.fromJson: Single HTML link detected');
             return [linksData];
           }
           // Otherwise try to parse as JSON
           final decoded = jsonDecode(linksData) as List;
+          print(
+              'Task.fromJson: Parsed JSON string to List with ${decoded.length} items');
           return List<String>.from(decoded);
         } catch (e) {
           print('Error parsing links: $e');
@@ -72,6 +96,9 @@ class Task {
           return [linksData];
         }
       }
+
+      print(
+          'Task.fromJson: linksData is neither List nor String, returning null');
       return null;
     }
 
@@ -116,6 +143,7 @@ class Task {
       links: links,
       processedLinks: null, // Will be processed when needed
       finished: json['finished'] as bool,
+      originalId: json['original_id'] as int?,
     );
 
     // Only update database for legacy tasks that needed suggestible_at set
@@ -144,10 +172,9 @@ class Task {
       'suggestible_at': suggestibleAt?.toIso8601String(),
       'triggers_at': triggersAt?.toIso8601String(),
       'deferral': deferral,
-      'links': links != null
-          ? (links!.length == 1 ? links![0] : jsonEncode(links))
-          : null,
+      'links': links, // PostgreSQL array - no JSON encoding needed
       'finished': finished,
+      'original_id': originalId,
     };
   }
 
@@ -207,7 +234,7 @@ class Task {
       print(
           'Task response fields: ${response.isNotEmpty ? response.first.keys.toList() : 'No tasks found'}');
 
-      if (response == null || response.isEmpty) {
+      if (response.isEmpty) {
         print('No tasks found for category ${category.id}');
         _currentTaskSet = null;
         return null;
@@ -309,7 +336,7 @@ class Task {
 
     try {
       print(
-          '[finishCurrentTask] Attempting to update task id: \\${currentTask.id}, owner_id: \\${currentUserId}');
+          '[finishCurrentTask] Attempting to update task id: \\${currentTask.id}, owner_id: \\$currentUserId');
       // Update in database
       final response = await supabase
           .from('Tasks')
@@ -491,10 +518,10 @@ class Task {
     return [];
   }
 
-  // Utility: Convert a List<String> of URLs to a string for storage
-  static String? linksToString(List<String>? links) {
+  // Utility: Convert a List<String> of URLs to a PostgreSQL array for storage
+  static List<String>? linksToArray(List<String>? links) {
     if (links == null || links.isEmpty) return null;
-    return jsonEncode(links);
+    return links; // PostgreSQL array - no JSON encoding needed
   }
 
   /// Returns a formatted string showing when the task will be available again.
@@ -518,7 +545,7 @@ class Task {
     final remainingSeconds = seconds % 60;
     final remainingMinutes = minutes % 60;
     final remainingHours = hours % 24;
-    final preface = "Deferred for";
+    const preface = "Deferred for";
 
     if (seconds < 60) {
       return '$preface $seconds second${seconds == 1 ? '' : 's'}';
@@ -557,6 +584,137 @@ class Task {
   // Add a method to validate links before saving
   static List<String> validateLinks(List<String> links) {
     return links.where((link) => LinkProcessor.isValidUrl(link)).toList();
+  }
+
+  /// Extracts URL from HTML link string
+  static String? _extractUrlFromHtmlLink(String htmlLink) {
+    if (htmlLink.startsWith('<a href="') && htmlLink.contains('">')) {
+      final startIndex = htmlLink.indexOf('href="') + 6;
+      final endIndex = htmlLink.indexOf('">', startIndex);
+      if (endIndex > startIndex) {
+        return htmlLink.substring(startIndex, endIndex);
+      }
+    }
+    // If it's not an HTML link, return as is (might be a plain URL)
+    if (htmlLink.startsWith('http')) {
+      return htmlLink;
+    }
+    return null;
+  }
+
+  /// Checks if a link already exists in this task.
+  /// Returns true if the link is already present, false otherwise.
+  /// This method handles both HTML links and plain URLs.
+  bool hasLink(String link) {
+    print('Task.hasLink: Checking if task "${headline}" has link: $link');
+    print('Task.hasLink: Task links: $links');
+
+    // Extract URL from the link to check
+    final linkUrl = _extractUrlFromHtmlLink(link);
+    if (linkUrl == null) {
+      print('Task.hasLink: Could not extract URL from link');
+      return false;
+    }
+
+    print('Task.hasLink: Extracted URL: $linkUrl');
+
+    // Check if the task already has this link
+    if (links != null) {
+      for (final existingLink in links!) {
+        print('Task.hasLink: Checking existing link: $existingLink');
+        final existingUrl = _extractUrlFromHtmlLink(existingLink);
+        print('Task.hasLink: Extracted existing URL: $existingUrl');
+        if (existingUrl != null && existingUrl == linkUrl) {
+          print('Task.hasLink: Link found in task: $linkUrl');
+          return true;
+        }
+      }
+    } else {
+      print('Task.hasLink: Task has no links');
+    }
+
+    print('Task.hasLink: Link not found in task: $linkUrl');
+    return false;
+  }
+
+  /// Ensures a link is added to the task only if it isn't already in the array.
+  /// Returns an error message if the link was redundant, null if the link was added successfully.
+  /// This method handles both HTML links and plain URLs.
+  String? ensureLink(String newLink) {
+    print('Task.ensureLink: Checking link: $newLink');
+
+    // First check if the task already has this link
+    if (hasLink(newLink)) {
+      print('Task.ensureLink: Link already exists in task');
+      return 'This link is already in the task';
+    }
+
+    // Extract URL from the new link for validation
+    final newUrl = _extractUrlFromHtmlLink(newLink);
+    if (newUrl == null) {
+      print('Task.ensureLink: Could not extract URL from link');
+      return 'Invalid link format';
+    }
+
+    print('Task.ensureLink: Extracted URL: $newUrl');
+
+    // Add the link if no duplicate found
+    print('Task.ensureLink: Adding new link: $newLink');
+    final updatedLinks = List<String>.from(links ?? []);
+    updatedLinks.add(newLink);
+
+    // Update the links field (this creates a new Task instance)
+    // Note: This method doesn't modify the current instance, it returns the result
+    // The caller should handle the actual update
+    return null; // No error, link was added successfully
+  }
+
+  /// Checks if a link already exists in any task in the current category.
+  /// Returns an error message if the link exists in another task, null if it's unique.
+  static Future<String?> checkForDuplicateLinkInCategory(
+      String htmlLink, int categoryId, String userId) async {
+    print('Task.checkForDuplicateLinkInCategory: Checking link: $htmlLink');
+
+    final extractedUrl = _extractUrlFromHtmlLink(htmlLink);
+    if (extractedUrl == null) {
+      print(
+          'Task.checkForDuplicateLinkInCategory: Could not extract URL from link');
+      return 'Invalid link format';
+    }
+
+    print(
+        'Task.checkForDuplicateLinkInCategory: Checking for URL: $extractedUrl');
+
+    // Get existing tasks for the current category
+    final response = await supabase
+        .from('Tasks')
+        .select()
+        .eq('category_id', categoryId)
+        .eq('owner_id', userId)
+        .order('created_at', ascending: false);
+
+    final existingTasks = (response as List)
+        .map((json) => Task.fromJson(json as Map<String, dynamic>))
+        .toList();
+
+    print(
+        'Task.checkForDuplicateLinkInCategory: Checking against ${existingTasks.length} existing tasks');
+
+    for (final task in existingTasks) {
+      if (task.links != null && task.links!.isNotEmpty) {
+        for (final existingLink in task.links!) {
+          final existingUrl = _extractUrlFromHtmlLink(existingLink);
+          if (existingUrl != null && existingUrl == extractedUrl) {
+            print(
+                'Task.checkForDuplicateLinkInCategory: Found duplicate link in task "${task.headline}" (ID: ${task.id})');
+            return 'This link already exists in task "${task.headline}"';
+          }
+        }
+      }
+    }
+
+    print('Task.checkForDuplicateLinkInCategory: No duplicate link found');
+    return null; // No duplicate found
   }
 
   /// Revives a task by setting its suggestibleAt time to now.
@@ -629,7 +787,7 @@ class Task {
     final now = DateTime.now().toUtc();
 
     // Debug logging
-    print('Task.isSuggestible for "${headline}":');
+    print('Task.isSuggestible for "$headline":');
     print('  suggestibleAt (UTC): $suggestibleAt');
     print('  now (UTC): $now');
     print('  isAfter: ${suggestibleAt!.isAfter(now)}');
@@ -662,7 +820,7 @@ class Task {
   static Future<void> resetGuestTasks() async {
     try {
       print('Task.resetGuestTasks(): Resetting guest tasks...');
-      final guestUserId =
+      const guestUserId =
           '35ed4d18-84b4-481d-96f4-1405c2f2f1ae'; // Guest user ID
 
       // Update all tasks owned by the guest user

@@ -110,7 +110,9 @@ class _TaskDisplayState extends State<TaskDisplay> {
     // Fix hasLinks check to handle List<String> of HTML links
     final hasLinks = widget.task.links != null &&
         widget.task.links!.isNotEmpty &&
-        widget.task.links!.first.contains('href="'); // Only check for href
+        widget.task.links!.first.contains('href="') && // Only check for href
+        widget.task.links!.first !=
+            '{}'; // Exclude empty PostgreSQL array string representation
     print('\nhasLinks check:');
     print('  links != null: ${widget.task.links != null}');
     print('  links isNotEmpty: ${widget.task.links?.isNotEmpty}');
@@ -308,7 +310,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 4),
-                            minimumSize: Size(0, 28),
+                            minimumSize: const Size(0, 28),
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             textStyle: theme.textTheme.bodySmall
                                 ?.copyWith(fontWeight: FontWeight.w500),
