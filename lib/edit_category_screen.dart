@@ -4,6 +4,7 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/widgets/task_display.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/auth.dart';
+import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
@@ -198,6 +199,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   Future<void> _deleteTask(Task task) async {
     print(
         '=== Starting delete task for: ${task.headline} (ID: ${task.id}) ===');
+    print('EditCategoryScreen: _deleteTask called with task: ${task.headline}');
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -206,16 +208,24 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         content: Text('Are you sure you want to delete "${task.headline}"?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () {
+              print('EditCategoryScreen: Delete cancelled by user');
+              Navigator.pop(context, false);
+            },
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () {
+              print('EditCategoryScreen: Delete confirmed by user');
+              Navigator.pop(context, true);
+            },
             child: const Text('Delete'),
           ),
         ],
       ),
     );
+
+    print('EditCategoryScreen: Dialog result: $confirmed');
 
     if (confirmed != true) {
       print('Delete cancelled by user');
@@ -608,7 +618,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     return '$availableText $taskText (${parts.join(', ')})';
   }
 
-  // Pure UI method - no database operations
+  // Delete category and all its tasks from database
   Future<void> _deleteCategory() async {
     if (widget.category == null) {
       print('EditCategoryScreen: Cannot delete - no category provided');
@@ -620,6 +630,34 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     });
 
     try {
+      final userId = AuthUtils.getCurrentUserId();
+      final categoryId = widget.category!.id;
+
+      print(
+          'EditCategoryScreen: Deleting category ${widget.category!.headline} (ID: $categoryId)');
+
+      // First, delete all tasks in this category
+      print('EditCategoryScreen: Deleting all tasks in category...');
+      final deleteTasksResponse = await supabase
+          .from('Tasks')
+          .delete()
+          .eq('category_id', categoryId)
+          .eq('owner_id', userId);
+
+      print(
+          'EditCategoryScreen: Tasks deletion response: $deleteTasksResponse');
+
+      // Then, delete the category itself
+      print('EditCategoryScreen: Deleting category...');
+      final deleteCategoryResponse = await supabase
+          .from('Categories')
+          .delete()
+          .eq('id', categoryId)
+          .eq('owner_id', userId);
+
+      print(
+          'EditCategoryScreen: Category deletion response: $deleteCategoryResponse');
+
       // Clear the cache
       CacheManager().clearCache();
       print('EditCategoryScreen: Cache cleared');

@@ -316,6 +316,12 @@ class CacheManager {
   /// For unsaved categories, removes from local cache
   /// For saved categories, deletes from database and updates cache
   Future<void> removeTask(int taskId) async {
+    print('CacheManager: removeTask called for task ID: $taskId');
+    print('CacheManager: _currentCategory: ${_currentCategory?.headline}');
+    print('CacheManager: _currentUserId: $_currentUserId');
+    print('CacheManager: _isUnsavedCategory: $_isUnsavedCategory');
+    print('CacheManager: _currentTasks length: ${_currentTasks?.length ?? 0}');
+
     if (_currentCategory == null || _currentTasks == null) {
       throw Exception('No category or tasks loaded in cache');
     }
@@ -324,6 +330,10 @@ class CacheManager {
     if (taskIndex == -1) {
       throw Exception('Task not found in cache');
     }
+
+    final taskToDelete = _currentTasks![taskIndex];
+    print(
+        'CacheManager: Found task to delete: "${taskToDelete.headline}" at index $taskIndex');
 
     if (_isUnsavedCategory) {
       // For unsaved categories, just remove from local cache
@@ -335,18 +345,41 @@ class CacheManager {
     } else {
       // For saved categories, delete from database and update cache
       try {
-        await supabase
+        print('CacheManager: Deleting task from database...');
+        final deleteResponse = await supabase
             .from('Tasks')
             .delete()
             .eq('id', taskId)
             .eq('owner_id', _currentUserId!);
 
-        _currentTasks!.removeAt(taskIndex);
+        print('CacheManager: Database delete response: $deleteResponse');
 
-        print('CacheManager: Removed task from database and cache');
+        // Verify the deletion by trying to fetch the task
+        try {
+          final verifyResponse = await supabase
+              .from('Tasks')
+              .select('id')
+              .eq('id', taskId)
+              .eq('owner_id', _currentUserId!)
+              .maybeSingle();
+
+          if (verifyResponse != null) {
+            print(
+                'CacheManager: WARNING - Task still exists in database after deletion!');
+          } else {
+            print('CacheManager: Task successfully deleted from database');
+          }
+        } catch (e) {
+          print(
+              'CacheManager: Task not found in database (expected after deletion)');
+        }
+
+        _currentTasks!.removeAt(taskIndex);
+        print('CacheManager: Removed task from cache');
 
         // Notify listeners that cache has changed
         _cacheChangeController.add(null);
+        print('CacheManager: Cache change notification sent');
       } catch (e) {
         print('CacheManager: Error removing task: $e');
         rethrow;
