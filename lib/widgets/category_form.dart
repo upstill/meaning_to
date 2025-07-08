@@ -166,7 +166,8 @@ class CategoryFormState extends State<CategoryForm> {
                   const SizedBox(height: 8),
                   CheckboxListTile(
                     title: const Text('Tasks are private'),
-                    subtitle: const Text('Keep tasks in this endeavor private'),
+                    subtitle:
+                        const Text('Share only the endeavor, not the tasks'),
                     value: _tasksArePrivate,
                     onChanged: widget.isLoading
                         ? null

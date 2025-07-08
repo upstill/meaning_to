@@ -369,6 +369,23 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       if (mounted) {
         setState(() {});
       }
+
+      // Call the edit complete callback to notify Home screen to refresh
+      if (EditCategoryScreen.onEditComplete != null) {
+        print(
+            'EditCategoryScreen: Calling edit complete callback after shop tasks added');
+        try {
+          EditCategoryScreen.onEditComplete!();
+          print(
+              'EditCategoryScreen: Edit complete callback executed successfully after shop tasks');
+        } catch (e) {
+          print(
+              'EditCategoryScreen: Error executing edit complete callback after shop tasks: $e');
+        }
+      } else {
+        print(
+            'EditCategoryScreen: No edit complete callback available after shop tasks');
+      }
     }
   }
 
