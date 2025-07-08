@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:meaning_to/utils/text_importer.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'dart:async';
 
 /// A cache management module for Categories and Tasks
 /// Can handle both saved Categories from the database and new unsaved Categories with Tasks
@@ -22,6 +23,11 @@ class CacheManager {
   List<Task>? _currentTasks;
   String? _currentUserId;
   bool _isUnsavedCategory = false;
+
+  // Notification stream for cache changes
+  static final StreamController<void> _cacheChangeController =
+      StreamController<void>.broadcast();
+  static Stream<void> get onCacheChanged => _cacheChangeController.stream;
 
   // Getters
   Category? get currentCategory => _currentCategory;
@@ -41,42 +47,73 @@ class CacheManager {
       _currentUserId = userId;
       _isUnsavedCategory = false;
 
-      // Load tasks from database
-      final response = await supabase
-          .from('Tasks')
-          .select()
-          .eq('category_id', category.id)
-          .eq('owner_id', userId)
-          .order('created_at', ascending: false);
-
-      if (response.isEmpty) {
-        print('CacheManager: No tasks found for category ${category.id}');
-        _currentTasks = [];
-        return;
-      }
-
-      // Convert to Task objects
-      _currentTasks = (response as List).map((json) {
-        print('CacheManager: Loading task from JSON: \'${json['headline']}\'');
-        print(
-            'CacheManager: suggestible_at from DB: \'${json['suggestible_at']}\'');
-        final task = Task.fromJson(json as Map<String, dynamic>);
-        print(
-            'CacheManager: Task \'${task.headline}\' - suggestibleAt: \'${task.suggestibleAt}\'');
-        return task;
-      }).toList();
-
-      // Sort tasks: unfinished first, then by suggestibleAt ascending
-      _sortTasks();
-
-      print(
-          'CacheManager: Loaded ${_currentTasks!.length} tasks for saved category');
+      await _loadTasksFromDatabase();
     } catch (e, stackTrace) {
       print('CacheManager: Error initializing with saved category: $e');
       print('CacheManager: Stack trace: $stackTrace');
       clearCache();
       rethrow;
     }
+  }
+
+  /// Refresh tasks for the current category from the database
+  /// Useful when tasks have been added by other screens
+  Future<void> refreshCurrentCategoryTasks() async {
+    if (_currentCategory == null || _currentUserId == null) {
+      print('CacheManager: No current category or user ID for refresh');
+      return;
+    }
+
+    try {
+      print(
+          'CacheManager: Refreshing tasks for category ${_currentCategory!.headline}');
+      await _loadTasksFromDatabase();
+    } catch (e) {
+      print('CacheManager: Error refreshing tasks: $e');
+      rethrow;
+    }
+  }
+
+  /// Load tasks from database for the current category
+  Future<void> _loadTasksFromDatabase() async {
+    if (_currentCategory == null || _currentUserId == null) {
+      throw Exception('No current category or user ID');
+    }
+
+    // Load tasks from database
+    final response = await supabase
+        .from('Tasks')
+        .select()
+        .eq('category_id', _currentCategory!.id)
+        .eq('owner_id', _currentUserId!)
+        .order('created_at', ascending: false);
+
+    if (response.isEmpty) {
+      print(
+          'CacheManager: No tasks found for category ${_currentCategory!.id}');
+      _currentTasks = [];
+      return;
+    }
+
+    // Convert to Task objects
+    _currentTasks = (response as List).map((json) {
+      print('CacheManager: Loading task from JSON: \'${json['headline']}\'');
+      print(
+          'CacheManager: suggestible_at from DB: \'${json['suggestible_at']}\'');
+      final task = Task.fromJson(json as Map<String, dynamic>);
+      print(
+          'CacheManager: Task \'${task.headline}\' - suggestibleAt: \'${task.suggestibleAt}\'');
+      return task;
+    }).toList();
+
+    // Sort tasks: unfinished first, then by suggestibleAt ascending
+    _sortTasks();
+
+    print(
+        'CacheManager: Loaded ${_currentTasks!.length} tasks for saved category');
+
+    // Notify listeners that cache has changed
+    _cacheChangeController.add(null);
   }
 
   /// Initialize cache with a new unsaved Category and its Tasks
@@ -97,6 +134,9 @@ class CacheManager {
 
     print(
         'CacheManager: Loaded ${_currentTasks!.length} tasks for unsaved category');
+
+    // Notify listeners that cache has changed
+    _cacheChangeController.add(null);
   }
 
   /// Save the current unsaved Category and its Tasks to the database
@@ -186,6 +226,9 @@ class CacheManager {
       _currentTasks!.add(task);
       _sortTasks();
       print('CacheManager: Added task to unsaved category cache');
+
+      // Notify listeners that cache has changed
+      _cacheChangeController.add(null);
     } else {
       // For saved categories, save to database and update cache
       try {
@@ -206,6 +249,9 @@ class CacheManager {
         _sortTasks();
 
         print('CacheManager: Added and saved task to database');
+
+        // Notify listeners that cache has changed
+        _cacheChangeController.add(null);
       } catch (e) {
         print('CacheManager: Error adding task: $e');
         rethrow;
@@ -231,6 +277,9 @@ class CacheManager {
       _currentTasks![taskIndex] = updatedTask;
       _sortTasks();
       print('CacheManager: Updated task in unsaved category cache');
+
+      // Notify listeners that cache has changed
+      _cacheChangeController.add(null);
     } else {
       // For saved categories, update database and cache
       try {
@@ -253,6 +302,9 @@ class CacheManager {
         _sortTasks();
 
         print('CacheManager: Updated task in database and cache');
+
+        // Notify listeners that cache has changed
+        _cacheChangeController.add(null);
       } catch (e) {
         print('CacheManager: Error updating task: $e');
         rethrow;
@@ -277,6 +329,9 @@ class CacheManager {
       // For unsaved categories, just remove from local cache
       _currentTasks!.removeAt(taskIndex);
       print('CacheManager: Removed task from unsaved category cache');
+
+      // Notify listeners that cache has changed
+      _cacheChangeController.add(null);
     } else {
       // For saved categories, delete from database and update cache
       try {
@@ -289,6 +344,9 @@ class CacheManager {
         _currentTasks!.removeAt(taskIndex);
 
         print('CacheManager: Removed task from database and cache');
+
+        // Notify listeners that cache has changed
+        _cacheChangeController.add(null);
       } catch (e) {
         print('CacheManager: Error removing task: $e');
         rethrow;

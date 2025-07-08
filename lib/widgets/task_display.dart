@@ -334,25 +334,25 @@ class _TaskDisplayState extends State<TaskDisplay> {
                     },
                   ),
                 ],
-                // Show links if expanded
+                // Show notes if expanded and present
+                if (_isExpanded &&
+                    widget.task.notes != null &&
+                    widget.task.notes!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.task.notes!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontStyle: FontStyle.italic,
+                      color: theme.textTheme.bodySmall?.color,
+                    ),
+                  ),
+                ],
+                // Show links if expanded and present
                 if (_isExpanded && hasLinks) ...[
                   const SizedBox(height: 8),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Show notes if present
-                      if (widget.task.notes != null &&
-                          widget.task.notes!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.task.notes!,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontStyle: FontStyle.italic,
-                            color: theme.textTheme.bodySmall?.color,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
                       ...widget.task.links!.map((link) => Padding(
                             padding: const EdgeInsets.only(bottom: 4),
                             child: LinkDisplay(

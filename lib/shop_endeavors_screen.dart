@@ -27,6 +27,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
   bool _isLoading = true;
   String? _error;
   bool _hasShownPrompt = false; // Track if we've shown the prompt
+  final Map<String, bool> _redundantTaskCache =
+      {}; // Cache for redundant task checks
 
   @override
   void initState() {
@@ -180,6 +182,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
         for (final task in tasks) {
           _taskImportSelections[task.id.toString()] = false;
         }
+        // Clear redundant task cache when tasks are reloaded
+        _redundantTaskCache.clear();
       });
 
       print('Loaded ${tasks.length} tasks for original_id: ${item.originalId}');
@@ -193,6 +197,32 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     setState(() {
       _taskImportSelections[taskId] = !(_taskImportSelections[taskId] ?? false);
     });
+  }
+
+  /// Check if a task is redundant (has same original_id as existing task in category)
+  bool _isTaskRedundant(Task task) {
+    if (widget.existingCategory == null) return false;
+
+    final cacheKey = '${task.originalId}_${widget.existingCategory!.id}';
+
+    // Check cache first
+    if (_redundantTaskCache.containsKey(cacheKey)) {
+      return _redundantTaskCache[cacheKey]!;
+    }
+
+    // Check against current cache
+    final cacheManager = CacheManager();
+    final existingTasks = cacheManager.currentTasks ?? [];
+
+    final isRedundant = existingTasks.any((existingTask) =>
+        existingTask.originalId != null &&
+        task.originalId != null &&
+        existingTask.originalId == task.originalId);
+
+    // Cache the result
+    _redundantTaskCache[cacheKey] = isRedundant;
+
+    return isRedundant;
   }
 
   Future<void> _addSelectedTasksToCategory() async {
@@ -227,13 +257,52 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       });
 
       int importedTasks = 0;
+      int skippedTasks = 0;
 
-      // Initialize cache manager for the current category
+      // Initialize cache manager for the current category only if not already loaded
       final cacheManager = CacheManager();
-      await cacheManager.initializeWithSavedCategory(
-          widget.existingCategory!, userId);
+      if (cacheManager.currentCategory?.id != widget.existingCategory!.id) {
+        await cacheManager.initializeWithSavedCategory(
+            widget.existingCategory!, userId);
+      }
 
       for (final task in selectedTasks) {
+        // Check for redundancy - find existing task with same original_id
+        final existingTasks = cacheManager.currentTasks ?? [];
+        final existingTask = existingTasks
+            .where((existingTask) =>
+                existingTask.originalId != null &&
+                task.originalId != null &&
+                existingTask.originalId == task.originalId)
+            .firstOrNull;
+
+        if (existingTask != null) {
+          print(
+              'ShopEndeavorsScreen: Found duplicate task "${task.headline}" with original_id ${task.originalId}');
+          print(
+              'ShopEndeavorsScreen: Copying links from redundant task to existing task "${existingTask.headline}"');
+
+          // Copy links from redundant task to existing task using ensureLink
+          if (task.links != null && task.links!.isNotEmpty) {
+            for (final link in task.links!) {
+              final error = existingTask.ensureLink(link);
+              if (error != null) {
+                print(
+                    'ShopEndeavorsScreen: Link already exists in existing task: $error');
+              } else {
+                print(
+                    'ShopEndeavorsScreen: Successfully copied link from redundant task to existing task');
+              }
+            }
+
+            // Update the existing task in the cache after adding links
+            await cacheManager.updateTask(existingTask);
+          }
+
+          skippedTasks++;
+          continue;
+        }
+
         // Create new task object with the existing category's ID
         final newTask = Task(
           id: DateTime.now().millisecondsSinceEpoch, // Temporary ID
@@ -262,14 +331,22 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       });
 
       print(
-          'ShopEndeavorsScreen: Added $importedTasks tasks to cache and database');
+          'ShopEndeavorsScreen: Added $importedTasks tasks to cache and database (skipped $skippedTasks duplicates)');
 
       // Show success message
       if (mounted) {
+        String message;
+        if (skippedTasks > 0) {
+          message =
+              'Added $importedTasks tasks to ${widget.existingCategory!.headline}! (Skipped $skippedTasks duplicates, copied links)';
+        } else {
+          message =
+              'Successfully added $importedTasks tasks to ${widget.existingCategory!.headline}!';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                'Successfully added $importedTasks tasks to ${widget.existingCategory!.headline}!'),
+            content: Text(message),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 4),
           ),
@@ -370,9 +447,20 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
               .select('*')
               .inFilter('id', selectedTaskIds);
 
+          // Track original_ids to prevent duplicates within this import
+          final importedOriginalIds = <int>{};
+
           for (final taskData in originalTasksResponse as List) {
             final originalTask =
                 Task.fromJson(taskData as Map<String, dynamic>);
+
+            // Check for duplicate original_id within this import
+            if (originalTask.originalId != null &&
+                importedOriginalIds.contains(originalTask.originalId)) {
+              print(
+                  'ShopEndeavorsScreen: Skipping duplicate task "${originalTask.headline}" with original_id ${originalTask.originalId} in category import');
+              continue;
+            }
 
             // Create new task with user's category_id
             final newTaskData = {
@@ -389,6 +477,11 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
             };
 
             await supabase.from('Tasks').insert(newTaskData);
+
+            // Track this original_id to prevent future duplicates
+            if (originalTask.originalId != null) {
+              importedOriginalIds.add(originalTask.originalId!);
+            }
 
             importedTasks++;
           }
@@ -437,9 +530,13 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     final hasLinks = task.links != null &&
         task.links!.isNotEmpty &&
         task.links!.first.contains('href="');
+    final isRedundant = _isTaskRedundant(task);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      color: isRedundant
+          ? Colors.grey[50]
+          : null, // Lighter gray background for redundant tasks
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -450,12 +547,32 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
-                  child: Text(
-                    task.headline,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        task.headline,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: isRedundant
+                                      ? Colors.grey[500]
+                                      : null, // Lighter gray text for redundant tasks
+                                ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (isRedundant) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Already exists in this category',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[400],
+                            fontStyle: FontStyle.italic,
+                          ),
                         ),
-                    overflow: TextOverflow.ellipsis,
+                      ],
+                    ],
                   ),
                 ),
                 Checkbox(
@@ -473,7 +590,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                 task.notes!,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontStyle: FontStyle.italic,
-                      color: Theme.of(context).textTheme.bodySmall?.color,
+                      color: isRedundant
+                          ? Colors.grey[400]
+                          : Theme.of(context).textTheme.bodySmall?.color,
                     ),
               ),
             ],
