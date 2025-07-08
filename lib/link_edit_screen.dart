@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
+import 'package:meaning_to/utils/supabase_client.dart';
 
 /// Result of duplicate checking
 enum DuplicateCheckResult {
@@ -189,7 +191,7 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
         return;
       } else if (duplicateCheckResult ==
           DuplicateCheckResult.categoryDuplicate) {
-        // Second tier: Link exists in another task in the category
+        // Second tier: Link exists in another task across all tasks
         setState(() {
           _error = 'This link already exists in task "${_duplicateTaskName}"';
           _isLoading = false;
@@ -251,14 +253,12 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
     }
   }
 
-  /// Checks for duplicates in current task and category
+  /// Checks for duplicates in current task and across all tasks
   Future<DuplicateCheckResult> _checkForDuplicates(String htmlLink) async {
     print('LinkEditScreen: _checkForDuplicates called for: $htmlLink');
     print('LinkEditScreen: currentTask: ${widget.currentTask?.headline}');
     print(
         'LinkEditScreen: currentCategory: ${widget.currentCategory?.headline}');
-    print(
-        'LinkEditScreen: Task.currentTaskSet: ${Task.currentTaskSet?.length} tasks');
 
     // First check: current task duplicate
     if (widget.currentTask != null) {
@@ -269,56 +269,174 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
       }
     }
 
-    // Second check: category duplicate
-    if (widget.currentCategory != null) {
-      print('LinkEditScreen: Checking category tasks for duplicates...');
+    // Second check: check across all tasks in the database
+    print('LinkEditScreen: Checking all tasks for duplicates...');
+    final duplicateTask = await _checkForDuplicateAcrossAllTasks(htmlLink);
 
-      // Load task set if not available
-      List<Task>? taskSet = Task.currentTaskSet;
-      if (taskSet == null) {
-        print('LinkEditScreen: Task set not loaded, loading it now...');
-        final userId = AuthUtils.getCurrentUserId();
-        taskSet = await Task.loadTaskSet(widget.currentCategory!, userId);
-        print('LinkEditScreen: Loaded ${taskSet?.length} tasks');
-      }
-
-      if (taskSet != null) {
-        for (final task in taskSet) {
-          print(
-              'LinkEditScreen: Checking task: "${task.headline}" (ID: ${task.id})');
-          // Skip the current task if we're editing
-          if (widget.currentTask != null && task.id == widget.currentTask!.id) {
-            print('LinkEditScreen: Skipping current task');
-            continue;
-          }
-
-          print('LinkEditScreen: Checking if task has link: $htmlLink');
-          if (task.hasLink(htmlLink)) {
-            print(
-                'LinkEditScreen: Found duplicate in category task: ${task.headline}');
-            _duplicateTaskName = task.headline;
-            return DuplicateCheckResult.categoryDuplicate;
-          }
-        }
-      } else {
-        print('LinkEditScreen: Failed to load task set');
-      }
-    } else {
-      print('LinkEditScreen: No current category available');
+    if (duplicateTask != null) {
+      print(
+          'LinkEditScreen: Found duplicate in task: ${duplicateTask.headline}');
+      _duplicateTaskName = duplicateTask.headline;
+      return DuplicateCheckResult.categoryDuplicate;
     }
 
     print('LinkEditScreen: No duplicates found');
     return DuplicateCheckResult.noDuplicate;
   }
 
-  /// Shows confirmation dialog for category duplicates
+  /// Check for duplicate link across all tasks in the database
+  Future<Task?> _checkForDuplicateAcrossAllTasks(String htmlLink) async {
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+
+      // Extract URL from HTML link for comparison
+      final url = _extractUrlFromHtmlLink(htmlLink);
+      if (url == null) {
+        print('LinkEditScreen: Could not extract URL from HTML link');
+        return null;
+      }
+
+      print('LinkEditScreen: Checking for URL: $url across all tasks');
+
+      // Query all tasks that have links containing this URL
+      // Handle both PostgreSQL arrays and JSON array strings
+      final response = await supabase
+          .from('Tasks')
+          .select(
+              'id, headline, links, category_id, owner_id, created_at, finished, notes')
+          .eq('owner_id', userId)
+          .not('links', 'is', null);
+
+      print('LinkEditScreen: Raw response length: ${response.length}');
+
+      final tasks = <Task>[];
+      for (final json in response) {
+        try {
+          // Handle links parsing manually to avoid PostgreSQL array errors
+          final linksData = json['links'];
+          List<String> parsedLinks = [];
+
+          if (linksData is List) {
+            // PostgreSQL array format
+            parsedLinks = linksData
+                .where((item) => item != null)
+                .map((item) => item.toString())
+                .toList();
+          } else if (linksData is String) {
+            // JSON array string format
+            if (linksData.trim() == '[]' ||
+                linksData.trim() == '{}' ||
+                linksData.trim().isEmpty) {
+              continue; // Skip empty arrays
+            }
+            try {
+              final decoded = jsonDecode(linksData) as List;
+              parsedLinks = decoded
+                  .where((item) => item != null)
+                  .map((item) => item.toString())
+                  .toList();
+            } catch (e) {
+              print('LinkEditScreen: Error parsing JSON string: $e');
+              continue; // Skip this task if parsing fails
+            }
+          }
+
+          if (parsedLinks.isEmpty) continue;
+
+          // Create a modified task JSON with parsed links and handle other null fields
+          final modifiedTaskJson = Map<String, dynamic>.from(json);
+          modifiedTaskJson['links'] = parsedLinks;
+
+          // Handle other potentially null fields that might cause parsing errors
+          if (modifiedTaskJson['notes'] == null) {
+            modifiedTaskJson['notes'] = '';
+          }
+          if (modifiedTaskJson['processed_links'] == null) {
+            modifiedTaskJson['processed_links'] = [];
+          }
+
+          // Add missing required fields if they're not present
+          if (modifiedTaskJson['owner_id'] == null) {
+            modifiedTaskJson['owner_id'] = AuthUtils.getCurrentUserId();
+          }
+          if (modifiedTaskJson['created_at'] == null) {
+            modifiedTaskJson['created_at'] = DateTime.now().toIso8601String();
+          }
+          if (modifiedTaskJson['finished'] == null) {
+            modifiedTaskJson['finished'] = false;
+          }
+
+          try {
+            final task = Task.fromJson(modifiedTaskJson);
+            tasks.add(task);
+          } catch (e) {
+            print('LinkEditScreen: Error creating Task object: $e');
+            print('LinkEditScreen: Modified task JSON: $modifiedTaskJson');
+            continue; // Skip this task if Task.fromJson fails
+          }
+        } catch (e) {
+          print('LinkEditScreen: Error parsing task: $e');
+          print('LinkEditScreen: Task JSON: $json');
+          // Continue with other tasks
+        }
+      }
+
+      print('LinkEditScreen: Checking ${tasks.length} tasks with valid links');
+
+      for (final task in tasks) {
+        // Skip the current task if we're editing
+        if (widget.currentTask != null && task.id == widget.currentTask!.id) {
+          print('LinkEditScreen: Skipping current task ${task.id}');
+          continue;
+        }
+
+        print(
+            'LinkEditScreen: Checking task "${task.headline}" with ${task.links!.length} links');
+
+        for (final existingLink in task.links!) {
+          final existingUrl = _extractUrlFromHtmlLink(existingLink);
+          print('LinkEditScreen: Comparing $url with $existingUrl');
+          if (existingUrl != null && existingUrl == url) {
+            print(
+                'LinkEditScreen: Found duplicate URL in task "${task.headline}" (ID: ${task.id})');
+            return task;
+          }
+        }
+      }
+
+      print('LinkEditScreen: No duplicate links found across all tasks');
+      return null;
+    } catch (e) {
+      print(
+          'LinkEditScreen: Error checking for duplicates across all tasks: $e');
+      return null;
+    }
+  }
+
+  /// Helper method to extract URL from HTML link string
+  String? _extractUrlFromHtmlLink(String htmlLink) {
+    if (htmlLink.startsWith('<a href="') && htmlLink.contains('">')) {
+      final startIndex = htmlLink.indexOf('href="') + 6;
+      final endIndex = htmlLink.indexOf('">', startIndex);
+      if (endIndex > startIndex) {
+        return htmlLink.substring(startIndex, endIndex);
+      }
+    }
+    // If it's not an HTML link, return as is (might be a plain URL)
+    if (htmlLink.startsWith('http')) {
+      return htmlLink;
+    }
+    return null;
+  }
+
+  /// Shows confirmation dialog for duplicate links
   Future<bool> _showDuplicateConfirmationDialog() async {
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Duplicate Link Found'),
-            content: const Text(
-                'This link already exists in another task in this category. '
+            content: Text(
+                'This link already exists in task "${_duplicateTaskName}". '
                 'Do you want to add it anyway?'),
             actions: [
               TextButton(

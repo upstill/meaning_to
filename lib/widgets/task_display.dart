@@ -278,7 +278,9 @@ class _TaskDisplayState extends State<TaskDisplay> {
                   ],
                 ),
                 // Show suggestible time for deferred tasks
-                if (widget.task.isDeferred) ...[
+                if (widget.task.isDeferred &&
+                    widget.task.suggestibleAt != null &&
+                    widget.task.suggestibleAt!.isAfter(DateTime.now())) ...[
                   const SizedBox(height: 4),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -394,13 +396,18 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
   /// Format a suggestible time for display
   static String _formatSuggestibleTime(DateTime date) {
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc(); // Use UTC for consistent comparison
     final difference = date.difference(now);
+
+    // If the time has already passed, show "now"
+    if (difference.isNegative) {
+      return 'now';
+    }
 
     if (difference.inDays == 0) {
       if (difference.inHours == 0) {
-        if (difference.inMinutes == 0) {
-          return 'just now';
+        if (difference.inMinutes < 2) {
+          return '${difference.inSeconds}s';
         }
         return '${difference.inMinutes}m';
       }
