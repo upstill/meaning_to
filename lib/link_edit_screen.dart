@@ -191,9 +191,10 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
         return;
       } else if (duplicateCheckResult ==
           DuplicateCheckResult.categoryDuplicate) {
-        // Second tier: Link exists in another task across all tasks
+        // Second tier: Link exists in another task in the current category
         setState(() {
-          _error = 'This link already exists in task "${_duplicateTaskName}"';
+          _error =
+              'This link already exists in task "${_duplicateTaskName}" in this category';
           _isLoading = false;
         });
         return;
@@ -269,9 +270,10 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
       }
     }
 
-    // Second check: check across all tasks in the database
-    print('LinkEditScreen: Checking all tasks for duplicates...');
-    final duplicateTask = await _checkForDuplicateAcrossAllTasks(htmlLink);
+    // Second check: check across tasks in the current category
+    print(
+        'LinkEditScreen: Checking tasks in current category for duplicates...');
+    final duplicateTask = await _checkForDuplicateInCurrentCategory(htmlLink);
 
     if (duplicateTask != null) {
       print(
@@ -284,10 +286,11 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
     return DuplicateCheckResult.noDuplicate;
   }
 
-  /// Check for duplicate link across all tasks in the database
-  Future<Task?> _checkForDuplicateAcrossAllTasks(String htmlLink) async {
+  /// Check for duplicate link across tasks in the current category
+  Future<Task?> _checkForDuplicateInCurrentCategory(String htmlLink) async {
     try {
       final userId = AuthUtils.getCurrentUserId();
+      final categoryId = widget.currentCategory?.id;
 
       // Extract URL from HTML link for comparison
       final url = _extractUrlFromHtmlLink(htmlLink);
@@ -296,15 +299,22 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
         return null;
       }
 
-      print('LinkEditScreen: Checking for URL: $url across all tasks');
+      if (categoryId == null) {
+        print('LinkEditScreen: No current category, skipping duplicate check');
+        return null;
+      }
 
-      // Query all tasks that have links containing this URL
+      print(
+          'LinkEditScreen: Checking for URL: $url across tasks in category $categoryId');
+
+      // Query tasks in the current category that have links containing this URL
       // Handle both PostgreSQL arrays and JSON array strings
       final response = await supabase
           .from('Tasks')
           .select(
               'id, headline, links, category_id, owner_id, created_at, finished, notes')
           .eq('owner_id', userId)
+          .eq('category_id', categoryId)
           .not('links', 'is', null);
 
       print('LinkEditScreen: Raw response length: ${response.length}');
@@ -436,7 +446,7 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
           builder: (context) => AlertDialog(
             title: const Text('Duplicate Link Found'),
             content: Text(
-                'This link already exists in task "${_duplicateTaskName}". '
+                'This link already exists in task "${_duplicateTaskName}" in this category. '
                 'Do you want to add it anyway?'),
             actions: [
               TextButton(
