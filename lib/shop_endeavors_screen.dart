@@ -172,9 +172,13 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           .select('*')
           .inFilter('category_id', item.categoryIds);
 
-      final List<Task> tasks = (response as List)
+      // Filter to only show original tasks (where id equals original_id)
+      final List<Task> allTasks = (response as List)
           .map((json) => Task.fromJson(json as Map<String, dynamic>))
           .toList();
+
+      final List<Task> tasks =
+          allTasks.where((task) => task.id == task.originalId).toList();
 
       setState(() {
         _shopItems[index].tasks = tasks;

@@ -35,14 +35,36 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   String? _error;
   List<String> _links = [];
 
+  // Local copy of the task for editing
+  Task? _localTask;
+
   @override
   void initState() {
     super.initState();
-    _headlineController = TextEditingController(text: widget.task?.headline);
-    _notesController = TextEditingController(text: widget.task?.notes);
-    _links = widget.task?.links != null
-        ? List<String>.from(widget.task!.links!)
-        : [];
+
+    // Create a local copy of the task for editing
+    if (widget.task != null) {
+      _localTask = Task(
+        id: widget.task!.id,
+        categoryId: widget.task!.categoryId,
+        ownerId: widget.task!.ownerId,
+        headline: widget.task!.headline,
+        notes: widget.task!.notes,
+        links: widget.task!.links != null
+            ? List<String>.from(widget.task!.links!)
+            : null,
+        processedLinks: widget.task!.processedLinks,
+        createdAt: widget.task!.createdAt,
+        suggestibleAt: widget.task!.suggestibleAt,
+        finished: widget.task!.finished,
+      );
+    }
+
+    _headlineController =
+        TextEditingController(text: _localTask?.headline ?? '');
+    _notesController = TextEditingController(text: _localTask?.notes ?? '');
+    _links =
+        _localTask?.links != null ? List<String>.from(_localTask!.links!) : [];
 
     // Add listener to track headline changes for button state
     _headlineController.addListener(() {
@@ -110,19 +132,19 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
   /// Get the current task state with all unsaved changes
   Task? get _currentTaskState {
-    if (widget.task == null) return null;
+    if (_localTask == null) return null;
 
     return Task(
-      id: widget.task!.id,
-      categoryId: widget.task!.categoryId,
-      ownerId: widget.task!.ownerId,
+      id: _localTask!.id,
+      categoryId: _localTask!.categoryId,
+      ownerId: _localTask!.ownerId,
       headline: _headlineController.text,
       notes: _notesController.text.isEmpty ? null : _notesController.text,
-      links: _links.isEmpty ? null : _links,
-      processedLinks: widget.task!.processedLinks,
-      createdAt: widget.task!.createdAt,
-      suggestibleAt: widget.task!.suggestibleAt,
-      finished: widget.task!.finished,
+      links: _links, // Always store as array, even if empty
+      processedLinks: _localTask!.processedLinks,
+      createdAt: _localTask!.createdAt,
+      suggestibleAt: _localTask!.suggestibleAt,
+      finished: _localTask!.finished,
     );
   }
 
@@ -284,16 +306,16 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     print('TaskEditScreen: New task links: ${newTaskData['links']}');
 
     // First, check if the current task (if editing) already has the same link
-    if (widget.task != null &&
+    if (_localTask != null &&
         newTaskData['links'] != null &&
         (newTaskData['links'] as List).isNotEmpty) {
       print('TaskEditScreen: Checking current task for duplicate links...');
-      print('TaskEditScreen: Current task links: ${widget.task!.links}');
+      print('TaskEditScreen: Current task links: ${_localTask!.links}');
 
-      if (widget.task!.links != null && widget.task!.links!.isNotEmpty) {
+      if (_localTask!.links != null && _localTask!.links!.isNotEmpty) {
         for (final newLink in newTaskData['links'] as List) {
           print('TaskEditScreen: Checking new link: $newLink');
-          for (final existingLink in widget.task!.links!) {
+          for (final existingLink in _localTask!.links!) {
             print('TaskEditScreen: Against current task link: $existingLink');
             // Extract URLs from HTML links for comparison
             final newUrl = _extractUrlFromHtmlLink(newLink);
@@ -309,8 +331,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               print('TaskEditScreen: Existing link: $existingUrl');
               print(
                   'TaskEditScreen: === DUPLICATE DETECTION END - DUPLICATE IN CURRENT TASK ===');
-              return widget
-                  .task; // Return current task since it already has this link
+              return _localTask; // Return current task since it already has this link
             }
           }
         }
@@ -481,18 +502,19 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         'notes': _notesController.text.isEmpty ? null : _notesController.text,
         'category_id': widget.category.id,
         'owner_id': userId,
-        'finished': widget.task?.finished ?? false,
-        'links': _links.isEmpty ? null : _links, // PostgreSQL array
+        'finished': _localTask?.finished ?? false,
+        'links':
+            _links, // PostgreSQL array - always store as array, even if empty
       };
 
       // For new tasks, set suggestible_at to null to appear at the top
-      if (widget.task == null) {
+      if (_localTask == null) {
         data['suggestible_at'] = null;
         print('TaskEditScreen: Setting suggestible_at to null for new task');
       }
 
       Task? updatedTask;
-      if (widget.task == null) {
+      if (_localTask == null) {
         // Check for duplicates before creating new task
         print(
             'TaskEditScreen: Checking for duplicates before creating new task...');
@@ -518,7 +540,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         final response = await supabase
             .from('Tasks')
             .update(data)
-            .eq('id', widget.task!.id)
+            .eq('id', _localTask!.id)
             .eq('owner_id', userId)
             .select()
             .single();
@@ -527,17 +549,12 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         print('TaskEditScreen: Updated task: ${updatedTask.headline}');
       }
 
-      // Update the task cache
+      // Update the task cache using CacheManager only when saving
       print('TaskEditScreen: Updating task cache...');
-      if (Task.currentCategory?.id == widget.category.id) {
-        print('TaskEditScreen: Reloading task set for current category...');
-        await Task.loadTaskSet(widget.category, userId);
-
-        // If this was the current task, update it in the cache
-        if (widget.task != null && Task.currentTask?.id == widget.task!.id) {
-          print('TaskEditScreen: Updating current task in cache...');
-          Task.updateCurrentTask(updatedTask);
-        }
+      final cacheManager = CacheManager();
+      if (cacheManager.currentCategory?.id == widget.category.id) {
+        print('TaskEditScreen: Updating task in cache...');
+        await cacheManager.updateTask(updatedTask);
       }
 
       print(
@@ -570,7 +587,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   }
 
   Future<void> _deleteTask() async {
-    if (widget.task == null) return;
+    if (_localTask == null) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -604,10 +621,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       await supabase
           .from('Tasks')
           .delete()
-          .eq('id', widget.task!.id)
+          .eq('id', _localTask!.id)
           .eq('owner_id', userId);
 
-      print('Deleted task: ${widget.task!.headline}');
+      print('Deleted task: ${_localTask!.headline}');
 
       // Update the task cache
       if (Task.currentCategory?.id == widget.category.id) {
@@ -628,30 +645,20 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
   void _handleBack() {
     print('TaskEditScreen: Back button pressed');
-    print('TaskEditScreen: Current task: ${widget.task?.headline}');
+    print('TaskEditScreen: Current task: ${_localTask?.headline}');
     print(
       'TaskEditScreen: Static callback available: ${TaskEditScreen.onEditComplete != null}',
     );
 
-    // Call the static callback before popping
-    if (TaskEditScreen.onEditComplete != null) {
-      print('TaskEditScreen: Calling static callback');
-      try {
-        TaskEditScreen.onEditComplete!();
-        print('TaskEditScreen: Static callback executed successfully');
-      } catch (e) {
-        print('TaskEditScreen: Error executing static callback: $e');
-      }
-    } else {
-      print('TaskEditScreen: No static callback available');
-    }
+    // Don't call the callback when going back without saving
+    print('TaskEditScreen: Going back without saving, not calling callback');
 
-    // Pop after executing the callback
+    // Pop without calling the callback since changes weren't saved
     if (mounted) {
       Navigator.of(
         context,
-      ).pop(true); // Always return true to indicate completion
-      print('TaskEditScreen: Popped screen with true result');
+      ).pop(false); // Return false to indicate no changes were saved
+      print('TaskEditScreen: Popped screen with false result');
     } else {
       print('TaskEditScreen: Widget not mounted, cannot pop');
     }
@@ -737,7 +744,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              if (widget.task != null)
+              if (_localTask != null)
                 Text(
                   'Edit Task for ${widget.category.headline}',
                   style: const TextStyle(
@@ -749,7 +756,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           ),
           actions: [
             // Only show delete button for authenticated users
-            if (widget.task != null && !AuthUtils.isGuestUser())
+            if (_localTask != null && !AuthUtils.isGuestUser())
               IconButton(
                 icon: const Icon(Icons.delete),
                 onPressed: _isLoading ? null : _deleteTask,
@@ -809,7 +816,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Text(
-                        widget.task == null ? 'Create Task' : 'Save Changes',
+                        _localTask == null ? 'Create Task' : 'Save Changes',
                       ),
               ),
               const SizedBox(height: 24),
@@ -820,7 +827,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Text(
-                      '** If you like, you can bulk-add a list of tasks: **',
+                      '** If you like, you can add a whole list of tasks at once **',
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey[600],

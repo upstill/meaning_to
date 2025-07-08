@@ -48,7 +48,16 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   StreamSubscription<void>? _cacheSubscription;
 
   // Pure UI getter for tasks from the cache
-  List<Task> get _tasks => CacheManager().currentTasks ?? [];
+  List<Task> get _tasks {
+    final tasks = CacheManager().currentTasks ?? [];
+    print(
+        'EditCategoryScreen: Getting tasks from cache - ${tasks.length} tasks');
+    for (final task in tasks) {
+      print(
+          'EditCategoryScreen: Task "${task.headline}" - isDeferred: ${task.isDeferred}, suggestibleAt: ${task.suggestibleAt}');
+    }
+    return tasks;
+  }
 
   @override
   void initState() {

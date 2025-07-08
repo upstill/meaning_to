@@ -74,9 +74,8 @@ class Task {
       if (linksData is String) {
         print('Task.fromJson: linksData is String: "$linksData"');
         // Handle empty PostgreSQL array string representation
-        if (linksData.trim() == '{}') {
-          print(
-              'Task.fromJson: Empty PostgreSQL array detected, returning empty list');
+        if (linksData.trim() == '{}' || linksData.trim() == '[]') {
+          print('Task.fromJson: Empty array detected, returning empty list');
           return [];
         }
         try {
@@ -89,7 +88,12 @@ class Task {
           final decoded = jsonDecode(linksData) as List;
           print(
               'Task.fromJson: Parsed JSON string to List with ${decoded.length} items');
-          return List<String>.from(decoded);
+          // Filter out null values and convert to strings
+          final validLinks = decoded
+              .where((item) => item != null)
+              .map((item) => item.toString())
+              .toList();
+          return validLinks;
         } catch (e) {
           print('Error parsing links: $e');
           // If parsing fails, return the string as a single link
@@ -131,10 +135,12 @@ class Task {
     final task = Task(
       id: json['id'] as int,
       categoryId: json['category_id'] as int,
-      headline: json['headline'] as String,
-      notes: json['notes'] as String?,
-      ownerId: json['owner_id'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      headline: json['headline'] as String? ?? 'Untitled Task',
+      notes: json['notes'] as String? ?? '',
+      ownerId: json['owner_id'] as String? ?? '',
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : DateTime.now(),
       suggestibleAt: suggestibleAt,
       triggersAt: json['triggers_at'] != null
           ? DateTime.parse(json['triggers_at'] as String)
@@ -142,7 +148,7 @@ class Task {
       deferral: json['deferral'] as int?,
       links: links,
       processedLinks: null, // Will be processed when needed
-      finished: json['finished'] as bool,
+      finished: json['finished'] as bool? ?? false,
       originalId: json['original_id'] as int?,
     );
 
@@ -519,8 +525,8 @@ class Task {
   }
 
   // Utility: Convert a List<String> of URLs to a PostgreSQL array for storage
-  static List<String>? linksToArray(List<String>? links) {
-    if (links == null || links.isEmpty) return null;
+  static List<String> linksToArray(List<String>? links) {
+    if (links == null || links.isEmpty) return [];
     return links; // PostgreSQL array - no JSON encoding needed
   }
 
