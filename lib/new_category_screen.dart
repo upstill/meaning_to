@@ -108,8 +108,13 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
           ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
-            onPressed: () {
-              Navigator.pushNamed(context, '/shop-endeavors');
+            onPressed: () async {
+              final result =
+                  await Navigator.pushNamed(context, '/shop-endeavors');
+              // If categories were imported, pass the result back to the calling screen
+              if (result == true && mounted) {
+                Navigator.pop(context, true);
+              }
             },
             icon: const Icon(Icons.shopping_cart),
             label: const Text(

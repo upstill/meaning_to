@@ -29,11 +29,17 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
   bool _hasShownPrompt = false; // Track if we've shown the prompt
   final Map<String, bool> _redundantTaskCache =
       {}; // Cache for redundant task checks
+  final Set<int> _userTaskOriginalIds =
+      {}; // Store user's task original_ids for redundancy checking
 
   @override
   void initState() {
     super.initState();
     _loadPublicCategories();
+    // If we're in Shop Endeavors mode (not "Get Suggestions to..." mode), load user tasks for redundancy checking
+    if (widget.existingCategory == null) {
+      _loadUserTasksForRedundancyCheck();
+    }
   }
 
   Future<void> _loadPublicCategories() async {
@@ -125,10 +131,18 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
   Future<void> _toggleSelection(int index) async {
     final wasSelected = _shopItems[index].isSelected;
+    final willBeSelected = !wasSelected;
 
     setState(() {
-      _shopItems[index].isSelected = !wasSelected;
+      _shopItems[index].isSelected = willBeSelected;
     });
+
+    // Update task selections based on category selection
+    if (_shopItems[index].tasks.isNotEmpty) {
+      for (final task in _shopItems[index].tasks) {
+        _taskImportSelections[task.id.toString()] = willBeSelected;
+      }
+    }
 
     // If category is being selected and not already expanded, expand it
     if (!wasSelected && !_shopItems[index].isExpanded) {
@@ -177,14 +191,21 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           .map((json) => Task.fromJson(json as Map<String, dynamic>))
           .toList();
 
-      final List<Task> tasks =
+      final List<Task> allOriginalTasks =
           allTasks.where((task) => task.id == task.originalId).toList();
+
+      // Filter out redundant tasks (only in Shop Endeavors mode, not "Get Suggestions to..." mode)
+      final List<Task> tasks = widget.existingCategory == null
+          ? allOriginalTasks.where((task) => !_isTaskRedundant(task)).toList()
+          : allOriginalTasks;
 
       setState(() {
         _shopItems[index].tasks = tasks;
         // Initialize import selections for new tasks
+        // If the category is selected, select all tasks by default
+        final shouldSelectAll = _shopItems[index].isSelected;
         for (final task in tasks) {
-          _taskImportSelections[task.id.toString()] = false;
+          _taskImportSelections[task.id.toString()] = shouldSelectAll;
         }
         // Clear redundant task cache when tasks are reloaded
         _redundantTaskCache.clear();
@@ -203,30 +224,65 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     });
   }
 
-  /// Check if a task is redundant (has same original_id as existing task in category)
+  /// Check if a task is redundant (has same original_id as existing task)
   bool _isTaskRedundant(Task task) {
-    if (widget.existingCategory == null) return false;
+    if (task.originalId == null) return false;
 
-    final cacheKey = '${task.originalId}_${widget.existingCategory!.id}';
+    final cacheKey =
+        '${task.originalId}_${widget.existingCategory?.id ?? 'all'}';
 
     // Check cache first
     if (_redundantTaskCache.containsKey(cacheKey)) {
       return _redundantTaskCache[cacheKey]!;
     }
 
-    // Check against current cache
-    final cacheManager = CacheManager();
-    final existingTasks = cacheManager.currentTasks ?? [];
+    bool isRedundant = false;
 
-    final isRedundant = existingTasks.any((existingTask) =>
-        existingTask.originalId != null &&
-        task.originalId != null &&
-        existingTask.originalId == task.originalId);
+    if (widget.existingCategory != null) {
+      // "Get Suggestions to..." mode - check only within current category
+      final cacheManager = CacheManager();
+      final existingTasks = cacheManager.currentTasks ?? [];
+
+      isRedundant = existingTasks.any((existingTask) =>
+          existingTask.originalId != null &&
+          existingTask.originalId == task.originalId);
+    } else {
+      // "Shop Endeavors" mode - check against pre-loaded user tasks
+      // This should have been populated by _loadUserTasksForRedundancyCheck
+      isRedundant = _userTaskOriginalIds.contains(task.originalId);
+    }
 
     // Cache the result
     _redundantTaskCache[cacheKey] = isRedundant;
 
     return isRedundant;
+  }
+
+  /// Load user's task original_ids for redundancy checking in Shop Endeavors mode
+  Future<void> _loadUserTasksForRedundancyCheck() async {
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+
+      // Query all tasks owned by the current user and get their original_ids
+      final response = await supabase
+          .from('Tasks')
+          .select('original_id')
+          .eq('owner_id', userId)
+          .not('original_id', 'is', null);
+
+      final originalIds =
+          (response as List).map((json) => json['original_id'] as int).toSet();
+
+      setState(() {
+        _userTaskOriginalIds.clear();
+        _userTaskOriginalIds.addAll(originalIds);
+      });
+
+      print(
+          'Loaded ${_userTaskOriginalIds.length} user task original_ids for redundancy checking');
+    } catch (e) {
+      print('Error loading user tasks for redundancy check: $e');
+    }
   }
 
   Future<void> _addSelectedTasksToCategory() async {
@@ -508,8 +564,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           ),
         );
 
-        // Navigate back to home screen
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        // Navigate back to home screen with result indicating categories were imported
+        Navigator.of(context).pop(true);
       }
     } catch (e) {
       print('Error importing categories: $e');
@@ -534,13 +590,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     final hasLinks = task.links != null &&
         task.links!.isNotEmpty &&
         task.links!.first.contains('href="');
-    final isRedundant = _isTaskRedundant(task);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      color: isRedundant
-          ? Colors.grey[50]
-          : null, // Lighter gray background for redundant tasks
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -551,32 +603,12 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        task.headline,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: isRedundant
-                                      ? Colors.grey[500]
-                                      : null, // Lighter gray text for redundant tasks
-                                ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (isRedundant) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          'Already exists in this category',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[400],
-                            fontStyle: FontStyle.italic,
-                          ),
+                  child: Text(
+                    task.headline,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
-                    ],
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 Checkbox(
@@ -594,9 +626,6 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                 task.notes!,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontStyle: FontStyle.italic,
-                      color: isRedundant
-                          ? Colors.grey[400]
-                          : Theme.of(context).textTheme.bodySmall?.color,
                     ),
               ),
             ],
@@ -628,17 +657,6 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          if (_shopItems.isNotEmpty)
-            TextButton(
-              onPressed: widget.existingCategory != null
-                  ? _addSelectedTasksToCategory
-                  : _importSelectedCategories,
-              child: Text(widget.existingCategory != null
-                  ? 'Add Tasks'
-                  : 'Import Selected'),
-            ),
-        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -804,6 +822,35 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                         );
                       },
                     ),
+      floatingActionButton: _shopItems.isNotEmpty
+          ? SizedBox(
+              height: 40, // Reduced from default 56 to 44 (12 points shorter)
+              child: FloatingActionButton.extended(
+                onPressed: _isLoading
+                    ? null
+                    : (widget.existingCategory != null
+                        ? _addSelectedTasksToCategory
+                        : _importSelectedCategories),
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                icon: Icon(
+                  widget.existingCategory != null
+                      ? Icons.add_task
+                      : Icons.download,
+                  size: 24,
+                ),
+                label: Text(
+                  widget.existingCategory != null
+                      ? 'Add Selected Tasks'
+                      : 'Import Selected',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            )
+          : null,
     );
   }
 }
