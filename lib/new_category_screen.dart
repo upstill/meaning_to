@@ -80,7 +80,8 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Create New ${NamingUtils.categoriesName()}'),
+        title:
+            Text('Define a New ${NamingUtils.categoriesName(plural: false)}'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),

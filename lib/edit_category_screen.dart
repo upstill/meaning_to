@@ -45,6 +45,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   bool _isEditing = false;
   bool _categorySaved = false; // Track if category has been saved
   bool _isPrivate = false; // Private flag for categories
+  bool _tasksArePrivate = true; // Tasks are private flag for categories
   Category?
       _currentCategory; // Track the current category (for new categories after creation)
   StreamSubscription<void>? _cacheSubscription;
@@ -70,6 +71,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     _headlineController.text = widget.category?.headline ?? '';
     _invitationController.text = widget.category?.invitation ?? '';
     _isPrivate = widget.category?.isPrivate ?? false;
+    _tasksArePrivate = widget.category?.tasksArePrivate ?? true;
     _editTasksLocal = widget.tasksOnly;
 
     // Set category as saved if it already exists
@@ -644,6 +646,82 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     return '$availableText $taskText (${parts.join(', ')})';
   }
 
+  // Save category changes to database
+  Future<void> _saveCategory() async {
+    if (widget.category == null) {
+      print('EditCategoryScreen: Cannot save - no category provided');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+      final categoryId = widget.category!.id;
+
+      print(
+          'EditCategoryScreen: Saving category ${widget.category!.headline} (ID: $categoryId)');
+
+      final data = {
+        'headline': _headlineController.text,
+        'invitation': _invitationController.text.isEmpty
+            ? null
+            : _invitationController.text,
+        'private': _isPrivate,
+        'tasks_are_private': _tasksArePrivate,
+      };
+
+      // Update the category in the database
+      final response = await supabase
+          .from('Categories')
+          .update(data)
+          .eq('id', categoryId)
+          .select()
+          .single();
+
+      final updatedCategory = Category.fromJson(response);
+      print(
+          'EditCategoryScreen: Category saved successfully: ${updatedCategory.headline}');
+
+      // Update the widget's category with the new data
+      widget.category!.headline = updatedCategory.headline;
+      widget.category!.invitation = updatedCategory.invitation;
+      widget.category!.isPrivate = updatedCategory.isPrivate;
+      widget.category!.tasksArePrivate = updatedCategory.tasksArePrivate;
+
+      setState(() {
+        _isEditing = false;
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${NamingUtils.categoriesName()} saved successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('EditCategoryScreen: Error saving category: $e');
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Error saving ${NamingUtils.categoriesName(capitalize: false, plural: false)}: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   // Delete category and all its tasks from database
   Future<void> _deleteCategory() async {
     if (widget.category == null) {
@@ -746,24 +824,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
           ),
           title: Text(
             widget.category == null
-                ? 'New ${NamingUtils.categoriesName()}'
-                : 'Edit ${NamingUtils.categoriesName()}',
+                ? 'New ${NamingUtils.categoriesName(plural: false)}'
+                : 'Edit ${NamingUtils.categoriesName(plural: false)}',
           ),
           actions: [
-            if (widget.category != null && !_editTasksLocal && _isEditing)
-              IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () {
-                  // Reset controllers to current values
-                  _headlineController.text = widget.category!.headline;
-                  _invitationController.text =
-                      widget.category!.invitation ?? '';
-                  setState(() {
-                    _isEditing = false;
-                  });
-                },
-                tooltip: 'Cancel edit',
-              ),
             // Refresh button for existing categories
             if (widget.category != null && !_editTasksLocal)
               IconButton(
@@ -860,34 +924,178 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                 const SizedBox(height: 16),
               ] else ...[
                 // Category form section
-                // This section is now purely for display and cannot save/edit
-                // The actual editing logic is handled by the main app's category list
-                // or a separate edit screen if needed.
-                // For now, we just display the current category's details.
                 if (widget.category != null) ...[
-                  Text(
-                    'Current ${NamingUtils.categoriesName()}:',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.category!.headline,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (widget.category!.invitation != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      widget.category!.invitation!,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontStyle: FontStyle.italic,
+                  if (_isEditing) ...[
+                    // Editable form when editing
+                    TextFormField(
+                      controller: _headlineController,
+                      decoration: InputDecoration(
+                        labelText: '${NamingUtils.categoriesName()} Name',
+                        border: const OutlineInputBorder(),
                       ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please enter a ${NamingUtils.categoriesName(capitalize: false, plural: false)} name';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _invitationController,
+                      decoration: InputDecoration(
+                        labelText: 'Invitation (optional)',
+                        border: const OutlineInputBorder(),
+                        hintText: 'Add a description or invitation...',
+                      ),
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 16),
+                    CheckboxListTile(
+                      title: const Text('Private'),
+                      subtitle: Text(
+                          'I want to keep this ${NamingUtils.categoriesName(capitalize: false, plural: false)} to myself'),
+                      value: _isPrivate,
+                      onChanged: (value) {
+                        setState(() {
+                          _isPrivate = value ?? false;
+                        });
+                      },
+                      controlAffinity: ListTileControlAffinity.leading,
+                    ),
+                    if (!_isPrivate) ...[
+                      const SizedBox(height: 8),
+                      CheckboxListTile(
+                        title: Text(
+                            '${NamingUtils.tasksName(plural: true)} are private'),
+                        subtitle: Text(
+                            'Share only the ${NamingUtils.categoriesName(capitalize: false, plural: false)}, not the ${NamingUtils.tasksName(plural: true)}'),
+                        value: _tasksArePrivate,
+                        onChanged: (value) {
+                          setState(() {
+                            _tasksArePrivate = value ?? true;
+                          });
+                        },
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              // Reset controllers to current values
+                              _headlineController.text =
+                                  widget.category!.headline;
+                              _invitationController.text =
+                                  widget.category!.invitation ?? '';
+                              setState(() {
+                                _isEditing = false;
+                              });
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.grey[300],
+                              foregroundColor: Colors.black,
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _saveCategory,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.white),
+                                    ),
+                                  )
+                                : const Text('Save'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    // Display mode when not editing
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.category!.headline,
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              if (widget.category!.invitation != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  widget.category!.invitation!,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                              if (widget.category!.isPrivate) ...[
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Icon(Icons.lock,
+                                        size: 16, color: Colors.grey[600]),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Private ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ] else if (widget.category!.tasksArePrivate) ...[
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Icon(Icons.lock,
+                                        size: 16, color: Colors.grey[600]),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${NamingUtils.tasksName(plural: true)} are private',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit),
+                          onPressed: () {
+                            setState(() {
+                              _isEditing = true;
+                            });
+                          },
+                          tooltip:
+                              'Edit ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+                        ),
+                      ],
                     ),
                   ],
                   const SizedBox(height: 16),
