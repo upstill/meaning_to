@@ -1,6 +1,7 @@
 class NamingUtils {
   /// Get the name for categories with configurable case and pluralization
-  static String categoriesName({bool capitalize = true, bool plural = true}) {
+  static String categoriesName(
+      {bool capitalize = true, bool plural = true, bool withArticle = false}) {
     String base = 'pursuit';
 
     if (plural) {
@@ -8,14 +9,28 @@ class NamingUtils {
     }
 
     if (capitalize) {
-      return base[0].toUpperCase() + base.substring(1);
+      base = base[0].toUpperCase() + base.substring(1);
+    }
+
+    if (withArticle) {
+      final firstLetter = base[0];
+      if (firstLetter == 'a' ||
+          firstLetter == 'e' ||
+          firstLetter == 'i' ||
+          firstLetter == 'o' ||
+          firstLetter == 'u') {
+        return 'an $base';
+      } else {
+        return 'a $base';
+      }
     }
 
     return base;
   }
 
   /// Get the name for tasks with configurable case and pluralization
-  static String tasksName({bool capitalize = true, bool plural = true}) {
+  static String tasksName(
+      {bool capitalize = true, bool plural = true, bool withArticle = false}) {
     String base = 'idea';
 
     if (plural) {
@@ -23,7 +38,20 @@ class NamingUtils {
     }
 
     if (capitalize) {
-      return base[0].toUpperCase() + base.substring(1);
+      base = base[0].toUpperCase() + base.substring(1);
+    }
+
+    if (withArticle) {
+      final firstLetter = base[0];
+      if (firstLetter == 'a' ||
+          firstLetter == 'e' ||
+          firstLetter == 'i' ||
+          firstLetter == 'o' ||
+          firstLetter == 'u') {
+        return 'an $base';
+      } else {
+        return 'a $base';
+      }
     }
 
     return base;

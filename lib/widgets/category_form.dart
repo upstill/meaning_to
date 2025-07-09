@@ -96,36 +96,13 @@ class CategoryFormState extends State<CategoryForm> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Header with title and edit button
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    widget.category == null
-                        ? 'Create New ${NamingUtils.categoriesName()}'
-                        : widget.category!.headline,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (widget.category != null &&
-                      !widget.isEditing &&
-                      widget.onEdit != null)
-                    IconButton(
-                      onPressed: widget.onEdit,
-                      icon: const Icon(Icons.edit),
-                      tooltip: 'Edit',
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
 
               // Form fields
               if (widget.isEditing || widget.category == null) ...[
                 TextFormField(
                   controller: _headlineController,
                   decoration: InputDecoration(
-                    labelText: '${NamingUtils.categoriesName()} (required)',
+                    labelText: 'Name (required)',
                     hintText: 'What have you been meaning to do?',
                     border: const OutlineInputBorder(),
                   ),

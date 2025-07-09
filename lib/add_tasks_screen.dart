@@ -568,7 +568,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-            'Add ${NamingUtils.tasksName(plural: true)} to ${widget.category.headline}'),
+            'Add ${NamingUtils.tasksName()} to ${widget.category.headline}'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),

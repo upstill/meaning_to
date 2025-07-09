@@ -792,7 +792,7 @@ class HomeScreenState extends State<HomeScreen> {
                     decoration: InputDecoration(
                       border: const OutlineInputBorder(),
                       hintText:
-                          'Choose a ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+                          'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false, withArticle: true)}',
                     ),
                     items: _categories.map((category) {
                       return DropdownMenuItem(
@@ -1076,7 +1076,7 @@ class HomeScreenState extends State<HomeScreen> {
                                   onPressed: _navigateToEditTasks,
                                   icon: const Icon(Icons.edit),
                                   label: Text(
-                                      'Manage Choices/Edit ${NamingUtils.categoriesName()}'),
+                                      'Manage Choices/Edit ${NamingUtils.categoriesName(plural: false)}'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.grey[200],
                                     foregroundColor: Colors.black,
@@ -1164,7 +1164,7 @@ class HomeScreenState extends State<HomeScreen> {
           ? FloatingActionButton(
               onPressed: () => _navigateToNewCategory(),
               tooltip:
-                  'Create new ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+                  'Define a New ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
               child: const Icon(Icons.add),
             )
           : null,
