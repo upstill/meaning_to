@@ -13,7 +13,7 @@ class AuthScreen extends StatelessWidget {
     // Define the redirect URL based on platform
     final supabaseUrl = dotenv.env['SUPABASE_URL']!;
     // Use the app's custom URL scheme for deep linking on mobile, http for web
-    final redirectUrl = foundation.kIsWeb
+    const redirectUrl = foundation.kIsWeb
         ? 'http://localhost:64085/auth/callback'
         : 'meaningto://auth/callback';
 

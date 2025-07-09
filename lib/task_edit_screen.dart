@@ -11,6 +11,7 @@ import 'package:meaning_to/utils/link_extractor.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
@@ -592,7 +593,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Task?'),
+        title: Text('Delete ${NamingUtils.tasksName()}?'),
         content: const Text('This action cannot be undone.'),
         actions: [
           TextButton(
@@ -746,7 +747,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               ),
               if (_localTask != null)
                 Text(
-                  'Edit Task for ${widget.category.headline}',
+                  'Edit ${NamingUtils.tasksName()} for ${widget.category.headline}',
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.normal,
@@ -760,7 +761,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               IconButton(
                 icon: const Icon(Icons.delete),
                 onPressed: _isLoading ? null : _deleteTask,
-                tooltip: 'Delete task',
+                tooltip:
+                    'Delete ${NamingUtils.tasksName(capitalize: false, plural: false)}',
               ),
           ],
         ),
@@ -771,14 +773,14 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             children: [
               TextFormField(
                 controller: _headlineController,
-                decoration: const InputDecoration(
-                  labelText: 'Task (required)',
+                decoration: InputDecoration(
+                  labelText: '${NamingUtils.tasksName()} (required)',
                   hintText: 'What have you been meaning to do?',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Please enter a task';
+                    return 'Please enter a ${NamingUtils.tasksName(capitalize: false, plural: false)}';
                   }
                   return null;
                 },
@@ -816,7 +818,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Text(
-                        _localTask == null ? 'Create Task' : 'Save Changes',
+                        _localTask == null
+                            ? 'Create ${NamingUtils.tasksName()}'
+                            : 'Save Changes',
                       ),
               ),
               const SizedBox(height: 24),
@@ -827,7 +831,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Text(
-                      '** If you like, you can add a whole list of tasks at once **',
+                      '** If you like, you can add a whole list of ${NamingUtils.tasksName(plural: true)} at once **',
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey[600],
@@ -859,7 +863,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         // will navigate to EditCategoryScreen on completion
                       },
                 icon: const Icon(Icons.add_task),
-                label: const Text('Add a List of Tasks'),
+                label: Text(
+                    'Add a List of ${NamingUtils.tasksName(plural: true)}'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.secondary,
                   foregroundColor: Colors.white,

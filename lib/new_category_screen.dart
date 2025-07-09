@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/widgets/category_form.dart';
@@ -79,7 +80,7 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create New Endeavor'),
+        title: Text('Create New ${NamingUtils.categoriesName()}'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),

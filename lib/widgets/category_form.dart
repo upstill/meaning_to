@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/utils/naming.dart';
 
 class CategoryForm extends StatefulWidget {
   final Category? category;
@@ -100,7 +101,7 @@ class CategoryFormState extends State<CategoryForm> {
                 children: [
                   Text(
                     widget.category == null
-                        ? 'Create New Endeavor'
+                        ? 'Create New ${NamingUtils.categoriesName()}'
                         : widget.category!.headline,
                     style: const TextStyle(
                       fontSize: 22,
@@ -123,14 +124,14 @@ class CategoryFormState extends State<CategoryForm> {
               if (widget.isEditing || widget.category == null) ...[
                 TextFormField(
                   controller: _headlineController,
-                  decoration: const InputDecoration(
-                    labelText: 'Endeavor (required)',
+                  decoration: InputDecoration(
+                    labelText: '${NamingUtils.categoriesName()} (required)',
                     hintText: 'What have you been meaning to do?',
-                    border: OutlineInputBorder(),
+                    border: const OutlineInputBorder(),
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'Please name your endeavor';
+                      return 'Please name your ${NamingUtils.categoriesName(capitalize: false, plural: false)}';
                     }
                     return null;
                   },
@@ -150,8 +151,8 @@ class CategoryFormState extends State<CategoryForm> {
                 const SizedBox(height: 16),
                 CheckboxListTile(
                   title: const Text('Private'),
-                  subtitle:
-                      const Text('I want to keep this endeavor to myself'),
+                  subtitle: Text(
+                      'I want to keep this ${NamingUtils.categoriesName(capitalize: false, plural: false)} to myself'),
                   value: _isPrivate,
                   onChanged: widget.isLoading
                       ? null
@@ -165,9 +166,10 @@ class CategoryFormState extends State<CategoryForm> {
                 if (!_isPrivate) ...[
                   const SizedBox(height: 8),
                   CheckboxListTile(
-                    title: const Text('Tasks are private'),
-                    subtitle:
-                        const Text('Share only the endeavor, not the tasks'),
+                    title: Text(
+                        '${NamingUtils.tasksName(plural: true)} are private'),
+                    subtitle: Text(
+                        'Share only the ${NamingUtils.categoriesName(capitalize: false, plural: false)}, not the ${NamingUtils.tasksName(plural: true)}'),
                     value: _tasksArePrivate,
                     onChanged: widget.isLoading
                         ? null
@@ -207,7 +209,7 @@ class CategoryFormState extends State<CategoryForm> {
                             )
                           : Text(
                               widget.category == null
-                                  ? 'Create Endeavor'
+                                  ? 'Create ${NamingUtils.categoriesName()}'
                                   : 'Save Changes',
                             ),
                     ),
