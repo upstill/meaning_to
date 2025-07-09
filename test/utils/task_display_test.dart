@@ -16,7 +16,7 @@ void main() {
         ownerId: 'user123',
         createdAt: DateTime.now(),
         suggestibleAt:
-            DateTime.now().add(Duration(hours: 1)), // Deferred for 1 hour
+            DateTime.now().add(const Duration(hours: 1)), // Deferred for 1 hour
         finished: false,
       );
 
@@ -45,11 +45,11 @@ void main() {
       final availableTask = Task(
         id: 2,
         categoryId: 1,
-        headline: 'Available Task',
+        headline: 'Available ${$NamingUtils.tasksName(plural: true)}',
         ownerId: 'user123',
         createdAt: DateTime.now(),
-        suggestibleAt:
-            DateTime.now().subtract(Duration(hours: 1)), // Available (past)
+        suggestibleAt: DateTime.now()
+            .subtract(const Duration(hours: 1)), // Available (past)
         finished: false,
       );
 

@@ -5,6 +5,7 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/text_importer.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
@@ -566,7 +567,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Add Tasks to ${widget.category.headline}'),
+        title: Text(
+            'Add ${NamingUtils.tasksName(plural: true)} to ${widget.category.headline}'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -584,8 +586,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Add Tasks:',
+                    Text(
+                      'Add ${NamingUtils.tasksName(plural: true)}:',
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
@@ -598,11 +600,12 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                     TextField(
                       controller: _textInputController,
                       maxLines: 4,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText:
-                            'Task 1\nTask 2: A great task\nTask 3: https://example.com/task3',
-                        border: OutlineInputBorder(),
-                        labelText: 'Paste tasks here',
+                            '${NamingUtils.tasksName()} 1\n${NamingUtils.tasksName()} 2: A great ${NamingUtils.tasksName(capitalize: false, plural: false)}\n${NamingUtils.tasksName()} 3: https://example.com/${NamingUtils.tasksName(capitalize: false, plural: false)}3',
+                        border: const OutlineInputBorder(),
+                        labelText:
+                            'Paste ${NamingUtils.tasksName(plural: true)} here',
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -621,7 +624,9 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                                     CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.add_task),
-                        label: Text(_isLoading ? 'Adding...' : 'Make Tasks'),
+                        label: Text(_isLoading
+                            ? 'Adding...'
+                            : 'Make ${NamingUtils.tasksName(plural: true)}'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor:
                               Theme.of(context).colorScheme.primary,
@@ -639,12 +644,12 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            const Text(
-              '• Enter one task per line\n'
-              '• Use "Task: Note" format to include a note\n'
+            Text(
+              '• Enter one ${NamingUtils.tasksName(capitalize: false, plural: false)} per line\n'
+              '• Use "${NamingUtils.tasksName()}: Note" format to include a note\n'
               '• Pasting a Share from elsewhere will do the right thing\n'
               '• Ditto a URL (address-bar gobbledygook from a web page)\n'
-              '• New Tasks will appear at the beginning of your list',
+              '• New ${NamingUtils.tasksName(plural: true)} will appear at the beginning of your list',
               style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 12),
@@ -655,8 +660,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'For adding a single task:',
+                    Text(
+                      'For adding a single ${NamingUtils.tasksName(capitalize: false, plural: false)}:',
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),

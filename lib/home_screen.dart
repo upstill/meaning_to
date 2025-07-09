@@ -13,6 +13,7 @@ import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/app.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/naming.dart';
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
@@ -323,28 +324,8 @@ class HomeScreenState extends State<HomeScreen> {
               .order('created_at', ascending: false);
           print('Guest categories response: $response');
 
-          if (response == null) {
-            print('Guest categories response is null');
-            setState(() {
-              _categories = [];
-              _isLoading = false;
-            });
-            return;
-          }
-
-          if (response is! List) {
-            print(
-                'Guest categories response is not a List: ${response.runtimeType}');
-            setState(() {
-              _categories = [];
-              _isLoading = false;
-            });
-            return;
-          }
-
-          final categories = response
-              .map((json) => Category.fromJson(json as Map<String, dynamic>))
-              .toList();
+          final categories =
+              response.map((json) => Category.fromJson(json)).toList();
           print('Parsed ${categories.length} guest categories');
 
           setState(() {
@@ -371,23 +352,8 @@ class HomeScreenState extends State<HomeScreen> {
           .order('created_at', ascending: false);
       print('Supabase response: $response');
 
-      if (response == null) {
-        print('Response is null');
-        setState(() {
-          _categories = [];
-          _isLoading = false;
-        });
-        return;
-      }
-
-      if (response is! List) {
-        print('Response is not a List: ${response.runtimeType}');
-        throw Exception('Invalid response format from Supabase');
-      }
-
-      final categories = response
-          .map((json) => Category.fromJson(json as Map<String, dynamic>))
-          .toList();
+      final categories =
+          response.map((json) => Category.fromJson(json)).toList();
       print('Parsed ${categories.length} categories');
 
       setState(() {
@@ -655,15 +621,13 @@ class HomeScreenState extends State<HomeScreen> {
 
         // Force a cache refresh by reinitializing with the current category
         final userId = AuthUtils.getCurrentUserId();
-        if (userId != null) {
-          await _cacheManager.initializeWithSavedCategory(
-            _selectedCategory!,
-            userId,
-          );
+        await _cacheManager.initializeWithSavedCategory(
+          _selectedCategory!,
+          userId,
+        );
 
-          // Also force refresh from database to ensure we have the latest data
-          await _cacheManager.refreshFromDatabase();
-        }
+        // Also force refresh from database to ensure we have the latest data
+        await _cacheManager.refreshFromDatabase();
 
         // Always load a new random task when returning from Edit Category screen
         // since the category or its tasks might have been modified
@@ -719,15 +683,13 @@ class HomeScreenState extends State<HomeScreen> {
 
         // Force a cache refresh by reinitializing with the current category
         final userId = AuthUtils.getCurrentUserId();
-        if (userId != null) {
-          await _cacheManager.initializeWithSavedCategory(
-            _selectedCategory!,
-            userId,
-          );
+        await _cacheManager.initializeWithSavedCategory(
+          _selectedCategory!,
+          userId,
+        );
 
-          // Also force refresh from database to ensure we have the latest data
-          await _cacheManager.refreshFromDatabase();
-        }
+        // Also force refresh from database to ensure we have the latest data
+        await _cacheManager.refreshFromDatabase();
 
         // Always load a new random task when returning from Edit Category screen
         // since the category or its tasks might have been modified
@@ -827,9 +789,10 @@ class HomeScreenState extends State<HomeScreen> {
                     value: _selectedCategory,
                     style: const TextStyle(
                         fontSize: 20), // Increased by 8 points from default 12
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      hintText: 'Choose an endeavor',
+                    decoration: InputDecoration(
+                      border: const OutlineInputBorder(),
+                      hintText:
+                          'Choose a ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
                     ),
                     items: _categories.map((category) {
                       return DropdownMenuItem(
@@ -948,7 +911,7 @@ class HomeScreenState extends State<HomeScreen> {
                                         ),
                                         if (_randomTask!.finished) ...[
                                           const SizedBox(width: 8),
-                                          Icon(
+                                          const Icon(
                                             Icons.check_circle,
                                             color: Colors.green,
                                             size: 28,
@@ -1112,8 +1075,8 @@ class HomeScreenState extends State<HomeScreen> {
                                 ElevatedButton.icon(
                                   onPressed: _navigateToEditTasks,
                                   icon: const Icon(Icons.edit),
-                                  label: const Text(
-                                      'Manage Choices/Edit Endeavor'),
+                                  label: Text(
+                                      'Manage Choices/Edit ${NamingUtils.categoriesName()}'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.grey[200],
                                     foregroundColor: Colors.black,
@@ -1145,7 +1108,8 @@ class HomeScreenState extends State<HomeScreen> {
                             ElevatedButton.icon(
                               onPressed: _navigateToEditTasks,
                               icon: const Icon(Icons.edit),
-                              label: const Text('Manage Choices/Edit Endeavor'),
+                              label: Text(
+                                  'Manage Choices/Edit ${NamingUtils.categoriesName()}'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.grey[200],
                                 foregroundColor: Colors.black,
@@ -1199,8 +1163,9 @@ class HomeScreenState extends State<HomeScreen> {
       floatingActionButton: !AuthUtils.isGuestUser()
           ? FloatingActionButton(
               onPressed: () => _navigateToNewCategory(),
+              tooltip:
+                  'Create new ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
               child: const Icon(Icons.add),
-              tooltip: 'Create new endeavor',
             )
           : null,
     );

@@ -3,6 +3,7 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/widgets/task_display.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/task_edit_screen.dart';
@@ -392,7 +393,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   Widget _buildTaskList() {
     if (_tasks.isEmpty) {
       print('EditCategoryScreen: No tasks to display');
-      return const Center(child: Text('No tasks yet. Add one to get started!'));
+      return Center(
+          child: Text(
+              'No ${NamingUtils.tasksName(plural: true)} yet. Add one to get started!'));
     }
 
     // Debug log to check task links and suggestibleAt times
@@ -444,7 +447,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   Widget _buildNewTaskList() {
     if (_tasks.isEmpty) {
       print('EditCategoryScreen: No new tasks to display');
-      return const Center(child: Text('No tasks yet. Add one to get started!'));
+      return Center(
+          child: Text(
+              'No ${NamingUtils.tasksName(plural: true)} yet. Add one to get started!'));
     }
 
     print(
@@ -470,12 +475,14 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                 IconButton(
                   icon: const Icon(Icons.edit),
                   onPressed: () => _editTask(task),
-                  tooltip: 'Edit task',
+                  tooltip:
+                      'Edit ${NamingUtils.tasksName(capitalize: false, plural: false)}',
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete),
                   onPressed: () => _deleteTask(task),
-                  tooltip: 'Remove task',
+                  tooltip:
+                      'Remove ${NamingUtils.tasksName(capitalize: false, plural: false)}',
                 ),
               ],
             ),
@@ -494,15 +501,15 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         final notesController = TextEditingController(text: task.notes ?? '');
 
         return AlertDialog(
-          title: const Text('Edit Task'),
+          title: Text('Edit ${NamingUtils.tasksName()}'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: headlineController,
-                decoration: const InputDecoration(
-                  labelText: 'Task Title',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: '${NamingUtils.tasksName()} Title',
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 16),
@@ -616,16 +623,18 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       if (finishedTasks > 0) parts.add('$finishedTasks Finished');
 
       if (parts.isEmpty) {
-        return 'No Tasks On Deck';
+        return 'No ${NamingUtils.tasksName(plural: true)} On Deck';
       }
-      return 'No Tasks On Deck (${parts.join(', ')})';
+      return 'No ${NamingUtils.tasksName(plural: true)} On Deck (${parts.join(', ')})';
     }
 
     final parts = <String>[];
     if (deferredTasks > 0) parts.add('$deferredTasks Deferred');
     if (finishedTasks > 0) parts.add('$finishedTasks Finished');
 
-    final taskText = availableTasks == 1 ? 'Task Is Up' : 'Available Tasks';
+    final taskText = availableTasks == 1
+        ? '${NamingUtils.tasksName()} Is Up'
+        : 'Available ${NamingUtils.tasksName(plural: true)}';
     final availableText =
         availableTasks == 1 ? 'Only One' : availableTasks.toString();
 
@@ -736,7 +745,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
             },
           ),
           title: Text(
-            widget.category == null ? 'New Endeavor' : 'Edit Endeavor',
+            widget.category == null
+                ? 'New ${NamingUtils.categoriesName()}'
+                : 'Edit ${NamingUtils.categoriesName()}',
           ),
           actions: [
             if (widget.category != null && !_editTasksLocal && _isEditing)
@@ -765,7 +776,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           setState(() {});
                         }
                       },
-                tooltip: 'Refresh tasks',
+                tooltip: 'Refresh ${NamingUtils.tasksName(plural: true)}',
               ),
             // Only show category delete button for authenticated users
             if (widget.category != null &&
@@ -780,9 +791,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                         showDialog(
                           context: context,
                           builder: (context) => AlertDialog(
-                            title: const Text('Delete Endeavor?'),
-                            content: const Text(
-                              'This will also delete all tasks in this category. This action cannot be undone.',
+                            title:
+                                Text('Delete ${NamingUtils.categoriesName()}?'),
+                            content: Text(
+                              'This will also delete all ${NamingUtils.tasksName(plural: true)} in this category. This action cannot be undone.',
                             ),
                             actions: [
                               TextButton(
@@ -803,7 +815,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           ),
                         );
                       },
-                tooltip: 'Delete endeavor',
+                tooltip:
+                    'Delete ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
               ),
           ],
         ),
@@ -853,7 +866,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                 // For now, we just display the current category's details.
                 if (widget.category != null) ...[
                   Text(
-                    'Current Endeavor:',
+                    'Current ${NamingUtils.categoriesName()}:',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -880,11 +893,11 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                   const SizedBox(height: 16),
                 ] else ...[
                   // If no category is selected, show a placeholder
-                  const Center(
+                  Center(
                     child: Text(
-                      'Select an Endeavor from the list on the left to edit its details.',
+                      'Select a ${NamingUtils.categoriesName(capitalize: false, plural: false)} from the list on the left to edit its details.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 16,
                         color: Colors.grey,
                       ),
@@ -910,7 +923,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     children: [
                       Text(
                         widget.category == null
-                            ? '${_tasks.length} Available tasks:'
+                            ? '${_tasks.length} Available ${NamingUtils.tasksName(plural: true)}:'
                             : _buildTaskCountText(),
                         style: const TextStyle(
                             fontSize: 16,
@@ -920,7 +933,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                       IconButton(
                         onPressed: _createTask,
                         icon: const Icon(Icons.add),
-                        tooltip: 'Add a task manually',
+                        tooltip:
+                            'Add a ${NamingUtils.tasksName(capitalize: false, plural: false)} manually',
                         style: IconButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
@@ -935,8 +949,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                   Center(
                     child: Column(
                       children: [
-                        const Text(
-                          'No tasks yet.',
+                        Text(
+                          'No ${NamingUtils.tasksName(plural: true)} yet.',
                           style: TextStyle(fontSize: 16),
                         ),
                         if (widget.category != null) ...[
@@ -944,7 +958,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           ElevatedButton.icon(
                             onPressed: _createTask,
                             icon: const Icon(Icons.add),
-                            label: const Text('Add a Task'),
+                            label: Text('Add a ${NamingUtils.tasksName()}'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.green,
                               foregroundColor: Colors.white,
@@ -956,8 +970,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           ),
                         ] else ...[
                           const SizedBox(height: 8),
-                          const Text(
-                            'Add some tasks above to get started!',
+                          Text(
+                            'Add some ${NamingUtils.tasksName(plural: true)} above to get started!',
                             style: TextStyle(fontSize: 14, color: Colors.grey),
                           ),
                         ],

@@ -3,6 +3,7 @@ import 'package:meaning_to/models/shop_item.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/widgets/link_display.dart';
@@ -652,7 +653,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       appBar: AppBar(
         title: Text(widget.existingCategory != null
             ? 'Get Suggestions to...'
-            : 'Shop Endeavors'),
+            : 'Shop ${NamingUtils.categoriesName(plural: true)}'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -686,27 +687,27 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                   ),
                 )
               : _shopItems.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.shopping_cart_outlined,
                             size: 64,
                             color: Colors.grey,
                           ),
-                          SizedBox(height: 16),
-                          Text(
+                          const SizedBox(height: 16),
+                          const Text(
                             'No public categories available',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
                           Text(
-                            'Check back later for new endeavors!',
-                            style: TextStyle(
+                            'Check back later for new ${NamingUtils.categoriesName(plural: true)}!',
+                            style: const TextStyle(
                               fontSize: 14,
                               color: Colors.grey,
                             ),

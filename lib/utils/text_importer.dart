@@ -84,7 +84,7 @@ class TextImporter {
     Category? category,
   ) async {
     print('=== TextImporter._parseTextData ===');
-    print('Input text: "${text}"');
+    print('Input text: "$text"');
     print('Text length: ${text.length}');
 
     final lines = text.split('\n');
@@ -94,7 +94,7 @@ class TextImporter {
 
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
-      print('Processing line $i: "${line}"');
+      print('Processing line $i: "$line"');
 
       if (line.trim().isEmpty) {
         print('  -> Skipping empty line');
@@ -308,7 +308,7 @@ class TextImporter {
   /// Parses plain text into an ImportItem
   /// This method is public for testing purposes
   static ImportItem? importFromText(String text) {
-    print('    importFromText called with: "${text}"');
+    print('    importFromText called with: "$text"');
 
     if (text.trim().isEmpty) {
       print('    -> Text is empty, returning null');
@@ -322,7 +322,7 @@ class TextImporter {
       extractedURL = urlMatch.group(0)!;
       print('    -> Found URL: $extractedURL');
       // Remove trailing colon if present
-      if (extractedURL!.endsWith(':')) {
+      if (extractedURL.endsWith(':')) {
         extractedURL = extractedURL.substring(0, extractedURL.length - 1);
       }
       final urlStart = urlMatch.start;
@@ -330,11 +330,9 @@ class TextImporter {
       final beforeURL = text.substring(0, urlStart);
       final afterURL = text.substring(urlEnd);
       final colonMaybe =
-          beforeURL.lastIndexOf(':') >= 0 || afterURL.indexOf(':') >= 0
-              ? ''
-              : ':';
+          beforeURL.lastIndexOf(':') >= 0 || afterURL.contains(':') ? '' : ':';
       text = beforeURL + colonMaybe + afterURL;
-      print('    -> Text after URL extraction: "${text}"');
+      print('    -> Text after URL extraction: "$text"');
     }
 
     // Check if text contains a colon separator (title: description)
@@ -345,7 +343,7 @@ class TextImporter {
       final title = text.substring(0, colonIndex).trim();
       final description = text.substring(colonIndex + 1).trim();
       print(
-          '    -> Found colon separator - title: "${title}", description: "${description}"');
+          '    -> Found colon separator - title: "$title", description: "$description"');
 
       if (title.isNotEmpty) {
         final item = ImportItem(
@@ -382,7 +380,7 @@ class TextImporter {
     // Check if text is a markdown list item
     if (text.trim().startsWith('- ') || text.trim().startsWith('* ')) {
       text = text.trim().substring(2);
-      print('    -> Removed markdown list prefix, text now: "${text}"');
+      print('    -> Removed markdown list prefix, text now: "$text"');
     }
 
     // Check if text looks like a markdown link [title](url) with optional description
@@ -392,7 +390,7 @@ class TextImporter {
       final title = markdownMatch.group(1) ?? 'Link';
       final url = markdownMatch.group(2) ?? '';
       final description = markdownMatch.group(3)?.trim();
-      print('    -> Found markdown link - title: "${title}", url: "$url"');
+      print('    -> Found markdown link - title: "$title", url: "$url"');
 
       final item = ImportItem(
         title: title,
