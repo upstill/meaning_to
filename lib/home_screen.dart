@@ -1145,7 +1145,7 @@ class HomeScreenState extends State<HomeScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'You\'re in guest mode to check out the app. Changes you make might not be persistent.',
+                        'You\'re in guest mode so you can check out the app. \nChanges you make might not be persistent.',
                         style: TextStyle(
                           color: Colors.orange[700],
                           fontSize: 14,
