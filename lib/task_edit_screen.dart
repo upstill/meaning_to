@@ -735,25 +735,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               _handleBack();
             },
           ),
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.category.headline,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              if (_localTask != null)
-                Text(
-                  'Edit ${NamingUtils.tasksName()} for ${widget.category.headline}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-            ],
+          title: Text(
+            _localTask == null
+                ? 'New ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}'
+                : 'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}',
           ),
           actions: [
             // Only show delete button for authenticated users
@@ -774,7 +759,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               TextFormField(
                 controller: _headlineController,
                 decoration: InputDecoration(
-                  labelText: '${NamingUtils.tasksName()} (required)',
+                  labelText:
+                      '${NamingUtils.tasksName(plural: false)} (required)',
                   hintText: 'What have you been meaning to do?',
                   border: const OutlineInputBorder(),
                 ),
@@ -819,7 +805,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       )
                     : Text(
                         _localTask == null
-                            ? 'Create ${NamingUtils.tasksName()}'
+                            ? 'Create ${NamingUtils.tasksName(plural: false)}'
                             : 'Save Changes',
                       ),
               ),
