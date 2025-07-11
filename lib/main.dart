@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'dart:js' as js;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
@@ -48,32 +47,37 @@ void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Get environment variables from window object (for web) or dotenv (for other platforms)
+    // Initialize Supabase with environment detection
+    // For web, Supabase will automatically detect environment variables
+    // For other platforms, load from .env file
+    if (!foundation.kIsWeb) {
+      await dotenv.load(fileName: '.env');
+    }
+
+    // Get environment variables securely
     String supabaseUrl;
     String supabaseAnonKey;
 
     if (foundation.kIsWeb) {
-      // For web, get from window object
-      final config = js.context['flutterConfiguration'];
-      supabaseUrl = config['SUPABASE_URL'] ?? '';
-      supabaseAnonKey = config['SUPABASE_ANON_KEY'] ?? '';
+      // For web, use environment variables that will be set at build time
+      // These will be replaced by the build process
+      supabaseUrl =
+          const String.fromEnvironment('SUPABASE_URL', defaultValue: '');
+      supabaseAnonKey =
+          const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: '');
     } else {
       // For other platforms, load from .env file
-      await dotenv.load(fileName: '.env');
       supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
       supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
     }
 
-    // Initialize Supabase
     await Supabase.initialize(
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
     );
 
     print(
-        '🚨🚨🚨 NEW CODE RUNNING - Supabase initialized with URL: $supabaseUrl 🚨🚨🚨');
-    print(
-        '🚨🚨🚨 NEW CODE RUNNING - Supabase anon key: ${supabaseAnonKey.substring(0, 10)}... 🚨🚨🚨');
+        '🚨🚨🚨 NEW CODE RUNNING - Supabase initialized with environment detection 🚨🚨🚨');
 
     runApp(const MyApp());
   } catch (e) {
