@@ -47,19 +47,8 @@ void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Load environment variables
-    await dotenv.load(fileName: '.env');
-
-    // Initialize Supabase
-    await Supabase.initialize(
-      url: dotenv.env['SUPABASE_URL']!,
-      anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
-    );
-
     print(
-        '🚨🚨🚨 NEW CODE RUNNING - Supabase initialized with URL: ${dotenv.env['SUPABASE_URL']} 🚨🚨🚨');
-    print(
-        '🚨🚨🚨 NEW CODE RUNNING - Supabase anon key: ${dotenv.env['SUPABASE_ANON_KEY']?.substring(0, 10)}... 🚨🚨🚨');
+        '🚨🚨🚨 NEW CODE RUNNING - Using serverless API for data operations 🚨🚨🚨');
 
     runApp(const MyApp());
   } catch (e) {
