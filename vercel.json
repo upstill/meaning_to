@@ -1,10 +1,16 @@
 {
-  "buildCommand": "echo 'Using pre-built files'",
+  "buildCommand": "chmod +x build_vercel.sh && ./build_vercel.sh",
   "outputDirectory": "build/web",
   "framework": null,
   "functions": {
     "api/index.js": {
       "runtime": "nodejs18.x"
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    }
+  ]
 } 
