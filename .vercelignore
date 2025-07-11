@@ -1,0 +1,55 @@
+# Flutter/Dart specific
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+*.lock
+
+# Android
+android/
+*.apk
+*.aab
+
+# iOS
+ios/
+*.ipa
+
+# macOS
+macos/
+
+# Linux
+linux/
+
+# Windows
+windows/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Git
+.git/
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+test/
+*.test.dart
+*_test.dart
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Temporary files
+*.tmp
+*.temp 
