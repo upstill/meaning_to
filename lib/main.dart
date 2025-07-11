@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:js' as js;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
@@ -47,19 +48,32 @@ void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Load environment variables
-    await dotenv.load(fileName: '.env');
+    // Get environment variables from window object (for web) or dotenv (for other platforms)
+    String supabaseUrl;
+    String supabaseAnonKey;
+
+    if (foundation.kIsWeb) {
+      // For web, get from window object
+      final config = js.context['flutterConfiguration'];
+      supabaseUrl = config['SUPABASE_URL'] ?? '';
+      supabaseAnonKey = config['SUPABASE_ANON_KEY'] ?? '';
+    } else {
+      // For other platforms, load from .env file
+      await dotenv.load(fileName: '.env');
+      supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
+      supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+    }
 
     // Initialize Supabase
     await Supabase.initialize(
-      url: dotenv.env['SUPABASE_URL']!,
-      anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
     );
 
     print(
-        '🚨🚨🚨 NEW CODE RUNNING - Supabase initialized with URL: ${dotenv.env['SUPABASE_URL']} 🚨🚨🚨');
+        '🚨🚨🚨 NEW CODE RUNNING - Supabase initialized with URL: $supabaseUrl 🚨🚨🚨');
     print(
-        '🚨🚨🚨 NEW CODE RUNNING - Supabase anon key: ${dotenv.env['SUPABASE_ANON_KEY']?.substring(0, 10)}... 🚨🚨🚨');
+        '🚨🚨🚨 NEW CODE RUNNING - Supabase anon key: ${supabaseAnonKey.substring(0, 10)}... 🚨🚨🚨');
 
     runApp(const MyApp());
   } catch (e) {
