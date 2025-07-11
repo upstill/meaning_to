@@ -1,5 +1,5 @@
 {
-  "buildCommand": "curl -L https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.28.5-stable.tar.xz | tar xz && export PATH=\"$PATH:`pwd`/flutter/bin\" && flutter pub get && flutter build web",
+  "buildCommand": "echo 'No build needed - using pre-built files'",
   "outputDirectory": "build/web",
   "framework": null
 } 
