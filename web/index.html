@@ -31,6 +31,15 @@
 
   <title>meaning_to</title>
   <link rel="manifest" href="manifest.json">
+  
+  <!-- Environment Variables for Supabase -->
+  <script>
+    // Make environment variables available to Flutter
+    window.flutterConfiguration = {
+      SUPABASE_URL: '%SUPABASE_URL%',
+      SUPABASE_ANON_KEY: '%SUPABASE_ANON_KEY%'
+    };
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
