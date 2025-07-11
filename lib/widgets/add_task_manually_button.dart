@@ -27,10 +27,8 @@ class AddTaskManuallyButton extends StatelessWidget {
       // Refresh the cache to get the new task
       try {
         final userId = AuthUtils.getCurrentUserId();
-        if (userId != null) {
-          await CacheManager().refreshFromDatabase();
-          print('AddTaskManuallyButton: Cache refreshed after task creation');
-        }
+        await CacheManager().refreshFromApi();
+        print('AddTaskManuallyButton: Cache refreshed after task creation');
       } catch (e) {
         print('AddTaskManuallyButton: Error refreshing cache: $e');
       }
