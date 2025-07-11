@@ -53,7 +53,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     if (cachedCategory != null) {
       // Refresh the cache to include newly created tasks
       try {
-        await CacheManager().refreshFromDatabase();
+        await CacheManager().refreshFromApi();
         print('AddTasksScreen: Cache refreshed before navigation');
       } catch (e) {
         print('AddTasksScreen: Error refreshing cache: $e');

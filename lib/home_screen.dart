@@ -103,7 +103,7 @@ class HomeScreenState extends State<HomeScreen> {
 
       if (forceDatabaseRefresh) {
         // Force refresh from database to ensure we have the latest data
-        await cacheManager.refreshFromDatabase();
+        await cacheManager.refreshFromApi();
         print('HomeScreen: Forced database refresh completed');
       } else {
         // Use local cache refresh for better performance
@@ -117,7 +117,7 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   /// Determine if a database refresh is needed based on various factors
-  bool _shouldRefreshFromDatabase() {
+  bool _shouldRefreshFromApi() {
     // Add your logic here to determine when database refresh is needed
     // For example:
     // - Time since last refresh
@@ -626,8 +626,8 @@ class HomeScreenState extends State<HomeScreen> {
           userId,
         );
 
-        // Also force refresh from database to ensure we have the latest data
-        await _cacheManager.refreshFromDatabase();
+        // Also force refresh from API to ensure we have the latest data
+        await _cacheManager.refreshFromApi();
 
         // Always load a new random task when returning from Edit Category screen
         // since the category or its tasks might have been modified
@@ -688,8 +688,8 @@ class HomeScreenState extends State<HomeScreen> {
           userId,
         );
 
-        // Also force refresh from database to ensure we have the latest data
-        await _cacheManager.refreshFromDatabase();
+        // Also force refresh from API to ensure we have the latest data
+        await _cacheManager.refreshFromApi();
 
         // Always load a new random task when returning from Edit Category screen
         // since the category or its tasks might have been modified
