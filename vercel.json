@@ -1,0 +1,10 @@
+{
+  "buildCommand": "chmod +x build.sh && ./build.sh",
+  "outputDirectory": "build/web",
+  "framework": null,
+  "functions": {
+    "api/index.js": {
+      "runtime": "nodejs18.x"
+    }
+  }
+} 
