@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/main.dart';
 import 'package:meaning_to/utils/auth.dart';
-import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/models/task.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -30,7 +28,7 @@ class _SplashScreenState extends State<SplashScreen> {
       return; // Don't navigate if deep link is being handled
     }
 
-    // Add a longer delay to ensure Supabase is fully initialized and auth events are processed
+    // Add a delay to ensure everything is initialized
     Future.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
 
@@ -42,29 +40,12 @@ class _SplashScreenState extends State<SplashScreen> {
       print('SplashScreen: Current user: ${currentUser?.id ?? 'null'}');
       print('SplashScreen: User email: ${currentUser?.email ?? 'null'}');
       print('SplashScreen: Is authenticated: $isAuthenticated');
-      print(
-          'SplashScreen: Supabase client initialized: ${supabase.auth.currentSession != null}');
 
-      // Temporary: Force welcome screen for testing
-      if (_forceWelcomeScreen) {
-        print('SplashScreen: Force welcome screen enabled for testing');
-        setState(() {
-          _showWelcomeScreen = true;
-        });
-        return;
-      }
-
-      if (isAuthenticated) {
-        // User is authenticated, proceed to home screen
-        print('SplashScreen: User is authenticated, navigating to /home');
-        Navigator.of(context).pushReplacementNamed('/home');
-      } else {
-        // No authenticated user, show welcome screen
-        print('SplashScreen: No authenticated user, showing welcome screen');
-        setState(() {
-          _showWelcomeScreen = true;
-        });
-      }
+      // For now, always show welcome screen since we haven't implemented serverless auth yet
+      print('SplashScreen: Showing welcome screen (auth not implemented yet)');
+      setState(() {
+        _showWelcomeScreen = true;
+      });
     });
   }
 
@@ -86,7 +67,7 @@ class _SplashScreenState extends State<SplashScreen> {
   void _signOutForTesting() async {
     print('SplashScreen: Signing out for testing');
     try {
-      await supabase.auth.signOut();
+      await AuthUtils.signOut();
       print('SplashScreen: Sign out successful');
       // Restart the app flow
       setState(() {
@@ -214,54 +195,41 @@ class _SplashScreenState extends State<SplashScreen> {
                     ),
                   ),
 
-                  // Debug section (temporary)
-                  const SizedBox(height: 40),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
+                  // Debug section (only in debug mode)
+                  if (const bool.fromEnvironment('dart.vm.product') ==
+                      false) ...[
+                    const SizedBox(height: 40),
+                    const Divider(color: Colors.white30),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Debug Options',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white70,
+                      ),
                     ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'Debug Options',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 40,
+                      child: OutlinedButton(
+                        onPressed: _signOutForTesting,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          side:
+                              const BorderSide(color: Colors.white30, width: 1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            TextButton(
-                              onPressed: _signOutForTesting,
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.white,
-                              ),
-                              child: const Text('Sign Out'),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                setState(() {
-                                  _forceWelcomeScreen = !_forceWelcomeScreen;
-                                });
-                                initState();
-                              },
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.white,
-                              ),
-                              child: Text(_forceWelcomeScreen
-                                  ? 'Disable Force'
-                                  : 'Force Welcome'),
-                            ),
-                          ],
+                        child: const Text(
+                          'Sign Out (Debug)',
+                          style: TextStyle(fontSize: 14),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -270,25 +238,33 @@ class _SplashScreenState extends State<SplashScreen> {
       );
     }
 
-    // Loading screen (shown while checking authentication)
-    print('SplashScreen: Rendering loading screen');
-    return const Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.deepPurple),
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Loading...',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
+    // Loading screen
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.deepPurple, Colors.purple],
+          ),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
-            ),
-          ],
+              SizedBox(height: 24),
+              Text(
+                'Loading...',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
