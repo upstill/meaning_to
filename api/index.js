@@ -66,6 +66,34 @@ export default async function handler(req, res) {
         res.json({ success: true, data: tasks })
         break
 
+      case 'getTasksByCategoryAndUser':
+        const { categoryId } = data
+        const { data: categoryTasks, error: categoryTasksError } = await supabase
+          .from('Tasks')
+          .select('*')
+          .eq('category_id', categoryId)
+          .eq('owner_id', userId)
+          .order('created_at', { ascending: false })
+        
+        if (categoryTasksError) throw categoryTasksError
+        res.json({ success: true, data: categoryTasks })
+        break
+
+      case 'updateGuestTasks':
+        const { guestUserId } = data
+        const { data: guestTasksResult, error: guestTasksError } = await supabase
+          .from('Tasks')
+          .update({
+            suggestible_at: null,
+            deferral: null,
+            finished: false,
+          })
+          .eq('owner_id', guestUserId)
+        
+        if (guestTasksError) throw guestTasksError
+        res.json({ success: true, data: guestTasksResult })
+        break
+
       case 'getCategories':
         const { data: categories, error: categoriesError } = await supabase
           .from('Categories')

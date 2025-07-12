@@ -1,11 +1,10 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/link.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/api_client.dart';
 
 class Task {
   final int id;
@@ -155,13 +154,8 @@ class Task {
     // Only update database for legacy tasks that needed suggestible_at set
     if (json['suggestible_at'] == null && suggestibleAt != null) {
       print('Updating suggestible_at to now for legacy task ${task.headline}');
-      supabase
-          .from('Tasks')
-          .update({'suggestible_at': suggestibleAt.toIso8601String()})
-          .eq('id', task.id)
-          .eq('owner_id', task.ownerId)
-          .then((_) => print('Updated suggestible_at in database'))
-          .catchError((e) => print('Error updating suggestible_at: $e'));
+      ApiClient.updateTaskSuggestibleAt(
+          task.id, suggestibleAt.toIso8601String());
     }
 
     return task;
@@ -230,15 +224,11 @@ class Task {
       _currentTask = null; // Clear current task when changing context
 
       // Query tasks from the database
-      final response = await supabase
-          .from('Tasks')
-          .select()
-          .eq('category_id', category.id)
-          .eq('owner_id', userId)
-          .order('created_at', ascending: false);
+      final response =
+          await ApiClient.getTasksByCategoryAndUser(category.id, userId);
 
       print(
-          'Task response fields: ${response.isNotEmpty ? response.first.keys.toList() : 'No tasks found'}');
+          'Task response fields: ${response.isNotEmpty ? 'Tasks found' : 'No tasks found'}');
 
       if (response.isEmpty) {
         print('No tasks found for category ${category.id}');
@@ -315,13 +305,8 @@ class Task {
       await _currentTask!.ensureLinksProcessed();
 
       // Update only the suggestible_at field in the database for the selected task
-      await supabase
-          .from('Tasks')
-          .update({
-            'suggestible_at': _currentTask!.suggestibleAt?.toIso8601String()
-          })
-          .eq('id', _currentTask!.id)
-          .eq('owner_id', _currentTask!.ownerId);
+      await ApiClient.updateTaskSuggestibleAt(
+          _currentTask!.id, _currentTask!.suggestibleAt?.toIso8601String());
       return _currentTask;
     } catch (e, stackTrace) {
       print('Error loading random task: $e');
@@ -344,12 +329,7 @@ class Task {
       print(
           '[finishCurrentTask] Attempting to update task id: \\${currentTask.id}, owner_id: \\$currentUserId');
       // Update in database
-      final response = await supabase
-          .from('Tasks')
-          .update({'finished': true})
-          .eq('id', currentTask.id)
-          .eq('owner_id', currentUserId);
-      print('[finishCurrentTask] Update response: \\${response.toString()}');
+      await ApiClient.updateTaskFinished(currentTask.id, true);
 
       // Update cache
       final updatedTask = Task(
@@ -410,14 +390,9 @@ class Task {
       final newSuggestibleAt = now.add(Duration(minutes: currentDeferral));
 
       // Update in database
-      await supabase
-          .from('Tasks')
-          .update({
-            'suggestible_at': newSuggestibleAt.toIso8601String(),
-            'deferral': newDeferral,
-          })
-          .eq('id', currentTask.id)
-          .eq('owner_id', currentUserId);
+      await ApiClient.updateTaskSuggestibleAt(
+          currentTask.id, newSuggestibleAt.toIso8601String());
+      await ApiClient.updateTaskDeferral(currentTask.id, newDeferral);
 
       // Update cache
       final updatedTask = Task(
@@ -692,16 +667,8 @@ class Task {
         'Task.checkForDuplicateLinkInCategory: Checking for URL: $extractedUrl');
 
     // Get existing tasks for the current category
-    final response = await supabase
-        .from('Tasks')
-        .select()
-        .eq('category_id', categoryId)
-        .eq('owner_id', userId)
-        .order('created_at', ascending: false);
-
-    final existingTasks = (response as List)
-        .map((json) => Task.fromJson(json as Map<String, dynamic>))
-        .toList();
+    final existingTasks =
+        await ApiClient.getTasksByCategoryAndUser(categoryId, userId);
 
     print(
         'Task.checkForDuplicateLinkInCategory: Checking against ${existingTasks.length} existing tasks');
@@ -732,11 +699,7 @@ class Task {
 
       // Update in database
       print('Task.reviveTask(): Updating database for task ${task.id}');
-      await supabase
-          .from('Tasks')
-          .update({'suggestible_at': now.toIso8601String()})
-          .eq('id', task.id)
-          .eq('owner_id', userId);
+      await ApiClient.updateTaskSuggestibleAt(task.id, now.toIso8601String());
       print('Task.reviveTask(): Database update completed');
 
       // Update cache
@@ -830,14 +793,9 @@ class Task {
           '35ed4d18-84b4-481d-96f4-1405c2f2f1ae'; // Guest user ID
 
       // Update all tasks owned by the guest user
-      final response = await supabase.from('Tasks').update({
-        'suggestible_at': null,
-        'deferral': null,
-        'finished': false,
-      }).eq('owner_id', guestUserId);
+      await ApiClient.updateGuestTasks(guestUserId);
 
       print('Task.resetGuestTasks(): Guest tasks reset successfully');
-      print('Task.resetGuestTasks(): Reset response: $response');
 
       // Clear the cache since we've modified the database
       clearCache();

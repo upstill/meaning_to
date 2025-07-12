@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:meaning_to/models/category.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:meaning_to/models/task.dart';
-import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/models/icon.dart';
 import 'package:meaning_to/utils/auth.dart';
-import 'dart:math';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter_html/flutter_html.dart';
+import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
-import 'package:meaning_to/edit_category_screen.dart';
-import 'package:meaning_to/task_edit_screen.dart';
+import 'package:meaning_to/utils/share_handler.dart';
+import 'package:meaning_to/widgets/task_display.dart';
 import 'package:meaning_to/widgets/link_display.dart';
-import 'package:meaning_to/app.dart';
-import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/edit_category_screen.dart';
+import 'package:meaning_to/new_category_screen.dart';
+import 'package:meaning_to/shop_endeavors_screen.dart';
+import 'package:meaning_to/import_justwatch_screen.dart';
+import 'package:meaning_to/task_edit_screen.dart';
+import 'package:meaning_to/link_edit_screen.dart';
+import 'package:meaning_to/download_screen.dart';
+import 'dart:async';
+import 'dart:math';
+
 import 'package:meaning_to/utils/naming.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -292,75 +299,29 @@ class HomeScreenState extends State<HomeScreen> {
   Future<void> _loadCategories() async {
     try {
       print('Starting to load categories...');
-      final session = supabase.auth.currentSession;
-      print('Session in _loadCategories: ${session?.user.id}');
 
-      // Check if user is authenticated or is a guest
-      final currentUser = AuthUtils.getCurrentUser();
-      final isGuest = AuthUtils.isGuestUser();
+      // For now, we'll use guest mode since we haven't implemented serverless auth yet
+      print('Using guest mode for category loading');
+      final guestUserId = AuthUtils.getCurrentUserId();
+      print('Guest user ID: $guestUserId');
 
-      print('Current user: ${currentUser?.id ?? 'null'}');
-      print('Is guest: $isGuest');
+      try {
+        print('Fetching categories from API...');
+        final categories = await ApiClient.getCategories();
+        print('API response: ${categories.length} categories');
 
-      if (session == null && !isGuest) {
-        print('No session found and not guest, redirecting to auth');
-        if (mounted) {
-          Navigator.pushNamed(context, '/auth');
-        }
-        return;
+        setState(() {
+          _categories = categories;
+          _isLoading = false;
+        });
+        print('Categories loaded successfully');
+      } catch (e) {
+        print('Error loading categories: $e');
+        setState(() {
+          _categories = [];
+          _isLoading = false;
+        });
       }
-
-      // For guest users, we'll load categories using the guest user ID
-      if (isGuest) {
-        print('Guest user detected, loading categories for guest user');
-        final guestUserId = AuthUtils.getCurrentUserId();
-        print('Guest user ID: $guestUserId');
-
-        try {
-          final response = await supabase
-              .from('Categories')
-              .select()
-              .eq('owner_id', guestUserId)
-              .order('created_at', ascending: false);
-          print('Guest categories response: $response');
-
-          final categories =
-              response.map((json) => Category.fromJson(json)).toList();
-          print('Parsed ${categories.length} guest categories');
-
-          setState(() {
-            _categories = categories;
-            _isLoading = false;
-          });
-          print('Guest categories loaded successfully');
-        } catch (e) {
-          print('Error loading guest categories: $e');
-          setState(() {
-            _categories = [];
-            _isLoading = false;
-          });
-        }
-        return;
-      }
-
-      print('Fetching categories from Supabase...');
-      // At this point, we know we have a session (not a guest user)
-      final response = await supabase
-          .from('Categories')
-          .select()
-          .eq('owner_id', session!.user.id)
-          .order('created_at', ascending: false);
-      print('Supabase response: $response');
-
-      final categories =
-          response.map((json) => Category.fromJson(json)).toList();
-      print('Parsed ${categories.length} categories');
-
-      setState(() {
-        _categories = categories;
-        _isLoading = false;
-      });
-      print('Categories loaded successfully');
     } catch (e, stackTrace) {
       print('Error loading categories: $e');
       print('Stack trace: $stackTrace');
@@ -721,7 +682,7 @@ class HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              await supabase.auth.signOut();
+              await AuthUtils.signOut();
               if (mounted) {
                 Navigator.pushNamed(context, '/auth');
               }
