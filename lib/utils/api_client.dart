@@ -73,6 +73,52 @@ class ApiClient {
     return Task.fromJson(result['data'][0]);
   }
 
+  // Additional task operations needed by Task model
+  static Future<void> updateTaskSuggestibleAt(
+      int taskId, String? suggestibleAt) async {
+    await _makeRequest('updateTask', data: {
+      'taskId': taskId.toString(),
+      'updates': {
+        'suggestible_at': suggestibleAt,
+      },
+    });
+  }
+
+  static Future<void> updateTaskFinished(int taskId, bool finished) async {
+    await _makeRequest('updateTask', data: {
+      'taskId': taskId.toString(),
+      'updates': {
+        'finished': finished,
+      },
+    });
+  }
+
+  static Future<void> updateTaskDeferral(int taskId, int? deferral) async {
+    await _makeRequest('updateTask', data: {
+      'taskId': taskId.toString(),
+      'updates': {
+        'deferral': deferral,
+      },
+    });
+  }
+
+  static Future<List<Task>> getTasksByCategoryAndUser(
+      int categoryId, String userId) async {
+    final result = await _makeRequest('getTasksByCategoryAndUser', data: {
+      'categoryId': categoryId,
+      'userId': userId,
+    });
+    return (result['data'] as List)
+        .map((taskData) => Task.fromJson(taskData))
+        .toList();
+  }
+
+  static Future<void> updateGuestTasks(String guestUserId) async {
+    await _makeRequest('updateGuestTasks', data: {
+      'guestUserId': guestUserId,
+    });
+  }
+
   // Category operations
   static Future<List<Category>> getCategories() async {
     final result = await _makeRequest('getCategories');
