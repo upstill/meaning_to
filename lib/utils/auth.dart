@@ -1,4 +1,4 @@
-import 'package:meaning_to/utils/api_client.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Utility class for handling authentication, including guest access
 class AuthUtils {
@@ -7,23 +7,22 @@ class AuthUtils {
 
   /// Get the current user ID, or the guest user ID if no user is logged in
   static String getCurrentUserId() {
-    // For now, we'll use guest mode since we haven't implemented serverless auth yet
-    // TODO: Implement proper authentication with serverless API
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      return user.id;
+    }
     return guestUserId;
   }
 
   /// Check if the current user is a guest (not logged in)
   static bool isGuestUser() {
-    // For now, always return true since we haven't implemented serverless auth yet
-    // TODO: Implement proper authentication with serverless API
-    return true;
+    final user = Supabase.instance.client.auth.currentUser;
+    return user == null;
   }
 
   /// Get the current user object, or null if guest
-  static dynamic getCurrentUser() {
-    // For now, return null since we haven't implemented serverless auth yet
-    // TODO: Implement proper authentication with serverless API
-    return null;
+  static User? getCurrentUser() {
+    return Supabase.instance.client.auth.currentUser;
   }
 
   /// Check if a user ID is the guest user ID
@@ -33,8 +32,12 @@ class AuthUtils {
 
   /// Sign out the current user
   static Future<void> signOut() async {
-    // For now, just clear any local storage if needed
-    // TODO: Implement proper sign out with serverless API
-    print('AuthUtils: Sign out called (not implemented yet)');
+    try {
+      await Supabase.instance.client.auth.signOut();
+      print('AuthUtils: User signed out successfully');
+    } catch (e) {
+      print('AuthUtils: Error signing out: $e');
+      rethrow;
+    }
   }
 }
