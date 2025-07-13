@@ -1,9 +1,19 @@
 {
-  "outputDirectory": "build/web",
+  "functions": {
+    "api/index.js": {
+      "runtime": "nodejs18.x"
+    },
+    "api/test.js": {
+      "runtime": "nodejs18.x"
+    },
+    "api/simple.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": "/build/web/$1"
     }
   ]
 } 

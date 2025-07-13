@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' as foundation;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/home_screen.dart';
@@ -16,6 +15,8 @@ import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/share_handler.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Remove the instance creation since we'll use static methods
 // final _receiveSharingIntent = ReceiveSharingIntent();
@@ -44,6 +45,15 @@ class WebWidthWrapper extends StatelessWidget {
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // Load environment variables
+    await dotenv.load();
+
+    // Initialize Supabase
+    await Supabase.initialize(
+      url: dotenv.env['SUPABASE_URL']!,
+      anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+    );
 
     print(
         '🚨🚨🚨 NEW CODE RUNNING - Using serverless API for data operations 🚨🚨🚨');
