@@ -496,12 +496,7 @@ class CacheManager {
           print('CacheManager: Response type: ${response.runtimeType}');
 
           // Check if the response indicates success
-          if (response == null) {
-            print(
-                'CacheManager: Update response is null - this might indicate success');
-          } else {
-            print('CacheManager: Update response is not null: $response');
-          }
+          print('CacheManager: Update response is not null: $response');
 
           print('CacheManager: Task updated in API successfully');
         } catch (updateError) {

@@ -12,7 +12,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   bool _showWelcomeScreen = false;
-  bool _forceWelcomeScreen = false; // Temporary debug flag
+  final bool _forceWelcomeScreen = false; // Temporary debug flag
 
   @override
   void initState() {
@@ -186,7 +186,7 @@ class _SplashScreenState extends State<SplashScreen> {
                         ),
                       ),
                       child: const Text(
-                        'Continue as Guest',
+                        'Continue as Guest (Read Only)',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
