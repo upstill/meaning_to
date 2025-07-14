@@ -659,6 +659,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
     try {
       final userId = AuthUtils.getCurrentUserId();
+      if (userId == null) {
+        print('No authenticated user - cannot save category');
+        return;
+      }
       final categoryId = widget.category!.id;
 
       print(
@@ -735,6 +739,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
     try {
       final userId = AuthUtils.getCurrentUserId();
+      if (userId == null) {
+        print('No authenticated user - cannot delete category');
+        return;
+      }
       final categoryId = widget.category!.id;
 
       print(
@@ -943,9 +951,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _invitationController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Invitation (optional)',
-                        border: const OutlineInputBorder(),
+                        border: OutlineInputBorder(),
                         hintText: 'Add a description or invitation...',
                       ),
                       maxLines: 3,
@@ -1159,7 +1167,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                       children: [
                         Text(
                           'No ${NamingUtils.tasksName(plural: true)} yet.',
-                          style: TextStyle(fontSize: 16),
+                          style: const TextStyle(fontSize: 16),
                         ),
                         if (widget.category != null) ...[
                           const SizedBox(height: 16),
@@ -1180,7 +1188,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           const SizedBox(height: 8),
                           Text(
                             'Add some ${NamingUtils.tasksName(plural: true)} above to get started!',
-                            style: TextStyle(fontSize: 14, color: Colors.grey),
+                            style: const TextStyle(
+                                fontSize: 14, color: Colors.grey),
                           ),
                         ],
                       ],

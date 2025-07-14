@@ -1,24 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/models/icon.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/utils/link_processor.dart';
-import 'package:meaning_to/utils/share_handler.dart';
-import 'package:meaning_to/widgets/task_display.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/edit_category_screen.dart';
-import 'package:meaning_to/new_category_screen.dart';
-import 'package:meaning_to/shop_endeavors_screen.dart';
-import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
-import 'package:meaning_to/link_edit_screen.dart';
-import 'package:meaning_to/download_screen.dart';
 import 'dart:async';
-import 'dart:math';
 
 import 'package:meaning_to/utils/naming.dart';
 
@@ -725,10 +714,34 @@ class HomeScreenState extends State<HomeScreen> {
                 ),
               )
             else if (_categories.isEmpty)
-              const Center(
-                child: Text(
-                  'No categories yet. Create one to get started!',
-                  style: TextStyle(fontSize: 16),
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.lock_outline,
+                        size: 48, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Please sign in to access your data',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Guest users cannot access or modify data',
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pushNamed(context, '/auth');
+                      },
+                      icon: const Icon(Icons.login),
+                      label: const Text('Sign In'),
+                    ),
+                  ],
                 ),
               )
             else
