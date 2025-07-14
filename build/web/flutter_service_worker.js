@@ -3,11 +3,11 @@ const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
 const CACHE_NAME = 'flutter-app-cache';
 
-const RESOURCES = {"flutter_bootstrap.js": "8eccdc5c44577ec7eff05192320b2c34",
+const RESOURCES = {"flutter_bootstrap.js": "6c06e6182181e32eadab4f3b6954822f",
 "version.json": "5aa0809aa4463af2d64d421ed01933c6",
 "index.html": "638c209b4e38aa94020648ee528397c3",
 "/": "638c209b4e38aa94020648ee528397c3",
-"main.dart.js": "14c05374d172abc9263ccf0304bafff2",
+"main.dart.js": "94a0d163891c82711741815230b843ef",
 "flutter.js": "83d881c1dbb6d6bcd6b42e274605b69c",
 "favicon.png": "5dcef449791fa27946b3d35ad8803796",
 "icons/Icon-192.png": "ac9a721a12bbc803b44f645561ecb1e1",
@@ -30,7 +30,7 @@ const RESOURCES = {"flutter_bootstrap.js": "8eccdc5c44577ec7eff05192320b2c34",
 "assets/packages/supabase_auth_ui/assets/logos/keycloak.png": "ea74380ccc89dbc26bd0281dd46ee942",
 "assets/shaders/ink_sparkle.frag": "ecc85a2e95f5e9f53123dcaf8cb9b6ce",
 "assets/AssetManifest.bin": "9ac96fdad49b4c72f5039e3491716ee7",
-"assets/fonts/MaterialIcons-Regular.otf": "168e26637c9d3f83807f34be73236fd8",
+"assets/fonts/MaterialIcons-Regular.otf": "51e9164368d05427689970a982c1f249",
 "canvaskit/skwasm.js": "ea559890a088fe28b4ddf70e17e60052",
 "canvaskit/skwasm.js.symbols": "e72c79950c8a8483d826a7f0560573a1",
 "canvaskit/canvaskit.js.symbols": "bdcd3835edf8586b6d6edfce8749fb77",
