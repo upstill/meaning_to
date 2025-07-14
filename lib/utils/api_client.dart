@@ -41,6 +41,12 @@ class ApiClient {
     try {
       // Temporary: Use Supabase directly
       final userId = AuthUtils.getCurrentUserId();
+
+      if (userId == null) {
+        print('No authenticated user - cannot access tasks');
+        return [];
+      }
+
       final response =
           await _supabase.from('Tasks').select('*').eq('owner_id', userId);
 
@@ -181,6 +187,12 @@ class ApiClient {
     try {
       // Temporary: Use Supabase directly
       final userId = AuthUtils.getCurrentUserId();
+
+      if (userId == null) {
+        print('No authenticated user - cannot access categories');
+        return [];
+      }
+
       print('Getting categories for user: $userId');
       print('User ID type: ${userId.runtimeType}');
       print('User ID length: ${userId.length}');
