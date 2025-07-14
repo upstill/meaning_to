@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Utility class for handling authentication, including guest access
 class AuthUtils {
   /// Default guest user ID for when no user is logged in
-  static const String guestUserId = '35ed4d18-84d4-481d-96f4-1405c2f2f1ae';
+  static const String guestUserId = '35ed4d18-84b4-481d-96f4-1405c2f2f1ae';
 
   /// Get the current user ID, or the guest user ID if no user is logged in
   static String getCurrentUserId() {

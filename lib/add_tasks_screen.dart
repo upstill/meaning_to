@@ -587,9 +587,9 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Add ${NamingUtils.tasksName(plural: true)}:',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      'Register ${NamingUtils.tasksName(plural: true)}:',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 12),
                     const Text(
@@ -650,7 +650,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               '• Pasting a Share from elsewhere will do the right thing\n'
               '• Ditto a URL (address-bar gobbledygook from a web page)\n'
               '• New ${NamingUtils.tasksName(plural: true)} will appear at the beginning of your list',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 12),
             // Single task addition section
@@ -662,8 +662,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                   children: [
                     Text(
                       'For adding a single ${NamingUtils.tasksName(capitalize: false, plural: false)}:',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 12),
                     SizedBox(
