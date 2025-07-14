@@ -46,13 +46,11 @@ void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Load environment variables
-    await dotenv.load();
-
-    // Initialize Supabase
+    // Initialize Supabase with hardcoded credentials for Vercel deployment
     await Supabase.initialize(
-      url: dotenv.env['SUPABASE_URL']!,
-      anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+      url: 'https://zhpxdayfpysoixxjjqik.supabase.co',
+      anonKey:
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpocHhkYXlmcHlzb2l4eGpqcWlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0Mjk4MjAsImV4cCI6MjA2MTAwNTgyMH0.vWogNfl_98kZaTLFFf3sMSyddZBSjBt9D1yxTTiamVQ',
     );
 
     print(
@@ -64,7 +62,19 @@ void main() async {
     runApp(MaterialApp(
       home: Scaffold(
         body: Center(
-          child: Text('Error initializing app: $e'),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              Text('Error initializing app: $e'),
+              const SizedBox(height: 16),
+              const Text(
+                'Failed to initialize Supabase',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     ));
