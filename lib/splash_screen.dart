@@ -41,11 +41,15 @@ class _SplashScreenState extends State<SplashScreen> {
       print('SplashScreen: User email: ${currentUser?.email ?? 'null'}');
       print('SplashScreen: Is authenticated: $isAuthenticated');
 
-      // For now, always show welcome screen since we haven't implemented serverless auth yet
-      print('SplashScreen: Showing welcome screen (auth not implemented yet)');
-      setState(() {
-        _showWelcomeScreen = true;
-      });
+      if (isAuthenticated) {
+        print('SplashScreen: User is authenticated, navigating to home');
+        Navigator.of(context).pushReplacementNamed('/home');
+      } else {
+        print('SplashScreen: Showing welcome screen (user not authenticated)');
+        setState(() {
+          _showWelcomeScreen = true;
+        });
+      }
     });
   }
 

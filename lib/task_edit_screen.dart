@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:flutter/services.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/link_edit_screen.dart';
-import 'dart:convert';
 import 'package:meaning_to/utils/auth.dart';
-import 'package:meaning_to/utils/link_extractor.dart';
-import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
@@ -809,116 +805,16 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                             : 'Save Changes',
                       ),
               ),
-              const SizedBox(height: 24),
-              // Separator with helpful text
-              Row(
-                children: [
-                  const Expanded(child: Divider()),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Text(
-                      '** If you like, you can add a whole list of ${NamingUtils.tasksName(plural: true)} at once **',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-                  const Expanded(child: Divider()),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Add a List of Tasks button
-              ElevatedButton.icon(
-                onPressed: _isLoading
-                    ? null
-                    : () async {
-                        // Use pushReplacement so that when AddTasksScreen completes,
-                        // it navigates directly to EditCategoryScreen without TaskEditScreen in the stack
-                        final result = await Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AddTasksScreen(
-                              category: widget.category,
-                              currentTask: _currentTaskState,
-                            ),
-                          ),
-                        );
-                        // Note: We don't need to handle the result here because AddTasksScreen
-                        // will navigate to EditCategoryScreen on completion
-                      },
-                icon: const Icon(Icons.add_task),
-                label: Text(
-                    'Add a List of ${NamingUtils.tasksName(plural: true)}'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.secondary,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-
-              const SizedBox(height: 24),
-              // Separator with helpful text for shop suggestions
-              Row(
-                children: [
-                  const Expanded(child: Divider()),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Text(
-                      '** You can also get ideas from other people! **',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-                  const Expanded(child: Divider()),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Shop for Suggestions button
-              ElevatedButton.icon(
-                onPressed: _isLoading
-                    ? null
-                    : () async {
-                        // Use pushReplacement so that when ShopEndeavorsScreen completes,
-                        // it navigates directly to EditCategoryScreen without TaskEditScreen in the stack
-                        final result = await Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ShopEndeavorsScreen(
-                              existingCategory: widget.category,
-                            ),
-                          ),
-                        );
-
-                        // If tasks were added, the result will be true
-                        // Edit Category Screen will refresh via lifecycle callback
-                        // No need to pop since pushReplacement already handles navigation
-                        print(
-                            'TaskEditScreen: ShopEndeavorsScreen returned: $result');
-                      },
-                icon: const Icon(Icons.shopping_cart),
-                label: const Text('Shop for Suggestions'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              // JustWatch import section (only for specific categories)
-              if (widget.category.originalId != null &&
-                  (widget.category.originalId == 1 ||
-                      widget.category.originalId == 2)) ...[
+              if (_localTask == null) ...[
                 const SizedBox(height: 24),
-                // Separator with helpful text for JustWatch import
+                // Separator with helpful text
                 Row(
                   children: [
                     const Expanded(child: Divider()),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Text(
-                        '** OR...You can import your list from JustWatch. **',
+                        '** If you like, you can add a whole list of ${NamingUtils.tasksName(plural: true)} at once **',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey[600],
@@ -930,35 +826,137 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
+                // Add a List of Tasks button
                 ElevatedButton.icon(
                   onPressed: _isLoading
                       ? null
-                      : () {
-                          print('Import JustWatch button pressed');
-                          print('Category: ${widget.category.headline}');
-
-                          // Navigate to Import JustWatch screen, replacing the current screen
-                          Navigator.pushReplacement(
+                      : () async {
+                          // Use pushReplacement so that when AddTasksScreen completes,
+                          // it navigates directly to EditCategoryScreen without TaskEditScreen in the stack
+                          final result = await Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => ImportJustWatchScreen(
+                              builder: (context) => AddTasksScreen(
                                 category: widget.category,
+                                currentTask: _currentTaskState,
                               ),
                             ),
-                          ).then((result) {
-                            if (result is Category) {
-                              // Handle any updates if needed
-                              print('JustWatch import completed');
-                            }
-                          });
+                          );
+                          // Note: We don't need to handle the result here because AddTasksScreen
+                          // will navigate to EditCategoryScreen on completion
                         },
-                  icon: const Icon(Icons.movie),
-                  label: const Text('Import JustWatch list'),
+                  icon: const Icon(Icons.add_task),
+                  label: Text(
+                      'Add a List of ${NamingUtils.tasksName(plural: true)}'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
+                    backgroundColor: Theme.of(context).colorScheme.secondary,
                     foregroundColor: Colors.white,
                   ),
                 ),
+
+                const SizedBox(height: 24),
+                // Separator with helpful text for shop suggestions
+                Row(
+                  children: [
+                    const Expanded(child: Divider()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                        '** You can also get ideas from other people! **',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                    const Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Shop for Suggestions button
+                ElevatedButton.icon(
+                  onPressed: _isLoading
+                      ? null
+                      : () async {
+                          // Use pushReplacement so that when ShopEndeavorsScreen completes,
+                          // it navigates directly to EditCategoryScreen without TaskEditScreen in the stack
+                          final result = await Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ShopEndeavorsScreen(
+                                existingCategory: widget.category,
+                              ),
+                            ),
+                          );
+
+                          // If tasks were added, the result will be true
+                          // Edit Category Screen will refresh via lifecycle callback
+                          // No need to pop since pushReplacement already handles navigation
+                          print(
+                              'TaskEditScreen: ShopEndeavorsScreen returned: $result');
+                        },
+                  icon: const Icon(Icons.shopping_cart),
+                  label: const Text('Shop for Suggestions'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                // JustWatch import section (only for specific categories)
+                if (widget.category.originalId != null &&
+                    (widget.category.originalId == 1 ||
+                        widget.category.originalId == 2)) ...[
+                  const SizedBox(height: 24),
+                  // Separator with helpful text for JustWatch import
+                  Row(
+                    children: [
+                      const Expanded(child: Divider()),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Text(
+                          '** OR...You can import your list from JustWatch. **',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                      const Expanded(child: Divider()),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _isLoading
+                        ? null
+                        : () {
+                            print('Import JustWatch button pressed');
+                            print('Category: ${widget.category.headline}');
+
+                            // Navigate to Import JustWatch screen, replacing the current screen
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ImportJustWatchScreen(
+                                  category: widget.category,
+                                ),
+                              ),
+                            ).then((result) {
+                              if (result is Category) {
+                                // Handle any updates if needed
+                                print('JustWatch import completed');
+                              }
+                            });
+                          },
+                    icon: const Icon(Icons.movie),
+                    label: const Text('Import JustWatch list'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
               ],
             ],
           ),

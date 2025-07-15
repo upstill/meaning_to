@@ -538,6 +538,34 @@ class HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _showGuestSignupDialog({String content = 'Your message here'}) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title:
+              Text('Add Your Own ${NamingUtils.categoriesName(plural: false)}'),
+          content: Text(content),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.pushNamed(context, '/auth');
+              },
+              child: const Text('Sign Up'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _handleEditComplete() async {
     print('HomeScreen: Handling edit complete');
     try {
@@ -972,47 +1000,44 @@ class HomeScreenState extends State<HomeScreen> {
                                                       ),
                                                 ),
                                               ),
-                                              if (!AuthUtils.isGuestUser())
-                                                TextButton.icon(
-                                                  onPressed: () async {
-                                                    await _reviveCurrentTask();
-                                                  },
-                                                  icon: const Icon(
-                                                    Icons.refresh,
-                                                    size: 16,
-                                                  ),
-                                                  label: const Text('Revive'),
-                                                  style: TextButton.styleFrom(
-                                                    foregroundColor:
-                                                        Colors.blue,
-                                                    padding: const EdgeInsets
-                                                        .symmetric(
-                                                      horizontal: 8,
-                                                    ),
+                                              TextButton.icon(
+                                                onPressed: () async {
+                                                  await _reviveCurrentTask();
+                                                },
+                                                icon: const Icon(
+                                                  Icons.refresh,
+                                                  size: 16,
+                                                ),
+                                                label: const Text('Revive'),
+                                                style: TextButton.styleFrom(
+                                                  foregroundColor: Colors.blue,
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                    horizontal: 8,
                                                   ),
                                                 ),
+                                              ),
                                             ],
                                           ),
                                         ],
                                         const SizedBox(height: 2),
-                                        if (!AuthUtils.isGuestUser())
-                                          Center(
-                                            child: TextButton.icon(
-                                              onPressed: _finishCurrentTask,
-                                              icon: const Icon(Icons.check),
-                                              label: const Text(
-                                                'Actually, I\'m done with this',
-                                              ),
-                                              style: TextButton.styleFrom(
-                                                foregroundColor: Theme.of(
-                                                  context,
-                                                ).colorScheme.primary,
-                                                padding: EdgeInsets.zero,
-                                                visualDensity:
-                                                    VisualDensity.compact,
-                                              ),
+                                        Center(
+                                          child: TextButton.icon(
+                                            onPressed: _finishCurrentTask,
+                                            icon: const Icon(Icons.check),
+                                            label: const Text(
+                                              'Actually, I\'m done with this',
+                                            ),
+                                            style: TextButton.styleFrom(
+                                              foregroundColor: Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                              padding: EdgeInsets.zero,
+                                              visualDensity:
+                                                  VisualDensity.compact,
                                             ),
                                           ),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -1024,56 +1049,54 @@ class HomeScreenState extends State<HomeScreen> {
                           Center(
                             child: Column(
                               children: [
-                                if (!AuthUtils.isGuestUser())
-                                  ElevatedButton.icon(
-                                    onPressed: () async {
-                                      try {
-                                        setState(() {
-                                          _isLoadingTask = true;
-                                          _error = null;
-                                        });
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    try {
+                                      setState(() {
+                                        _isLoadingTask = true;
+                                        _error = null;
+                                      });
 
-                                        // First reject the current task
-                                        await _rejectCurrentTask();
+                                      // First reject the current task
+                                      await _rejectCurrentTask();
 
-                                        // Then load a new random task
-                                        if (_selectedCategory != null) {
-                                          await _loadRandomTask(
-                                            _selectedCategory!,
-                                          );
-                                        }
-                                      } catch (e) {
-                                        print('Error in Hit Me Again: $e');
-                                        setState(() {
-                                          _error = e.toString();
-                                          _isLoadingTask = false;
-                                        });
+                                      // Then load a new random task
+                                      if (_selectedCategory != null) {
+                                        await _loadRandomTask(
+                                          _selectedCategory!,
+                                        );
                                       }
-                                    },
-                                    icon: const Icon(Icons.refresh),
-                                    label: const Text(
-                                      'Hit Me Again',
-                                      style: TextStyle(fontSize: 18),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.green,
-                                      foregroundColor: Colors.white,
-                                      minimumSize: const Size(0,
-                                          48), // 12 points taller than default
-                                    ),
+                                    } catch (e) {
+                                      print('Error in Hit Me Again: $e');
+                                      setState(() {
+                                        _error = e.toString();
+                                        _isLoadingTask = false;
+                                      });
+                                    }
+                                  },
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text(
+                                    'Hit Me Again',
+                                    style: TextStyle(fontSize: 18),
                                   ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
+                                    minimumSize: const Size(
+                                        0, 48), // 12 points taller than default
+                                  ),
+                                ),
                                 const SizedBox(height: 20),
-                                if (!AuthUtils.isGuestUser())
-                                  ElevatedButton.icon(
-                                    onPressed: _navigateToEditTasks,
-                                    icon: const Icon(Icons.edit),
-                                    label: Text(
-                                        'Manage Choices/Edit ${NamingUtils.categoriesName(plural: false)}'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.grey[200],
-                                      foregroundColor: Colors.black,
-                                    ),
+                                ElevatedButton.icon(
+                                  onPressed: _navigateToEditTasks,
+                                  icon: const Icon(Icons.edit),
+                                  label: Text(
+                                      'Manage Choices/Edit ${NamingUtils.categoriesName(plural: false)}'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.grey[200],
+                                    foregroundColor: Colors.black,
                                   ),
+                                ),
                               ],
                             ),
                           ),
@@ -1137,7 +1160,7 @@ class HomeScreenState extends State<HomeScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'You\'re in guest mode. You can view demo data but cannot modify it. Sign in to create your own categories and tasks.',
+                        'You\'re in guest mode. You can view and modify demo data. Sign in to create your own categories and tasks.',
                         style: TextStyle(
                           color: Colors.orange[700],
                           fontSize: 14,
@@ -1152,14 +1175,20 @@ class HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      floatingActionButton: !AuthUtils.isGuestUser()
-          ? FloatingActionButton(
-              onPressed: () => _navigateToNewCategory(),
-              tooltip:
-                  'Define a New ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
-              child: const Icon(Icons.add),
-            )
-          : null,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          if (AuthUtils.isGuestUser()) {
+            _showGuestSignupDialog(
+                content:
+                    'Here\'s where you can add a new ${NamingUtils.categoriesName(plural: false)} once you\'re logged in. Sign up to add your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!');
+          } else {
+            _navigateToNewCategory();
+          }
+        },
+        tooltip:
+            'Define a New ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }
