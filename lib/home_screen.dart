@@ -749,35 +749,51 @@ class HomeScreenState extends State<HomeScreen> {
                     const Icon(Icons.info_outline,
                         size: 48, color: Colors.grey),
                     const SizedBox(height: 16),
-                    const Text(
-                      'No categories available',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    Text(
+                      'No ${NamingUtils.categoriesName(plural: true)} available',
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w600),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       AuthUtils.isGuestUser()
-                          ? 'Guest users can only view demo data. Sign in to create your own categories.'
-                          : 'Create your first category to get started!',
+                          ? 'Guest users can only view demo data. Sign in to create your own ${NamingUtils.categoriesName()}.'
+                          : '',
                       style: const TextStyle(fontSize: 14, color: Colors.grey),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 16),
                     if (AuthUtils.isGuestUser())
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/auth');
-                        },
-                        icon: const Icon(Icons.login),
-                        label: const Text('Sign In'),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.pushNamed(context, '/auth');
+                              },
+                              icon: const Icon(Icons.login),
+                              label: const Text('Sign In'),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.pushNamed(context, '/auth');
+                              },
+                              icon: const Icon(Icons.person_add),
+                              label: const Text('Sign Up'),
+                            ),
+                          ),
+                        ],
                       )
                     else
                       ElevatedButton.icon(
                         onPressed: _navigateToNewCategory,
                         icon: const Icon(Icons.add),
                         label: Text(
-                            'Create ${NamingUtils.categoriesName(plural: false)}'),
+                            'Define ${NamingUtils.categoriesName(plural: false, withArticle: true)} to get started'),
                       ),
                   ],
                 ),
