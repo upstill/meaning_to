@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meaning_to/widgets/task_display.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/utils/naming.dart';
 
 void main() {
   group('TaskDisplay Tests', () {
@@ -45,7 +46,7 @@ void main() {
       final availableTask = Task(
         id: 2,
         categoryId: 1,
-        headline: 'Available ${$NamingUtils.tasksName(plural: true)}',
+        headline: 'Available ${NamingUtils.tasksName(plural: true)}',
         ownerId: 'user123',
         createdAt: DateTime.now(),
         suggestibleAt: DateTime.now()
@@ -66,7 +67,8 @@ void main() {
       );
 
       // Find the text widget
-      final textWidget = tester.widget<Text>(find.text('Available Task'));
+      final textWidget = tester.widget<Text>(
+          find.text('Available ${NamingUtils.tasksName(plural: true)}'));
 
       // Check that the text color is not grey (should be null, meaning default color)
       expect(textWidget.style?.color, isNull);

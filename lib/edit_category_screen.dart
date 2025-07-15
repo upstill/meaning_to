@@ -133,6 +133,15 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
   // Pure UI method - no database operations
   Future<void> _editTask(Task task) async {
+    // Check if user is guest
+    if (AuthUtils.isGuestUser()) {
+      _showGuestSignupDialog(
+        content:
+            'Here\'s where you can revise ${NamingUtils.tasksName(plural: false, withArticle: true)} once you\'ve signed in. \nSign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
+      );
+      return;
+    }
+
     final currentCategory = widget.category ?? _currentCategory;
     if (currentCategory == null) {
       // For new categories, show error message - category must be saved first
@@ -168,6 +177,15 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
   // Pure UI method - no database operations
   Future<void> _createTask() async {
+    // Check if user is guest
+    if (AuthUtils.isGuestUser()) {
+      _showGuestSignupDialog(
+        content:
+            'Here\'s where you can add ${NamingUtils.tasksName(plural: false, withArticle: true)} once you\'re signed in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
+      );
+      return;
+    }
+
     final currentCategory = widget.category ?? _currentCategory;
     if (currentCategory == null) {
       // For new categories, show error message - category must be saved first
@@ -196,6 +214,37 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         }
       }
     }
+  }
+
+  String _getDefaultGuestMessage() {
+    return 'Here\'s where you can add a new ${NamingUtils.categoriesName(plural: false)} once you\'re logged in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!';
+  }
+
+  void _showGuestSignupDialog({required String content}) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('No Changes in Guest Mode'),
+          content: Text(content),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.pushNamed(context, '/auth');
+              },
+              child: const Text('Sign Up'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // Pure UI method - no database operations
@@ -913,6 +962,13 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                       icon: const Icon(Icons.edit),
                       tooltip: 'Edit details',
                       onPressed: () {
+                        if (AuthUtils.isGuestUser()) {
+                          _showGuestSignupDialog(
+                            content:
+                                'Here\'s where you can edit ${NamingUtils.categoriesName(plural: false, withArticle: true)} once you\'re logged in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
+                          );
+                          return;
+                        }
                         setState(() {
                           _editTasksLocal = false;
                         });
@@ -1096,6 +1152,13 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                         IconButton(
                           icon: const Icon(Icons.edit),
                           onPressed: () {
+                            if (AuthUtils.isGuestUser()) {
+                              _showGuestSignupDialog(
+                                content:
+                                    'Here\'s where you can revise ${NamingUtils.categoriesName(plural: false, withArticle: true)} once you\'re logged in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
+                              );
+                              return;
+                            }
                             setState(() {
                               _isEditing = true;
                             });

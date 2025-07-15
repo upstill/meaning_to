@@ -13,7 +13,7 @@ class NamingUtils {
     }
 
     if (withArticle) {
-      final firstLetter = base[0];
+      final firstLetter = base[0].toLowerCase();
       if (firstLetter == 'a' ||
           firstLetter == 'e' ||
           firstLetter == 'i' ||
@@ -42,7 +42,7 @@ class NamingUtils {
     }
 
     if (withArticle) {
-      final firstLetter = base[0];
+      final firstLetter = base[0].toLowerCase();
       if (firstLetter == 'a' ||
           firstLetter == 'e' ||
           firstLetter == 'i' ||
