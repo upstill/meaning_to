@@ -1,18 +1,109 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' as foundation;
-import 'package:supabase_auth_ui/supabase_auth_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class AuthScreen extends StatelessWidget {
+class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Use the app's custom URL scheme for deep linking on mobile, http for web
-    const redirectUrl = foundation.kIsWeb
-        ? 'http://localhost:64085/auth/callback'
-        : 'meaningto://auth/callback';
+  State<AuthScreen> createState() => _AuthScreenState();
+}
 
+class _AuthScreenState extends State<AuthScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+  bool _isSignUp = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleAuth() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      if (_isSignUp) {
+        // Sign up without email confirmation
+        final response = await Supabase.instance.client.auth.signUp(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+
+        if (response.user != null && response.session != null) {
+          // User is automatically signed in
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/home');
+          }
+        } else if (response.user != null) {
+          // User created but needs email confirmation
+          // Try to sign them in automatically
+          try {
+            final signInResponse =
+                await Supabase.instance.client.auth.signInWithPassword(
+              email: _emailController.text.trim(),
+              password: _passwordController.text,
+            );
+
+            if (signInResponse.user != null && signInResponse.session != null) {
+              if (mounted) {
+                Navigator.pushReplacementNamed(context, '/home');
+              }
+            } else {
+              setState(() {
+                _error =
+                    'Account created! Please check your email for confirmation, then sign in.';
+              });
+            }
+          } catch (e) {
+            setState(() {
+              _error =
+                  'Account created! Please check your email for confirmation, then sign in.';
+            });
+          }
+        } else {
+          setState(() {
+            _error = 'Sign up failed. Please try again.';
+          });
+        }
+      } else {
+        // Sign in
+        final response = await Supabase.instance.client.auth.signInWithPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+
+        if (response.user != null && response.session != null) {
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/home');
+          }
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       body: ListView(
         padding: const EdgeInsets.fromLTRB(24.0, 96.0, 24.0, 24.0),
@@ -27,91 +118,78 @@ class AuthScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24.0),
-              SupaEmailAuth(
-                redirectTo: redirectUrl,
-                onSignInComplete: (res) =>
-                    Navigator.pushNamed(context, '/home'),
-                onSignUpComplete: (res) =>
-                    Navigator.pushNamed(context, '/home'),
-                onError: (error) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(error.toString())),
-                  );
-                },
-              ),
-              const SizedBox(height: 16.0),
-              TextButton(
-                onPressed: () async {
-                  final emailController = TextEditingController();
-                  final result = await showDialog<String>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Reset Password'),
-                      content: TextField(
-                        controller: emailController,
-                        decoration: const InputDecoration(
-                          labelText: 'Email',
-                          hintText: 'Enter your email address',
-                        ),
-                        keyboardType: TextInputType.emailAddress,
+              Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: _emailController,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        border: OutlineInputBorder(),
                       ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () =>
-                              Navigator.pop(context, emailController.text),
-                          child: const Text('Send Reset Link'),
-                        ),
-                      ],
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please enter your email';
+                        }
+                        if (!value.contains('@')) {
+                          return 'Please enter a valid email';
+                        }
+                        return null;
+                      },
                     ),
-                  );
-
-                  if (result != null && result.isNotEmpty) {
-                    try {
-                      await Supabase.instance.client.auth.resetPasswordForEmail(
-                        result,
-                        redirectTo: '$redirectUrl?type=recovery',
-                      );
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                                'Password reset email sent! Check your inbox.'),
-                          ),
-                        );
-                      }
-                    } catch (error) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                              content:
-                                  Text('Error sending reset email: $error')),
-                        );
-                      }
-                    }
-                  }
-                },
-                child: const Text('Forgot Password?'),
-              ),
-              const SizedBox(height: 24.0),
-              SupaSocialsAuth(
-                socialProviders: const [
-                  OAuthProvider.google,
-                  OAuthProvider.github,
-                ],
-                redirectUrl: redirectUrl,
-                onSuccess: (session) => Navigator.pushNamed(
-                  context,
-                  '/home',
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _passwordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Password',
+                        border: OutlineInputBorder(),
+                      ),
+                      obscureText: true,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your password';
+                        }
+                        if (value.length < 6) {
+                          return 'Password must be at least 6 characters';
+                        }
+                        return null;
+                      },
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        _error!,
+                        style: const TextStyle(color: Colors.red),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _handleAuth,
+                        child: _isLoading
+                            ? const CircularProgressIndicator()
+                            : Text(_isSignUp ? 'Sign Up' : 'Sign In'),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _isSignUp = !_isSignUp;
+                          _error = null;
+                        });
+                      },
+                      child: Text(_isSignUp
+                          ? 'Already have an account? Sign In'
+                          : 'Don\'t have an account? Sign Up'),
+                    ),
+                  ],
                 ),
-                onError: (error) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(error.toString())),
-                  );
-                },
               ),
             ],
           ),
