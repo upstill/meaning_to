@@ -2,16 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import 'package:supabase_auth_ui/supabase_auth_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:meaning_to/utils/supabase_client.dart';
 
 class AuthScreen extends StatelessWidget {
   const AuthScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Define the redirect URL based on platform
-    final supabaseUrl = dotenv.env['SUPABASE_URL']!;
     // Use the app's custom URL scheme for deep linking on mobile, http for web
     const redirectUrl = foundation.kIsWeb
         ? 'http://localhost:64085/auth/callback'
@@ -75,7 +71,7 @@ class AuthScreen extends StatelessWidget {
 
                   if (result != null && result.isNotEmpty) {
                     try {
-                      await supabase.auth.resetPasswordForEmail(
+                      await Supabase.instance.client.auth.resetPasswordForEmail(
                         result,
                         redirectTo: '$redirectUrl?type=recovery',
                       );
