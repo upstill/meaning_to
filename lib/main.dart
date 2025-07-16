@@ -5,6 +5,7 @@ import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/reset_password_screen.dart';
+import 'package:meaning_to/email_confirmation_screen.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'package:meaning_to/edit_category_screen.dart';
@@ -17,6 +18,7 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/share_handler.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/src/supabase_auth.dart';
 
 // Remove the instance creation since we'll use static methods
 // final _receiveSharingIntent = ReceiveSharingIntent();
@@ -225,8 +227,77 @@ class _MyAppState extends State<MyApp> {
     print('Path: ${uri.path}');
     print('Query parameters: ${uri.queryParameters}');
 
-    // For now, we'll just log deep links since we haven't implemented serverless auth yet
-    print('Deep link received but authentication not implemented yet');
+    try {
+      // Handle email confirmation links
+      if (uri.scheme == 'meaningto' && uri.host == 'auth') {
+        print('Processing auth deep link');
+
+        // Check if this is an email confirmation link
+        if (uri.path.contains('confirm') ||
+            uri.queryParameters.containsKey('token')) {
+          print('Email confirmation link detected');
+
+          // Extract token and email from query parameters
+          final token = uri.queryParameters['token'];
+          final email = uri.queryParameters['email'];
+
+          if (token != null) {
+            print('Processing email confirmation with token');
+
+            // Try to confirm the email and sign in the user
+            try {
+              final response = await Supabase.instance.client.auth.verifyOTP(
+                email: email ?? '',
+                token: token,
+                type: OtpType.signup,
+              );
+
+              if (response.user != null && response.session != null) {
+                print('Email confirmation successful, user signed in');
+
+                // Navigate to home screen
+                if (mounted) {
+                  Navigator.pushReplacementNamed(context, '/home');
+                }
+              } else {
+                print('Email confirmation failed - no user or session');
+                // Navigate to auth screen with error
+                if (mounted) {
+                  Navigator.pushReplacementNamed(context, '/auth');
+                }
+              }
+            } catch (e) {
+              print('Error confirming email: $e');
+              // Navigate to auth screen with error
+              if (mounted) {
+                Navigator.pushReplacementNamed(context, '/auth');
+              }
+            }
+          } else {
+            print('No token found in confirmation link');
+            // Navigate to auth screen
+            if (mounted) {
+              Navigator.pushReplacementNamed(context, '/auth');
+            }
+          }
+        } else {
+          print('Auth deep link but not confirmation - navigating to auth');
+          // Navigate to auth screen
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/auth');
+          }
+        }
+      } else {
+        print('Unknown deep link format - ignoring');
+      }
+    } catch (e) {
+      print('Error handling deep link: $e');
+      // Navigate to auth screen on error
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/auth');
+      }
+    }
+
     print('=== End Deep Link Processing ===');
     MyApp.isHandlingDeepLink = false;
   }
@@ -296,6 +367,14 @@ class _MyAppState extends State<MyApp> {
             case '/auth':
               return MaterialPageRoute(
                 builder: (context) => const AuthScreen(),
+              );
+
+            case '/email-confirmation':
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => EmailConfirmationScreen(
+                  email: args['email'] as String,
+                ),
               );
             case '/home':
               return MaterialPageRoute(
