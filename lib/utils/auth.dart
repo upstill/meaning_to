@@ -14,6 +14,23 @@ class AuthUtils {
     return guestUserId;
   }
 
+  /// Ensure guest user is signed in for database access
+  static Future<void> ensureGuestAccess() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      // Try to sign in as guest user (this might not work depending on setup)
+      try {
+        print('AuthUtils: Attempting to sign in as guest user');
+        // This would require the guest user to have a password or use anonymous auth
+        // For now, we'll just log the attempt
+        print(
+            'AuthUtils: Guest user access not implemented - using unauthenticated access');
+      } catch (e) {
+        print('AuthUtils: Error signing in as guest: $e');
+      }
+    }
+  }
+
   /// Check if the current user is a guest (not logged in)
   static bool isGuestUser() {
     final user = Supabase.instance.client.auth.currentUser;
