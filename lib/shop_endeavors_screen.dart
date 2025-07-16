@@ -52,13 +52,18 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
       // Get current user ID
       final userId = AuthUtils.getCurrentUserId();
+      final isGuest = AuthUtils.isGuestUser();
 
       // Build the query based on mode
       var query = supabase
           .from('Categories')
           .select('id, headline, invitation, original_id')
-          .eq('private', false)
-          .neq('owner_id', userId);
+          .eq('private', false);
+
+      // Only exclude user's own categories if they're authenticated (not guest)
+      if (!isGuest) {
+        query = query.neq('owner_id', userId);
+      }
 
       // If we have an existing category, only show categories with the same original_id
       if (widget.existingCategory != null &&

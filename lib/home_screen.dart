@@ -49,6 +49,9 @@ class HomeScreenState extends State<HomeScreen> {
   // Add getter for selected category
   Category? get selectedCategory => _selectedCategory;
 
+  // Track if welcome dialog has been shown
+  bool _welcomeDialogShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -304,6 +307,13 @@ class HomeScreenState extends State<HomeScreen> {
           _isLoading = false;
         });
         print('Categories loaded successfully');
+
+        // Show welcome dialog for new authenticated users with no categories
+        if (!AuthUtils.isGuestUser() &&
+            categories.isEmpty &&
+            !_welcomeDialogShown) {
+          _showWelcomeDialog();
+        }
       } catch (e) {
         print('Error loading categories: $e');
         setState(() {
@@ -538,6 +548,53 @@ class HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _showWelcomeDialog() {
+    if (_welcomeDialogShown) return;
+
+    _welcomeDialogShown = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text(
+                'Welcome to \'I\'ve Been Meaning To\'!',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: const Text(
+                'It\'ll be a pretty empty experience in the beginning, so the first thing you\'ll want is to define some Pursuits.',
+                style: TextStyle(fontSize: 16),
+              ),
+              actions: [
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    // Navigate to create new category
+                    _navigateToNewCategory();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text(
+                    'Create Your First Pursuit',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    });
+  }
+
   void _showGuestSignupDialog({String content = 'Your message here'}) {
     showDialog(
       context: context,
@@ -701,7 +758,7 @@ class HomeScreenState extends State<HomeScreen> {
             onPressed: () async {
               await AuthUtils.signOut();
               if (mounted) {
-                Navigator.pushNamed(context, '/auth');
+                Navigator.pushReplacementNamed(context, '/');
               }
             },
             tooltip: 'Sign out',
