@@ -1237,7 +1237,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           ElevatedButton.icon(
                             onPressed: _createTask,
                             icon: const Icon(Icons.add),
-                            label: Text('Add a ${NamingUtils.tasksName()}'),
+                            label: Text(
+                                'Add ${NamingUtils.tasksName(withArticle: true, plural: false)}'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.green,
                               foregroundColor: Colors.white,
