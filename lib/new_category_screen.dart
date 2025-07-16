@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
@@ -17,6 +16,12 @@ class NewCategoryScreen extends StatefulWidget {
 
 class NewCategoryScreenState extends State<NewCategoryScreen> {
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    print('NewCategoryScreen: initState called');
+  }
 
   Future<void> _createCategory(String headline, String invitation,
       bool isPrivate, bool tasksArePrivate) async {
@@ -111,11 +116,18 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: () async {
-              final result =
-                  await Navigator.pushNamed(context, '/shop-endeavors');
-              // If categories were imported, pass the result back to the calling screen
-              if (result == true && mounted) {
-                Navigator.pop(context, true);
+              print('NewCategoryScreen: Shop for Ideas button pressed');
+              try {
+                final result =
+                    await Navigator.pushNamed(context, '/shop-endeavors');
+                print(
+                    'NewCategoryScreen: Navigation returned with result: $result');
+                // If categories were imported, pass the result back to the calling screen
+                if (result == true && mounted) {
+                  Navigator.pop(context, true);
+                }
+              } catch (e) {
+                print('NewCategoryScreen: Navigation error: $e');
               }
             },
             icon: const Icon(Icons.shopping_cart),
