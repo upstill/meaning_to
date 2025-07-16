@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/models/shop_item.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/auth.dart';
@@ -36,6 +37,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
   @override
   void initState() {
     super.initState();
+    print('ShopEndeavorsScreen: initState called');
+    print(
+        'ShopEndeavorsScreen: existingCategory: ${widget.existingCategory?.headline}');
     _loadPublicCategories();
     // If we're in Shop Endeavors mode (not "Get Suggestions to..." mode), load user tasks for redundancy checking
     if (widget.existingCategory == null) {
@@ -44,6 +48,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
   }
 
   Future<void> _loadPublicCategories() async {
+    print('ShopEndeavorsScreen: _loadPublicCategories called');
     try {
       setState(() {
         _isLoading = true;
@@ -54,78 +59,115 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       final userId = AuthUtils.getCurrentUserId();
       final isGuest = AuthUtils.isGuestUser();
 
-      // Build the query based on mode
-      var query = supabase
-          .from('Categories')
-          .select('id, headline, invitation, original_id')
-          .eq('private', false);
+      print('ShopEndeavorsScreen: Loading public categories');
+      print('ShopEndeavorsScreen: User ID: $userId');
+      print('ShopEndeavorsScreen: Is guest: $isGuest');
 
-      // Only exclude user's own categories if they're authenticated (not guest)
-      if (!isGuest) {
-        query = query.neq('owner_id', userId);
-      }
+      // Use API client to get all categories and filter for public ones
+      print('ShopEndeavorsScreen: Using API client to get all categories');
 
-      // If we have an existing category, only show categories with the same original_id
-      if (widget.existingCategory != null &&
-          widget.existingCategory!.originalId != null) {
-        query = query.eq(
-            'original_id', widget.existingCategory!.originalId.toString());
-      }
+      try {
+        // Get all categories from Supabase directly
+        print(
+            'ShopEndeavorsScreen: About to query Supabase for all categories');
+        print(
+            'ShopEndeavorsScreen: Supabase client auth state: ${supabase.auth.currentUser?.id ?? 'no user'}');
 
-      final response = await query.order('headline');
+        // Try to get all categories (this will be blocked by RLS if policies are restrictive)
+        final allCategories = await supabase.from('Categories').select('*');
+        print(
+            'ShopEndeavorsScreen: Raw API returned ${allCategories.length} categories');
 
-      // Group categories by original_id
-      final Map<String, List<Map<String, dynamic>>> groupedCategories = {};
-
-      for (final json in response as List) {
-        final categoryData = json as Map<String, dynamic>;
-        final originalId = categoryData['original_id']?.toString() ?? '';
-        final categoryId = categoryData['id'].toString();
-
-        if (!groupedCategories.containsKey(originalId)) {
-          groupedCategories[originalId] = [];
+        // Let's also try a simple query to see if we can access the table at all
+        try {
+          final testResult =
+              await supabase.from('Categories').select('id').limit(1);
+          print(
+              'ShopEndeavorsScreen: Test query result: ${testResult.length} rows');
+        } catch (e) {
+          print('ShopEndeavorsScreen: Test query failed: $e');
         }
-        groupedCategories[originalId]!.add(categoryData);
-      }
 
-      // Create ShopItem objects from grouped categories
-      final List<ShopItem> items = [];
+        // Convert to Category objects
+        final categories = (allCategories as List)
+            .map((json) => Category.fromJson(json as Map<String, dynamic>))
+            .toList();
 
-      for (final entry in groupedCategories.entries) {
-        final originalId = entry.key;
-        final categories = entry.value;
+        print(
+            'ShopEndeavorsScreen: Converted to ${categories.length} Category objects');
 
-        if (categories.isNotEmpty) {
-          // Use the first category's data for headline and invitation
-          final firstCategory = categories.first;
-          final categoryIds =
-              categories.map((c) => c['id'].toString()).toList();
+        // Filter to only show public categories that don't belong to the current user
+        final publicCategories = categories.where((category) {
+          final isPublic = !category.isPrivate;
+          final isNotOwnedByUser = category.ownerId != userId;
+          print(
+              'ShopEndeavorsScreen: Category ${category.headline} - isPublic: $isPublic, isNotOwnedByUser: $isNotOwnedByUser (owner: ${category.ownerId}, user: $userId)');
+          return isPublic && (isGuest || isNotOwnedByUser);
+        }).toList();
 
-          // If we have an existing category, automatically select this item
-          final isSelected = widget.existingCategory != null;
-
-          items.add(ShopItem(
-            originalId: originalId,
-            headline: firstCategory['headline'] as String,
-            invitation: firstCategory['invitation'] as String?,
-            categoryIds: categoryIds,
-            isSelected: isSelected,
-            isExpanded: isSelected, // Auto-expand if selected
-          ));
+        print(
+            'ShopEndeavorsScreen: Filtered to ${publicCategories.length} public categories');
+        for (final category in publicCategories) {
+          print(
+              'ShopEndeavorsScreen: Public category: ${category.headline} (owner: ${category.ownerId})');
         }
+
+        // Group categories by original_id
+        final Map<String, List<Category>> groupedCategories = {};
+
+        for (final category in publicCategories) {
+          final originalId = category.originalId?.toString() ?? '';
+          if (!groupedCategories.containsKey(originalId)) {
+            groupedCategories[originalId] = [];
+          }
+          groupedCategories[originalId]!.add(category);
+        }
+
+        // Create ShopItem objects from grouped categories
+        final List<ShopItem> items = [];
+
+        for (final entry in groupedCategories.entries) {
+          final originalId = entry.key;
+          final categories = entry.value;
+
+          if (categories.isNotEmpty) {
+            // Use the first category's data for headline and invitation
+            final firstCategory = categories.first;
+            final categoryIds = categories.map((c) => c.id.toString()).toList();
+
+            // If we have an existing category, automatically select this item
+            final isSelected = widget.existingCategory != null;
+
+            items.add(ShopItem(
+              originalId: originalId,
+              headline: firstCategory.headline,
+              invitation: firstCategory.invitation,
+              categoryIds: categoryIds,
+              isSelected: isSelected,
+              isExpanded: isSelected, // Auto-expand if selected
+            ));
+          }
+        }
+
+        setState(() {
+          _shopItems = items;
+          _isLoading = false;
+        });
+
+        // If we have an existing category, load tasks for the pre-selected item
+        if (widget.existingCategory != null && items.isNotEmpty) {
+          await _loadTasksForItem(
+              0); // Load tasks for the first (and only) item
+        }
+
+        print('Loaded ${items.length} public categories for shop');
+      } catch (e) {
+        print('ShopEndeavorsScreen: Error getting categories from API: $e');
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
       }
-
-      setState(() {
-        _shopItems = items;
-        _isLoading = false;
-      });
-
-      // If we have an existing category, load tasks for the pre-selected item
-      if (widget.existingCategory != null && items.isNotEmpty) {
-        await _loadTasksForItem(0); // Load tasks for the first (and only) item
-      }
-
-      print('Loaded ${items.length} public categories for shop');
     } catch (e) {
       print('Error loading public categories: $e');
       setState(() {
@@ -186,38 +228,38 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     try {
       final item = _shopItems[index];
 
-      // Fetch tasks for all categories with this original_id
-      final response = await supabase
-          .from('Tasks')
-          .select('*')
-          .inFilter('category_id', item.categoryIds);
+      // Use API client to get tasks for all categories with this original_id
+      final tasks = await ApiClient.getTasks();
 
-      // Filter to only show original tasks (where id equals original_id)
-      final List<Task> allTasks = (response as List)
-          .map((json) => Task.fromJson(json as Map<String, dynamic>))
+      // Filter tasks to only those belonging to the categories with this original_id
+      final List<Task> allTasks = tasks
+          .where(
+              (task) => item.categoryIds.contains(task.categoryId.toString()))
           .toList();
 
+      // Filter to only show original tasks (where id equals original_id)
       final List<Task> allOriginalTasks =
           allTasks.where((task) => task.id == task.originalId).toList();
 
       // Filter out redundant tasks (only in Shop Endeavors mode, not "Get Suggestions to..." mode)
-      final List<Task> tasks = widget.existingCategory == null
+      final List<Task> filteredTasks = widget.existingCategory == null
           ? allOriginalTasks.where((task) => !_isTaskRedundant(task)).toList()
           : allOriginalTasks;
 
       setState(() {
-        _shopItems[index].tasks = tasks;
+        _shopItems[index].tasks = filteredTasks;
         // Initialize import selections for new tasks
         // If the category is selected, select all tasks by default
         final shouldSelectAll = _shopItems[index].isSelected;
-        for (final task in tasks) {
+        for (final task in filteredTasks) {
           _taskImportSelections[task.id.toString()] = shouldSelectAll;
         }
         // Clear redundant task cache when tasks are reloaded
         _redundantTaskCache.clear();
       });
 
-      print('Loaded ${tasks.length} tasks for original_id: ${item.originalId}');
+      print(
+          'Loaded ${filteredTasks.length} tasks for original_id: ${item.originalId}');
     } catch (e) {
       print('Error loading tasks for item $index: $e');
       // Don't show error to user, just log it
@@ -269,15 +311,14 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     try {
       final userId = AuthUtils.getCurrentUserId();
 
-      // Query all tasks owned by the current user and get their original_ids
-      final response = await supabase
-          .from('Tasks')
-          .select('original_id')
-          .eq('owner_id', userId)
-          .not('original_id', 'is', null);
+      // Use API client to get all tasks owned by the current user
+      final tasks = await ApiClient.getTasks();
 
-      final originalIds =
-          (response as List).map((json) => json['original_id'] as int).toSet();
+      // Extract original_ids from tasks
+      final originalIds = tasks
+          .where((task) => task.originalId != null)
+          .map((task) => task.originalId!)
+          .toSet();
 
       setState(() {
         _userTaskOriginalIds.clear();
@@ -464,18 +505,16 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
       for (final item in selectedItems) {
         // Check if user already has a category with this original_id
-        final existingCategoryResponse = await supabase
-            .from('Categories')
-            .select('id')
-            .eq('owner_id', userId)
-            .eq('original_id', item.originalId)
-            .maybeSingle();
+        final userCategories = await ApiClient.getCategories();
+        final existingCategory = userCategories
+            .where((cat) => cat.originalId?.toString() == item.originalId)
+            .firstOrNull;
 
         String categoryId;
 
-        if (existingCategoryResponse != null) {
+        if (existingCategory != null) {
           // Use existing category
-          categoryId = existingCategoryResponse['id'].toString();
+          categoryId = existingCategory.id.toString();
           print(
               'Using existing category $categoryId for original_id ${item.originalId}');
         } else {
@@ -488,13 +527,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
             'private': false, // Default to public
           };
 
-          final newCategoryResponse = await supabase
-              .from('Categories')
-              .insert(newCategoryData)
-              .select()
-              .single();
-
-          categoryId = newCategoryResponse['id'].toString();
+          final newCategory = await ApiClient.createCategory(newCategoryData);
+          categoryId = newCategory.id.toString();
           importedCategories++;
           print(
               'Created new category $categoryId for original_id ${item.originalId}');
@@ -507,19 +541,16 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
             .toList();
 
         if (selectedTaskIds.isNotEmpty) {
-          // Fetch the original tasks
-          final originalTasksResponse = await supabase
-              .from('Tasks')
-              .select('*')
-              .inFilter('id', selectedTaskIds);
+          // Get all tasks and filter to the selected ones
+          final allTasks = await ApiClient.getTasks();
+          final originalTasks = allTasks
+              .where((task) => selectedTaskIds.contains(task.id.toString()))
+              .toList();
 
           // Track original_ids to prevent duplicates within this import
           final importedOriginalIds = <int>{};
 
-          for (final taskData in originalTasksResponse as List) {
-            final originalTask =
-                Task.fromJson(taskData as Map<String, dynamic>);
-
+          for (final originalTask in originalTasks) {
             // Check for duplicate original_id within this import
             if (originalTask.originalId != null &&
                 importedOriginalIds.contains(originalTask.originalId)) {
@@ -542,7 +573,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                   .originalId, // Copy the original_id from the source task
             };
 
-            await supabase.from('Tasks').insert(newTaskData);
+            await ApiClient.createTask(newTaskData);
 
             // Track this original_id to prevent future duplicates
             if (originalTask.originalId != null) {
@@ -702,9 +733,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                             color: Colors.grey,
                           ),
                           const SizedBox(height: 16),
-                          const Text(
-                            'No public categories available',
-                            style: TextStyle(
+                          Text(
+                            'No public ${NamingUtils.categoriesName(plural: true)} available',
+                            style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),

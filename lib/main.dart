@@ -402,7 +402,9 @@ class _MyAppState extends State<MyApp> {
                 builder: (context) => const NewCategoryScreen(),
               );
             case '/shop-endeavors':
+              print('Main: Creating ShopEndeavorsScreen route');
               final args = settings.arguments as Map<String, dynamic>?;
+              print('Main: ShopEndeavorsScreen arguments: $args');
               return MaterialPageRoute(
                 builder: (context) => ShopEndeavorsScreen(
                   existingCategory: args?['category'] as Category?,
