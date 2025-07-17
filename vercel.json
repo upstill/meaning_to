@@ -12,6 +12,10 @@
   },
   "rewrites": [
     {
+      "source": "/auth/callback",
+      "destination": "/build/web/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/build/web/$1"
     }
