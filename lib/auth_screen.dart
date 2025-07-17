@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/src/supabase_auth.dart';
+import 'package:meaning_to/models/icon.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -16,11 +18,60 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLoading = false;
   String? _error;
 
+  // OAuth icon states
+  DomainIcon? _googleIcon;
+  DomainIcon? _githubIcon;
+  bool _iconsLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOAuthIcons();
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadOAuthIcons() async {
+    try {
+      print('AuthScreen: Loading OAuth icons...');
+
+      // Load Google icon
+      final googleIcon = await DomainIcon.getIconForDomain('google.com');
+      if (googleIcon != null) {
+        print('AuthScreen: Google icon loaded successfully');
+        setState(() {
+          _googleIcon = googleIcon;
+        });
+      } else {
+        print('AuthScreen: Failed to load Google icon');
+      }
+
+      // Load GitHub icon
+      final githubIcon = await DomainIcon.getIconForDomain('github.com');
+      if (githubIcon != null) {
+        print('AuthScreen: GitHub icon loaded successfully');
+        setState(() {
+          _githubIcon = githubIcon;
+        });
+      } else {
+        print('AuthScreen: Failed to load GitHub icon');
+      }
+
+      setState(() {
+        _iconsLoaded = true;
+      });
+      print('AuthScreen: OAuth icons loading complete');
+    } catch (e) {
+      print('AuthScreen: Error loading OAuth icons: $e');
+      setState(() {
+        _iconsLoaded = true; // Mark as loaded even if failed
+      });
+    }
   }
 
   Future<void> _handleSignIn() async {
@@ -157,6 +208,88 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  // OAuth Sign-In Methods
+  Future<void> _handleGoogleSignIn() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      // Let Supabase handle the redirect URL automatically
+      // It will use the Site URL configured in Supabase dashboard
+      print('AuthScreen: Starting Google OAuth sign-in');
+      print('AuthScreen: Current origin: ${Uri.base.origin}');
+      print('AuthScreen: Full URL: ${Uri.base}');
+      print(
+          'AuthScreen: Redirect URL: ${foundation.kIsWeb ? '${Uri.base.origin}/auth/callback' : null}');
+
+      try {
+        // Don't specify redirectTo - let Supabase use its default
+        await Supabase.instance.client.auth.signInWithOAuth(
+          OAuthProvider.google,
+        );
+        print('AuthScreen: OAuth sign-in initiated successfully');
+      } catch (e) {
+        print('AuthScreen: OAuth sign-in error: $e');
+        print('AuthScreen: Error details: ${e.toString()}');
+        rethrow;
+      }
+
+      // For OAuth, we don't immediately get a session
+      // The user will be redirected to the OAuth provider
+      // and then back to the app
+    } catch (e) {
+      print('AuthScreen: Google OAuth error: $e');
+      setState(() {
+        _error = 'Google sign-in failed. Please try again.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleGitHubSignIn() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      // Let Supabase handle the redirect URL automatically
+      // It will use the Site URL configured in Supabase dashboard
+      print('AuthScreen: Starting GitHub OAuth sign-in');
+      print('AuthScreen: Current origin: ${Uri.base.origin}');
+      print(
+          'AuthScreen: Redirect URL: ${foundation.kIsWeb ? '${Uri.base.origin}/auth/callback' : null}');
+
+      // Don't specify redirectTo - let Supabase use its default
+      await Supabase.instance.client.auth.signInWithOAuth(
+        OAuthProvider.github,
+      );
+      print('AuthScreen: GitHub OAuth sign-in initiated successfully');
+
+      // For OAuth, we don't immediately get a session
+      // The user will be redirected to the OAuth provider
+      // and then back to the app
+    } catch (e) {
+      print('AuthScreen: GitHub OAuth error: $e');
+      setState(() {
+        _error = 'GitHub sign-in failed. Please try again.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   String _getFriendlyErrorMessage(dynamic error, {required bool isSignIn}) {
     final errorString = error.toString().toLowerCase();
 
@@ -211,6 +344,27 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
               ),
               const SizedBox(height: 24.0),
+
+              // Divider
+              Row(
+                children: [
+                  const Expanded(child: Divider()),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'Sign in or sign up with email',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  const Expanded(child: Divider()),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
               Form(
                 key: _formKey,
                 child: Column(
@@ -332,6 +486,91 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // OAuth Sign-In Buttons (smaller, horizontal)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '...or, sign in with:',
+                        style: TextStyle(
+                          color: const Color.fromARGB(255, 57, 56, 56),
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 48,
+                            child: ElevatedButton.icon(
+                              onPressed:
+                                  _isLoading ? null : _handleGoogleSignIn,
+                              icon: _googleIcon?.iconData != null
+                                  ? Image.memory(
+                                      _googleIcon!.iconData!,
+                                      width: 20,
+                                      height: 20,
+                                      fit: BoxFit.contain,
+                                    )
+                                  : const Icon(Icons.g_mobiledata,
+                                      color: Colors.white, size: 20),
+                              label: const Text(
+                                'Google',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                elevation: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: SizedBox(
+                            height: 48,
+                            child: ElevatedButton.icon(
+                              onPressed:
+                                  _isLoading ? null : _handleGitHubSignIn,
+                              icon: _githubIcon?.iconData != null
+                                  ? Image.memory(
+                                      _githubIcon!.iconData!,
+                                      width: 20,
+                                      height: 20,
+                                      fit: BoxFit.contain,
+                                    )
+                                  : const Icon(Icons.code,
+                                      color: Colors.white, size: 20),
+                              label: const Text(
+                                'GitHub',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.black,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                elevation: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

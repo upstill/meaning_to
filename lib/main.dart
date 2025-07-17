@@ -191,6 +191,52 @@ class _MyAppState extends State<MyApp> {
     print('Initializing deep link listener');
     _appLinks = AppLinks();
 
+    // Handle OAuth callbacks
+    if (foundation.kIsWeb) {
+      final uri = Uri.base;
+      print('=== OAuth Callback Check ===');
+      print('Current URI: $uri');
+      print('Path: ${uri.path}');
+      print('Query parameters: ${uri.queryParameters}');
+      print('Fragment: ${uri.fragment}');
+
+      if (uri.path == '/auth/callback') {
+        print('OAuth callback path detected!');
+        try {
+          print('Checking current session...');
+          final session = await Supabase.instance.client.auth.currentSession;
+          print('Session: ${session != null ? "exists" : "null"}');
+
+          if (session != null) {
+            print('OAuth callback successful - navigating to home');
+            if (mounted) {
+              Navigator.of(context).pushReplacementNamed('/home');
+            }
+          } else {
+            print('No session found after OAuth callback');
+            // Try to get the session from the URL parameters
+            final accessToken = uri.queryParameters['access_token'];
+            final refreshToken = uri.queryParameters['refresh_token'];
+            print(
+                'Access token in URL: ${accessToken != null ? "present" : "missing"}');
+            print(
+                'Refresh token in URL: ${refreshToken != null ? "present" : "missing"}');
+
+            if (accessToken != null) {
+              print('Attempting to set session from URL parameters...');
+              // You might need to manually set the session here
+            }
+          }
+        } catch (e) {
+          print('OAuth callback error: $e');
+          print('Stack trace: ${StackTrace.current}');
+        }
+      } else {
+        print('Not an OAuth callback path');
+      }
+      print('=== End OAuth Callback Check ===');
+    }
+
     // Handle initial link
     final uri = await _appLinks.getInitialAppLink();
     if (uri != null) {
@@ -330,11 +376,16 @@ class _MyAppState extends State<MyApp> {
         ],
         initialRoute: '/',
         onGenerateRoute: (settings) {
-          print('onGenerateRoute called with: ${settings.name}');
+          print('=== onGenerateRoute called ===');
+          print('Route name: ${settings.name}');
           print('Arguments: ${settings.arguments}');
           print('Handling deep link: ${MyApp.isHandlingDeepLink}');
           print(
               'Current route stack: ${MyApp.navigatorKey.currentState?.widget.runtimeType}');
+          print('Current URI: ${Uri.base}');
+          print('Current path: ${Uri.base.path}');
+          print('Current query: ${Uri.base.queryParameters}');
+          print('=== End onGenerateRoute ===');
 
           // If we're handling a deep link, don't process normal routes
           if (MyApp.isHandlingDeepLink) {
@@ -367,6 +418,12 @@ class _MyAppState extends State<MyApp> {
             case '/auth':
               return MaterialPageRoute(
                 builder: (context) => const AuthScreen(),
+              );
+            case '/auth/callback':
+              print('Main: OAuth callback route detected');
+              // Return a loading screen that will handle the OAuth callback
+              return MaterialPageRoute(
+                builder: (context) => const SplashScreen(),
               );
 
             case '/email-confirmation':
