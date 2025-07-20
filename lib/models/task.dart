@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/models/link.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/api_client.dart';
@@ -19,6 +18,7 @@ class Task {
   final List<String>? links; // PostgreSQL array of link strings
   List<ProcessedLink>? processedLinks;
   final bool finished;
+  final bool shared;
   final int? originalId;
 
   // Global cache manager instance
@@ -49,6 +49,7 @@ class Task {
     this.links,
     this.processedLinks,
     required this.finished,
+    this.shared = false,
     this.originalId,
   });
 
@@ -148,6 +149,7 @@ class Task {
       links: links,
       processedLinks: null, // Will be processed when needed
       finished: json['finished'] as bool? ?? false,
+      shared: json['shared'] as bool? ?? false,
       originalId: json['original_id'] as int?,
     );
 
@@ -174,6 +176,7 @@ class Task {
       'deferral': deferral,
       'links': links, // PostgreSQL array - no JSON encoding needed
       'finished': finished,
+      'shared': shared,
       'original_id': originalId,
     };
   }
@@ -587,7 +590,7 @@ class Task {
   /// Returns true if the link is already present, false otherwise.
   /// This method handles both HTML links and plain URLs.
   bool hasLink(String link) {
-    print('Task.hasLink: Checking if task "${headline}" has link: $link');
+    print('Task.hasLink: Checking if task "$headline" has link: $link');
     print('Task.hasLink: Task links: $links');
 
     // Extract URL from the link to check

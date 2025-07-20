@@ -21,6 +21,7 @@ class _AuthScreenState extends State<AuthScreen> {
   // OAuth icon states
   DomainIcon? _googleIcon;
   DomainIcon? _githubIcon;
+  DomainIcon? _appleIcon;
   bool _iconsLoaded = false;
 
   @override
@@ -60,6 +61,17 @@ class _AuthScreenState extends State<AuthScreen> {
         });
       } else {
         print('AuthScreen: Failed to load GitHub icon');
+      }
+
+      // Load Apple icon
+      final appleIcon = await DomainIcon.getIconForDomain('apple.com');
+      if (appleIcon != null) {
+        print('AuthScreen: Apple icon loaded successfully');
+        setState(() {
+          _appleIcon = appleIcon;
+        });
+      } else {
+        print('AuthScreen: Failed to load Apple icon');
       }
 
       setState(() {
@@ -290,6 +302,38 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  Future<void> _handleAppleSignIn() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      // Let Supabase handle the redirect URL automatically
+      // It will use the Site URL configured in Supabase dashboard
+      print('AuthScreen: Starting Apple OAuth sign-in');
+      print('AuthScreen: Current origin: ${Uri.base.origin}');
+      print('AuthScreen: Full URL: ${Uri.base}');
+
+      // Don't specify redirectTo - let Supabase use its default
+      await Supabase.instance.client.auth.signInWithOAuth(
+        OAuthProvider.apple,
+      );
+      print('AuthScreen: Apple OAuth sign-in initiated successfully');
+    } catch (e) {
+      print('AuthScreen: Apple OAuth error: $e');
+      setState(() {
+        _error = 'Apple sign-in failed. Please try again.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   String _getFriendlyErrorMessage(dynamic error, {required bool isSignIn}) {
     final errorString = error.toString().toLowerCase();
 
@@ -352,7 +396,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      'Sign in or sign up with email',
+                      '...or, sign in with:',
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontSize: 14,
@@ -490,86 +534,123 @@ class _AuthScreenState extends State<AuthScreen> {
                     const SizedBox(height: 32),
 
                     // OAuth Sign-In Buttons (smaller, horizontal)
-                    Align(
+                    const Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
                         '...or, sign in with:',
                         style: TextStyle(
-                          color: const Color.fromARGB(255, 57, 56, 56),
+                          color: Color.fromARGB(255, 57, 56, 56),
                           fontSize: 18,
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Row(
+                    Column(
                       children: [
-                        Expanded(
-                          child: SizedBox(
-                            height: 48,
-                            child: ElevatedButton.icon(
-                              onPressed:
-                                  _isLoading ? null : _handleGoogleSignIn,
-                              icon: _googleIcon?.iconData != null
-                                  ? Image.memory(
-                                      _googleIcon!.iconData!,
-                                      width: 20,
-                                      height: 20,
-                                      fit: BoxFit.contain,
-                                    )
-                                  : const Icon(Icons.g_mobiledata,
-                                      color: Colors.white, size: 20),
-                              label: const Text(
-                                'Google',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: 48,
+                                child: ElevatedButton.icon(
+                                  onPressed:
+                                      _isLoading ? null : _handleGoogleSignIn,
+                                  icon: _googleIcon?.iconData != null
+                                      ? Image.memory(
+                                          _googleIcon!.iconData!,
+                                          width: 26,
+                                          height: 26,
+                                          fit: BoxFit.contain,
+                                        )
+                                      : const Icon(Icons.g_mobiledata,
+                                          color: Colors.white, size: 26),
+                                  label: const Text(
+                                    'Google',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    elevation: 2,
+                                  ),
                                 ),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                elevation: 2,
                               ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: SizedBox(
-                            height: 48,
-                            child: ElevatedButton.icon(
-                              onPressed:
-                                  _isLoading ? null : _handleGitHubSignIn,
-                              icon: _githubIcon?.iconData != null
-                                  ? Image.memory(
-                                      _githubIcon!.iconData!,
-                                      width: 20,
-                                      height: 20,
-                                      fit: BoxFit.contain,
-                                    )
-                                  : const Icon(Icons.code,
-                                      color: Colors.white, size: 20),
-                              label: const Text(
-                                'GitHub',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: SizedBox(
+                                height: 48,
+                                child: ElevatedButton.icon(
+                                  onPressed:
+                                      _isLoading ? null : _handleGitHubSignIn,
+                                  icon: _githubIcon?.iconData != null
+                                      ? Image.memory(
+                                          _githubIcon!.iconData!,
+                                          width: 26,
+                                          height: 26,
+                                          fit: BoxFit.contain,
+                                        )
+                                      : const Icon(Icons.code,
+                                          color: Colors.white, size: 26),
+                                  label: const Text(
+                                    'GitHub',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.black,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    elevation: 2,
+                                  ),
                                 ),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.black,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                elevation: 2,
                               ),
                             ),
-                          ),
+                          ],
                         ),
+                        // Apple sign-in button commented out due to domain verification issues
+                        // const SizedBox(height: 12),
+                        // SizedBox(
+                        //   width: double.infinity,
+                        //   height: 48,
+                        //   child: ElevatedButton.icon(
+                        //     onPressed: _isLoading ? null : _handleAppleSignIn,
+                        //     icon: _appleIcon?.iconData != null
+                        //         ? Image.memory(
+                        //             _appleIcon!.iconData!,
+                        //             width: 26,
+                        //             height: 26,
+                        //             fit: BoxFit.contain,
+                        //           )
+                        //         : const Icon(Icons.apple,
+                        //             color: Colors.white, size: 26),
+                        //     label: const Text(
+                        //       'Apple',
+                        //       style: TextStyle(
+                        //         fontSize: 14,
+                        //         fontWeight: FontWeight.w600,
+                        //         color: Colors.white,
+                        //       ),
+                        //     ),
+                        //     style: ElevatedButton.styleFrom(
+                        //       backgroundColor: Colors.black,
+                        //       shape: RoundedRectangleBorder(
+                        //         borderRadius: BorderRadius.circular(8),
+                        //       ),
+                        //       elevation: 2,
+                        //     ),
+                        //   ),
+                        // ),
                       ],
                     ),
                   ],

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/auth.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class TaskDisplay extends StatefulWidget {
   final Task task;
@@ -11,6 +10,9 @@ class TaskDisplay extends StatefulWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onTap;
   final Function(DateTime)? onUpdateSuggestibleAt;
+  final Function(bool)? onShareToggle;
+  final bool? isCategoryPrivate;
+  final VoidCallback? onMakeCategoryPublic;
 
   const TaskDisplay({
     super.key,
@@ -20,6 +22,9 @@ class TaskDisplay extends StatefulWidget {
     this.onDelete,
     this.onTap,
     this.onUpdateSuggestibleAt,
+    this.onShareToggle,
+    this.isCategoryPrivate,
+    this.onMakeCategoryPublic,
   });
 
   /// Builds a widget to display a task, with optional controls.
@@ -33,6 +38,9 @@ class TaskDisplay extends StatefulWidget {
     VoidCallback? onDelete,
     VoidCallback? onTap,
     Function(DateTime)? onUpdateSuggestibleAt,
+    Function(bool)? onShareToggle,
+    bool? isCategoryPrivate,
+    VoidCallback? onMakeCategoryPublic,
   }) {
     return TaskDisplay(
       task: task,
@@ -41,6 +49,9 @@ class TaskDisplay extends StatefulWidget {
       onDelete: onDelete,
       onTap: onTap,
       onUpdateSuggestibleAt: onUpdateSuggestibleAt,
+      onShareToggle: onShareToggle,
+      isCategoryPrivate: isCategoryPrivate,
+      onMakeCategoryPublic: onMakeCategoryPublic,
     );
   }
 
@@ -78,6 +89,35 @@ class _TaskDisplayState extends State<TaskDisplay> {
     });
     print(
         'TaskDisplay: Toggled expanded state to $_isExpanded for ${widget.task.headline}');
+  }
+
+  void _showPrivateCategoryDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Private Pursuit'),
+          content: const Text(
+            'This pursuit is private, so ideas aren\'t being shared. Would you like to make the pursuit public so you can share them?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                if (widget.onMakeCategoryPublic != null) {
+                  widget.onMakeCategoryPublic!();
+                }
+              },
+              child: const Text('Yes, please share'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -206,6 +246,54 @@ class _TaskDisplayState extends State<TaskDisplay> {
                                 materialTapTargetSize:
                                     MaterialTapTargetSize.shrinkWrap,
                                 visualDensity: VisualDensity.compact,
+                              ),
+                            );
+                          },
+                        ),
+                        // Share control
+                        Builder(
+                          builder: (context) {
+                            return Container(
+                              child: SizedBox(
+                                width: 30,
+                                height: 30,
+                                child: IconButton(
+                                  icon: Icon(
+                                    // If category is private, always show as unshared
+                                    (widget.isCategoryPrivate == true ||
+                                            !widget.task.shared)
+                                        ? Icons.share_outlined
+                                        : Icons.share_sharp,
+                                    size:
+                                        18, // Slightly larger for better visibility
+                                    color: (widget.isCategoryPrivate == true ||
+                                            !widget.task.shared)
+                                        ? Colors.grey
+                                            .shade400 // Medium gray for unshared state
+                                        : Colors.green.shade700,
+                                  ),
+                                  onPressed: () {
+                                    // If category is private and user is trying to share, show dialog
+                                    if (widget.isCategoryPrivate == true &&
+                                        !widget.task.shared) {
+                                      _showPrivateCategoryDialog(context);
+                                    } else if (widget.onShareToggle != null) {
+                                      widget
+                                          .onShareToggle!(!widget.task.shared);
+                                    }
+                                  },
+                                  tooltip: (widget.isCategoryPrivate == true ||
+                                          !widget.task.shared)
+                                      ? 'Share task'
+                                      : 'Unshare task',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 30,
+                                    minHeight: 30,
+                                    maxWidth: 30,
+                                    maxHeight: 30,
+                                  ),
+                                ),
                               ),
                             );
                           },

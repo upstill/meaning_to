@@ -31,6 +31,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   bool _isLoading = false;
   String? _error;
   List<String> _links = [];
+  bool _isShared = false;
 
   // Local copy of the task for editing
   Task? _localTask;
@@ -39,22 +40,24 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   void initState() {
     super.initState();
 
-    // Create a local copy of the task for editing
+    // Get the current task state from cache if available, otherwise use the passed task
     if (widget.task != null) {
-      _localTask = Task(
-        id: widget.task!.id,
-        categoryId: widget.task!.categoryId,
-        ownerId: widget.task!.ownerId,
-        headline: widget.task!.headline,
-        notes: widget.task!.notes,
-        links: widget.task!.links != null
-            ? List<String>.from(widget.task!.links!)
-            : null,
-        processedLinks: widget.task!.processedLinks,
-        createdAt: widget.task!.createdAt,
-        suggestibleAt: widget.task!.suggestibleAt,
-        finished: widget.task!.finished,
-      );
+      final cacheManager = CacheManager();
+      final currentTasks = cacheManager.currentTasks;
+
+      if (currentTasks != null) {
+        // Try to find the task in the cache
+        final cachedTask = currentTasks.firstWhere(
+          (task) => task.id == widget.task!.id,
+          orElse: () => widget.task!,
+        );
+
+        // Use the cached task if found, otherwise use the passed task
+        _localTask = cachedTask;
+      } else {
+        // No cache available, use the passed task
+        _localTask = widget.task!;
+      }
     }
 
     _headlineController =
@@ -62,6 +65,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     _notesController = TextEditingController(text: _localTask?.notes ?? '');
     _links =
         _localTask?.links != null ? List<String>.from(_localTask!.links!) : [];
+    _isShared = _localTask?.shared ?? false;
 
     // Add listener to track headline changes for button state
     _headlineController.addListener(() {
@@ -142,6 +146,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       createdAt: _localTask!.createdAt,
       suggestibleAt: _localTask!.suggestibleAt,
       finished: _localTask!.finished,
+      shared: _isShared,
     );
   }
 
@@ -500,6 +505,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         'category_id': widget.category.id,
         'owner_id': userId,
         'finished': _localTask?.finished ?? false,
+        'shared': _isShared,
         'links':
             _links, // PostgreSQL array - always store as array, even if empty
       };
@@ -779,6 +785,21 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 maxLines: 3,
                 enabled: !_isLoading,
               ),
+              const SizedBox(height: 16),
+              CheckboxListTile(
+                title:
+                    const Text('Share this ${NamingUtils.tasksNameSingular}'),
+                subtitle: const Text('Make it available to others'),
+                value: _isShared,
+                onChanged: _isLoading
+                    ? null
+                    : (value) {
+                        setState(() {
+                          _isShared = value ?? false;
+                        });
+                      },
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
               if (_error != null) ...[
                 const SizedBox(height: 16),
                 Text(
@@ -862,7 +883,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Text(
-                        '** You can also get ideas from other people! **',
+                        '** You can also get ${NamingUtils.tasksNamePlural} from other people! **',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey[600],
