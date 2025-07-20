@@ -4,7 +4,6 @@ import 'package:meaning_to/utils/api_client.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:meaning_to/utils/text_importer.dart';
-import 'package:meaning_to/utils/auth.dart';
 import 'dart:async';
 
 /// A cache management module for Categories and Tasks
@@ -566,6 +565,46 @@ class CacheManager {
 
     print(
         'CacheManager: Task ${task.headline} marked as unfinished and deferral reset to 1');
+  }
+
+  /// Update the shared state of a task
+  Future<void> updateTaskShare(int taskId, bool shared) async {
+    final taskIndex = _currentTasks!.indexWhere((t) => t.id == taskId);
+    if (taskIndex == -1) {
+      throw Exception('Task not found in cache');
+    }
+
+    final task = _currentTasks![taskIndex];
+
+    final updatedTask = Task(
+      id: task.id,
+      categoryId: task.categoryId,
+      headline: task.headline,
+      notes: task.notes,
+      ownerId: task.ownerId,
+      createdAt: task.createdAt,
+      suggestibleAt: task.suggestibleAt,
+      triggersAt: task.triggersAt,
+      deferral: task.deferral,
+      links: task.links,
+      processedLinks: task.processedLinks,
+      finished: task.finished,
+      shared: shared,
+    );
+
+    // Update in API if this is a saved category
+    if (!_isUnsavedCategory && _currentUserId != null) {
+      await ApiClient.updateTask(taskId.toString(), {
+        'shared': shared,
+      });
+    }
+
+    // Update in cache
+    _currentTasks![taskIndex] = updatedTask;
+    _sortTasks();
+
+    print(
+        'CacheManager: Task ${task.headline} shared state updated to: $shared');
   }
 
   /// Clear the cache

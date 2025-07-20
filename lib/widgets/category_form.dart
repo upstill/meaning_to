@@ -101,10 +101,10 @@ class CategoryFormState extends State<CategoryForm> {
               if (widget.isEditing || widget.category == null) ...[
                 TextFormField(
                   controller: _headlineController,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Name (required)',
                     hintText: 'What have you been meaning to do?',
-                    border: const OutlineInputBorder(),
+                    border: OutlineInputBorder(),
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
@@ -144,9 +144,7 @@ class CategoryFormState extends State<CategoryForm> {
                   const SizedBox(height: 8),
                   CheckboxListTile(
                     title: Text(
-                        '${NamingUtils.tasksName(plural: true)} are private'),
-                    subtitle: Text(
-                        'Share only the ${NamingUtils.categoriesName(capitalize: false, plural: false)}, not the ${NamingUtils.tasksName(plural: true)}'),
+                        '${NamingUtils.tasksName(plural: true)} start out private'),
                     value: _tasksArePrivate,
                     onChanged: widget.isLoading
                         ? null

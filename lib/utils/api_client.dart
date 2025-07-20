@@ -263,4 +263,22 @@ class ApiClient {
       rethrow;
     }
   }
+
+  static Future<Category> updateCategory(
+      String categoryId, Map<String, dynamic> updates) async {
+    try {
+      // Temporary: Use Supabase directly
+      final response = await _supabase
+          .from('Categories')
+          .update(updates)
+          .eq('id', categoryId)
+          .select()
+          .single();
+
+      return Category.fromJson(response);
+    } catch (e) {
+      print('Error updating category in Supabase: $e');
+      rethrow;
+    }
+  }
 }

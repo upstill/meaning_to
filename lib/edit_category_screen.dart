@@ -6,6 +6,7 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
@@ -225,7 +226,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('No Changes in Guest Mode'),
+          title: const Text('No Changes in Guest Mode'),
           content: Text(content),
           actions: [
             TextButton(
@@ -324,6 +325,100 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error updating task: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Pure UI method - no database operations
+  Future<void> _toggleTaskShare(Task task, bool newSharedState) async {
+    try {
+      print(
+          'EditCategoryScreen: _toggleTaskShare called for task: ${task.headline}');
+      print(
+          'EditCategoryScreen: Task ID: ${task.id}, new shared state: $newSharedState');
+
+      // Use the existing CacheManager instance that's already initialized
+      final cacheManager = CacheManager();
+      print('EditCategoryScreen: CacheManager instance created');
+
+      await cacheManager.updateTaskShare(task.id, newSharedState);
+      print('EditCategoryScreen: cacheManager.updateTaskShare completed');
+
+      setState(() {}); // Trigger rebuild to reflect cache changes
+      print('EditCategoryScreen: Task share state updated successfully');
+    } catch (e) {
+      print('Error updating task share state: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating task share state: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Pure UI method - no database operations
+  Future<void> _makeCategoryPublic() async {
+    try {
+      print('EditCategoryScreen: _makeCategoryPublic called');
+
+      final currentCategory = widget.category ?? _currentCategory;
+      if (currentCategory == null) {
+        print('EditCategoryScreen: No current category to make public');
+        return;
+      }
+
+      print(
+          'EditCategoryScreen: Making category "${currentCategory.headline}" public');
+
+      // Update in API
+      await ApiClient.updateCategory(currentCategory.id.toString(), {
+        'private': false,
+      });
+
+      // Update local state
+      if (widget.category != null) {
+        // Update the widget's category
+        widget.category!.isPrivate = false;
+      } else {
+        // Update the current category
+        _currentCategory = Category(
+          id: currentCategory.id,
+          headline: currentCategory.headline,
+          invitation: currentCategory.invitation,
+          ownerId: currentCategory.ownerId,
+          createdAt: currentCategory.createdAt,
+          isPrivate: false, // Make it public
+          tasksArePrivate: currentCategory.tasksArePrivate,
+        );
+      }
+
+      // Update the form state to reflect the change
+      _isPrivate = false;
+
+      setState(() {}); // Trigger rebuild to reflect changes
+      print('EditCategoryScreen: Category made public successfully');
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pursuit is now public! You can share ideas.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error making category public: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error making pursuit public: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -485,6 +580,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
           onDelete: () => _deleteTask(task),
           onTap: () => _toggleTaskCompletion(task),
           onUpdateSuggestibleAt: (DateTime newTime) => _makeTaskAvailable(task),
+          onShareToggle: (bool newSharedState) =>
+              _toggleTaskShare(task, newSharedState),
+          isCategoryPrivate: widget.category?.isPrivate ??
+              _currentCategory?.isPrivate ??
+              false,
+          onMakeCategoryPublic: _makeCategoryPublic,
         );
 
         print('TaskDisplay widget created successfully for "${task.headline}"');
@@ -708,10 +809,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        print('No authenticated user - cannot save category');
-        return;
-      }
       final categoryId = widget.category!.id;
 
       print(
@@ -788,10 +885,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        print('No authenticated user - cannot delete category');
-        return;
-      }
       final categoryId = widget.category!.id;
 
       print(
@@ -1029,18 +1122,19 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     ),
                     if (!_isPrivate) ...[
                       const SizedBox(height: 8),
-                      CheckboxListTile(
-                        title: Text(
-                            '${NamingUtils.tasksName(plural: true)} are private'),
-                        subtitle: Text(
-                            'Share only the ${NamingUtils.categoriesName(capitalize: false, plural: false)}, not the ${NamingUtils.tasksName(plural: true)}'),
-                        value: _tasksArePrivate,
-                        onChanged: (value) {
-                          setState(() {
-                            _tasksArePrivate = value ?? true;
-                          });
-                        },
-                        controlAffinity: ListTileControlAffinity.leading,
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16.0),
+                        child: CheckboxListTile(
+                          title: Text(
+                              '${NamingUtils.tasksName(plural: true)} start out private'),
+                          value: _tasksArePrivate,
+                          onChanged: (value) {
+                            setState(() {
+                              _tasksArePrivate = value ?? true;
+                            });
+                          },
+                          controlAffinity: ListTileControlAffinity.leading,
+                        ),
                       ),
                     ],
                     const SizedBox(height: 24),
