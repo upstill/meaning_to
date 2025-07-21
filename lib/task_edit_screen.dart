@@ -463,8 +463,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         print(
             'TaskEditScreen:   -> Updated existing task and moved to top of list');
 
-        // Return the updated existing task
-        return Task(
+        // Create the updated task object
+        final updatedTask = Task(
           id: existingTask.id,
           categoryId: existingTask.categoryId,
           ownerId: existingTask.ownerId,
@@ -476,6 +476,13 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           suggestibleAt: null, // Set to null to move to top
           finished: existingTask.finished,
         );
+
+        // Update the cache to reflect the changes
+        final cacheManager = CacheManager();
+        await cacheManager.updateTask(updatedTask);
+        print('TaskEditScreen:   -> Updated cache with moved task');
+
+        return updatedTask;
       } catch (e) {
         print('TaskEditScreen: Error updating existing task: $e');
         return existingTask; // Return existing task without changes on error

@@ -1035,7 +1035,9 @@ class CacheManager {
     if (_currentTasks != null) {
       try {
         existingTask = _currentTasks!.firstWhere(
-          (task) => task.headline.toLowerCase() == item.title.toLowerCase(),
+          (task) =>
+              task.headline.toLowerCase().trim() ==
+              item.title.toLowerCase().trim(),
         );
       } catch (e) {
         // Task not found, will create new one

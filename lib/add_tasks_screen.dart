@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
-import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
@@ -10,7 +8,6 @@ import 'package:meaning_to/utils/text_importer.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/widgets/add_task_manually_button.dart';
-import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 
 class AddTasksScreen extends StatefulWidget {
@@ -180,8 +177,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
 
         print('  -> Updated existing task and moved to top of list');
 
-        // Return the updated existing task
-        return Task(
+        // Create the updated task object
+        final updatedTask = Task(
           id: existingTask.id,
           categoryId: existingTask.categoryId,
           ownerId: existingTask.ownerId,
@@ -193,6 +190,13 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           suggestibleAt: null, // Set to null to move to top
           finished: existingTask.finished,
         );
+
+        // Update the cache to reflect the changes
+        final cacheManager = CacheManager();
+        await cacheManager.updateTask(updatedTask);
+        print('  -> Updated cache with moved task');
+
+        return updatedTask;
       } catch (e) {
         print('Error updating existing task: $e');
         return existingTask; // Return existing task without changes on error
@@ -361,7 +365,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               'notes': newTask.notes,
               'category_id': newTask.categoryId,
               'owner_id': newTask.ownerId,
-              'links': newTask.links,
+              'links': Task.linksToArray(newTask.links),
               'suggestible_at': newTask.suggestibleAt?.toIso8601String(),
             };
             await supabase.from('Tasks').insert(taskData);
@@ -420,7 +424,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               'notes': newTask.notes,
               'category_id': newTask.categoryId,
               'owner_id': newTask.ownerId,
-              'links': newTask.links,
+              'links': Task.linksToArray(newTask.links),
               'suggestible_at': newTask.suggestibleAt?.toIso8601String(),
             };
             await supabase.from('Tasks').insert(taskData);
@@ -448,8 +452,14 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       final now = DateTime.now();
       int taskIndex = 0;
 
+      final inputText = _textInputController.text;
+      print('AddTasksScreen: Input text: "$inputText"');
+      print('AddTasksScreen: Text length: ${inputText.length}');
+      print('AddTasksScreen: Contains \\r: ${inputText.contains('\r')}');
+      print('AddTasksScreen: Contains \\n: ${inputText.contains('\n')}');
+
       await for (final task in TextImporter.processForNewCategory(
-        _textInputController.text,
+        inputText,
         category: widget.category,
         ownerId: userId,
       )) {
@@ -508,7 +518,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             'notes': task.notes,
             'category_id': widget.category.id,
             'owner_id': userId,
-            'links': task.links,
+            'links': Task.linksToArray(task.links),
             'suggestible_at': task.suggestibleAt?.toIso8601String(),
           };
           await supabase.from('Tasks').insert(taskData);
