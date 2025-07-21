@@ -92,6 +92,55 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         setState(() {});
       }
     });
+
+    // Initialize cache if category is provided
+    if (widget.category != null) {
+      _initializeCache();
+    }
+  }
+
+  /// Initialize the cache with the current category
+  Future<void> _initializeCache() async {
+    try {
+      print(
+          'EditCategoryScreen: Initializing cache for category ${widget.category!.headline}');
+      final cacheManager = CacheManager();
+      await cacheManager.initializeWithSavedCategory(
+          widget.category!, AuthUtils.getCurrentUserId());
+      print('EditCategoryScreen: Cache initialization completed');
+    } catch (e) {
+      print('EditCategoryScreen: Error initializing cache: $e');
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh cache when dependencies change (e.g., when returning from other screens)
+    if (widget.category != null) {
+      print(
+          'EditCategoryScreen: didChangeDependencies called, refreshing cache');
+      _refreshCacheIfNeeded();
+    }
+  }
+
+  /// Smart refresh that can skip database calls when appropriate
+  Future<void> _refreshCacheIfNeeded() async {
+    final cacheManager = CacheManager();
+
+    if (cacheManager.currentCategory?.id != widget.category!.id ||
+        cacheManager.currentTasks == null) {
+      print(
+          'EditCategoryScreen: Refreshing cache for category ${widget.category!.headline}');
+      await cacheManager.initializeWithSavedCategory(
+          widget.category!, AuthUtils.getCurrentUserId());
+    } else {
+      print(
+          'EditCategoryScreen: Cache is up to date for category ${widget.category!.headline}');
+      // Force refresh from database to ensure we have the latest data
+      await cacheManager.refreshFromApi();
+      print('EditCategoryScreen: Database refresh completed');
+    }
   }
 
   @override

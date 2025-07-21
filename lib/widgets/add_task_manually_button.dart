@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/naming.dart';
 
 class AddTaskManuallyButton extends StatelessWidget {
   final Category category;
@@ -45,7 +45,8 @@ class AddTaskManuallyButton extends StatelessWidget {
     return OutlinedButton.icon(
       onPressed: isLoading ? null : () => _createTask(context),
       icon: const Icon(Icons.add),
-      label: const Text('Add a Task Manually'),
+      label: Text(
+          'Add ${NamingUtils.tasksName(plural: false, withArticle: true)} Manually'),
     );
   }
 }

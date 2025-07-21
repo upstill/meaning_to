@@ -5,19 +5,9 @@ import 'package:file_selector/file_selector.dart';
 import 'package:meaning_to/models/category.dart' as models;
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/link_processor.dart';
-import 'package:meaning_to/widgets/link_display.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter/foundation.dart' hide Category;
 import 'package:meaning_to/utils/auth.dart';
-import 'package:meaning_to/utils/text_importer.dart';
-import 'package:meaning_to/utils/link_extractor.dart';
-import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/task_edit_screen.dart';
-import 'package:meaning_to/edit_category_screen.dart';
-import 'package:meaning_to/app.dart';
-import 'package:http/http.dart' as http;
-import 'package:html/parser.dart' as html_parser;
 import 'package:meaning_to/utils/supabase_client.dart';
 
 class JustWatchItem {
@@ -117,7 +107,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
 
       // If task has matching headline, add this link to its links
       print('Checking task "${task.headline}" against "$title"');
-      if (task.headline == title) {
+      if (task.headline.trim() == title.trim()) {
         print('Adding $fullLink to task #${task.id}: ${task.headline}');
 
         // Create new list with existing links plus the new one
