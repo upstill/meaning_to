@@ -1036,7 +1036,10 @@ class HomeScreenState extends State<HomeScreen> {
                                         ],
                                         if (_randomTask!.links != null &&
                                             _randomTask!.links!.isNotEmpty) ...[
-                                          const SizedBox(height: 16),
+                                          if (_randomTask!.notes != null)
+                                            const SizedBox(height: 16)
+                                          else
+                                            const SizedBox(height: 8),
                                           LinkListDisplay(
                                             links: _randomTask!.links!,
                                             showIcon: true,
