@@ -37,6 +37,9 @@ class EditCategoryScreen extends StatefulWidget {
   EditCategoryScreenState createState() => EditCategoryScreenState();
 }
 
+// Sorting options for tasks
+enum SortOption { alphabetical, priority }
+
 class EditCategoryScreenState extends State<EditCategoryScreen> {
   final _formKey = GlobalKey<FormState>();
   final _headlineController = TextEditingController();
@@ -51,6 +54,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       _currentCategory; // Track the current category (for new categories after creation)
   StreamSubscription<void>? _cacheSubscription;
 
+  // Sorting options
+  SortOption _currentSortOption = SortOption.priority;
+
   // Pure UI getter for tasks from the cache
   List<Task> get _tasks {
     final tasks = CacheManager().currentTasks ?? [];
@@ -60,7 +66,36 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       print(
           'EditCategoryScreen: Task "${task.headline}" - isDeferred: ${task.isDeferred}, suggestibleAt: ${task.suggestibleAt}');
     }
-    return tasks;
+    return _sortTasks(tasks);
+  }
+
+  /// Sort tasks based on the current sort option
+  List<Task> _sortTasks(List<Task> tasks) {
+    switch (_currentSortOption) {
+      case SortOption.alphabetical:
+        return tasks
+          ..sort((a, b) =>
+              a.headline.toLowerCase().compareTo(b.headline.toLowerCase()));
+      case SortOption.priority:
+        return tasks
+          ..sort((a, b) {
+            // First, sort by finished status (unfinished first)
+            if (a.finished != b.finished) {
+              return a.finished ? 1 : -1;
+            }
+            // Then, sort by suggestibleAt (earlier first, null first)
+            if (a.suggestibleAt == null && b.suggestibleAt == null) {
+              return 0;
+            }
+            if (a.suggestibleAt == null) {
+              return -1;
+            }
+            if (b.suggestibleAt == null) {
+              return 1;
+            }
+            return a.suggestibleAt!.compareTo(b.suggestibleAt!);
+          });
+    }
   }
 
   @override
@@ -824,9 +859,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       if (finishedTasks > 0) parts.add('$finishedTasks Finished');
 
       if (parts.isEmpty) {
-        return 'No ${NamingUtils.tasksName(plural: true)} On Deck';
+        return 'No ${NamingUtils.tasksName(plural: true)} on deck';
       }
-      return 'No ${NamingUtils.tasksName(plural: true)} On Deck (${parts.join(', ')})';
+      return 'No ${NamingUtils.tasksName(plural: true)} on deck (${parts.join(', ')})';
     }
 
     final parts = <String>[];
@@ -834,10 +869,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     if (finishedTasks > 0) parts.add('$finishedTasks Finished');
 
     final taskText = availableTasks == 1
-        ? '${NamingUtils.tasksName()} Is Up'
+        ? '${NamingUtils.tasksName(plural: false)} is up'
         : 'Available ${NamingUtils.tasksName(plural: true)}';
     final availableText =
-        availableTasks == 1 ? 'Only One' : availableTasks.toString();
+        availableTasks == 1 ? 'Only one' : availableTasks.toString();
 
     if (parts.isEmpty) {
       return '$availableText $taskText';
@@ -1364,7 +1399,46 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 0),
+                  // Sorting radio buttons - only show when 5+ tasks
+                  if (_tasks.length >= 5)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        const Text('Sort by: '),
+                        const SizedBox(width: 8),
+                        Row(
+                          children: [
+                            Radio<SortOption>(
+                              value: SortOption.priority,
+                              groupValue: _currentSortOption,
+                              onChanged: (SortOption? value) {
+                                if (value != null) {
+                                  setState(() {
+                                    _currentSortOption = value;
+                                  });
+                                }
+                              },
+                            ),
+                            const Text('Priority'),
+                            const SizedBox(width: 16),
+                            Radio<SortOption>(
+                              value: SortOption.alphabetical,
+                              groupValue: _currentSortOption,
+                              onChanged: (SortOption? value) {
+                                if (value != null) {
+                                  setState(() {
+                                    _currentSortOption = value;
+                                  });
+                                }
+                              },
+                            ),
+                            const Text('Alphabetical'),
+                          ],
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 0),
                 ],
                 const SizedBox(height: 8),
                 if (widget.category == null ? _tasks.isEmpty : _tasks.isEmpty)

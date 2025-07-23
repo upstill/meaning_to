@@ -9,6 +9,7 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/widgets/add_task_manually_button.dart';
 import 'package:meaning_to/edit_category_screen.dart';
+import 'package:file_selector/file_selector.dart';
 
 class AddTasksScreen extends StatefulWidget {
   final Category category;
@@ -42,6 +43,113 @@ class AddTasksScreenState extends State<AddTasksScreen> {
   void dispose() {
     _textInputController.dispose();
     super.dispose();
+  }
+
+  /// Select and load a file into the text input
+  Future<void> _selectAndLoadFile() async {
+    try {
+      const typeGroup = XTypeGroup(
+        label: 'text files',
+        extensions: ['txt', 'md', 'csv', 'rtf', 'pdf', 'doc', 'docx', 'odt'],
+      );
+
+      final XFile? file = await openFile(
+        acceptedTypeGroups: [typeGroup],
+      );
+
+      if (file != null) {
+        final String contents = await file.readAsString();
+        String processedContents = contents;
+
+        // Handle different file types
+        final fileName = file.name.toLowerCase();
+        if (fileName.endsWith('.rtf')) {
+          processedContents = _rtfToText(contents);
+        } else if (fileName.endsWith('.pdf')) {
+          // For PDF files, we'll need to extract text
+          // This is a placeholder - you might want to add a PDF parser
+          processedContents = 'PDF text extraction not yet implemented';
+        } else if (fileName.endsWith('.doc') || fileName.endsWith('.docx')) {
+          // For Word documents, we'll need to extract text
+          // This is a placeholder - you might want to add a DOC parser
+          processedContents =
+              'Word document text extraction not yet implemented';
+        }
+        // For txt, md, csv, odt - use as is
+
+        setState(() {
+          _textInputController.text = processedContents;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('File loaded: ${file.name}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading file: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Convert RTF content to plain text
+  String _rtfToText(String rtfContent) {
+    // More comprehensive RTF to text conversion
+    String text = rtfContent;
+
+    // Remove RTF header
+    if (text.startsWith('{\\rtf')) {
+      final headerEnd = text.indexOf('\\viewkind');
+      if (headerEnd != -1) {
+        text = text.substring(headerEnd);
+      }
+    }
+
+    // Convert RTF line breaks to actual line breaks
+    // RTF uses \par for paragraph breaks and \line for line breaks
+    text = text.replaceAll(RegExp(r'\\par\s*'), '\n');
+    text = text.replaceAll(RegExp(r'\\line\s*'), '\n');
+
+    // Remove RTF control words more comprehensively
+    // This catches control words with optional parameters
+    text = text.replaceAll(RegExp(r'\\[a-zA-Z]+\d*'), '');
+    text = text.replaceAll(RegExp(r'\\[a-zA-Z]+'), '');
+
+    // Remove RTF groups but preserve line breaks
+    text = text.replaceAll(RegExp(r'\{[^}]*\}'), '');
+    text = text.replaceAll(RegExp(r'\}[^{]*\{'), ' ');
+    text = text.replaceAll('{', '');
+    text = text.replaceAll('}', '');
+
+    // Remove any remaining RTF artifacts
+    text = text.replaceAll(
+        RegExp(r'\\[^\\\s]+'), ''); // Any remaining backslash commands
+    text = text.replaceAll(RegExp(r'\\'), ''); // Any remaining backslashes
+
+    // Clean up multiple line breaks and spaces
+    text = text.replaceAll(RegExp(r'\n\s*\n'),
+        '\n\n'); // Multiple line breaks to double line breaks
+    text = text.replaceAll(
+        RegExp(r'[ \t]+'), ' '); // Multiple spaces/tabs to single space
+    text = text.replaceAll(
+        RegExp(r'\n[ \t]+'), '\n'); // Remove leading spaces after line breaks
+    text = text.replaceAll(
+        RegExp(r'[ \t]+\n'), '\n'); // Remove trailing spaces before line breaks
+
+    // Remove any lines that are just whitespace or RTF artifacts
+    text =
+        text.replaceAll(RegExp(r'^\s*[a-zA-Z]*\d*\s*$', multiLine: true), '');
+
+    // Trim whitespace but preserve line breaks
+    text = text.trim();
+
+    return text;
   }
 
   /// Navigate to Edit Category screen for the cached category
@@ -607,16 +715,32 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                       style: TextStyle(fontSize: 14, color: Colors.grey),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _textInputController,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                        hintText:
-                            '${NamingUtils.tasksName()} 1\n${NamingUtils.tasksName()} 2: A great ${NamingUtils.tasksName(capitalize: false, plural: false)}\n${NamingUtils.tasksName()} 3: https://example.com/${NamingUtils.tasksName(capitalize: false, plural: false)}3',
-                        border: const OutlineInputBorder(),
-                        labelText:
-                            'Paste ${NamingUtils.tasksName(plural: true)} here',
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _textInputController,
+                            maxLines: 4,
+                            decoration: InputDecoration(
+                              hintText:
+                                  '${NamingUtils.tasksName()} 1\n${NamingUtils.tasksName()} 2: A great ${NamingUtils.tasksName(capitalize: false, plural: false)}\n${NamingUtils.tasksName()} 3: https://example.com/${NamingUtils.tasksName(capitalize: false, plural: false)}3',
+                              border: const OutlineInputBorder(),
+                              labelText:
+                                  'Paste ${NamingUtils.tasksName(plural: true)} here',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: _selectAndLoadFile,
+                          icon: const Icon(Icons.upload_file),
+                          tooltip: 'Upload text file',
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.grey[200],
+                            foregroundColor: Colors.grey[700],
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     SizedBox(
@@ -657,6 +781,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             Text(
               '• Enter one ${NamingUtils.tasksName(capitalize: false, plural: false)} per line\n'
               '• Use "${NamingUtils.tasksName()}: Note" format to include a note\n'
+              '• Click the upload icon to load ${NamingUtils.tasksName(plural: true)} from various file types (.txt, .md, .csv, .rtf, .pdf, .doc, .docx, .odt)\n'
               '• Pasting a Share from elsewhere will do the right thing\n'
               '• Ditto a URL (address-bar gobbledygook from a web page)\n'
               '• New ${NamingUtils.tasksName(plural: true)} will appear at the beginning of your list',
