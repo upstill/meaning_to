@@ -157,9 +157,12 @@ class ApiClient {
     try {
       final response = await _supabase
           .from('Tasks')
-          .select('*')
+          .select(
+              'id,headline,notes,category_id,owner_id,finished,shared,links,original_id,suggestible_at,created_at')
           .eq('category_id', categoryId)
-          .eq('owner_id', userId);
+          .eq('owner_id', userId)
+          .order('suggestible_at', ascending: true)
+          .order('created_at', ascending: false);
 
       return (response as List)
           .map((taskData) => Task.fromJson(taskData))
