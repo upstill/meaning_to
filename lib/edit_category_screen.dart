@@ -57,25 +57,41 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Sorting options
   SortOption _currentSortOption = SortOption.priority;
 
+  // Cached sorted tasks to avoid repeated sorting
+  List<Task>? _cachedSortedTasks;
+  List<Task>? _lastCachedTasks;
+
+  // Progressive loading state
+  bool _isLoadingProgressively = false;
+  int _displayedTaskCount = 0;
+  static const int _initialTaskCount = 12;
+  static const int _batchSize = 20;
+
   // Pure UI getter for tasks from the cache
-  // EXPERIMENT: Limited to 12 tasks for display
   List<Task> get _tasks {
     final tasks = CacheManager().currentTasks ?? [];
-    print(
-        'EditCategoryScreen: Getting tasks from cache - ${tasks.length} tasks');
-    for (final task in tasks) {
-      print(
-          'EditCategoryScreen: Task "${task.headline}" - isDeferred: ${task.isDeferred}, suggestibleAt: ${task.suggestibleAt}');
+
+    // Only re-sort if the task list has changed
+    if (_cachedSortedTasks == null || _lastCachedTasks != tasks) {
+      _lastCachedTasks = tasks;
+      _cachedSortedTasks = _sortTasks(tasks);
+      // Reset progressive loading when task list changes
+      _displayedTaskCount = 0;
+      _isLoadingProgressively = false;
     }
 
-    // EXPERIMENT: Limit display to twelve tasks
-    final sortedTasks = _sortTasks(tasks);
-    final limitedTasks = sortedTasks.take(12).toList();
+    return _cachedSortedTasks!;
+  }
 
-    print(
-        'EditCategoryScreen: EXPERIMENT - Limited display to ${limitedTasks.length} tasks (from ${sortedTasks.length} total)');
-
-    return limitedTasks;
+  // Get tasks for progressive loading
+  List<Task> get _displayedTasks {
+    final allTasks = _tasks;
+    if (_displayedTaskCount == 0) {
+      // Show initial batch immediately
+      _displayedTaskCount = _initialTaskCount;
+      _startProgressiveLoading();
+    }
+    return allTasks.take(_displayedTaskCount).toList();
   }
 
   /// Sort tasks based on the current sort option
@@ -105,6 +121,39 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
             return a.suggestibleAt!.compareTo(b.suggestibleAt!);
           });
     }
+  }
+
+  /// Clear the task cache when sort option changes
+  void _clearTaskCache() {
+    _cachedSortedTasks = null;
+    _lastCachedTasks = null;
+  }
+
+  /// Start progressive loading of tasks
+  void _startProgressiveLoading() {
+    if (_isLoadingProgressively) return;
+
+    _isLoadingProgressively = true;
+    _loadMoreTasks();
+  }
+
+  /// Load more tasks progressively
+  Future<void> _loadMoreTasks() async {
+    final allTasks = _tasks;
+
+    while (_displayedTaskCount < allTasks.length && _isLoadingProgressively) {
+      await Future.delayed(
+          const Duration(milliseconds: 50)); // Small delay between batches
+
+      if (mounted) {
+        setState(() {
+          _displayedTaskCount =
+              (_displayedTaskCount + _batchSize).clamp(0, allTasks.length);
+        });
+      }
+    }
+
+    _isLoadingProgressively = false;
   }
 
   @override
@@ -160,8 +209,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh cache when dependencies change (e.g., when returning from other screens)
-    if (widget.category != null) {
+    // Only refresh cache if we haven't already initialized for this category
+    if (widget.category != null &&
+        _currentCategory?.id != widget.category!.id) {
       print(
           'EditCategoryScreen: didChangeDependencies called, refreshing cache');
       _refreshCacheIfNeeded();
@@ -172,6 +222,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   Future<void> _refreshCacheIfNeeded() async {
     final cacheManager = CacheManager();
 
+    // Only refresh if we're switching to a different category or cache is empty
     if (cacheManager.currentCategory?.id != widget.category!.id ||
         cacheManager.currentTasks == null) {
       print(
@@ -181,9 +232,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     } else {
       print(
           'EditCategoryScreen: Cache is up to date for category ${widget.category!.headline}');
-      // Force refresh from database to ensure we have the latest data
-      await cacheManager.refreshFromApi();
-      print('EditCategoryScreen: Database refresh completed');
+      // Don't force refresh - cache is already current
     }
   }
 
@@ -637,33 +686,17 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               'No ${NamingUtils.tasksName(plural: true)} yet. Add one to get started!'));
     }
 
-    // Debug log to check task links and suggestibleAt times
-    print(
-      '\n=== EditCategoryScreen: Building task list with ${_tasks.length} tasks ===',
-    );
-    for (final task in _tasks) {
-      print(
-        'Task "${task.headline}" - isDeferred: ${task.isDeferred}, isSuggestible: ${task.isSuggestible}',
-      );
-    }
+    // Task list building optimized
 
-    print('EditCategoryScreen: Creating ListView.builder...');
     return ListView.builder(
       shrinkWrap: true, // Add this to ensure ListView takes minimum space
       physics:
           const NeverScrollableScrollPhysics(), // Disable scrolling since we're in a ListView
-      itemCount: _tasks.length,
+      itemCount: _displayedTasks.length,
       itemBuilder: (context, index) {
-        final task = _tasks[index];
-        print(
-          '\n=== EditCategoryScreen: Building TaskDisplay for "${task.headline}" at index $index ===',
-        );
-        print('Task links: ${task.links}');
-        print('Task links type: ${task.links?.runtimeType}');
-        print('Task links length: ${task.links?.length ?? 0}');
-        print('About to create TaskDisplay widget...');
+        final task = _displayedTasks[index];
 
-        final taskDisplay = TaskDisplay(
+        return TaskDisplay(
           key: ValueKey(
             'task-${task.id}',
           ), // Add a key to help Flutter track the widget
@@ -680,12 +713,26 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               false,
           onMakeCategoryPublic: _makeCategoryPublic,
         );
-
-        print('TaskDisplay widget created successfully for "${task.headline}"');
-        print('=== End TaskDisplay creation ===\n');
-
-        return taskDisplay;
       },
+    );
+  }
+
+  Widget _buildTaskListWithLoading() {
+    return Column(
+      children: [
+        _buildTaskList(),
+        if (_isLoadingProgressively && _displayedTaskCount < _tasks.length)
+          const Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -697,17 +744,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               'No ${NamingUtils.tasksName(plural: true)} yet. Add one to get started!'));
     }
 
-    print(
-        'EditCategoryScreen: Building new task list with ${_tasks.length} tasks');
-
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: _tasks.length,
+      itemCount: _displayedTasks.length,
       itemBuilder: (context, index) {
-        final task = _tasks[index];
-        print(
-            'EditCategoryScreen: Building new task "${task.headline}" at index $index');
+        final task = _displayedTasks[index];
 
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 4),
@@ -836,15 +878,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   }
 
   String _buildNewCategoryTaskCountText() {
-    // Get total tasks from cache manager (before limiting)
-    final allTasks = CacheManager().currentTasks ?? [];
-    final totalTasks = allTasks.length;
     final displayTasks = _tasks.length;
 
-    // EXPERIMENT: Show limited display info
-    final displayInfo = totalTasks > 12 ? ' (showing 12 of $totalTasks)' : '';
-
-    return '$displayTasks Available ${NamingUtils.tasksName(plural: true)}:$displayInfo';
+    return '$displayTasks Available ${NamingUtils.tasksName(plural: true)}';
   }
 
   String _buildTaskCountText() {
@@ -884,21 +920,15 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     print(
         'EditCategoryScreen: availableTasks: $availableTasks, deferredTasks: $deferredTasks, finishedTasks: $finishedTasks');
 
-    // EXPERIMENT: Show limited display info
-    final totalAvailableTasks =
-        totalTasks.where((task) => !task.finished && task.isSuggestible).length;
-    final displayInfo =
-        totalTasks.length > 12 ? ' (showing 12 of ${totalTasks.length})' : '';
-
     if (availableTasks == 0) {
       final parts = <String>[];
       if (deferredTasks > 0) parts.add('$deferredTasks Deferred');
       if (finishedTasks > 0) parts.add('$finishedTasks Finished');
 
       if (parts.isEmpty) {
-        return 'No ${NamingUtils.tasksName(plural: true)} on deck$displayInfo';
+        return 'No ${NamingUtils.tasksName(plural: true)} on deck';
       }
-      return 'No ${NamingUtils.tasksName(plural: true)} on deck (${parts.join(', ')})$displayInfo';
+      return 'No ${NamingUtils.tasksName(plural: true)} on deck (${parts.join(', ')})';
     }
 
     final parts = <String>[];
@@ -912,9 +942,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         availableTasks == 1 ? 'Only one' : availableTasks.toString();
 
     if (parts.isEmpty) {
-      return '$availableText $taskText$displayInfo';
+      return '$availableText $taskText';
     }
-    return '$availableText $taskText (${parts.join(', ')})$displayInfo';
+    return '$availableText $taskText (${parts.join(', ')})';
   }
 
   // Save category changes to database
@@ -1453,6 +1483,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                                 if (value != null) {
                                   setState(() {
                                     _currentSortOption = value;
+                                    _clearTaskCache();
                                   });
                                 }
                               },
@@ -1466,6 +1497,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                                 if (value != null) {
                                   setState(() {
                                     _currentSortOption = value;
+                                    _clearTaskCache();
                                   });
                                 }
                               },
@@ -1516,7 +1548,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                 else
                   widget.category == null
                       ? _buildNewTaskList()
-                      : _buildTaskList(),
+                      : _buildTaskListWithLoading(),
               ],
             ],
           ),

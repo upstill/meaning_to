@@ -65,21 +65,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
   @override
   void initState() {
     super.initState();
-    print('\n=== TaskDisplay initState for "${widget.task.headline}" ===');
-    print('Task links: ${widget.task.links}');
-    print('Task links type: ${widget.task.links?.runtimeType}');
-    print('Task links length: ${widget.task.links?.length ?? 0}');
-    print('Task links is null? ${widget.task.links == null}');
-    print('Task links is empty? ${widget.task.links?.isEmpty}');
-    if (widget.task.links?.isNotEmpty == true) {
-      print('First link: ${widget.task.links!.first}');
-      print('First link type: ${widget.task.links!.first.runtimeType}');
-      print(
-          'First link contains href: ${widget.task.links!.first.contains('href="')}');
-      print(
-          'First link contains justwatch: ${widget.task.links!.first.contains('justwatch.com')}');
-    }
-    print('=== End TaskDisplay initState ===\n');
   }
 
   void _toggleExpanded() {
@@ -87,8 +72,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
     setState(() {
       _isExpanded = !_isExpanded;
     });
-    print(
-        'TaskDisplay: Toggled expanded state to $_isExpanded for ${widget.task.headline}');
   }
 
   void _showPrivateCategoryDialog(BuildContext context) {
@@ -125,27 +108,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
     final theme = Theme.of(context);
 
     // Use the new method from Task class for consistent evaluation
-    final isDeferred = widget.task.isDeferred;
-    print('TaskDisplay: "${widget.task.headline}" - isDeferred: $isDeferred');
-    print(
-        'TaskDisplay: "${widget.task.headline}" - current time: ${DateTime.now()}');
-
-    // SUPER detailed debug logging for link detection
-    print('\n=== TaskDisplay build for "${widget.task.headline}" ===');
-    print('Raw links data: ${widget.task.links}');
-    print('Links type: ${widget.task.links?.runtimeType}');
-    print('Links is null? ${widget.task.links == null}');
-    print('Links is empty? ${widget.task.links?.isEmpty}');
-    print('Links length: ${widget.task.links?.length ?? 0}');
-    if (widget.task.links?.isNotEmpty == true) {
-      print('First link: ${widget.task.links!.first}');
-      print('First link type: ${widget.task.links!.first.runtimeType}');
-      print(
-          'First link contains href: ${widget.task.links!.first.contains('href="')}');
-      print(
-          'First link contains justwatch: ${widget.task.links!.first.contains('justwatch.com')}');
-      print('First link toString: ${widget.task.links!.first.toString()}');
-    }
+    // final isDeferred = widget.task.isDeferred; // Not currently used
 
     // Fix hasLinks check to handle List<String> of HTML links
     final hasLinks = widget.task.links != null &&
@@ -153,14 +116,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
         widget.task.links!.first.contains('href="') && // Only check for href
         widget.task.links!.first !=
             '{}'; // Exclude empty PostgreSQL array string representation
-    print('\nhasLinks check:');
-    print('  links != null: ${widget.task.links != null}');
-    print('  links isNotEmpty: ${widget.task.links?.isNotEmpty}');
-    print(
-        '  first link contains href: ${widget.task.links?.firstOrNull?.toString().contains('href="')}');
-    print('  FINAL hasLinks: $hasLinks');
-    print('  withControls: ${widget.withControls}');
-    print('=== End TaskDisplay build ===\n');
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -229,8 +184,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
                         // Finished checkbox
                         Builder(
                           builder: (context) {
-                            print(
-                                'TaskDisplay: Rendering checkbox for "${widget.task.headline}"');
                             return Container(
                               /* decoration: BoxDecoration(
                                 color: Colors.green.withOpacity(0.3),
@@ -302,8 +255,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
                         if (widget.withControls) ...[
                           Builder(
                             builder: (context) {
-                              print(
-                                  'TaskDisplay: Rendering edit button for "${widget.task.headline}"');
                               return Container(
                                 /* decoration: BoxDecoration(
                                   color: Colors.blue.withOpacity(0.3),
@@ -332,8 +283,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
                           if (!AuthUtils.isGuestUser()) ...[
                             Builder(
                               builder: (context) {
-                                print(
-                                    'TaskDisplay: Rendering delete button for "${widget.task.headline}" (authenticated user)');
                                 return Container(
                                   /*                                   decoration: BoxDecoration(
                                     color: Colors.orange.withOpacity(0.3),
@@ -389,13 +338,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                       if (widget.onUpdateSuggestibleAt != null) ...[
                         ElevatedButton(
                           onPressed: () {
-                            print(
-                                'TaskDisplay: "Make Available Now" button pressed for "${widget.task.headline}"');
-                            print(
-                                'TaskDisplay: Calling onUpdateSuggestibleAt callback');
                             widget.onUpdateSuggestibleAt!(DateTime.now());
-                            print(
-                                'TaskDisplay: onUpdateSuggestibleAt callback completed');
                           },
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
@@ -411,18 +354,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
                     ],
                   ),
                 ] else ...[
-                  // Debug logging for when button doesn't show
-                  Builder(
-                    builder: (context) {
-                      print(
-                          'TaskDisplay: "${widget.task.headline}" - isDeferred: ${widget.task.isDeferred}');
-                      print(
-                          'TaskDisplay: "${widget.task.headline}" - current time: ${DateTime.now()}');
-                      print(
-                          'TaskDisplay: "${widget.task.headline}" - onUpdateSuggestibleAt != null: ${widget.onUpdateSuggestibleAt != null}');
-                      return const SizedBox.shrink();
-                    },
-                  ),
+                  // No debug logging needed
+                  const SizedBox.shrink(),
                 ],
                 // Show notes if expanded and present
                 if (_isExpanded &&

@@ -39,27 +39,21 @@ class CacheManager with PerformanceMonitoring {
   /// Loads all Tasks for the Category
   Future<void> initializeWithSavedCategory(
       Category category, String userId) async {
-    return monitorOperation('initializeWithSavedCategory', () async {
-      try {
-        print(
-            'CacheManager: Initializing with saved category ${category.headline}');
+    try {
+      print(
+          'CacheManager: Initializing with saved category ${category.headline}');
 
-        _currentCategory = category;
-        _currentUserId = userId;
-        _isUnsavedCategory = false;
+      _currentCategory = category;
+      _currentUserId = userId;
+      _isUnsavedCategory = false;
 
-        await _loadTasksFromApi();
-
-        // Take memory snapshot after initialization
-        snapshotMemory('after_saved_category_init',
-            taskCount: _currentTasks?.length, cacheSize: _currentTasks?.length);
-      } catch (e, stackTrace) {
-        print('CacheManager: Error initializing with saved category: $e');
-        print('CacheManager: Stack trace: $stackTrace');
-        clearCache();
-        rethrow;
-      }
-    });
+      await _loadTasksFromApi();
+    } catch (e, stackTrace) {
+      print('CacheManager: Error initializing with saved category: $e');
+      print('CacheManager: Stack trace: $stackTrace');
+      clearCache();
+      rethrow;
+    }
   }
 
   /// Refresh tasks for the current category from the API
@@ -82,44 +76,40 @@ class CacheManager with PerformanceMonitoring {
 
   /// Load tasks from API for the current category
   Future<void> _loadTasksFromApi() async {
-    return monitorOperation('_loadTasksFromApi', () async {
-      if (_currentCategory == null || _currentUserId == null) {
-        throw Exception('No current category or user ID');
-      }
+    if (_currentCategory == null || _currentUserId == null) {
+      throw Exception('No current category or user ID');
+    }
 
-      try {
-        // Load tasks from API
-        final tasks = await ApiClient.getTasks();
+    try {
+      // Use targeted API call to get only tasks for this category
+      final tasks = await ApiClient.getTasksByCategoryAndUser(
+          _currentCategory!.id, _currentUserId!);
 
-        // Filter tasks for current category
-        _currentTasks = tasks
-            .where((task) => task.categoryId == _currentCategory!.id)
-            .toList();
+      _currentTasks = tasks;
 
-        if (_currentTasks!.isEmpty) {
-          print(
-              'CacheManager: No tasks found for category ${_currentCategory!.id}');
-          _currentTasks = [];
-          return;
-        }
-
-        // Sort tasks: unfinished first, then by suggestibleAt ascending
-        _sortTasks();
-
+      if (_currentTasks!.isEmpty) {
         print(
-            'CacheManager: Loaded ${_currentTasks!.length} tasks for saved category');
-
-        // Record cache operation
-        recordCacheOp('load_tasks_from_api', _currentTasks!.length,
-            details: 'category_${_currentCategory!.id}');
-
-        // Notify listeners that cache has changed
-        _cacheChangeController.add(null);
-      } catch (e) {
-        print('CacheManager: Error loading tasks from API: $e');
-        rethrow;
+            'CacheManager: No tasks found for category ${_currentCategory!.id}');
+        _currentTasks = [];
+        return;
       }
-    });
+
+      // Tasks are already sorted by the database query
+      // No need to sort again since database provides correct order
+
+      print(
+          'CacheManager: Loaded ${_currentTasks!.length} tasks for saved category');
+
+      // Record cache operation
+      recordCacheOp('load_tasks_from_api', _currentTasks!.length,
+          details: 'category_${_currentCategory!.id}');
+
+      // Notify listeners that cache has changed
+      _cacheChangeController.add(null);
+    } catch (e) {
+      print('CacheManager: Error loading tasks from API: $e');
+      rethrow;
+    }
   }
 
   /// Initialize cache with a new unsaved Category and its Tasks
