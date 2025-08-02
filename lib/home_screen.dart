@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' as foundation;
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
@@ -7,6 +8,7 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
+import 'package:meaning_to/performance_monitor_screen.dart';
 import 'dart:async';
 
 import 'package:meaning_to/utils/naming.dart';
@@ -753,6 +755,20 @@ class HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text(''), // Blank header
         actions: [
+          // Debug button - only show in debug mode
+          if (foundation.kDebugMode)
+            IconButton(
+              icon: const Icon(Icons.analytics),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PerformanceMonitorScreen(),
+                  ),
+                );
+              },
+              tooltip: 'Performance Monitor',
+            ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {

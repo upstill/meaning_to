@@ -1,6 +1,7 @@
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/performance_profiler.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:meaning_to/utils/text_importer.dart';
@@ -8,7 +9,7 @@ import 'dart:async';
 
 /// A cache management module for Categories and Tasks
 /// Can handle both saved Categories from the database and new unsaved Categories with Tasks
-class CacheManager {
+class CacheManager with PerformanceMonitoring {
   static final CacheManager _instance = CacheManager._internal();
 
   factory CacheManager() {
@@ -38,21 +39,27 @@ class CacheManager {
   /// Loads all Tasks for the Category
   Future<void> initializeWithSavedCategory(
       Category category, String userId) async {
-    try {
-      print(
-          'CacheManager: Initializing with saved category ${category.headline}');
+    return monitorOperation('initializeWithSavedCategory', () async {
+      try {
+        print(
+            'CacheManager: Initializing with saved category ${category.headline}');
 
-      _currentCategory = category;
-      _currentUserId = userId;
-      _isUnsavedCategory = false;
+        _currentCategory = category;
+        _currentUserId = userId;
+        _isUnsavedCategory = false;
 
-      await _loadTasksFromApi();
-    } catch (e, stackTrace) {
-      print('CacheManager: Error initializing with saved category: $e');
-      print('CacheManager: Stack trace: $stackTrace');
-      clearCache();
-      rethrow;
-    }
+        await _loadTasksFromApi();
+
+        // Take memory snapshot after initialization
+        snapshotMemory('after_saved_category_init',
+            taskCount: _currentTasks?.length, cacheSize: _currentTasks?.length);
+      } catch (e, stackTrace) {
+        print('CacheManager: Error initializing with saved category: $e');
+        print('CacheManager: Stack trace: $stackTrace');
+        clearCache();
+        rethrow;
+      }
+    });
   }
 
   /// Refresh tasks for the current category from the API
@@ -75,38 +82,44 @@ class CacheManager {
 
   /// Load tasks from API for the current category
   Future<void> _loadTasksFromApi() async {
-    if (_currentCategory == null || _currentUserId == null) {
-      throw Exception('No current category or user ID');
-    }
-
-    try {
-      // Load tasks from API
-      final tasks = await ApiClient.getTasks();
-
-      // Filter tasks for current category
-      _currentTasks = tasks
-          .where((task) => task.categoryId == _currentCategory!.id)
-          .toList();
-
-      if (_currentTasks!.isEmpty) {
-        print(
-            'CacheManager: No tasks found for category ${_currentCategory!.id}');
-        _currentTasks = [];
-        return;
+    return monitorOperation('_loadTasksFromApi', () async {
+      if (_currentCategory == null || _currentUserId == null) {
+        throw Exception('No current category or user ID');
       }
 
-      // Sort tasks: unfinished first, then by suggestibleAt ascending
-      _sortTasks();
+      try {
+        // Load tasks from API
+        final tasks = await ApiClient.getTasks();
 
-      print(
-          'CacheManager: Loaded ${_currentTasks!.length} tasks for saved category');
+        // Filter tasks for current category
+        _currentTasks = tasks
+            .where((task) => task.categoryId == _currentCategory!.id)
+            .toList();
 
-      // Notify listeners that cache has changed
-      _cacheChangeController.add(null);
-    } catch (e) {
-      print('CacheManager: Error loading tasks from API: $e');
-      rethrow;
-    }
+        if (_currentTasks!.isEmpty) {
+          print(
+              'CacheManager: No tasks found for category ${_currentCategory!.id}');
+          _currentTasks = [];
+          return;
+        }
+
+        // Sort tasks: unfinished first, then by suggestibleAt ascending
+        _sortTasks();
+
+        print(
+            'CacheManager: Loaded ${_currentTasks!.length} tasks for saved category');
+
+        // Record cache operation
+        recordCacheOp('load_tasks_from_api', _currentTasks!.length,
+            details: 'category_${_currentCategory!.id}');
+
+        // Notify listeners that cache has changed
+        _cacheChangeController.add(null);
+      } catch (e) {
+        print('CacheManager: Error loading tasks from API: $e');
+        rethrow;
+      }
+    });
   }
 
   /// Initialize cache with a new unsaved Category and its Tasks
@@ -136,92 +149,149 @@ class CacheManager {
   /// For unsaved categories, adds to the local cache
   /// For saved categories, saves to API and updates cache
   Future<void> addTask(Task task) async {
-    if (_currentCategory == null) {
-      throw Exception('No category loaded in cache');
-    }
+    return monitorOperation('addTask', () async {
+      if (_currentCategory == null) {
+        throw Exception('No category loaded in cache');
+      }
 
-    if (_isUnsavedCategory) {
-      // For unsaved categories, just add to local cache
-      _currentTasks!.add(task);
-      _sortTasks();
-      print('CacheManager: Added task to unsaved category cache');
-
-      // Notify listeners that cache has changed
-      _cacheChangeController.add(null);
-    } else {
-      // For saved categories, save to API and update cache
-      try {
-        final taskData = {
-          'headline': task.headline,
-          'notes': task.notes,
-          'category_id': _currentCategory!.id,
-          'owner_id': _currentUserId,
-          'links': task.links, // PostgreSQL array
-          'original_id': task.originalId, // Preserve original_id if it exists
-        };
-
-        final savedTask = await ApiClient.createTask(taskData);
-        _currentTasks!.add(savedTask);
+      if (_isUnsavedCategory) {
+        // For unsaved categories, just add to local cache
+        _currentTasks!.add(task);
         _sortTasks();
+        print('CacheManager: Added task to unsaved category cache');
 
-        print('CacheManager: Added and saved task to API');
+        // Record cache operation
+        recordCacheOp('add_task_unsaved', _currentTasks!.length);
 
         // Notify listeners that cache has changed
         _cacheChangeController.add(null);
-      } catch (e) {
-        print('CacheManager: Error adding task: $e');
-        rethrow;
+      } else {
+        // For saved categories, save to API and update cache
+        try {
+          final taskData = {
+            'headline': task.headline,
+            'notes': task.notes,
+            'category_id': _currentCategory!.id,
+            'owner_id': _currentUserId,
+            'links': task.links, // PostgreSQL array
+            'original_id': task.originalId, // Preserve original_id if it exists
+            'shared': task.shared, // Include shared field
+          };
+
+          final savedTask = await ApiClient.createTask(taskData);
+          _currentTasks!.add(savedTask);
+          _sortTasks();
+
+          print('CacheManager: Added and saved task to API');
+
+          // Record database write
+          recordWrite('create_task', 'Tasks', taskData,
+              taskId: savedTask.id.toString(),
+              categoryId: _currentCategory!.id.toString());
+
+          // Record cache operation
+          recordCacheOp('add_task_saved', _currentTasks!.length);
+
+          // Notify listeners that cache has changed
+          _cacheChangeController.add(null);
+        } catch (e) {
+          print('CacheManager: Error adding task: $e');
+          rethrow;
+        }
       }
-    }
+    });
   }
 
   /// Update an existing Task in the cache
   /// For unsaved categories, updates local cache
   /// For saved categories, updates API and cache
+  /// If task is not found in cache, adds it instead
   Future<void> updateTask(Task updatedTask) async {
-    if (_currentCategory == null || _currentTasks == null) {
-      throw Exception('No category or tasks loaded in cache');
-    }
+    return monitorOperation('updateTask', () async {
+      if (_currentCategory == null || _currentTasks == null) {
+        throw Exception('No category or tasks loaded in cache');
+      }
 
-    final taskIndex = _currentTasks!.indexWhere((t) => t.id == updatedTask.id);
-    if (taskIndex == -1) {
-      throw Exception('Task not found in cache');
-    }
-
-    if (_isUnsavedCategory) {
-      // For unsaved categories, just update local cache
-      _currentTasks![taskIndex] = updatedTask;
-      _sortTasks();
-      print('CacheManager: Updated task in unsaved category cache');
-
-      // Notify listeners that cache has changed
-      _cacheChangeController.add(null);
-    } else {
-      // For saved categories, update API and cache
-      try {
-        final taskData = {
-          'headline': updatedTask.headline,
-          'notes': updatedTask.notes,
-          'links': updatedTask.links, // PostgreSQL array
-          'finished': updatedTask.finished,
-          'suggestible_at': updatedTask.suggestibleAt?.toIso8601String(),
-          'deferral': updatedTask.deferral,
-        };
-
-        await ApiClient.updateTask(updatedTask.id.toString(), taskData);
-
-        _currentTasks![taskIndex] = updatedTask;
+      final taskIndex =
+          _currentTasks!.indexWhere((t) => t.id == updatedTask.id);
+      if (taskIndex == -1) {
+        print(
+            'CacheManager: Task not found in cache, adding to cache only (not creating new task)');
+        // Just add to cache without creating a new task in database
+        _currentTasks!.add(updatedTask);
         _sortTasks();
 
-        print('CacheManager: Updated task in API and cache');
+        // Record cache operation
+        recordCacheOp('update_task_missing_from_cache', _currentTasks!.length);
 
         // Notify listeners that cache has changed
         _cacheChangeController.add(null);
-      } catch (e) {
-        print('CacheManager: Error updating task: $e');
-        rethrow;
+        return;
       }
-    }
+
+      if (_isUnsavedCategory) {
+        // For unsaved categories, just update local cache
+        _currentTasks![taskIndex] = updatedTask;
+        _sortTasks();
+        print('CacheManager: Updated task in unsaved category cache');
+
+        // Record cache operation
+        recordCacheOp('update_task_unsaved', _currentTasks!.length);
+
+        // Notify listeners that cache has changed
+        _cacheChangeController.add(null);
+      } else {
+        // For saved categories, only update API if task is dirty
+        if (updatedTask.dirty) {
+          try {
+            final taskData = {
+              'headline': updatedTask.headline,
+              'notes': updatedTask.notes,
+              'links': updatedTask.links, // PostgreSQL array
+              'finished': updatedTask.finished,
+              'suggestible_at': updatedTask.suggestibleAt?.toIso8601String(),
+              'deferral': updatedTask.deferral,
+            };
+
+            await ApiClient.updateTask(updatedTask.id.toString(), taskData);
+
+            // Mark the task as clean after successful database update
+            final cleanTask = updatedTask.markClean();
+            _currentTasks![taskIndex] = cleanTask;
+            _sortTasks();
+
+            print('CacheManager: Updated dirty task in API and cache');
+
+            // Record database write
+            recordWrite('update_task', 'Tasks', taskData,
+                taskId: updatedTask.id.toString(),
+                categoryId: _currentCategory!.id.toString());
+
+            // Record cache operation
+            recordCacheOp('update_task_saved', _currentTasks!.length);
+
+            // Notify listeners that cache has changed
+            _cacheChangeController.add(null);
+          } catch (e) {
+            print('CacheManager: Error updating task: $e');
+            rethrow;
+          }
+        } else {
+          // Task is not dirty, just update cache without database write
+          _currentTasks![taskIndex] = updatedTask;
+          _sortTasks();
+
+          print(
+              'CacheManager: Updated clean task in cache only (no database write)');
+
+          // Record cache operation
+          recordCacheOp('update_task_clean', _currentTasks!.length);
+
+          // Notify listeners that cache has changed
+          _cacheChangeController.add(null);
+        }
+      }
+    });
   }
 
   /// Remove a Task from the cache
@@ -355,6 +425,7 @@ class CacheManager {
       links: task.links,
       processedLinks: task.processedLinks,
       finished: true,
+      dirty: true, // Mark as dirty since we're changing the finished status
     );
 
     await updateTask(updatedTask);
@@ -397,37 +468,12 @@ class CacheManager {
       links: task.links,
       processedLinks: task.processedLinks,
       finished: task.finished,
+      dirty:
+          true, // Mark as dirty since we're changing suggestibleAt and deferral
     );
 
-    // Update in API if this is a saved category
-    if (!_isUnsavedCategory && _currentUserId != null) {
-      print('CacheManager: Updating API for task ${task.headline}');
-      try {
-        final response = await ApiClient.updateTask(taskId.toString(), {
-          'suggestible_at': newSuggestibleAt.toIso8601String(),
-          'deferral': newDeferral,
-        });
-
-        print('CacheManager: API update response: $response');
-
-        // Verify the update
-        final verifyResponse = await ApiClient.getTask(taskId.toString());
-        if (verifyResponse != null) {
-          print(
-              'CacheManager: Verification - suggestible_at: ${verifyResponse.suggestibleAt}, deferral: ${verifyResponse.deferral}');
-        }
-      } catch (e) {
-        print('CacheManager: Error updating API: $e');
-        rethrow;
-      }
-    } else {
-      print(
-          'CacheManager: Skipping API update - _isUnsavedCategory: $_isUnsavedCategory, _currentUserId: $_currentUserId');
-    }
-
-    // Update in cache
-    _currentTasks![taskIndex] = updatedTask;
-    _sortTasks();
+    // Use the updateTask method which handles dirty flag logic
+    await updateTask(updatedTask);
 
     print(
         'CacheManager: Task ${task.headline} rejected, deferred to ${newSuggestibleAt.toLocal()}');
@@ -469,60 +515,12 @@ class CacheManager {
       links: task.links,
       processedLinks: task.processedLinks,
       finished: task.finished,
+      dirty:
+          true, // Mark as dirty since we're changing suggestibleAt and deferral
     );
 
-    print('CacheManager: About to check if should update API...');
-    if (!_isUnsavedCategory && _currentUserId != null) {
-      print('CacheManager: Updating task in API...');
-      try {
-        print('CacheManager: Storing UTC time: ${utcNow.toIso8601String()}');
-
-        print(
-            'CacheManager: About to update task $taskId with suggestible_at: ${utcNow.toIso8601String()}');
-        print('CacheManager: Using owner_id: $_currentUserId');
-
-        print('CacheManager: About to execute update query...');
-        print(
-            'CacheManager: Query: UPDATE Tasks SET suggestible_at = ${utcNow.toIso8601String()}, deferral = 1 WHERE id = $taskId AND owner_id = $_currentUserId');
-
-        try {
-          final response = await ApiClient.updateTask(taskId.toString(), {
-            'suggestible_at': utcNow.toIso8601String(),
-            'deferral': 1, // Reset deferral to 1
-          });
-
-          print('CacheManager: API update response: $response');
-          print('CacheManager: Response type: ${response.runtimeType}');
-
-          // Check if the response indicates success
-          print('CacheManager: Update response is not null: $response');
-
-          print('CacheManager: Task updated in API successfully');
-        } catch (updateError) {
-          print('CacheManager: Error during update query: $updateError');
-          print('CacheManager: Update error type: ${updateError.runtimeType}');
-          rethrow;
-        }
-
-        // Verify the update actually happened
-        print('CacheManager: Verifying update...');
-        final verifyResponse = await ApiClient.getTask(taskId.toString());
-        if (verifyResponse != null) {
-          print(
-              'CacheManager: Verification - suggestible_at in DB: ${verifyResponse.suggestibleAt}');
-        }
-      } catch (e) {
-        print('CacheManager: Error updating task in API: $e');
-        rethrow;
-      }
-    } else {
-      print(
-          'CacheManager: Skipping API update - _isUnsavedCategory: $_isUnsavedCategory, _currentUserId: $_currentUserId');
-    }
-
-    // Update in cache
-    _currentTasks![taskIndex] = updatedTask;
-    _sortTasks();
+    // Use the updateTask method which handles dirty flag logic
+    await updateTask(updatedTask);
 
     print('CacheManager: Task ${task.headline} revived at ${utcNow.toLocal()}');
   }
@@ -549,19 +547,12 @@ class CacheManager {
       links: task.links,
       processedLinks: task.processedLinks,
       finished: false, // Set to false
+      dirty:
+          true, // Mark as dirty since we're changing the finished state and deferral
     );
 
-    // Update in API if this is a saved category
-    if (!_isUnsavedCategory && _currentUserId != null) {
-      await ApiClient.updateTask(taskId.toString(), {
-        'finished': false,
-        'deferral': 1, // Reset deferral to 1
-      });
-    }
-
-    // Update in cache
-    _currentTasks![taskIndex] = updatedTask;
-    _sortTasks();
+    // Use the updateTask method which handles dirty flag logic
+    await updateTask(updatedTask);
 
     print(
         'CacheManager: Task ${task.headline} marked as unfinished and deferral reset to 1');
@@ -590,18 +581,11 @@ class CacheManager {
       processedLinks: task.processedLinks,
       finished: task.finished,
       shared: shared,
+      dirty: true, // Mark as dirty since we're changing the shared state
     );
 
-    // Update in API if this is a saved category
-    if (!_isUnsavedCategory && _currentUserId != null) {
-      await ApiClient.updateTask(taskId.toString(), {
-        'shared': shared,
-      });
-    }
-
-    // Update in cache
-    _currentTasks![taskIndex] = updatedTask;
-    _sortTasks();
+    // Use the updateTask method which handles dirty flag logic
+    await updateTask(updatedTask);
 
     print(
         'CacheManager: Task ${task.headline} shared state updated to: $shared');
@@ -618,26 +602,31 @@ class CacheManager {
 
   /// Sort tasks: unfinished first, then by suggestibleAt ascending
   void _sortTasks() {
-    if (_currentTasks == null) return;
+    monitorSyncOperation('_sortTasks', () {
+      if (_currentTasks == null) return;
 
-    _currentTasks!.sort((a, b) {
-      // First, sort by finished status (unfinished first)
-      if (a.finished != b.finished) {
-        return a.finished ? 1 : -1;
-      }
+      _currentTasks!.sort((a, b) {
+        // First, sort by finished status (unfinished first)
+        if (a.finished != b.finished) {
+          return a.finished ? 1 : -1;
+        }
 
-      // Then, sort by suggestibleAt (earlier first)
-      if (a.suggestibleAt == null && b.suggestibleAt == null) {
-        return 0;
-      }
-      if (a.suggestibleAt == null) {
-        return -1;
-      }
-      if (b.suggestibleAt == null) {
-        return 1;
-      }
+        // Then, sort by suggestibleAt (earlier first)
+        if (a.suggestibleAt == null && b.suggestibleAt == null) {
+          return 0;
+        }
+        if (a.suggestibleAt == null) {
+          return -1;
+        }
+        if (b.suggestibleAt == null) {
+          return 1;
+        }
 
-      return a.suggestibleAt!.compareTo(b.suggestibleAt!);
+        return a.suggestibleAt!.compareTo(b.suggestibleAt!);
+      });
+
+      // Record cache operation for sorting
+      recordCacheOp('sort_tasks', _currentTasks?.length ?? 0);
     });
   }
 
@@ -995,6 +984,22 @@ class CacheManager {
     }
 
     return true;
+  }
+
+  /// Get performance statistics for the current session
+  Map<String, dynamic> getPerformanceStats() {
+    return getPerformanceSummary();
+  }
+
+  /// Get detailed performance report
+  String getPerformanceReport() {
+    return getDetailedReport();
+  }
+
+  /// Clear performance data
+  void clearPerformanceData() {
+    // This will clear the performance profiler data
+    // The actual cache clear method is clearCache()
   }
 
   /// Fallback method to import from text
