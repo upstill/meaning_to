@@ -20,6 +20,7 @@ class Task {
   final bool finished;
   final bool shared;
   final int? originalId;
+  final bool dirty; // Track if task needs database update
 
   // Global cache manager instance
   static final CacheManager _cacheManager = CacheManager();
@@ -51,7 +52,50 @@ class Task {
     required this.finished,
     this.shared = false,
     this.originalId,
+    this.dirty = false, // Initialize as not dirty
   });
+
+  /// Create a copy of this task with the dirty flag set to true
+  Task markDirty() {
+    return Task(
+      id: id,
+      categoryId: categoryId,
+      headline: headline,
+      notes: notes,
+      ownerId: ownerId,
+      createdAt: createdAt,
+      suggestibleAt: suggestibleAt,
+      triggersAt: triggersAt,
+      deferral: deferral,
+      links: links,
+      processedLinks: processedLinks,
+      finished: finished,
+      shared: shared,
+      originalId: originalId,
+      dirty: true, // Mark as dirty
+    );
+  }
+
+  /// Create a copy of this task with the dirty flag set to false
+  Task markClean() {
+    return Task(
+      id: id,
+      categoryId: categoryId,
+      headline: headline,
+      notes: notes,
+      ownerId: ownerId,
+      createdAt: createdAt,
+      suggestibleAt: suggestibleAt,
+      triggersAt: triggersAt,
+      deferral: deferral,
+      links: links,
+      processedLinks: processedLinks,
+      finished: finished,
+      shared: shared,
+      originalId: originalId,
+      dirty: false, // Mark as clean
+    );
+  }
 
   factory Task.fromJson(Map<String, dynamic> json) {
     List<String>? parseLinks(dynamic linksData) {
@@ -115,20 +159,10 @@ class Task {
     if (json['suggestible_at'] != null) {
       suggestibleAt = DateTime.parse(json['suggestible_at'] as String);
     } else {
-      // Only set to current time for very old tasks (created before suggestible_at was introduced)
-      // For newer tasks, preserve null to allow them to appear at the top
-      final createdAt = DateTime.parse(json['created_at'] as String);
-      final cutoffDate =
-          DateTime(2024, 1, 1); // Arbitrary cutoff for "old" tasks
-
-      if (createdAt.isBefore(cutoffDate)) {
-        suggestibleAt = DateTime.now();
-        print(
-            'Setting suggestible_at to now for legacy task ${json['headline']}');
-      } else {
-        suggestibleAt = null;
-        print('Preserving null suggestible_at for task ${json['headline']}');
-      }
+      // For tasks with null suggestible_at, preserve the null value
+      // This allows new tasks to appear at the top of the list
+      suggestibleAt = null;
+      print('Preserving null suggestible_at for task ${json['headline']}');
     }
 
     // Create the task with the links
@@ -151,6 +185,7 @@ class Task {
       finished: json['finished'] as bool? ?? false,
       shared: json['shared'] as bool? ?? false,
       originalId: json['original_id'] as int?,
+      dirty: false, // Tasks loaded from database are not dirty
     );
 
     // Only update database for legacy tasks that needed suggestible_at set
@@ -178,6 +213,7 @@ class Task {
       'finished': finished,
       'shared': shared,
       'original_id': originalId,
+      'dirty': dirty, // Include dirty flag in JSON
     };
   }
 

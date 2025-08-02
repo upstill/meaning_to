@@ -65,7 +65,17 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     _notesController = TextEditingController(text: _localTask?.notes ?? '');
     _links =
         _localTask?.links != null ? List<String>.from(_localTask!.links!) : [];
-    _isShared = _localTask?.shared ?? false;
+
+    // For existing tasks, use their current shared state
+    // For new tasks, use the category's tasksArePrivate setting
+    if (_localTask != null) {
+      _isShared = _localTask!.shared;
+    } else {
+      // New task: use category's tasksArePrivate setting
+      // If tasksArePrivate is true, tasks start private (shared = false)
+      // If tasksArePrivate is false, tasks start shared (shared = true)
+      _isShared = !widget.category.tasksArePrivate;
+    }
 
     // Add listener to track headline changes for button state
     _headlineController.addListener(() {
@@ -341,7 +351,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       print('TaskEditScreen: No duplicate links found in current task');
     }
 
-    // Get existing tasks for the current category
+    // Get existing tasks for the current category (excluding the current task being edited)
     final response = await supabase
         .from('Tasks')
         .select()
@@ -351,30 +361,27 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
     final existingTasks = (response as List)
         .map((json) => Task.fromJson(json as Map<String, dynamic>))
+        .where((task) =>
+            _localTask == null ||
+            task.id != _localTask!.id) // Exclude current task if editing
         .toList();
-    print('TaskEditScreen: Existing tasks count: ${existingTasks.length}');
+    print(
+        'TaskEditScreen: Existing tasks count: ${existingTasks.length} (excluding current task)');
 
     // First, check for tasks with the same headline
-    Task existingTask = existingTasks.firstWhere(
-      (task) =>
-          task.headline.toLowerCase().trim() ==
-          (newTaskData['headline'] as String).toLowerCase().trim(),
-      orElse: () => Task(
-        id: -1,
-        categoryId: widget.category.id,
-        headline: newTaskData['headline'] as String,
-        notes: newTaskData['notes'] as String?,
-        ownerId: userId,
-        createdAt: DateTime.now(),
-        suggestibleAt: null,
-        links: newTaskData['links'] as List<String>?,
-        processedLinks: null,
-        finished: false,
-      ), // Return a dummy task if no duplicate found
-    );
+    Task? existingTask;
+    for (final task in existingTasks) {
+      if (task.headline.toLowerCase().trim() ==
+          (newTaskData['headline'] as String).toLowerCase().trim()) {
+        existingTask = task;
+        print(
+            'TaskEditScreen: Found existing task with matching headline: "${task.headline}" (ID: ${task.id})');
+        break;
+      }
+    }
 
     // If no headline match found, check for tasks with the same link
-    if (existingTask.id == -1 &&
+    if (existingTask == null &&
         newTaskData['links'] != null &&
         (newTaskData['links'] as List).isNotEmpty) {
       print(
@@ -408,19 +415,22 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 break;
               }
             }
-            if (existingTask.id != -1) break;
+            if (existingTask != null) break;
           }
-          if (existingTask.id != -1) break;
+          if (existingTask != null) break;
         } else {
           print('TaskEditScreen:     Task has no links');
         }
       }
     }
 
-    print(
-        'TaskEditScreen: Found existing task: "${existingTask.headline}" (ID: ${existingTask.id})');
-
-    if (existingTask.id != -1) {
+    if (existingTask != null) {
+      print(
+          'TaskEditScreen: Found existing task: "${existingTask.headline}" (ID: ${existingTask.id})');
+      // Found a duplicate - merge information and update
+      print('TaskEditScreen: Found duplicate task: "${existingTask.headline}"');
+      print(
+          'TaskEditScreen: === DUPLICATE DETECTION END - DUPLICATE FOUND ===');
       // Found a duplicate - merge information and update
       print('TaskEditScreen: Found duplicate task: "${existingTask.headline}"');
       print(
@@ -433,7 +443,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // Add links if the new task has them and the existing task doesn't
       if (newTaskData['links'] != null &&
           (newTaskData['links'] as List).isNotEmpty &&
-          (existingTask.links == null || existingTask.links!.isEmpty)) {
+          (existingTask!.links == null || existingTask.links!.isEmpty)) {
         updateData['links'] = newTaskData['links'];
         needsUpdate = true;
         print('TaskEditScreen:   -> Adding links to existing task');
@@ -465,7 +475,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
         // Create the updated task object
         final updatedTask = Task(
-          id: existingTask.id,
+          id: existingTask!.id,
           categoryId: existingTask.categoryId,
           ownerId: existingTask.ownerId,
           headline: existingTask.headline,
@@ -517,10 +527,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             _links, // PostgreSQL array - always store as array, even if empty
       };
 
-      // For new tasks, set suggestible_at to null to appear at the top
+      // For new tasks, explicitly exclude suggestible_at to ensure it remains null
       if (_localTask == null) {
-        data['suggestible_at'] = null;
-        print('TaskEditScreen: Setting suggestible_at to null for new task');
+        // Don't include suggestible_at in the data to let database use its default (null)
+        print(
+            'TaskEditScreen: Excluding suggestible_at from new task data to ensure null value');
       }
 
       Task? updatedTask;
@@ -558,6 +569,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         updatedTask = Task.fromJson(response);
         print('TaskEditScreen: Updated task: ${updatedTask.headline}');
       }
+
+      // Wait longer for database transaction to commit
+      await Future.delayed(const Duration(milliseconds: 500));
 
       // Update the task cache using CacheManager only when saving
       print('TaskEditScreen: Updating task cache...');

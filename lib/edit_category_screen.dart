@@ -58,6 +58,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   SortOption _currentSortOption = SortOption.priority;
 
   // Pure UI getter for tasks from the cache
+  // EXPERIMENT: Limited to 12 tasks for display
   List<Task> get _tasks {
     final tasks = CacheManager().currentTasks ?? [];
     print(
@@ -66,7 +67,15 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       print(
           'EditCategoryScreen: Task "${task.headline}" - isDeferred: ${task.isDeferred}, suggestibleAt: ${task.suggestibleAt}');
     }
-    return _sortTasks(tasks);
+
+    // EXPERIMENT: Limit display to twelve tasks
+    final sortedTasks = _sortTasks(tasks);
+    final limitedTasks = sortedTasks.take(12).toList();
+
+    print(
+        'EditCategoryScreen: EXPERIMENT - Limited display to ${limitedTasks.length} tasks (from ${sortedTasks.length} total)');
+
+    return limitedTasks;
   }
 
   /// Sort tasks based on the current sort option
@@ -826,9 +835,31 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     );
   }
 
+  String _buildNewCategoryTaskCountText() {
+    // Get total tasks from cache manager (before limiting)
+    final allTasks = CacheManager().currentTasks ?? [];
+    final totalTasks = allTasks.length;
+    final displayTasks = _tasks.length;
+
+    // EXPERIMENT: Show limited display info
+    final displayInfo = totalTasks > 12 ? ' (showing 12 of $totalTasks)' : '';
+
+    return '$displayTasks Available ${NamingUtils.tasksName(plural: true)}:$displayInfo';
+  }
+
   String _buildTaskCountText() {
     print('EditCategoryScreen: _buildTaskCountText called');
-    print('EditCategoryScreen: Total tasks in cache: ${_tasks.length}');
+
+    // Get total tasks from cache manager (before limiting)
+    final allTasks = CacheManager().currentTasks ?? [];
+    final totalTasks = allTasks
+        .where((task) =>
+            task.categoryId == (widget.category?.id ?? _currentCategory?.id))
+        .toList();
+
+    print(
+        'EditCategoryScreen: Total tasks in cache: ${_tasks.length} (limited display)');
+    print('EditCategoryScreen: Total tasks available: ${totalTasks.length}');
     print(
         'EditCategoryScreen: Current category ID: ${widget.category?.id ?? _currentCategory?.id}');
 
@@ -853,15 +884,21 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     print(
         'EditCategoryScreen: availableTasks: $availableTasks, deferredTasks: $deferredTasks, finishedTasks: $finishedTasks');
 
+    // EXPERIMENT: Show limited display info
+    final totalAvailableTasks =
+        totalTasks.where((task) => !task.finished && task.isSuggestible).length;
+    final displayInfo =
+        totalTasks.length > 12 ? ' (showing 12 of ${totalTasks.length})' : '';
+
     if (availableTasks == 0) {
       final parts = <String>[];
       if (deferredTasks > 0) parts.add('$deferredTasks Deferred');
       if (finishedTasks > 0) parts.add('$finishedTasks Finished');
 
       if (parts.isEmpty) {
-        return 'No ${NamingUtils.tasksName(plural: true)} on deck';
+        return 'No ${NamingUtils.tasksName(plural: true)} on deck$displayInfo';
       }
-      return 'No ${NamingUtils.tasksName(plural: true)} on deck (${parts.join(', ')})';
+      return 'No ${NamingUtils.tasksName(plural: true)} on deck (${parts.join(', ')})$displayInfo';
     }
 
     final parts = <String>[];
@@ -875,9 +912,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         availableTasks == 1 ? 'Only one' : availableTasks.toString();
 
     if (parts.isEmpty) {
-      return '$availableText $taskText';
+      return '$availableText $taskText$displayInfo';
     }
-    return '$availableText $taskText (${parts.join(', ')})';
+    return '$availableText $taskText (${parts.join(', ')})$displayInfo';
   }
 
   // Save category changes to database
@@ -1380,7 +1417,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     children: [
                       Text(
                         widget.category == null
-                            ? '${_tasks.length} Available ${NamingUtils.tasksName(plural: true)}:'
+                            ? _buildNewCategoryTaskCountText()
                             : _buildTaskCountText(),
                         style: const TextStyle(
                             fontSize: 16,

@@ -45,6 +45,8 @@ class ImportItem {
       createdAt: now,
       suggestibleAt: now,
       finished: false,
+      shared:
+          !category.tasksArePrivate, // Use category's tasksArePrivate setting
     );
   }
 

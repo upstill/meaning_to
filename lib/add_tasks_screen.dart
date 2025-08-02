@@ -156,13 +156,9 @@ class AddTasksScreenState extends State<AddTasksScreen> {
   void _navigateToEditCategory() async {
     final cachedCategory = CacheManager().currentCategory;
     if (cachedCategory != null) {
-      // Refresh the cache to include newly created tasks
-      try {
-        await CacheManager().refreshFromApi();
-        print('AddTasksScreen: Cache refreshed before navigation');
-      } catch (e) {
-        print('AddTasksScreen: Error refreshing cache: $e');
-      }
+      // Cache should already be fresh from the task creation process
+      // No need to refresh again here to avoid race conditions
+      print('AddTasksScreen: Navigating to Edit Category with cached category');
 
       Navigator.pushReplacement(
         context,
@@ -188,16 +184,20 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       print('  - "${task.headline}" (ID: ${task.id}, links: ${task.links})');
     }
 
-    // First, check for tasks with the same headline
-    Task? existingTask = existingTasks.firstWhere(
-      (task) =>
-          task.headline.toLowerCase().trim() ==
-          newTask.headline.toLowerCase().trim(),
-      orElse: () => newTask, // Return the new task if no duplicate found
-    );
+    // First, check for tasks with the same headline (case-insensitive, trimmed)
+    Task? existingTask;
+    for (final task in existingTasks) {
+      if (task.headline.toLowerCase().trim() ==
+          newTask.headline.toLowerCase().trim()) {
+        existingTask = task;
+        print(
+            'Found existing task with matching headline: "${task.headline}" (ID: ${task.id})');
+        break;
+      }
+    }
 
     // If no headline match found, check for tasks with the same link
-    if (existingTask.id == newTask.id &&
+    if (existingTask == null &&
         newTask.links != null &&
         newTask.links!.isNotEmpty) {
       print('No headline match found, checking for link matches...');
@@ -228,21 +228,21 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                 break;
               }
             }
-            if (existingTask!.id != newTask.id) break;
+            if (existingTask != null) break;
           }
-          if (existingTask!.id != newTask.id) break;
+          if (existingTask != null) break;
         } else {
           print('    Task has no links');
         }
       }
     }
 
-    print(
-        'Found existing task: "${existingTask!.headline}" (ID: ${existingTask.id})');
-    print('New task: "${newTask.headline}" (ID: ${newTask.id})');
-    print('Are they the same? ${existingTask.id == newTask.id}');
+    if (existingTask != null) {
+      print(
+          'Found existing task: "${existingTask.headline}" (ID: ${existingTask.id})');
+      print('New task: "${newTask.headline}" (ID: ${newTask.id})');
+      print('Are they the same? ${existingTask.id == newTask.id}');
 
-    if (existingTask.id != newTask.id) {
       // Found a duplicate - merge information
       print('Found duplicate task: "${newTask.headline}"');
       print('=== DUPLICATE DETECTION END - DUPLICATE FOUND ===');
@@ -358,19 +358,25 @@ class AddTasksScreenState extends State<AddTasksScreen> {
 
       final userId = AuthUtils.getCurrentUserId();
 
-      // Get existing tasks for duplicate checking - refresh cache first
-      print('AddTasksScreen: About to refresh cache...');
+      // Get existing tasks for duplicate checking - check database directly to avoid race conditions
+      print('AddTasksScreen: About to check database for existing tasks...');
       print(
           'AddTasksScreen: Category: ${widget.category.headline} (ID: ${widget.category.id})');
       print('AddTasksScreen: User ID: $userId');
 
-      // Initialize cache manager with current category and user
-      final cacheManager = CacheManager();
-      print('AddTasksScreen: CacheManager created, about to initialize...');
-      await cacheManager.initializeWithSavedCategory(widget.category, userId);
-      print('AddTasksScreen: Cache initialization completed');
+      // Query database directly for existing tasks to avoid cache timing issues
+      final response = await supabase
+          .from('Tasks')
+          .select()
+          .eq('category_id', widget.category.id)
+          .eq('owner_id', userId)
+          .order('created_at', ascending: false);
 
-      final existingTasks = cacheManager.currentTasks ?? [];
+      final existingTasks = (response as List)
+          .map((json) => Task.fromJson(json as Map<String, dynamic>))
+          .toList();
+      print(
+          'AddTasksScreen: Found ${existingTasks.length} existing tasks in database');
 
       // If we have a current task being edited, create a copy with its current state
       // and add it to the list for duplicate checking
@@ -389,10 +395,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           'AddTasksScreen: Including current task: ${widget.currentTask != null}');
       print(
           'AddTasksScreen: Total tasks for duplicate checking: ${tasksForDuplicateChecking.length}');
-      print(
-          'AddTasksScreen: CacheManager currentCategory: ${cacheManager.currentCategory?.headline}');
-      print(
-          'AddTasksScreen: CacheManager currentUserId: ${cacheManager.currentUserId}');
+      print('AddTasksScreen: Category: ${widget.category.headline}');
+      print('AddTasksScreen: User ID: $userId');
       for (final task in tasksForDuplicateChecking) {
         print('  - "${task.headline}" (ID: ${task.id})');
         print('    Links: ${task.links}');
@@ -437,6 +441,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             ], // Store the processed HTML link with title
             processedLinks: null,
             finished: false,
+            shared: !widget.category
+                .tasksArePrivate, // Use category's tasksArePrivate setting
           );
 
           print(
@@ -474,7 +480,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               'category_id': newTask.categoryId,
               'owner_id': newTask.ownerId,
               'links': Task.linksToArray(newTask.links),
-              'suggestible_at': newTask.suggestibleAt?.toIso8601String(),
+              'shared': newTask.shared, // Include shared field
+              // Exclude suggestible_at to let database use its default (null)
             };
             await supabase.from('Tasks').insert(taskData);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -484,6 +491,12 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               ),
             );
           }
+
+          // Wait longer for database transaction to commit, then refresh cache
+          await Future.delayed(const Duration(milliseconds: 500));
+          final cacheManager = CacheManager();
+          await cacheManager.initializeWithSavedCategory(
+              widget.category, userId);
 
           // Clear the text input
           _textInputController.clear();
@@ -509,6 +522,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             links: [trimmedText], // Store the original URL
             processedLinks: null,
             finished: false,
+            shared: !widget.category
+                .tasksArePrivate, // Use category's tasksArePrivate setting
           );
 
           // Check for duplicates and merge information if needed
@@ -533,7 +548,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               'category_id': newTask.categoryId,
               'owner_id': newTask.ownerId,
               'links': Task.linksToArray(newTask.links),
-              'suggestible_at': newTask.suggestibleAt?.toIso8601String(),
+              'shared': newTask.shared, // Include shared field
+              // Exclude suggestible_at to let database use its default (null)
             };
             await supabase.from('Tasks').insert(taskData);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -543,6 +559,12 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               ),
             );
           }
+
+          // Wait longer for database transaction to commit, then refresh cache
+          await Future.delayed(const Duration(milliseconds: 500));
+          final cacheManager = CacheManager();
+          await cacheManager.initializeWithSavedCategory(
+              widget.category, userId);
 
           // Clear the text input
           _textInputController.clear();
@@ -627,13 +649,17 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             'category_id': widget.category.id,
             'owner_id': userId,
             'links': Task.linksToArray(task.links),
-            'suggestible_at': task.suggestibleAt?.toIso8601String(),
+            'shared': task.shared, // Include shared field
+            // Exclude suggestible_at to let database use its default (null)
           };
           await supabase.from('Tasks').insert(taskData);
           newTasksCreated++;
           print('Created new task: "${task.headline}"');
         }
       }
+
+      // Wait longer for database transactions to commit, then refresh cache
+      await Future.delayed(const Duration(milliseconds: 500));
 
       // Show appropriate success message
       String message;
@@ -655,6 +681,10 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           backgroundColor: Colors.green,
         ),
       );
+
+      // Refresh cache after creating tasks
+      final cacheManager = CacheManager();
+      await cacheManager.initializeWithSavedCategory(widget.category, userId);
 
       // Clear the text input
       _textInputController.clear();
