@@ -131,7 +131,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                 // Task headline and controls
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Title with flexible width - clickable to toggle expanded state, with arrow
                     Expanded(
@@ -140,9 +140,9 @@ class _TaskDisplayState extends State<TaskDisplay> {
                           _toggleExpanded();
                         },
                         child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Flexible(
+                            Expanded(
                               child: Builder(
                                 builder: (context) {
                                   // Use gray for deferred or finished tasks, black for available tasks
@@ -158,7 +158,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
                                       fontWeight: FontWeight.bold,
                                       color: textColor,
                                     ),
-                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: true,
+                                    maxLines: null,
                                   );
                                 },
                               ),
