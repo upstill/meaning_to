@@ -784,9 +784,16 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 decoration: InputDecoration(
                   labelText:
                       '${NamingUtils.tasksName(plural: false)} (required)',
-                  hintText: 'What have you been meaning to do?',
+                  hintText:
+                      'What have you been meaning to do?\n\nYou can use Enter to add line breaks for multi-line headlines.',
                   border: const OutlineInputBorder(),
+                  alignLabelWithHint: true,
                 ),
+                maxLines: null, // Allow unlimited lines
+                minLines: 1, // Start with at least 1 line
+                keyboardType: TextInputType.multiline,
+                textInputAction:
+                    TextInputAction.newline, // Enter creates new line
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter a ${NamingUtils.tasksName(capitalize: false, plural: false)}';
