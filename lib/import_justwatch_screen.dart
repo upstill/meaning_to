@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:meaning_to/models/category.dart' as models;
@@ -9,6 +10,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/edit_category_screen.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class JustWatchItem {
   final String title;
@@ -269,8 +273,8 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
         _tasks = [];
       });
 
-      // Request permissions first (only on Android)
-      if (Platform.isAndroid) {
+      // Request permissions first (only on Android, not web)
+      if (!kIsWeb && Platform.isAndroid) {
         try {
           await _requestAndroidPermissions();
         } catch (e) {
@@ -284,57 +288,13 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
       }
 
       try {
-        // Use file_selector to pick a file
-        print('Opening file picker...');
-        const typeGroup = XTypeGroup(
-          label: 'JSON',
-          extensions: ['json'],
-          mimeTypes: ['application/json'],
-        );
-
-        final file = await openFile(acceptedTypeGroups: [typeGroup]).catchError(
-          (error) {
-            print('Error opening file picker: $error');
-            throw Exception('Failed to open file picker: $error');
-          },
-        );
-
-        if (file == null) {
-          print('No file selected');
-          setState(() {
-            _isLoading = false;
-          });
-          return;
+        if (kIsWeb) {
+          // Web-specific file picker
+          await _pickFileWeb();
+        } else {
+          // Mobile/Desktop file picker
+          await _pickFileNative();
         }
-
-        print('File selected: ${file.name}');
-
-        // Read and parse the file content
-        final contents = await file.readAsString();
-        print('File contents length: ${contents.length}');
-
-        dynamic jsonData;
-        try {
-          jsonData = json.decode(contents);
-          print('JSON decoded successfully');
-          print('JSON type: ${jsonData.runtimeType}');
-          if (jsonData is List) {
-            print('JSON is a list with ${jsonData.length} items');
-          }
-        } catch (e) {
-          print('Error decoding JSON: $e');
-          setState(() {
-            _error = 'Invalid JSON file: $e';
-            _isLoading = false;
-          });
-          return;
-        }
-
-        setState(() {
-          _selectedFileName = file.name;
-        });
-
-        await _parseJsonData(jsonData);
       } catch (e) {
         print('Error in file processing: $e');
         setState(() {
@@ -357,8 +317,113 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
     }
   }
 
+  Future<void> _pickFileWeb() async {
+    print('Using web file picker...');
+
+    // Create a file input element
+    final input = html.FileUploadInputElement()
+      ..accept = '.json'
+      ..click();
+
+    // Wait for file selection
+    await input.onChange.first;
+
+    if (input.files?.isEmpty ?? true) {
+      print('No file selected');
+      return;
+    }
+
+    final file = input.files!.first;
+    print('File selected: ${file.name}');
+
+    // Read file content
+    final reader = html.FileReader();
+    reader.readAsText(file);
+
+    await reader.onLoad.first;
+
+    final contents = reader.result as String;
+    print('File contents length: ${contents.length}');
+
+    dynamic jsonData;
+    try {
+      jsonData = json.decode(contents);
+      print('JSON decoded successfully');
+      print('JSON type: ${jsonData.runtimeType}');
+      if (jsonData is List) {
+        print('JSON is a list with ${jsonData.length} items');
+      }
+    } catch (e) {
+      print('Error decoding JSON: $e');
+      setState(() {
+        _error = 'Invalid JSON file: $e';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _selectedFileName = file.name;
+    });
+
+    await _parseJsonData(jsonData);
+  }
+
+  Future<void> _pickFileNative() async {
+    print('Using native file picker...');
+
+    // Use file_selector to pick a file
+    print('Opening file picker...');
+    const typeGroup = XTypeGroup(
+      label: 'JSON',
+      extensions: ['json'],
+      mimeTypes: ['application/json'],
+    );
+
+    final file = await openFile(acceptedTypeGroups: [typeGroup]).catchError(
+      (error) {
+        print('Error opening file picker: $error');
+        throw Exception('Failed to open file picker: $error');
+      },
+    );
+
+    if (file == null) {
+      print('No file selected');
+      return;
+    }
+
+    print('File selected: ${file.name}');
+
+    // Read and parse the file content
+    final contents = await file.readAsString();
+    print('File contents length: ${contents.length}');
+
+    dynamic jsonData;
+    try {
+      jsonData = json.decode(contents);
+      print('JSON decoded successfully');
+      print('JSON type: ${jsonData.runtimeType}');
+      if (jsonData is List) {
+        print('JSON is a list with ${jsonData.length} items');
+      }
+    } catch (e) {
+      print('Error decoding JSON: $e');
+      setState(() {
+        _error = 'Invalid JSON file: $e';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _selectedFileName = file.name;
+    });
+
+    await _parseJsonData(jsonData);
+  }
+
   Future<void> _requestAndroidPermissions() async {
-    if (!Platform.isAndroid) return;
+    if (kIsWeb || !Platform.isAndroid) return;
 
     print('Checking Android permissions...');
 
@@ -440,55 +505,66 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
               Text('Error: $_error', style: const TextStyle(color: Colors.red)),
               const SizedBox(height: 16),
             ],
-            if (_selectedFileName == null) ...[
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.folder_open, color: Colors.blue.shade700),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Browse JSON File',
-                          style: TextStyle(
-                            color: Colors.blue.shade700,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+            // Always show the file picker button
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.folder_open, color: Colors.blue.shade700),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Browse JSON File',
+                        style: TextStyle(
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (_selectedFileName != null) ...[
+                    Text(
+                      'Selected file: $_selectedFileName',
+                      style: TextStyle(
+                        color: Colors.green.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                     const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _pickAndParseFile,
-                      icon: const Icon(Icons.folder_open, size: 24),
-                      label: const Text(
-                        'Select JSON File',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 16,
-                          horizontal: 24,
-                        ),
-                        backgroundColor: Colors.blue.shade100,
-                        foregroundColor: Colors.blue.shade900,
-                        minimumSize: const Size(double.infinity, 48),
-                      ),
-                    ),
                   ],
-                ),
+                  ElevatedButton.icon(
+                    onPressed: _isLoading ? null : _pickAndParseFile,
+                    icon: const Icon(Icons.folder_open, size: 24),
+                    label: Text(
+                      _selectedFileName != null
+                          ? 'Select Different JSON File'
+                          : 'Select JSON File',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 16,
+                        horizontal: 24,
+                      ),
+                      backgroundColor: Colors.blue.shade100,
+                      foregroundColor: Colors.blue.shade900,
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                  ),
+                ],
               ),
-              const Spacer(),
-            ] else ...[
+            ),
+            const SizedBox(height: 24),
+            if (_selectedFileName != null) ...[
               if (_matchingItems.isNotEmpty) ...[
                 Text('Got ${_matchingItems.length} items to import:'),
                 const SizedBox(height: 16),
@@ -631,6 +707,24 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
       }
 
       print('Successfully imported ${tasksToImport.length} tasks');
+
+      // Refresh the cache to include the newly imported tasks
+      try {
+        print('Refreshing cache after import...');
+
+        // Set up callback to switch to age sorting after import
+        EditCategoryScreen.onImportComplete = () {
+          print('ImportJustWatchScreen: Import complete callback triggered');
+        };
+
+        final cacheManager = CacheManager();
+        await cacheManager.refreshCurrentCategoryTasks();
+        print('Cache refreshed successfully');
+      } catch (e) {
+        print('Error refreshing cache: $e');
+        // Don't fail the import if cache refresh fails
+      }
+
       Navigator.pop(context, widget.category);
     } catch (e) {
       print('Error importing tasks: $e');
