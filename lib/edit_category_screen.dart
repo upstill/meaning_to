@@ -14,6 +14,8 @@ import 'dart:async';
 
 class EditCategoryScreen extends StatefulWidget {
   static VoidCallback? onEditComplete; // Static callback for edit completion
+  static VoidCallback?
+      onImportComplete; // Static callback for import completion
 
   final Category? category; // null for new category, existing category for edit
   final bool tasksOnly;
@@ -38,7 +40,7 @@ class EditCategoryScreen extends StatefulWidget {
 }
 
 // Sorting options for tasks
-enum SortOption { alphabetical, priority }
+enum SortOption { alphabetical, priority, age }
 
 class EditCategoryScreenState extends State<EditCategoryScreen> {
   final _formKey = GlobalKey<FormState>();
@@ -57,6 +59,16 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Sorting options
   SortOption _currentSortOption = SortOption.priority;
 
+  // Method to switch to age sorting (for use after import)
+  void switchToAgeSorting() {
+    if (mounted) {
+      setState(() {
+        _currentSortOption = SortOption.age;
+        _clearTaskCache();
+      });
+    }
+  }
+
   // Cached sorted tasks to avoid repeated sorting
   List<Task>? _cachedSortedTasks;
   List<Task>? _lastCachedTasks;
@@ -71,9 +83,14 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   List<Task> get _tasks {
     final tasks = CacheManager().currentTasks ?? [];
 
-    // Only re-sort if the task list has changed
-    if (_cachedSortedTasks == null || _lastCachedTasks != tasks) {
-      _lastCachedTasks = tasks;
+    // Always re-sort if the task list has changed (check by length and content)
+    bool shouldResort = _cachedSortedTasks == null ||
+        _lastCachedTasks == null ||
+        _lastCachedTasks!.length != tasks.length ||
+        !_areTaskListsEqual(_lastCachedTasks!, tasks);
+
+    if (shouldResort) {
+      _lastCachedTasks = List.from(tasks); // Create a copy
       _cachedSortedTasks = _sortTasks(tasks);
       // Reset progressive loading when task list changes
       _displayedTaskCount = 0;
@@ -81,6 +98,15 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     }
 
     return _cachedSortedTasks!;
+  }
+
+  // Helper method to check if two task lists are equal
+  bool _areTaskListsEqual(List<Task> list1, List<Task> list2) {
+    if (list1.length != list2.length) return false;
+    for (int i = 0; i < list1.length; i++) {
+      if (list1[i].id != list2[i].id) return false;
+    }
+    return true;
   }
 
   // Get tasks for progressive loading
@@ -119,6 +145,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               return 1;
             }
             return a.suggestibleAt!.compareTo(b.suggestibleAt!);
+          });
+      case SortOption.age:
+        return tasks
+          ..sort((a, b) {
+            // Sort by creation date (newest first)
+            return b.createdAt.compareTo(a.createdAt);
           });
     }
   }
@@ -183,6 +215,15 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       print('EditCategoryScreen: Cache changed, rebuilding UI');
       if (mounted) {
         setState(() {});
+
+        // Check if this was triggered by an import
+        if (EditCategoryScreen.onImportComplete != null) {
+          print(
+              'EditCategoryScreen: Import detected, switching to age sorting');
+          switchToAgeSorting();
+          EditCategoryScreen.onImportComplete!();
+          EditCategoryScreen.onImportComplete = null;
+        }
       }
     });
 
@@ -241,6 +282,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     _headlineController.dispose();
     _invitationController.dispose();
     _cacheSubscription?.cancel();
+    // Clear any pending import callbacks
+    EditCategoryScreen.onImportComplete = null;
     super.dispose();
   }
 
@@ -1502,7 +1545,21 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                                 }
                               },
                             ),
-                            const Text('Alphabetical'),
+                            const Text('A-Z'),
+                            const SizedBox(width: 16),
+                            Radio<SortOption>(
+                              value: SortOption.age,
+                              groupValue: _currentSortOption,
+                              onChanged: (SortOption? value) {
+                                if (value != null) {
+                                  setState(() {
+                                    _currentSortOption = value;
+                                    _clearTaskCache();
+                                  });
+                                }
+                              },
+                            ),
+                            const Text('Age (Newest first)'),
                           ],
                         ),
                       ],
