@@ -937,7 +937,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
     final taskText = availableTasks == 1
         ? '${NamingUtils.tasksName(plural: false)} is up'
-        : 'Available ${NamingUtils.tasksName(plural: true)}';
+        : '${NamingUtils.tasksName(plural: true)} are ready to suggest';
     final availableText =
         availableTasks == 1 ? 'Only one' : availableTasks.toString();
 

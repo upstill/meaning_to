@@ -474,16 +474,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             );
           } else {
             // No duplicate found - create new task
-            final taskData = {
-              'headline': newTask.headline,
-              'notes': newTask.notes,
-              'category_id': newTask.categoryId,
-              'owner_id': newTask.ownerId,
-              'links': Task.linksToArray(newTask.links),
-              'shared': newTask.shared, // Include shared field
-              // Exclude suggestible_at to let database use its default (null)
-            };
-            await supabase.from('Tasks').insert(taskData);
+            final cacheManager = CacheManager();
+            await cacheManager.addTask(newTask);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Created task: "${newTask.headline}"'),
@@ -492,11 +484,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             );
           }
 
-          // Wait longer for database transaction to commit, then refresh cache
-          await Future.delayed(const Duration(milliseconds: 500));
-          final cacheManager = CacheManager();
-          await cacheManager.initializeWithSavedCategory(
-              widget.category, userId);
+          // Cache is already updated by addTask, no need to refresh
 
           // Clear the text input
           _textInputController.clear();
@@ -542,16 +530,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             );
           } else {
             // No duplicate found - create new task
-            final taskData = {
-              'headline': newTask.headline,
-              'notes': newTask.notes,
-              'category_id': newTask.categoryId,
-              'owner_id': newTask.ownerId,
-              'links': Task.linksToArray(newTask.links),
-              'shared': newTask.shared, // Include shared field
-              // Exclude suggestible_at to let database use its default (null)
-            };
-            await supabase.from('Tasks').insert(taskData);
+            final cacheManager = CacheManager();
+            await cacheManager.addTask(newTask);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Created task with URL: "${newTask.headline}"'),
@@ -560,11 +540,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             );
           }
 
-          // Wait longer for database transaction to commit, then refresh cache
-          await Future.delayed(const Duration(milliseconds: 500));
-          final cacheManager = CacheManager();
-          await cacheManager.initializeWithSavedCategory(
-              widget.category, userId);
+          // Cache is already updated by addTask, no need to refresh
 
           // Clear the text input
           _textInputController.clear();
@@ -643,16 +619,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           print('Skipped duplicate task: "${task.headline}"');
         } else {
           // No duplicate found - create new task
-          final taskData = {
-            'headline': task.headline,
-            'notes': task.notes,
-            'category_id': widget.category.id,
-            'owner_id': userId,
-            'links': Task.linksToArray(task.links),
-            'shared': task.shared, // Include shared field
-            // Exclude suggestible_at to let database use its default (null)
-          };
-          await supabase.from('Tasks').insert(taskData);
+          final cacheManager = CacheManager();
+          await cacheManager.addTask(task);
           newTasksCreated++;
           print('Created new task: "${task.headline}"');
         }

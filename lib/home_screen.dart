@@ -920,6 +920,11 @@ class HomeScreenState extends State<HomeScreen> {
                   ),
                   if (_selectedCategory != null) ...[
                     const SizedBox(height: 12),
+                    // Debug info (commented out)
+                    // Text('Selected Category: ${_selectedCategory!.headline}'),
+                    // Text('Loading Task: $_isLoadingTask'),
+                    // Text('Random Task: ${_randomTask?.headline ?? "null"}'),
+                    // Text('Error: ${_error ?? "none"}'),
                     if (_isLoadingTask)
                       const Center(child: CircularProgressIndicator())
                     else if (_randomTask != null)
@@ -1021,7 +1026,8 @@ class HomeScreenState extends State<HomeScreen> {
                                             size: 28,
                                           ),
                                         ],
-                                        if (_randomTask!.notes != null) ...[
+                                        if (_randomTask!.notes != null &&
+                                            _randomTask!.notes!.isNotEmpty) ...[
                                           const SizedBox(height: 8),
                                           Text.rich(
                                             textAlign: TextAlign.left,
@@ -1052,10 +1058,11 @@ class HomeScreenState extends State<HomeScreen> {
                                         ],
                                         if (_randomTask!.links != null &&
                                             _randomTask!.links!.isNotEmpty) ...[
-                                          if (_randomTask!.notes != null)
+                                          /* if (_randomTask!.notes != null)
                                             const SizedBox(height: 16)
                                           else
-                                            const SizedBox(height: 8),
+                                           */
+                                          const SizedBox(height: 14),
                                           LinkListDisplay(
                                             links: _randomTask!.links!,
                                             showIcon: true,
