@@ -381,6 +381,46 @@ class HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _showCategoryInfo(Category category) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(category.headline),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (category.invitation != null &&
+                    category.invitation!.isNotEmpty) ...[
+                  const Text(
+                    'Invitation:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    category.invitation!,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _navigateToEditCategory([Category? category]) async {
     print('HomeScreen: Starting navigation to edit category screen...');
     print('HomeScreen: Current category: \'${_selectedCategory?.headline}\'');
@@ -886,37 +926,56 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<Category>(
-                    value: _selectedCategory,
-                    style: const TextStyle(
-                        fontSize: 20), // Increased by 8 points from default 12
-                    decoration: InputDecoration(
-                      border: const OutlineInputBorder(),
-                      hintText:
-                          'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false, withArticle: true)}',
-                    ),
-                    items: _categories.map((category) {
-                      return DropdownMenuItem(
-                        value: category,
-                        child: Text(
-                          '...${category.headline}',
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<Category>(
+                          value: _selectedCategory,
                           style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1A237E),
+                              fontSize:
+                                  20), // Increased by 8 points from default 12
+                          decoration: InputDecoration(
+                            border: const OutlineInputBorder(),
+                            hintText:
+                                'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false, withArticle: true)}',
                           ),
+                          items: _categories.map((category) {
+                            return DropdownMenuItem(
+                              value: category,
+                              child: Text(
+                                '...${category.headline}',
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1A237E),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (Category? newValue) {
+                            setState(() {
+                              _selectedCategory = newValue;
+                              _randomTask = null; // Clear the current task
+                            });
+                            if (newValue != null) {
+                              _loadRandomTask(newValue);
+                            }
+                          },
                         ),
-                      );
-                    }).toList(),
-                    onChanged: (Category? newValue) {
-                      setState(() {
-                        _selectedCategory = newValue;
-                        _randomTask = null; // Clear the current task
-                      });
-                      if (newValue != null) {
-                        _loadRandomTask(newValue);
-                      }
-                    },
+                      ),
+                      if (_selectedCategory != null &&
+                          _selectedCategory!.invitation != null &&
+                          _selectedCategory!.invitation!.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.info_outline),
+                          onPressed: () =>
+                              _showCategoryInfo(_selectedCategory!),
+                          tooltip: 'Show category information',
+                          color: Colors.blue[600],
+                        ),
+                      ],
+                    ],
                   ),
                   if (_selectedCategory != null) ...[
                     const SizedBox(height: 12),
