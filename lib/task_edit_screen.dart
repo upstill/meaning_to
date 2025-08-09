@@ -10,7 +10,7 @@ import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
-import 'package:meaning_to/import_justwatch_screen.dart';
+import 'package:meaning_to/justwatch_import_screen.dart';
 
 class TaskEditScreen extends StatefulWidget {
   static VoidCallback? onEditComplete; // Static callback for edit completion
@@ -443,7 +443,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // Add links if the new task has them and the existing task doesn't
       if (newTaskData['links'] != null &&
           (newTaskData['links'] as List).isNotEmpty &&
-          (existingTask!.links == null || existingTask.links!.isEmpty)) {
+          (existingTask.links == null || existingTask.links!.isEmpty)) {
         updateData['links'] = newTaskData['links'];
         needsUpdate = true;
         print('TaskEditScreen:   -> Adding links to existing task');
@@ -475,7 +475,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
         // Create the updated task object
         final updatedTask = Task(
-          id: existingTask!.id,
+          id: existingTask.id,
           categoryId: existingTask.categoryId,
           ownerId: existingTask.ownerId,
           headline: existingTask.headline,
@@ -976,30 +976,33 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
+                  // Single JustWatch Import button
                   ElevatedButton.icon(
                     onPressed: _isLoading
                         ? null
                         : () {
-                            print('Import JustWatch button pressed');
+                            print('Import from JustWatch button pressed');
                             print('Category: ${widget.category.headline}');
 
-                            // Navigate to Import JustWatch screen, replacing the current screen
-                            Navigator.pushReplacement(
+                            // Navigate to JustWatch Import screen
+                            Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => ImportJustWatchScreen(
+                                builder: (context) => JustWatchImportScreen(
                                   category: widget.category,
                                 ),
                               ),
                             ).then((result) {
-                              if (result is Category) {
+                              if (result is Category && mounted) {
                                 // Handle any updates if needed
                                 print('JustWatch import completed');
+                                // Return to EditCategoryScreen
+                                Navigator.pop(context, result);
                               }
                             });
                           },
                     icon: const Icon(Icons.movie),
-                    label: const Text('Import JustWatch list'),
+                    label: const Text('Import from JustWatch'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,

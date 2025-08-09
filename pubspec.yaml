@@ -43,6 +43,7 @@ dependencies:
   file_selector: ^1.0.2
   permission_handler: ^11.3.0
   share_handler: ^0.0.22
+  crypto: ^3.0.3  # For JustWatch client functionality
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
