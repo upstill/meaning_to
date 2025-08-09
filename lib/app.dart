@@ -4,9 +4,9 @@ import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
+import 'package:meaning_to/justwatch_import_screen.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
-import 'package:meaning_to/utils/supabase_client.dart';
 
 class MeaningToApp extends StatelessWidget {
   const MeaningToApp({super.key});
@@ -22,7 +22,7 @@ class MeaningToApp extends StatelessWidget {
       ),
       initialRoute: '/',
       routes: {
-        '/': (context) => HomeScreen(),
+        '/': (context) => const HomeScreen(),
         '/auth': (context) => const AuthScreen(),
         '/edit-category': (context) {
           final args = ModalRoute.of(context)?.settings.arguments
@@ -50,6 +50,13 @@ class MeaningToApp extends StatelessWidget {
           return ImportJustWatchScreen(
             category: args['category'] as Category,
             jsonData: args['jsonData'],
+          );
+        },
+        '/justwatch-import': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments
+              as Map<String, dynamic>;
+          return JustWatchImportScreen(
+            category: args['category'] as Category,
           );
         },
       },

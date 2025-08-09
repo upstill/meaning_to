@@ -184,7 +184,7 @@ class CategoryFormState extends State<CategoryForm> {
                             )
                           : Text(
                               widget.category == null
-                                  ? 'Create ${NamingUtils.categoriesName()}'
+                                  ? 'Create ${NamingUtils.categoriesName(plural: false)}'
                                   : 'Save Changes',
                             ),
                     ),
