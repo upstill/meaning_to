@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'dart:html' as html;
 
 /// A widget that displays a link with an optional icon and title.
 /// Used in both the home screen and import screen for consistent link display.
@@ -20,17 +22,65 @@ class LinkDisplay extends StatelessWidget {
     this.isEditing = false,
   });
 
+  /// Checks if a URL is an internal link to the app
+  static bool _isInternalLink(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final domain = uri.host.toLowerCase();
+      return (domain == 'localhost' || domain == 'meaning-to.me') &&
+          uri.path.startsWith('/category/');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Handles link clicks with appropriate behavior for internal vs external links
+  static void _handleLinkClick(String url) {
+    if (_isInternalLink(url)) {
+      // For internal links in web app, use app navigation
+      if (kIsWeb) {
+        // Extract category ID from URL path like /category/123
+        try {
+          final uri = Uri.parse(url);
+          final pathSegments = uri.pathSegments;
+
+          if (pathSegments.length >= 2 && pathSegments[0] == 'category') {
+            final categoryId = pathSegments[1];
+
+            // Use the browser's history API to change the URL
+            // Only push the path, not the full URL to avoid protocol/port mismatch
+            html.window.history.pushState({}, '', uri.path);
+
+            // Dispatch a popstate event to trigger the app's routing system
+            html.window.dispatchEvent(html.Event('popstate'));
+          }
+        } catch (e) {
+          print('Error handling internal link navigation: $e');
+        }
+      } else {
+        // For mobile apps, use inAppWebView
+        launchUrl(
+          Uri.parse(url),
+          mode: LaunchMode.inAppWebView,
+        );
+      }
+    } else {
+      // For external links, open in new tab
+      launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+    }
+  }
+
   /// Builds a widget to display a processed link with its icon and title.
   /// This is used by ProcessedLink to create its display widget.
   static Widget buildLinkWidget(ProcessedLink link) {
-    return Padding(
+    return Container(
       padding: const EdgeInsets.only(top: 4.0),
       child: InkWell(
         onTap: () {
-          launchUrl(
-            Uri.parse(link.url),
-            mode: LaunchMode.externalApplication,
-          );
+          _handleLinkClick(link.url);
         },
         borderRadius: BorderRadius.circular(4),
         child: Padding(
@@ -83,7 +133,7 @@ class LinkDisplay extends StatelessWidget {
 
         final processedLink = snapshot.data!;
 
-        Widget _buildFavicon(String? favicon) {
+        Widget buildFavicon(String? favicon) {
           if (favicon == null) return const SizedBox.shrink();
           return Padding(
             padding: const EdgeInsets.only(right: 8.0),
@@ -100,7 +150,7 @@ class LinkDisplay extends StatelessWidget {
         if (isEditing) {
           return Row(
             children: [
-              if (showIcon) _buildFavicon(processedLink.favicon),
+              if (showIcon) buildFavicon(processedLink.favicon),
               Expanded(
                 child: Text(
                   processedLink.displayTitle,
@@ -118,17 +168,14 @@ class LinkDisplay extends StatelessWidget {
         return InkWell(
           onTap: onTap ??
               () {
-                launchUrl(
-                  Uri.parse(processedLink.url),
-                  mode: LaunchMode.externalApplication,
-                );
+                _handleLinkClick(processedLink.url);
               },
           borderRadius: BorderRadius.circular(4),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4.0),
             child: Row(
               children: [
-                if (showIcon) _buildFavicon(processedLink.favicon),
+                if (showIcon) buildFavicon(processedLink.favicon),
                 if (showTitle)
                   Expanded(
                     child: Text(
@@ -170,7 +217,7 @@ class LinkListDisplay extends StatelessWidget {
 
     // Filter out null links and ensure all links are strings
     final validLinks = links
-        .where((link) => link != null && link.isNotEmpty)
+        .where((link) => link.isNotEmpty)
         .map((link) => link.toString())
         .toList();
     if (validLinks.isEmpty) {
