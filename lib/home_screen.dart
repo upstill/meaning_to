@@ -13,7 +13,7 @@ import 'dart:async';
 
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
-import 'package:meaning_to/utils/app_buttons.dart';
+import 'package:meaning_to/utils/supabase_client.dart';
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
@@ -289,6 +289,33 @@ class HomeScreenState extends State<HomeScreen> {
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  /// Update the last_access timestamp for a category when it's selected
+  Future<void> _updateCategoryLastAccess(Category category) async {
+    try {
+      await supabase
+          .from('Categories')
+          .update({'last_access': DateTime.now().toUtc().toIso8601String()}).eq(
+              'id', category.id);
+
+      print('Updated last_access for category: ${category.headline}');
+
+      // Move the selected category to the top of the list
+      setState(() {
+        final selectedIndex =
+            _categories.indexWhere((c) => c.id == category.id);
+        if (selectedIndex != -1) {
+          // Remove the selected category from its current position
+          final selectedCategory = _categories.removeAt(selectedIndex);
+          // Add it to the beginning of the list (top of dropdown)
+          _categories.insert(0, selectedCategory);
+        }
+      });
+    } catch (e) {
+      print('Error updating last_access for category: $e');
+      // Don't show error to user as this is not critical functionality
     }
   }
 
@@ -977,12 +1004,14 @@ class HomeScreenState extends State<HomeScreen> {
                               ),
                             );
                           }).toList(),
-                          onChanged: (Category? newValue) {
+                          onChanged: (Category? newValue) async {
                             setState(() {
                               _selectedCategory = newValue;
                               _randomTask = null; // Clear the current task
                             });
                             if (newValue != null) {
+                              // Update last_access timestamp when category is selected
+                              await _updateCategoryLastAccess(newValue);
                               _loadRandomTask(newValue);
                             }
                           },

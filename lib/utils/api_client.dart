@@ -223,9 +223,23 @@ class ApiClient {
             '- ${category['headline']} (ID: ${category['id']}, owner: ${category['owner_id']})');
       }
 
-      return filteredCategories
+      // Convert to Category objects first
+      final categories = filteredCategories
           .map((categoryData) => Category.fromJson(categoryData))
           .toList();
+
+      // Sort by last_access, most recent first
+      categories.sort((a, b) {
+        // Handle null last_access values (put them at the end)
+        if (a.lastAccess == null && b.lastAccess == null) return 0;
+        if (a.lastAccess == null) return 1;
+        if (b.lastAccess == null) return -1;
+
+        // Sort by last_access in descending order (most recent first)
+        return b.lastAccess!.compareTo(a.lastAccess!);
+      });
+
+      return categories;
     } catch (e) {
       print('Error getting categories from Supabase: $e');
       print('Error type: ${e.runtimeType}');
