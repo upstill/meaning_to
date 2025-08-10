@@ -41,7 +41,7 @@ class ImportItem {
       ownerId: ownerId,
       headline: title,
       notes: description,
-      links: link != null ? [link!] : null,
+      links: link != null ? [link!] : <String>[],
       createdAt: now,
       suggestibleAt: now,
       finished: false,
@@ -180,7 +180,7 @@ class TextImporter {
     for (final item in items) {
       if (item == null) continue;
       final tempId = now.millisecondsSinceEpoch;
-      final links = item.link != null ? [item.link!] : null;
+      final links = item.link != null ? [item.link!] : <String>[];
       yield Task(
         id: tempId,
         categoryId: category.id,
@@ -207,7 +207,7 @@ class TextImporter {
     for (final item in items) {
       if (item == null) continue;
       final tempId = now.millisecondsSinceEpoch;
-      final links = item.link != null ? [item.link!] : null;
+      final links = item.link != null ? [item.link!] : <String>[];
       yield Task(
         id: tempId,
         categoryId: category.id,
@@ -480,7 +480,7 @@ class TextImporter {
     }
 
     final now = DateTime.now();
-    final links = item.link != null ? [item.link!] : null;
+    final links = item.link != null ? [item.link!] : <String>[];
 
     return Task(
       id: now.millisecondsSinceEpoch,

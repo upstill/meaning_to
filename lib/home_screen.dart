@@ -12,6 +12,8 @@ import 'package:meaning_to/performance_monitor_screen.dart';
 import 'dart:async';
 
 import 'package:meaning_to/utils/naming.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
@@ -907,6 +909,7 @@ class HomeScreenState extends State<HomeScreen> {
                         icon: const Icon(Icons.add),
                         label: Text(
                             'Define ${NamingUtils.categoriesName(plural: false, withArticle: true)} to get started'),
+                        style: AppButtons.finalize(),
                       ),
                   ],
                 ),
@@ -931,6 +934,9 @@ class HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: DropdownButtonFormField<Category>(
                           value: _selectedCategory,
+                          // Must be >= kMinInteractiveDimension (48)
+                          itemHeight: 48.0,
+                          isExpanded: true,
                           style: const TextStyle(
                               fontSize:
                                   20), // Increased by 8 points from default 12
@@ -938,14 +944,33 @@ class HomeScreenState extends State<HomeScreen> {
                             border: const OutlineInputBorder(),
                             hintText:
                                 'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false, withArticle: true)}',
+                            isDense: false,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                              horizontal: 12,
+                            ),
                           ),
+                          selectedItemBuilder: (context) => _categories
+                              .map((category) => Text(
+                                    '...${category.headline}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      height: 1.0,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1A237E),
+                                    ),
+                                  ))
+                              .toList(),
                           items: _categories.map((category) {
                             return DropdownMenuItem(
                               value: category,
                               child: Text(
                                 '...${category.headline}',
                                 style: const TextStyle(
-                                  fontSize: 24,
+                                  fontSize: 18,
+                                  height: 0.95,
                                   fontWeight: FontWeight.bold,
                                   color: Color(0xFF1A237E),
                                 ),
@@ -1250,10 +1275,7 @@ class HomeScreenState extends State<HomeScreen> {
                                   icon: const Icon(Icons.edit),
                                   label: Text(
                                       'Manage Choices/Edit ${NamingUtils.categoriesName(plural: false)}'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.grey[200],
-                                    foregroundColor: Colors.black,
-                                  ),
+                                  style: AppButtons.goForth(),
                                 ),
                               ],
                             ),
@@ -1282,11 +1304,8 @@ class HomeScreenState extends State<HomeScreen> {
                               onPressed: _navigateToEditTasks,
                               icon: const Icon(Icons.edit),
                               label: Text(
-                                  'Manage Choices/Edit ${NamingUtils.categoriesName()}'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.grey[200],
-                                foregroundColor: Colors.black,
-                              ),
+                                  'Manage Choices/Edit ${NamingUtils.categoriesName(plural: false)}'),
+                              style: AppButtons.goForth(),
                             ),
                           ],
                         ),
@@ -1345,6 +1364,8 @@ class HomeScreenState extends State<HomeScreen> {
         },
         tooltip:
             'Define a New ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+        backgroundColor: AppButtons.goForthBg,
+        foregroundColor: AppButtons.goForthFg,
         child: const Icon(Icons.add),
       ),
     );

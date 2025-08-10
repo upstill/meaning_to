@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/utils/naming.dart';
 
 class CategoryForm extends StatefulWidget {
@@ -176,6 +177,7 @@ class CategoryFormState extends State<CategoryForm> {
                               _headlineController.text.trim().isEmpty)
                           ? null
                           : _handleSave,
+                      style: AppButtons.finalize(),
                       child: widget.isLoading
                           ? const SizedBox(
                               height: 20,

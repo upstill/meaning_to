@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/utils/naming.dart';
 
 class AddTaskManuallyButton extends StatelessWidget {
@@ -42,11 +43,12 @@ class AddTaskManuallyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
+    return ElevatedButton.icon(
       onPressed: isLoading ? null : () => _createTask(context),
       icon: const Icon(Icons.add),
       label: Text(
           'Add ${NamingUtils.tasksName(plural: false, withArticle: true)} Manually'),
+      style: AppButtons.goForth(),
     );
   }
 }

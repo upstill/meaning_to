@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:meaning_to/models/category.dart' as models;
@@ -13,6 +12,10 @@ import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+
+// Conditional import for web-specific functionality
+import 'import_justwatch_web.dart'
+    if (dart.library.io) 'import_justwatch_stub.dart';
 
 class JustWatchItem {
   final String title;
@@ -320,53 +323,43 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
   Future<void> _pickFileWeb() async {
     print('Using web file picker...');
 
-    // Create a file input element
-    final input = html.FileUploadInputElement()
-      ..accept = '.json'
-      ..click();
-
-    // Wait for file selection
-    await input.onChange.first;
-
-    if (input.files?.isEmpty ?? true) {
-      print('No file selected');
-      return;
-    }
-
-    final file = input.files!.first;
-    print('File selected: ${file.name}');
-
-    // Read file content
-    final reader = html.FileReader();
-    reader.readAsText(file);
-
-    await reader.onLoad.first;
-
-    final contents = reader.result as String;
-    print('File contents length: ${contents.length}');
-
-    dynamic jsonData;
     try {
-      jsonData = json.decode(contents);
-      print('JSON decoded successfully');
-      print('JSON type: ${jsonData.runtimeType}');
-      if (jsonData is List) {
-        print('JSON is a list with ${jsonData.length} items');
+      final fileData = await WebFilePicker.pickFile();
+      final fileName = fileData['name'] as String;
+      final contents = fileData['contents'] as String;
+
+      print('File selected: $fileName');
+      print('File contents length: ${contents.length}');
+
+      dynamic jsonData;
+      try {
+        jsonData = json.decode(contents);
+        print('JSON decoded successfully');
+        print('JSON type: ${jsonData.runtimeType}');
+        if (jsonData is List) {
+          print('JSON is a list with ${jsonData.length} items');
+        }
+      } catch (e) {
+        print('Error decoding JSON: $e');
+        setState(() {
+          _error = 'Invalid JSON file: $e';
+          _isLoading = false;
+        });
+        return;
       }
-    } catch (e) {
-      print('Error decoding JSON: $e');
+
       setState(() {
-        _error = 'Invalid JSON file: $e';
+        _selectedFileName = fileName;
+      });
+
+      await _parseJsonData(jsonData);
+    } catch (e) {
+      print('Error picking file: $e');
+      setState(() {
+        _error = 'Error picking file: $e';
         _isLoading = false;
       });
-      return;
     }
-
-    setState(() {
-      _selectedFileName = file.name;
-    });
-
-    await _parseJsonData(jsonData);
   }
 
   Future<void> _pickFileNative() async {
