@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <application
-        android:label="Meaning To"
+        android:label="I've Been Meaning To"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true">
@@ -51,7 +51,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="your-domain.com" />
+                <data android:scheme="https" android:host="meaning-to.me" />
             </intent-filter>
             <!-- Add this intent-filter for sharing text and files -->
             <intent-filter>

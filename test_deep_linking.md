@@ -6,8 +6,8 @@ This app now supports deep linking to categories using multiple URL formats:
 ### URL Formats Supported
 
 1. **Web URLs:**
-   - `https://your-domain.com/category/123`
-   - `https://your-domain.com/?category=123`
+   - `https://meaning-to.me/category/123`
+   - `https://meaning-to.me/?category=123`
 
 2. **Custom Scheme URLs:**
    - `meaningto://category/123`
@@ -18,9 +18,9 @@ This app now supports deep linking to categories using multiple URL formats:
 ## Testing Deep Links
 
 ### 1. Web Testing
-- Navigate to `https://your-domain.com/category/123` in a browser
+- Navigate to `https://meaning-to.me/category/123` in a browser
 - The app should open and navigate to category with ID 123
-- Test with query parameter: `https://your-domain.com/?category=123`
+- Test with query parameter: `https://meaning-to.me/?category=123`
 
 ### 2. Mobile Testing
 
@@ -30,7 +30,7 @@ This app now supports deep linking to categories using multiple URL formats:
 adb shell am start -W -a android.intent.action.VIEW -d "meaningto://category/123" com.example.meaning_to
 
 # Test web URL (if universal links are configured)
-adb shell am start -W -a android.intent.action.VIEW -d "https://your-domain.com/category/123" com.example.meaning_to
+adb shell am start -W -a android.intent.action.VIEW -d "https://meaning-to.me/category/123" com.example.meaning_to
 ```
 
 #### iOS
@@ -39,7 +39,7 @@ adb shell am start -W -a android.intent.action.VIEW -d "https://your-domain.com/
 xcrun simctl openurl booted "meaningto://category/123"
 
 # Test web URL (if universal links are configured)
-xcrun simctl openurl booted "https://your-domain.com/category/123"
+xcrun simctl openurl booted "https://meaning-to.me/category/123"
 ```
 
 ### 3. Manual Testing

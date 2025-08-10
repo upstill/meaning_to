@@ -506,6 +506,127 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     return null; // No duplicate found
   }
 
+  /// Process headline text to extract links and set appropriate headline
+  Future<Map<String, dynamic>> _processHeadlineText(String headlineText) async {
+    print('TaskEditScreen: Processing headline text: "$headlineText"');
+
+    if (headlineText.trim().isEmpty) {
+      return {
+        'headline': '',
+        'notes': null,
+        'links': <String>[],
+      };
+    }
+
+    // Check if text contains a URL
+    final urlMatch = RegExp(r'https?://[^\s:]+').firstMatch(headlineText);
+    if (urlMatch != null) {
+      final extractedURL = urlMatch.group(0)!;
+      print('TaskEditScreen: Found URL in headline: $extractedURL');
+
+      // Remove trailing colon if present
+      String cleanURL = extractedURL;
+      if (cleanURL.endsWith(':')) {
+        cleanURL = cleanURL.substring(0, cleanURL.length - 1);
+      }
+
+      // Extract text before and after the URL
+      final urlStart = urlMatch.start;
+      final urlEnd = urlMatch.end;
+      final beforeURL = headlineText.substring(0, urlStart);
+      final afterURL = headlineText.substring(urlEnd);
+
+      // Combine text before and after URL, removing any trailing colons
+      String cleanHeadline = (beforeURL + afterURL).trim();
+      if (cleanHeadline.endsWith(':')) {
+        cleanHeadline =
+            cleanHeadline.substring(0, cleanHeadline.length - 1).trim();
+      }
+
+      // If no headline text remains, fetch the webpage title
+      if (cleanHeadline.isEmpty) {
+        try {
+          print('TaskEditScreen: No headline text, fetching webpage title...');
+          final processedLink =
+              await LinkProcessor.validateAndProcessLink(cleanURL);
+          cleanHeadline = processedLink.title ?? 'Link';
+          print('TaskEditScreen: Fetched webpage title: "$cleanHeadline"');
+        } catch (e) {
+          print('TaskEditScreen: Failed to fetch webpage title: $e');
+          cleanHeadline = 'Link';
+        }
+      }
+
+      print('TaskEditScreen: Processed headline: "$cleanHeadline"');
+      print('TaskEditScreen: Extracted link: "$cleanURL"');
+
+      return {
+        'headline': cleanHeadline,
+        'notes': null,
+        'links': [cleanURL],
+      };
+    }
+
+    // Check if text contains a colon separator (title: description)
+    final colonIndex = headlineText.indexOf(':');
+    if (colonIndex > 0) {
+      final title = headlineText.substring(0, colonIndex).trim();
+      final description = headlineText.substring(colonIndex + 1).trim();
+
+      if (title.isNotEmpty) {
+        print(
+            'TaskEditScreen: Found colon separator - title: "$title", description: "$description"');
+        return {
+          'headline': title,
+          'notes': description.isNotEmpty ? description : null,
+          'links': <String>[],
+        };
+      }
+    }
+
+    // Check if text is a markdown link [title](url)
+    final markdownMatch =
+        RegExp(r'\[([^\]]+)\]\(([^)]+)\)').firstMatch(headlineText);
+    if (markdownMatch != null) {
+      final title = markdownMatch.group(1) ?? 'Link';
+      final url = markdownMatch.group(2) ?? '';
+
+      if (url.isNotEmpty) {
+        print(
+            'TaskEditScreen: Found markdown link - title: "$title", url: "$url"');
+        return {
+          'headline': title,
+          'notes': null,
+          'links': [url],
+        };
+      }
+    }
+
+    // Check if text is an HTML link
+    if (headlineText.trim().startsWith('<a') &&
+        headlineText.trim().endsWith('</a>')) {
+      print('TaskEditScreen: Attempting HTML link parsing');
+      final (url, title) = LinkProcessor.parseHtmlLink(headlineText);
+      if (url != headlineText) {
+        print(
+            'TaskEditScreen: Parsed HTML link - title: "$title", url: "$url"');
+        return {
+          'headline': title ?? 'Link',
+          'notes': null,
+          'links': [url],
+        };
+      }
+    }
+
+    // Treat as plain text
+    print('TaskEditScreen: Treating as plain text: "$headlineText"');
+    return {
+      'headline': headlineText.trim(),
+      'notes': null,
+      'links': <String>[],
+    };
+  }
+
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -517,15 +638,29 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     try {
       final userId = AuthUtils.getCurrentUserId();
 
+      // Process the headline text to extract links and set appropriate headline
+      final processedData =
+          await _processHeadlineText(_headlineController.text);
+      final processedHeadline = processedData['headline'] as String;
+      final processedNotes = processedData['notes'] as String?;
+      final newLinks = processedData['links'] as List<String>;
+
+      // Combine existing links with newly processed links
+      final allLinks = [..._links, ...newLinks];
+
+      // Use processed notes if available, otherwise fall back to notes controller
+      final finalNotes = processedNotes ??
+          (_notesController.text.isEmpty ? null : _notesController.text);
+
       final data = {
-        'headline': _headlineController.text,
-        'notes': _notesController.text.isEmpty ? null : _notesController.text,
+        'headline': processedHeadline,
+        'notes': finalNotes,
         'category_id': widget.category.id,
         'owner_id': userId,
         'finished': _localTask?.finished ?? false,
         'shared': _isShared,
         'links':
-            _links, // PostgreSQL array - always store as array, even if empty
+            allLinks, // PostgreSQL array - always store as array, even if empty
       };
 
       // For new tasks, explicitly exclude suggestible_at to ensure it remains null
@@ -617,7 +752,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete ${NamingUtils.tasksName()}?'),
+        title: Text('Delete ${NamingUtils.tasksName(plural: false)}?'),
         content: const Text('This action cannot be undone.'),
         actions: [
           TextButton(
@@ -793,7 +928,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                           labelText:
                               '${NamingUtils.tasksName(plural: false)} (required)',
                           hintText:
-                              'What have you been meaning to do?\n\nYou can use Enter to add line breaks for multi-line headlines.',
+                              'What have you been meaning to do?\n\nYou can use Enter to add line breaks for multi-line headlines.\n\nTip: Paste a link to automatically extract it and set the link title as the headline.',
                           border: const OutlineInputBorder(),
                           alignLabelWithHint: true,
                         ),
@@ -809,6 +944,76 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         },
                         enabled: !_isLoading,
                       ),
+                      // Show preview of links that will be extracted from headline
+                      if (_headlineController.text.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        FutureBuilder<Map<String, dynamic>>(
+                          future:
+                              _processHeadlineText(_headlineController.text),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData) {
+                              final processedData = snapshot.data!;
+                              final newLinks =
+                                  processedData['links'] as List<String>;
+
+                              if (newLinks.isNotEmpty) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Links that will be extracted from headline:',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    ...newLinks
+                                        .map((link) => Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 4),
+                                              margin: const EdgeInsets.only(
+                                                  bottom: 4),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue.shade50,
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                                border: Border.all(
+                                                    color:
+                                                        Colors.blue.shade200),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  Icon(Icons.link,
+                                                      size: 16,
+                                                      color:
+                                                          Colors.blue.shade600),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      link,
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors
+                                                            .blue.shade700,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ))
+                                        .toList(),
+                                  ],
+                                );
+                              }
+                            }
+                            return const SizedBox.shrink();
+                          },
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _notesController,
