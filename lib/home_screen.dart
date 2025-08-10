@@ -528,7 +528,7 @@ class HomeScreenState extends State<HomeScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'This category is private and cannot be shared with others.',
+                              'This category is private to you. You can make it public if you want to share it with others.',
                               style: TextStyle(
                                 color: Colors.orange.shade800,
                                 fontSize: 14,
@@ -635,7 +635,7 @@ class HomeScreenState extends State<HomeScreen> {
       await _makeCategoryPublic(category);
     }
 
-    final link = DeepLinkGenerator.generateShareableCategoryLink(category.id);
+    final link = DeepLinkGenerator.generateCategoryLink(category.id);
     FlutterClipboard.copy(link).then((value) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -654,7 +654,7 @@ class HomeScreenState extends State<HomeScreen> {
       await _makeCategoryPublic(category);
     }
 
-    final link = DeepLinkGenerator.generateShareableCategoryLink(category.id);
+    final link = DeepLinkGenerator.generateCategoryLink(category.id);
     // You can implement native sharing here using packages like share_plus
     // For now, just show the link
     showDialog(
@@ -1088,8 +1088,8 @@ class HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_selectedCategory != null
-            ? 'Meaning To ${_selectedCategory!.headline}'
-            : 'Meaning To'),
+            ? 'I\'ve Been Meaning To ${_selectedCategory!.headline}'
+            : 'I\'ve Been Meaning To'),
         actions: [
           // Debug button - only show in debug mode
           if (foundation.kDebugMode)

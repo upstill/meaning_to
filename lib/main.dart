@@ -19,6 +19,7 @@ import 'package:meaning_to/utils/share_handler.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:supabase_flutter/src/supabase_auth.dart';
+import 'package:meaning_to/utils/deep_link_generator.dart';
 
 // Remove the instance creation since we'll use static methods
 // final _receiveSharingIntent = ReceiveSharingIntent();
@@ -47,6 +48,22 @@ class WebWidthWrapper extends StatelessWidget {
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // Configure debug port for DeepLinkGenerator if running in debug mode
+    if (foundation.kDebugMode && foundation.kIsWeb) {
+      try {
+        // Try to get the current port from the URL
+        final currentUri = Uri.base;
+        if (currentUri.port != 0) {
+          DeepLinkGenerator.setDebugPort(currentUri.port);
+          print(
+              'DeepLinkGenerator: Auto-configured debug port to ${currentUri.port}');
+        }
+      } catch (e) {
+        print(
+            'DeepLinkGenerator: Could not auto-detect port, using default 8080');
+      }
+    }
 
     // Initialize Supabase with hardcoded credentials for Vercel deployment
     await Supabase.initialize(
@@ -398,7 +415,7 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return WebWidthWrapper(
       child: MaterialApp(
-        title: 'Meaning To',
+        title: 'I\'ve Been Meaning To',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),

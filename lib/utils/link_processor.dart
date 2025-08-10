@@ -8,6 +8,8 @@ import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
+
 class ProcessedLink {
   final String url;
   final String? title;
@@ -29,7 +31,11 @@ class ProcessedLink {
 
   // Widget to display the link with its icon
   Widget buildLinkWidget() {
-    return LinkDisplay.buildLinkWidget(this);
+    return LinkDisplayWidget(
+      linkText: originalLink,
+      showIcon: true,
+      showTitle: true,
+    );
   }
 
   // Widget to display a list of links
@@ -422,8 +428,7 @@ class LinkProcessor {
 
   /// Checks if a URL is an internal link to a category
   static bool _isInternalCategoryLink(String url, String domain) {
-    return (domain == 'localhost' || domain == 'meaning-to.me') &&
-        url.contains('/category/');
+    return domain == 'meaning-to.me' && url.contains('/category/');
   }
 
   /// Handles internal category links by looking up the category in the database
@@ -434,7 +439,7 @@ class LinkProcessor {
     }
 
     try {
-      // Extract category ID from URL path like /category/123
+      // Extract category ID directly from the meaning-to.me URL
       final uri = Uri.parse(url);
       final pathSegments = uri.pathSegments;
 
@@ -737,10 +742,7 @@ class LinkDisplayWidget extends StatelessWidget {
         return InkWell(
           onTap: onTap ??
               () {
-                launchUrl(
-                  Uri.parse(processedLink.url),
-                  mode: LaunchMode.externalApplication,
-                );
+                _handleLinkClick(context, processedLink);
               },
           borderRadius: BorderRadius.circular(4),
           child: Padding(
@@ -764,6 +766,45 @@ class LinkDisplayWidget extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  /// Handle link clicks with special handling for internal/localhost links
+  void _handleLinkClick(BuildContext context, ProcessedLink link) {
+    final url = link.url; // Use the original URL, not displayUrl
+
+    // Check if this is an internal link (meaning-to.me in debug mode)
+    if (kDebugMode && url.contains('meaning-to.me')) {
+      // Parse the URL to extract the path for internal navigation
+      try {
+        final uri = Uri.parse(url);
+        if (uri.pathSegments.isNotEmpty && uri.pathSegments[0] == 'category') {
+          // This is a category link - we should navigate within the app
+          print(
+              'LinkDisplayWidget: Internal category navigation to: ${uri.path}');
+          print('LinkDisplayWidget: Category ID: ${uri.pathSegments[1]}');
+
+          // Navigate to the Home screen for this category
+          Navigator.pushReplacementNamed(
+            context,
+            '/category',
+            arguments: {'categoryId': uri.pathSegments[1]},
+          );
+
+          return;
+        }
+      } catch (e) {
+        print('LinkDisplayWidget: Error parsing internal URL: $e');
+      }
+
+      // If it's not a category link or parsing failed, fall back to external launch
+      print('LinkDisplayWidget: Falling back to external launch for: $url');
+    }
+
+    // For external links or fallback, use the standard external application mode
+    launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
     );
   }
 }

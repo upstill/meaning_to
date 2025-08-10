@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:meaning_to/utils/link_processor.dart';
-import 'dart:html' as html;
 
 /// A widget that displays a link with an optional icon and title.
 /// Used in both the home screen and import screen for consistent link display.
@@ -22,65 +21,14 @@ class LinkDisplay extends StatelessWidget {
     this.isEditing = false,
   });
 
-  /// Checks if a URL is an internal link to the app
-  static bool _isInternalLink(String url) {
-    try {
-      final uri = Uri.parse(url);
-      final domain = uri.host.toLowerCase();
-      return (domain == 'localhost' || domain == 'meaning-to.me') &&
-          uri.path.startsWith('/category/');
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /// Handles link clicks with appropriate behavior for internal vs external links
-  static void _handleLinkClick(String url) {
-    if (_isInternalLink(url)) {
-      // For internal links in web app, use app navigation
-      if (kIsWeb) {
-        // Extract category ID from URL path like /category/123
-        try {
-          final uri = Uri.parse(url);
-          final pathSegments = uri.pathSegments;
-
-          if (pathSegments.length >= 2 && pathSegments[0] == 'category') {
-            final categoryId = pathSegments[1];
-
-            // Use the browser's history API to change the URL
-            // Only push the path, not the full URL to avoid protocol/port mismatch
-            html.window.history.pushState({}, '', uri.path);
-
-            // Dispatch a popstate event to trigger the app's routing system
-            html.window.dispatchEvent(html.Event('popstate'));
-          }
-        } catch (e) {
-          print('Error handling internal link navigation: $e');
-        }
-      } else {
-        // For mobile apps, use inAppWebView
-        launchUrl(
-          Uri.parse(url),
-          mode: LaunchMode.inAppWebView,
-        );
-      }
-    } else {
-      // For external links, open in new tab
-      launchUrl(
-        Uri.parse(url),
-        mode: LaunchMode.externalApplication,
-      );
-    }
-  }
-
   /// Builds a widget to display a processed link with its icon and title.
   /// This is used by ProcessedLink to create its display widget.
-  static Widget buildLinkWidget(ProcessedLink link) {
+  static Widget buildLinkWidget(ProcessedLink link, BuildContext context) {
     return Container(
       padding: const EdgeInsets.only(top: 4.0),
       child: InkWell(
         onTap: () {
-          _handleLinkClick(link.url);
+          _handleLinkClick(link, context); // Pass context for navigation
         },
         borderRadius: BorderRadius.circular(4),
         child: Padding(
@@ -111,6 +59,44 @@ class LinkDisplay extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Handle link clicks with special handling for internal/localhost links
+  static void _handleLinkClick(ProcessedLink link, BuildContext context) {
+    final url = link.url; // Use the original URL, not displayUrl
+
+    // Check if this is an internal link (meaning-to.me in debug mode)
+    if (kDebugMode && url.contains('meaning-to.me')) {
+      // Parse the URL to extract the path for internal navigation
+      try {
+        final uri = Uri.parse(url);
+        if (uri.pathSegments.isNotEmpty && uri.pathSegments[0] == 'category') {
+          // This is a category link - we should navigate within the app
+          print('LinkDisplay: Internal category navigation to: ${uri.path}');
+          print('LinkDisplay: Category ID: ${uri.pathSegments[1]}');
+
+          // Navigate to the Home screen for this category
+          Navigator.pushReplacementNamed(
+            context,
+            '/category',
+            arguments: {'categoryId': uri.pathSegments[1]},
+          );
+
+          return; // Don't launch externally
+        }
+      } catch (e) {
+        print('LinkDisplay: Error parsing internal URL: $e');
+      }
+
+      // Fall back to external launch if not a category link
+      print('LinkDisplay: Falling back to external launch for: $url');
+    }
+
+    // For external links or fallback, use the standard external application mode
+    launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
     );
   }
 
@@ -168,7 +154,7 @@ class LinkDisplay extends StatelessWidget {
         return InkWell(
           onTap: onTap ??
               () {
-                _handleLinkClick(processedLink.url);
+                _handleLinkClick(processedLink, context);
               },
           borderRadius: BorderRadius.circular(4),
           child: Padding(
