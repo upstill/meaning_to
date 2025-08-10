@@ -8,6 +8,7 @@ class Category {
   final int? originalId;
   final DateTime? triggersAt;
   final String? template;
+  final DateTime? lastAccess;
   bool isPrivate;
   bool tasksArePrivate;
 
@@ -21,6 +22,7 @@ class Category {
     this.originalId,
     this.triggersAt,
     this.template,
+    this.lastAccess,
     this.isPrivate = false,
     this.tasksArePrivate = true,
   });
@@ -49,6 +51,9 @@ class Category {
           ? DateTime.parse(json['triggers_at'] as String)
           : null,
       template: json['template'] as String?,
+      lastAccess: json['last_access'] != null
+          ? DateTime.parse(json['last_access'] as String)
+          : null,
       isPrivate: json['private'] as bool? ?? false,
       tasksArePrivate: json['tasks_are_private'] as bool? ?? true,
     );
@@ -65,6 +70,7 @@ class Category {
       'original_id': originalId,
       'triggers_at': triggersAt?.toIso8601String(),
       'template': template,
+      'last_access': lastAccess?.toIso8601String(),
       'private': isPrivate,
       'tasks_are_private': tasksArePrivate,
     };
