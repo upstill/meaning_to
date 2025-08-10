@@ -7,6 +7,7 @@ import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/text_importer.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/widgets/add_task_manually_button.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:file_selector/file_selector.dart';
@@ -578,7 +579,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           ownerId: task.ownerId,
           headline: task.headline,
           notes: task.notes,
-          links: task.links,
+          links: task.links ?? <String>[],
           processedLinks: task.processedLinks,
           createdAt: task.createdAt,
           suggestibleAt: null, // Set to null to appear at the beginning
@@ -708,9 +709,13 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                           fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
+                    Text(
                       'List one or more tasks, one per line:',
-                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[800],
+                        height: 1.2,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -733,10 +738,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                           onPressed: _selectAndLoadFile,
                           icon: const Icon(Icons.upload_file),
                           tooltip: 'Upload text file',
-                          style: IconButton.styleFrom(
-                            backgroundColor: Colors.grey[200],
-                            foregroundColor: Colors.grey[700],
-                          ),
+                          style: AppButtons.iconGoForth(),
                         ),
                       ],
                     ),
@@ -759,11 +761,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                         label: Text(_isLoading
                             ? 'Adding...'
                             : 'Make ${NamingUtils.tasksName(plural: true)}'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              Theme.of(context).colorScheme.primary,
-                          foregroundColor: Colors.white,
-                        ),
+                        style: AppButtons.finalize(),
                       ),
                     ),
                   ],
@@ -778,12 +776,13 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             const SizedBox(height: 8),
             Text(
               '• Enter one ${NamingUtils.tasksName(capitalize: false, plural: false)} per line\n'
-              '• Use "${NamingUtils.tasksName()}: Note" format to include a note\n'
+              '• Use "${NamingUtils.tasksName(plural: false)}: Note" format to include a note\n'
               '• Click the upload icon to load ${NamingUtils.tasksName(plural: true)} from various file types (.txt, .md, .csv, .rtf, .pdf, .doc, .docx, .odt)\n'
               '• Pasting a Share from elsewhere will do the right thing\n'
-              '• Ditto a URL (address-bar gobbledygook from a web page)\n'
+              '• So will pasting a URL (address-bar gobbledygook from a web page)\n'
               '• New ${NamingUtils.tasksName(plural: true)} will appear at the beginning of your list',
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
+              style:
+                  TextStyle(fontSize: 14, color: Colors.grey[800], height: 1.3),
             ),
             const SizedBox(height: 12),
             // Single task addition section
@@ -799,16 +798,18 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                           fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: AddTaskManuallyButton(
-                        category: widget.category,
-                        isLoading: _isLoading,
-                        onTaskAdded: () {
-                          setState(() {
-                            // Refresh the UI after task is added
-                          });
-                        },
+                    Center(
+                      child: FractionallySizedBox(
+                        widthFactor: 0.6,
+                        child: AddTaskManuallyButton(
+                          category: widget.category,
+                          isLoading: _isLoading,
+                          onTaskAdded: () {
+                            setState(() {
+                              // Refresh the UI after task is added
+                            });
+                          },
+                        ),
                       ),
                     ),
                   ],

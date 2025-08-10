@@ -18,6 +18,105 @@ class ShopEndeavorsScreen extends StatefulWidget {
     this.existingCategory,
   });
 
+  /// Check if there are any public suggestions available
+  /// This is a lightweight check used by callers to pre-toggle UI
+  static Future<bool> hasAnyPublicSuggestions() async {
+    try {
+      // Check if there are any public categories with tasks
+      final response = await supabase
+          .from('Categories')
+          .select('id, private')
+          .eq('private', false)
+          .limit(1);
+
+      if (response is List && response.isNotEmpty) {
+        // Check if any of these public categories have tasks
+        final categoryIds = response.map((json) => json['id'] as int).toList();
+        final tasksResponse = await supabase
+            .from('Tasks')
+            .select('id, original_id')
+            .inFilter('category_id', categoryIds)
+            .limit(10); // Get more tasks to check filtering
+
+        if (tasksResponse is List && tasksResponse.isNotEmpty) {
+          // Filter to only show original tasks (where id equals original_id)
+          final originalTasks = tasksResponse.where((task) {
+            final taskId = task['id'] as int;
+            final originalId = task['original_id'] as int?;
+            return originalId != null && taskId == originalId;
+          }).toList();
+
+          return originalTasks.isNotEmpty;
+        }
+      }
+      return false;
+    } catch (e) {
+      // On error, return true to avoid disabling UX unnecessarily
+      print('Error checking for public suggestions: $e');
+      return true;
+    }
+  }
+
+  /// Check if there are any public suggestions available for a specific category
+  /// This is used by Task Edit screen to check if suggestions exist for the current category
+  static Future<bool> hasAnyPublicSuggestionsForCategory(
+      Category category) async {
+    try {
+      if (category.originalId == null) {
+        return false; // No original_id means no suggestions
+      }
+
+      // Get all categories with the same original_id
+      final categoriesResponse = await supabase
+          .from('Categories')
+          .select('id')
+          .eq('original_id', category.originalId!);
+
+      if (categoriesResponse.isEmpty) {
+        return false;
+      }
+
+      // If there's only one category with this original_id (the current one), no suggestions
+      if (categoriesResponse.length == 1) {
+        return false;
+      }
+
+      // Extract category IDs, excluding the current category
+      final categoryIds = (categoriesResponse as List)
+          .map((json) => json['id'] as int)
+          .where((id) => id != category.id) // Exclude current category
+          .toList();
+
+      if (categoryIds.isEmpty) {
+        return false; // No other categories with same original_id
+      }
+
+      // Get tasks from other categories with the same original_id
+      final tasksResponse = await supabase
+          .from('Tasks')
+          .select('id, original_id')
+          .inFilter('category_id', categoryIds)
+          .limit(100); // Get more tasks to check filtering
+
+      if (tasksResponse is List && tasksResponse.isNotEmpty) {
+        // Filter to only show original tasks (where id equals original_id)
+        final originalTasks = tasksResponse.where((task) {
+          final taskId = task['id'] as int;
+          final originalId = task['original_id'] as int?;
+          return originalId != null && taskId == originalId;
+        }).toList();
+
+        // If there are original tasks in other categories, we have suggestions
+        return originalTasks.isNotEmpty;
+      }
+      return false;
+    } catch (e) {
+      // On error, return true to avoid disabling UX unnecessarily
+      print('Error checking for public suggestions for category: $e');
+      return true;
+    }
+  }
+
   @override
   State<ShopEndeavorsScreen> createState() => _ShopEndeavorsScreenState();
 }
@@ -450,8 +549,55 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       }
     }
 
-    // No tasks found in any shop item, show alert
-    return true;
+    return true; // No tasks found, show alert
+  }
+
+  /// Get filtered tasks for a given original_id and owner_id
+  /// This method encapsulates the query logic used by _loadTasksForItem
+  static Future<List<Task>> getFilteredTasksForOriginalId(
+    int originalId,
+    String ownerId,
+  ) async {
+    try {
+      // First, get all categories with the same original_id
+      final categoriesResponse = await supabase
+          .from('Categories')
+          .select('id')
+          .eq('original_id', originalId);
+
+      if (categoriesResponse.isEmpty) {
+        return [];
+      }
+
+      // Extract category IDs
+      final categoryIds = (categoriesResponse as List)
+          .map((json) => json['id'] as int)
+          .toList();
+
+      // Get tasks from all these categories
+      final tasksResponse = await supabase
+          .from('Tasks')
+          .select('*')
+          .inFilter('category_id', categoryIds);
+
+      // Convert to Task objects
+      final List<Task> allTasks = (tasksResponse as List)
+          .map((json) => Task.fromJson(json as Map<String, dynamic>))
+          .toList();
+
+      // Filter to only show original tasks (where id equals original_id)
+      final List<Task> allOriginalTasks =
+          allTasks.where((task) => task.id == task.originalId).toList();
+
+      // Filter out tasks that belong to the current owner (to avoid showing their own tasks)
+      final List<Task> filteredTasks =
+          allOriginalTasks.where((task) => task.ownerId != ownerId).toList();
+
+      return filteredTasks;
+    } catch (e) {
+      print('Error getting filtered tasks for original_id $originalId: $e');
+      return [];
+    }
   }
 
   /// Load user's task original_ids for redundancy checking in Shop Endeavors mode

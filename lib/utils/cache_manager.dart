@@ -163,7 +163,7 @@ class CacheManager with PerformanceMonitoring {
             'notes': task.notes,
             'category_id': _currentCategory!.id,
             'owner_id': _currentUserId,
-            'links': task.links, // PostgreSQL array
+            'links': Task.linksToArray(task.links), // Ensure [] not null
             'original_id': task.originalId, // Preserve original_id if it exists
             'shared': task.shared, // Include shared field
           };
@@ -241,6 +241,7 @@ class CacheManager with PerformanceMonitoring {
               'finished': updatedTask.finished,
               'suggestible_at': updatedTask.suggestibleAt?.toIso8601String(),
               'deferral': updatedTask.deferral,
+              'shared': updatedTask.shared,
             };
 
             await ApiClient.updateTask(updatedTask.id.toString(), taskData);

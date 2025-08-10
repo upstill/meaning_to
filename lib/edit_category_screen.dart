@@ -7,6 +7,7 @@ import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
@@ -214,6 +215,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     _cacheSubscription = CacheManager.onCacheChanged.listen((_) {
       print('EditCategoryScreen: Cache changed, rebuilding UI');
       if (mounted) {
+        // Force task list re-evaluation so field changes (e.g., shared) are reflected
+        _clearTaskCache();
         setState(() {});
 
         // Check if this was triggered by an import
@@ -1425,7 +1428,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                                         size: 16, color: Colors.grey[600]),
                                     const SizedBox(width: 4),
                                     Text(
-                                      '${NamingUtils.tasksName(plural: true)} are private',
+                                      '${NamingUtils.tasksName(plural: true)} start out private',
                                       style: TextStyle(
                                         fontSize: 14,
                                         color: Colors.grey[600],
@@ -1479,7 +1482,39 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               // Task list section (only for saved categories)
               if (_categorySaved &&
                   (widget.category != null || _currentCategory != null)) ...[
-                // Task summary (only for existing categories with tasks)
+                // Task summary section with icons
+                if (widget.category != null) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildSummaryItem(
+                        'Available',
+                        _tasks
+                            .where(
+                                (task) => !task.finished && task.isSuggestible)
+                            .length,
+                        Colors.green,
+                        Icons.check_circle,
+                      ),
+                      _buildSummaryItem(
+                        'Deferred',
+                        _tasks
+                            .where((task) => !task.finished && task.isDeferred)
+                            .length,
+                        Colors.orange,
+                        Icons.schedule,
+                      ),
+                      _buildSummaryItem(
+                        'Finished',
+                        _tasks.where((task) => task.finished).length,
+                        Colors.blue,
+                        Icons.done_all,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
 
                 // Only show "Current tasks:" header if there are tasks
                 if (widget.category == null
@@ -1501,11 +1536,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                         onPressed: _createTask,
                         icon: const Icon(Icons.add),
                         tooltip:
-                            'Add a ${NamingUtils.tasksName(capitalize: false, plural: false)} manually',
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                        ),
+                            'Add ${NamingUtils.tasksName(withArticle: true, capitalize: false, plural: false)} manually',
+                        style: AppButtons.iconGoForth(),
                       ),
                     ],
                   ),
@@ -1582,12 +1614,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                             icon: const Icon(Icons.add),
                             label: Text(
                                 'Add ${NamingUtils.tasksName(withArticle: true, plural: false)}'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
+                            style: AppButtons.goForth().copyWith(
+                              padding: const WidgetStatePropertyAll(
+                                EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                  vertical: 12,
+                                ),
                               ),
                             ),
                           ),

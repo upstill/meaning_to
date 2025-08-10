@@ -6,6 +6,7 @@ import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/widgets/category_form.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 
 class NewCategoryScreen extends StatefulWidget {
   const NewCategoryScreen({super.key});
@@ -135,10 +136,9 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
               'Shop for Ideas',
               style: TextStyle(fontSize: 18),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
+            style: AppButtons.goForth().copyWith(
+              minimumSize:
+                  const WidgetStatePropertyAll(Size(double.infinity, 50)),
             ),
           ),
         ],

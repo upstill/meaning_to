@@ -5,6 +5,7 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 
 /// Result of duplicate checking
 enum DuplicateCheckResult {
@@ -194,7 +195,7 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
         // Second tier: Link exists in another task in the current category
         setState(() {
           _error =
-              'This link already exists in task "${_duplicateTaskName}" in this category';
+              'This link already exists in task "$_duplicateTaskName" in this category';
           _isLoading = false;
         });
         return;
@@ -446,7 +447,7 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
           builder: (context) => AlertDialog(
             title: const Text('Duplicate Link Found'),
             content: Text(
-                'This link already exists in task "${_duplicateTaskName}" in this category. '
+                'This link already exists in task "$_duplicateTaskName" in this category. '
                 'Do you want to add it anyway?'),
             actions: [
               TextButton(
@@ -577,10 +578,7 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: _isLoading || !_hasUrlText ? null : _saveLink,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    ),
+                    style: AppButtons.finalize(),
                     child: const Text('Save Link'),
                   ),
                 ),

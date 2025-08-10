@@ -10,6 +10,7 @@ import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/justwatch_import_screen.dart';
 
 class TaskEditScreen extends StatefulWidget {
@@ -701,6 +702,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               icon: const Icon(Icons.add),
               tooltip: 'Add link',
               onPressed: _isLoading ? null : _addLink,
+              style: AppButtons.iconGoForth(),
             ),
           ],
         ),
@@ -779,236 +781,268 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
-              TextFormField(
-                controller: _headlineController,
-                decoration: InputDecoration(
-                  labelText:
-                      '${NamingUtils.tasksName(plural: false)} (required)',
-                  hintText:
-                      'What have you been meaning to do?\n\nYou can use Enter to add line breaks for multi-line headlines.',
-                  border: const OutlineInputBorder(),
-                  alignLabelWithHint: true,
-                ),
-                maxLines: null, // Allow unlimited lines
-                minLines: 1, // Start with at least 1 line
-                keyboardType: TextInputType.multiline,
-                textInputAction:
-                    TextInputAction.newline, // Enter creates new line
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter a ${NamingUtils.tasksName(capitalize: false, plural: false)}';
-                  }
-                  return null;
-                },
-                enabled: !_isLoading,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _notesController,
-                decoration: const InputDecoration(
-                  labelText: 'Notes (optional)',
-                  hintText: 'Add any additional details...',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 3,
-                enabled: !_isLoading,
-              ),
-              const SizedBox(height: 16),
-              CheckboxListTile(
-                title:
-                    const Text('Share this ${NamingUtils.tasksNameSingular}'),
-                subtitle: const Text('Make it available to others'),
-                value: _isShared,
-                onChanged: _isLoading
-                    ? null
-                    : (value) {
-                        setState(() {
-                          _isShared = value ?? false;
-                        });
-                      },
-                controlAffinity: ListTileControlAffinity.leading,
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Text(
-                  'Error: $_error',
-                  style: const TextStyle(color: Colors.red),
-                ),
-              ],
-              _buildLinksList(),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed:
-                    (_isLoading || _headlineController.text.trim().isEmpty)
-                        ? null
-                        : _saveTask,
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(
-                        _localTask == null
-                            ? 'Create ${NamingUtils.tasksName(plural: false)}'
-                            : 'Save Changes',
-                      ),
-              ),
-              if (_localTask == null) ...[
-                const SizedBox(height: 24),
-                // Separator with helpful text
-                Row(
-                  children: [
-                    const Expanded(child: Divider()),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Text(
-                        '** If you like, you can add a whole list of ${NamingUtils.tasksName(plural: true)} at once **',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
-                    const Expanded(child: Divider()),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Add a List of Tasks button
-                ElevatedButton.icon(
-                  onPressed: _isLoading
-                      ? null
-                      : () async {
-                          // Use pushReplacement so that when AddTasksScreen completes,
-                          // it navigates directly to EditCategoryScreen without TaskEditScreen in the stack
-                          final result = await Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => AddTasksScreen(
-                                category: widget.category,
-                                currentTask: _currentTaskState,
-                              ),
-                            ),
-                          );
-                          // Note: We don't need to handle the result here because AddTasksScreen
-                          // will navigate to EditCategoryScreen on completion
-                        },
-                  icon: const Icon(Icons.add_task),
-                  label: Text(
-                      'Add a List of ${NamingUtils.tasksName(plural: true)}'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.secondary,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-                // Separator with helpful text for shop suggestions
-                Row(
-                  children: [
-                    const Expanded(child: Divider()),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Text(
-                        '** You can also get ${NamingUtils.tasksNamePlural} from other people! **',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
-                    const Expanded(child: Divider()),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Shop for Suggestions button
-                ElevatedButton.icon(
-                  onPressed: _isLoading
-                      ? null
-                      : () async {
-                          // Use pushReplacement so that when ShopEndeavorsScreen completes,
-                          // it navigates directly to EditCategoryScreen without TaskEditScreen in the stack
-                          final result = await Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ShopEndeavorsScreen(
-                                existingCategory: widget.category,
-                              ),
-                            ),
-                          );
-
-                          // If tasks were added, the result will be true
-                          // Edit Category Screen will refresh via lifecycle callback
-                          // No need to pop since pushReplacement already handles navigation
-                          print(
-                              'TaskEditScreen: ShopEndeavorsScreen returned: $result');
-                        },
-                  icon: const Icon(Icons.shopping_cart),
-                  label: const Text('Shop for Suggestions'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-                // JustWatch import section (only for specific categories)
-                if (widget.category.originalId != null &&
-                    (widget.category.originalId == 1 ||
-                        widget.category.originalId == 2)) ...[
-                  const SizedBox(height: 24),
-                  // Separator with helpful text for JustWatch import
-                  Row(
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Expanded(child: Divider()),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Text(
-                          '** OR...You can import your list from JustWatch. **',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                            fontStyle: FontStyle.italic,
-                          ),
+                      TextFormField(
+                        controller: _headlineController,
+                        decoration: InputDecoration(
+                          labelText:
+                              '${NamingUtils.tasksName(plural: false)} (required)',
+                          hintText:
+                              'What have you been meaning to do?\n\nYou can use Enter to add line breaks for multi-line headlines.',
+                          border: const OutlineInputBorder(),
+                          alignLabelWithHint: true,
+                        ),
+                        maxLines: null,
+                        minLines: 1,
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.newline,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter a ${NamingUtils.tasksName(capitalize: false, plural: false)}';
+                          }
+                          return null;
+                        },
+                        enabled: !_isLoading,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _notesController,
+                        decoration: const InputDecoration(
+                          labelText: 'Notes (optional)',
+                          hintText: 'Add any additional details...',
+                          border: OutlineInputBorder(),
+                        ),
+                        maxLines: 3,
+                        enabled: !_isLoading,
+                      ),
+                      const SizedBox(height: 16),
+                      CheckboxListTile(
+                        title: const Text(
+                            'Share this ${NamingUtils.tasksNameSingular}'),
+                        subtitle: const Text('Make it available to others'),
+                        value: _isShared,
+                        onChanged: _isLoading
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _isShared = value ?? false;
+                                });
+                              },
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          'Error: $_error',
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ],
+                      _buildLinksList(),
+                      const SizedBox(height: 16),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: ElevatedButton(
+                          onPressed: (_isLoading ||
+                                  _headlineController.text.trim().isEmpty)
+                              ? null
+                              : _saveTask,
+                          style: AppButtons.finalize(),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Text(
+                                  _localTask == null
+                                      ? 'Create ${NamingUtils.tasksName(plural: false)}'
+                                      : 'Save Changes',
+                                ),
                         ),
                       ),
-                      const Expanded(child: Divider()),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  // Single JustWatch Import button
-                  ElevatedButton.icon(
-                    onPressed: _isLoading
-                        ? null
-                        : () {
-                            print('Import from JustWatch button pressed');
-                            print('Category: ${widget.category.headline}');
-
-                            // Navigate to JustWatch Import screen
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => JustWatchImportScreen(
-                                  category: widget.category,
+                ),
+              ),
+              if (_localTask == null) ...[
+                const SizedBox(height: 16),
+                Center(
+                  child: FractionallySizedBox(
+                    widthFactor: 0.8,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Labeled divider to set off alternatives (now inside container)
+                        Row(
+                          children: const [
+                            Expanded(child: Divider()),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 2.0),
+                              child: Text(
+                                'Alternative options',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.blue,
                                 ),
                               ),
-                            ).then((result) {
-                              if (result is Category && mounted) {
-                                // Handle any updates if needed
-                                print('JustWatch import completed');
-                                // Return to EditCategoryScreen
-                                Navigator.pop(context, result);
-                              }
-                            });
+                            ),
+                            Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // Add a List of Tasks button
+                        FractionallySizedBox(
+                          widthFactor: 0.6,
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading
+                                ? null
+                                : () async {
+                                    final result =
+                                        await Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => AddTasksScreen(
+                                          category: widget.category,
+                                          currentTask: _currentTaskState,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                            icon: const Icon(Icons.add_task),
+                            label: Text(
+                                'Add a List of ${NamingUtils.tasksName(plural: true)}'),
+                            style: AppButtons.goForth(),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        // Separator with helpful text for shop suggestions
+                        Row(
+                          children: [
+                            const Expanded(child: Divider()),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16.0),
+                              child: Text(
+                                '** You can also get ${NamingUtils.tasksNamePlural} from other people! **',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                            const Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // Shop for Suggestions button with pre-check
+                        FutureBuilder<bool>(
+                          future: ShopEndeavorsScreen
+                              .hasAnyPublicSuggestionsForCategory(
+                                  widget.category),
+                          builder: (context, snapshot) {
+                            final hasSuggestions = snapshot.data == true;
+                            return FractionallySizedBox(
+                              widthFactor: 0.6,
+                              child: ElevatedButton.icon(
+                                onPressed: (_isLoading || !hasSuggestions)
+                                    ? null
+                                    : () async {
+                                        final result =
+                                            await Navigator.pushReplacement(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                ShopEndeavorsScreen(
+                                              existingCategory: widget.category,
+                                            ),
+                                          ),
+                                        );
+                                        print(
+                                            'TaskEditScreen: ShopEndeavorsScreen returned: $result');
+                                      },
+                                icon: const Icon(Icons.shopping_cart),
+                                label: Text(hasSuggestions
+                                    ? 'Shop for Suggestions'
+                                    : 'No Suggestions Out There'),
+                                style: hasSuggestions
+                                    ? AppButtons.goForth()
+                                    : ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.grey[300],
+                                        foregroundColor: Colors.grey[600],
+                                      ),
+                              ),
+                            );
                           },
-                    icon: const Icon(Icons.movie),
-                    label: const Text('Import from JustWatch'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
+                        ),
+                        if (widget.category.originalId != null &&
+                            (widget.category.originalId == 1 ||
+                                widget.category.originalId == 2)) ...[
+                          const SizedBox(height: 24),
+                          // Separator with helpful text for JustWatch import
+                          Row(
+                            children: [
+                              const Expanded(child: Divider()),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0),
+                                child: Text(
+                                  '** OR...You can import your list from JustWatch. **',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                              const Expanded(child: Divider()),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          // Single JustWatch Import button
+                          FractionallySizedBox(
+                            widthFactor: 0.6,
+                            child: ElevatedButton.icon(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () {
+                                      print(
+                                          'Import from JustWatch button pressed');
+                                      print(
+                                          'Category: ${widget.category.headline}');
+
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              JustWatchImportScreen(
+                                            category: widget.category,
+                                          ),
+                                        ),
+                                      ).then((result) {
+                                        if (result is Category && mounted) {
+                                          print('JustWatch import completed');
+                                          Navigator.pop(context, result);
+                                        }
+                                      });
+                                    },
+                              icon: const Icon(Icons.movie),
+                              label: const Text('Import from JustWatch'),
+                              style: AppButtons.goForth(),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                ],
+                ),
               ],
             ],
           ),
