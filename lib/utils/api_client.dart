@@ -298,4 +298,38 @@ class ApiClient {
       rethrow;
     }
   }
+
+  static Future<Category?> getCategoryById(int categoryId) async {
+    try {
+      // Temporary: Use Supabase directly
+      final response = await _supabase
+          .from('Categories')
+          .select('*')
+          .eq('id', categoryId)
+          .single();
+
+      return Category.fromJson(response);
+    } catch (e) {
+      // Category not found or other error
+      print('Error fetching category by ID: $e');
+      return null;
+    }
+  }
+
+  static Future<String?> getCategoryHeadlineById(int categoryId) async {
+    try {
+      // Only fetch the headline column
+      final response = await _supabase
+          .from('Categories')
+          .select('headline')
+          .eq('id', categoryId)
+          .single();
+
+      return response['headline'] as String?;
+    } catch (e) {
+      // Category not found or other error
+      print('Error fetching category headline by ID: $e');
+      return null;
+    }
+  }
 }

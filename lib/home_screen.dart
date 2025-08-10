@@ -14,11 +14,15 @@ import 'dart:async';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/deep_link_generator.dart';
+import 'package:clipboard/clipboard.dart';
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
 
-  const HomeScreen({super.key});
+  final String? initialCategoryId;
+
+  const HomeScreen({super.key, this.initialCategoryId});
 
   @override
   HomeScreenState createState() => HomeScreenState();
@@ -69,6 +73,44 @@ class HomeScreenState extends State<HomeScreen> {
         _loadCategories();
       }
     });
+  }
+
+  /// Select the initial category if one was provided
+  void _selectInitialCategory() {
+    print(
+        '_selectInitialCategory called with initialCategoryId: ${widget.initialCategoryId}');
+    print('Categories available: ${_categories.length}');
+    if (widget.initialCategoryId != null && _categories.isNotEmpty) {
+      try {
+        final categoryId = int.parse(widget.initialCategoryId!);
+        print('Parsed category ID: $categoryId');
+        print('Looking for category with ID: $categoryId');
+
+        final category = _categories.firstWhere(
+          (c) => c.id == categoryId,
+          orElse: () => _categories.first,
+        );
+
+        print('Found category: ${category.headline} (ID: ${category.id})');
+
+        if (category.id == categoryId) {
+          print('Setting selected category to: ${category.headline}');
+          setState(() {
+            _selectedCategory = category;
+          });
+          _loadRandomTask(category);
+          // Update last_access for the selected category
+          _updateCategoryLastAccess(category);
+        } else {
+          print(
+              'Category ID mismatch - expected: $categoryId, got: ${category.id}');
+        }
+      } catch (e) {
+        print('Error parsing category ID: ${widget.initialCategoryId} - $e');
+      }
+    } else {
+      print('No initial category ID or no categories available');
+    }
   }
 
   @override
@@ -339,6 +381,9 @@ class HomeScreenState extends State<HomeScreen> {
         });
         print('Categories loaded successfully');
 
+        // Select initial category if one was provided
+        _selectInitialCategory();
+
         // Show welcome dialog for new authenticated users with no categories
         if (!AuthUtils.isGuestUser() &&
             categories.isEmpty &&
@@ -448,6 +493,226 @@ class HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+  }
+
+  void _shareCategory(Category category) {
+    bool makePublic = false;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return AlertDialog(
+              title: Text('Share "${category.headline}"'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Warning for private categories
+                  if (category.isPrivate) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        border: Border.all(color: Colors.orange.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: Colors.orange.shade700,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'This category is private and cannot be shared with others.',
+                              style: TextStyle(
+                                color: Colors.orange.shade800,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Checkbox to make category public
+                    CheckboxListTile(
+                      title: const Text(
+                        'Make it public',
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      subtitle: const Text(
+                        'Allow others to access this category via the shared link',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      value: makePublic,
+                      onChanged: (value) {
+                        setState(() {
+                          makePublic = value ?? false;
+                        });
+                      },
+                      controlAffinity: ListTileControlAffinity.leading,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  const Text(
+                    'Share this category with others using one of these methods:',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildShareOption(
+                    context,
+                    'Copy Link',
+                    Icons.link,
+                    Colors.blue,
+                    () => _copyCategoryLink(category, makePublic),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildShareOption(
+                    context,
+                    'Share via App',
+                    Icons.share,
+                    Colors.green,
+                    () => _shareViaApp(category, makePublic),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildShareOption(
+    BuildContext context,
+    String title,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 12),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            const Spacer(),
+            Icon(Icons.arrow_forward_ios,
+                size: 16, color: Colors.grey.shade600),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _copyCategoryLink(Category category, bool makePublic) async {
+    // If user wants to make category public, update it first
+    if (makePublic && category.isPrivate) {
+      await _makeCategoryPublic(category);
+    }
+
+    final link = DeepLinkGenerator.generateShareableCategoryLink(category.id);
+    FlutterClipboard.copy(link).then((value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Link copied to clipboard: $link'),
+          duration: const Duration(seconds: 3),
+          backgroundColor: Colors.green,
+        ),
+      );
+    });
+    Navigator.of(context).pop();
+  }
+
+  void _shareViaApp(Category category, bool makePublic) async {
+    // If user wants to make category public, update it first
+    if (makePublic && category.isPrivate) {
+      await _makeCategoryPublic(category);
+    }
+
+    final link = DeepLinkGenerator.generateShareableCategoryLink(category.id);
+    // You can implement native sharing here using packages like share_plus
+    // For now, just show the link
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Share Link'),
+          content: SelectableText(link),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Make a category public by updating its privacy setting
+  Future<void> _makeCategoryPublic(Category category) async {
+    try {
+      print('HomeScreen: Making category "${category.headline}" public');
+
+      // Update in API
+      await ApiClient.updateCategory(category.id.toString(), {
+        'private': false,
+      });
+
+      // Update local state
+      category.isPrivate = false;
+
+      // Update the categories list to reflect the change
+      setState(() {});
+
+      print('HomeScreen: Category made public successfully');
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Category is now public! You can share it with others.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error making category public: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error making category public: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _navigateToEditCategory([Category? category]) async {
@@ -822,7 +1087,9 @@ class HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(''), // Blank header
+        title: Text(_selectedCategory != null
+            ? 'Meaning To ${_selectedCategory!.headline}'
+            : 'Meaning To'),
         actions: [
           // Debug button - only show in debug mode
           if (foundation.kDebugMode)
@@ -1017,9 +1284,7 @@ class HomeScreenState extends State<HomeScreen> {
                           },
                         ),
                       ),
-                      if (_selectedCategory != null &&
-                          _selectedCategory!.invitation != null &&
-                          _selectedCategory!.invitation!.isNotEmpty) ...[
+                      if (_selectedCategory != null) ...[
                         const SizedBox(width: 8),
                         IconButton(
                           icon: const Icon(Icons.info_outline),
@@ -1027,6 +1292,13 @@ class HomeScreenState extends State<HomeScreen> {
                               _showCategoryInfo(_selectedCategory!),
                           tooltip: 'Show category information',
                           color: Colors.blue[600],
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.share),
+                          onPressed: () => _shareCategory(_selectedCategory!),
+                          tooltip: 'Share category',
+                          color: Colors.green[600],
                         ),
                       ],
                     ],

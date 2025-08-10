@@ -242,7 +242,13 @@ class _MyAppState extends State<MyApp> {
     if (uri != null) {
       print('Got initial app link: $uri');
       _pendingDeepLink = uri; // Store for later use
-      _handleDeepLink(uri);
+
+      // Check if this is a category deep link that should be handled immediately
+      // Only handle non-web deep links immediately to avoid conflicts with web routing
+      if (uri.path.startsWith('/category/') && !foundation.kIsWeb) {
+        print('Initial category deep link detected, handling immediately');
+        _handleDeepLink(uri);
+      }
     } else {
       print('No initial app link found');
     }
@@ -274,6 +280,40 @@ class _MyAppState extends State<MyApp> {
     print('Query parameters: ${uri.queryParameters}');
 
     try {
+      // Handle category deep links
+      if (uri.path.startsWith('/category/')) {
+        print('Processing category deep link');
+        final pathSegments = uri.pathSegments;
+        if (pathSegments.length >= 2 && pathSegments[0] == 'category') {
+          final categoryId = pathSegments[1];
+          print('Category ID from deep link: $categoryId');
+
+          // Navigate to home screen with the specified category
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/category',
+                arguments: {'categoryId': categoryId});
+          }
+          return;
+        }
+      }
+
+      // Handle custom scheme category deep links (meaningto://category/123)
+      if (uri.scheme == 'meaningto' && uri.host == 'category') {
+        print('Processing custom scheme category deep link');
+        final pathSegments = uri.pathSegments;
+        if (pathSegments.isNotEmpty) {
+          final categoryId = pathSegments[0];
+          print('Category ID from custom scheme: $categoryId');
+
+          // Navigate to home screen with the specified category
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/category',
+                arguments: {'categoryId': categoryId});
+          }
+          return;
+        }
+      }
+
       // Handle email confirmation links
       if (uri.scheme == 'meaningto' && uri.host == 'auth') {
         print('Processing auth deep link');
@@ -407,6 +447,37 @@ class _MyAppState extends State<MyApp> {
                 builder: (context) => const SplashScreen(),
               );
             }
+
+            // Check if this is a web category URL
+            if (foundation.kIsWeb) {
+              final currentPath = Uri.base.path;
+              print('Web routing check - current path: $currentPath');
+              if (currentPath.startsWith('/category/')) {
+                print('Web category URL detected: $currentPath');
+                final pathSegments = currentPath.split('/');
+                print('Path segments: $pathSegments');
+                if (pathSegments.length >= 3 && pathSegments[1] == 'category') {
+                  final categoryId = pathSegments[2];
+                  print('Category ID from web URL: $categoryId');
+                  print('Creating HomeScreen with category ID: $categoryId');
+                  return MaterialPageRoute(
+                    builder: (context) =>
+                        HomeScreen(initialCategoryId: categoryId),
+                  );
+                }
+              }
+
+              // Also check for query parameter based category links
+              final queryParams = Uri.base.queryParameters;
+              if (queryParams.containsKey('category')) {
+                final categoryId = queryParams['category'];
+                print('Category ID from query parameter: $categoryId');
+                return MaterialPageRoute(
+                  builder: (context) =>
+                      HomeScreen(initialCategoryId: categoryId),
+                );
+              }
+            }
           }
 
           // Normal route handling
@@ -436,6 +507,13 @@ class _MyAppState extends State<MyApp> {
             case '/home':
               return MaterialPageRoute(
                 builder: (context) => const HomeScreen(),
+              );
+            case '/category':
+              // Handle category deep link with ID parameter
+              final args = settings.arguments as Map<String, dynamic>?;
+              final categoryId = args?['categoryId'] as String?;
+              return MaterialPageRoute(
+                builder: (context) => HomeScreen(initialCategoryId: categoryId),
               );
             case '/reset-password':
               final args = settings.arguments as Map<String, dynamic>;

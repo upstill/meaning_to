@@ -39,6 +39,20 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="meaningto" android:host="auth" android:path="/callback" />
             </intent-filter>
+            <!-- Category deep link intent filter -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="meaningto" android:host="category" />
+            </intent-filter>
+            <!-- Universal link for web -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="your-domain.com" />
+            </intent-filter>
             <!-- Add this intent-filter for sharing text and files -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

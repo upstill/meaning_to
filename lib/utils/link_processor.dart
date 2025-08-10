@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:meaning_to/widgets/link_display.dart';
+import 'package:meaning_to/utils/api_client.dart';
 import 'dart:convert';
 
 class ProcessedLink {
@@ -298,7 +299,7 @@ class LinkProcessor {
       final document = html_parser.parse(response.body);
 
       // First priority: <title> tag
-      var title = document.querySelector('title')?.text?.trim();
+      var title = document.querySelector('title')?.text.trim();
       if (title != null && title.isNotEmpty) {
         print('LinkProcessor: Found title from <title> tag: "$title"');
         return title;
@@ -325,14 +326,14 @@ class LinkProcessor {
       }
 
       // Fourth priority: First h1 tag
-      title = document.querySelector('h1')?.text?.trim();
+      title = document.querySelector('h1')?.text.trim();
       if (title != null && title.isNotEmpty) {
         print('LinkProcessor: Found title from h1: "$title"');
         return title;
       }
 
       // Fifth priority: First h2 tag
-      title = document.querySelector('h2')?.text?.trim();
+      title = document.querySelector('h2')?.text.trim();
       if (title != null && title.isNotEmpty) {
         print('LinkProcessor: Found title from h2: "$title"');
         return title;
@@ -382,21 +383,28 @@ class LinkProcessor {
     final type = determineLinkType(url);
     final domain = extractDomain(url);
 
-    // Get icon for domain with error handling
-    String? favicon;
-    try {
-      final domainIcon = await DomainIcon.getIconForDomain(domain);
-      if (domainIcon != null) {
-        favicon = domainIcon.iconUrl;
-      }
-    } catch (e) {
-      print('Error processing icon for domain $domain: $e');
-    }
-
-    // If title is empty, try to fetch it from the webpage
+    // Check if this is an internal link to a category
     String? finalTitle = title;
     if (finalTitle == null || finalTitle.isEmpty) {
+      finalTitle = await _handleInternalCategoryLink(url, domain);
+    }
+
+    // If we still don't have a title and it's not an internal link, try to fetch it from the webpage
+    if (finalTitle == null || finalTitle.isEmpty) {
       finalTitle = await fetchWebpageTitle(url);
+    }
+
+    // Get icon for domain with error handling (skip for internal links)
+    String? favicon;
+    if (finalTitle == null || !_isInternalCategoryLink(url, domain)) {
+      try {
+        final domainIcon = await DomainIcon.getIconForDomain(domain);
+        if (domainIcon != null) {
+          favicon = domainIcon.iconUrl;
+        }
+      } catch (e) {
+        print('Error processing icon for domain $domain: $e');
+      }
     }
 
     // Create the final HTML link with the title
@@ -410,6 +418,43 @@ class LinkProcessor {
       domain: domain,
       originalLink: finalLink, // Use the final HTML link with the title
     );
+  }
+
+  /// Checks if a URL is an internal link to a category
+  static bool _isInternalCategoryLink(String url, String domain) {
+    return (domain == 'localhost' || domain == 'meaning-to.me') &&
+        url.contains('/category/');
+  }
+
+  /// Handles internal category links by looking up the category in the database
+  static Future<String?> _handleInternalCategoryLink(
+      String url, String domain) async {
+    if (!_isInternalCategoryLink(url, domain)) {
+      return null;
+    }
+
+    try {
+      // Extract category ID from URL path like /category/123
+      final uri = Uri.parse(url);
+      final pathSegments = uri.pathSegments;
+
+      if (pathSegments.length >= 2 && pathSegments[0] == 'category') {
+        final categoryIdStr = pathSegments[1];
+        final categoryId = int.tryParse(categoryIdStr);
+
+        if (categoryId != null) {
+          final headline = await ApiClient.getCategoryHeadlineById(categoryId);
+          if (headline != null) {
+            print('LinkProcessor: Found internal category headline: $headline');
+            return headline;
+          }
+        }
+      }
+    } catch (e) {
+      print('Error handling internal category link: $e');
+    }
+
+    return null;
   }
 
   static Future<List<ProcessedLink>> processLinksForDisplay(
