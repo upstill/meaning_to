@@ -1271,35 +1271,7 @@ class HomeScreenState extends State<HomeScreen> {
                           },
                         ),
                       ),
-                      if (_selectedCategory != null) ...[
-                        const SizedBox(width: 8),
-                        Column(
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.info_outline),
-                              onPressed: () =>
-                                  _showCategoryInfo(_selectedCategory!),
-                              tooltip: 'Show category information',
-                              color: Colors.blue[600],
-                            ),
-                            const SizedBox(height: 4),
-                            IconButton(
-                              icon: const Icon(Icons.share),
-                              onPressed: () =>
-                                  _shareCategory(_selectedCategory!),
-                              tooltip: 'Share category',
-                              color: Colors.green[600],
-                            ),
-                            const SizedBox(height: 4),
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _navigateToEditTasks(),
-                              tooltip: 'Edit category',
-                              color: Colors.orange[600],
-                            ),
-                          ],
-                        ),
-                      ],
+                      // Info, Share, and Edit buttons moved to bottom right
                     ],
                   ),
                   if (_selectedCategory != null) ...[
@@ -1646,21 +1618,52 @@ class HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          if (AuthUtils.isGuestUser()) {
-            _showGuestSignupDialog(
-                content:
-                    'Here\'s where you can add a new ${NamingUtils.categoriesName(plural: false)} once you\'re logged in. Sign up to add your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!');
-          } else {
-            _navigateToNewCategory();
-          }
-        },
-        tooltip:
-            'Define a New ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
-        backgroundColor: AppButtons.goForthBg,
-        foregroundColor: AppButtons.goForthFg,
-        child: const Icon(Icons.add),
+      floatingActionButton: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (_selectedCategory != null) ...[
+            FloatingActionButton(
+              onPressed: () => _showCategoryInfo(_selectedCategory!),
+              tooltip: 'Show category information',
+              backgroundColor: Colors.orange[600],
+              foregroundColor: Colors.white,
+              child: const Icon(Icons.info_outline),
+            ),
+            const SizedBox(width: 16),
+            FloatingActionButton(
+              onPressed: () => _shareCategory(_selectedCategory!),
+              tooltip: 'Share category',
+              backgroundColor: Colors.green[600],
+              foregroundColor: Colors.white,
+              child: const Icon(Icons.share),
+            ),
+            const SizedBox(width: 16),
+            FloatingActionButton(
+              onPressed: () => _navigateToEditTasks(),
+              tooltip: 'Edit category',
+              backgroundColor: Colors.blue[600],
+              foregroundColor: Colors.white,
+              child: const Icon(Icons.edit),
+            ),
+            const SizedBox(width: 16),
+          ],
+          FloatingActionButton(
+            onPressed: () {
+              if (AuthUtils.isGuestUser()) {
+                _showGuestSignupDialog(
+                    content:
+                        'Here\'s where you can add a new ${NamingUtils.categoriesName(plural: false)} once you\'re logged in. Sign up to add your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!');
+              } else {
+                _navigateToNewCategory();
+              }
+            },
+            tooltip:
+                'Define a New ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+            backgroundColor: AppButtons.goForthBg,
+            foregroundColor: AppButtons.goForthFg,
+            child: const Icon(Icons.add),
+          ),
+        ],
       ),
     );
   }
