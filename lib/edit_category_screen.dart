@@ -898,31 +898,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     });
   }
 
-  Widget _buildSummaryItem(
-      String label, int count, Color color, IconData icon) {
-    return Column(
-      children: [
-        Icon(icon, color: color, size: 24),
-        const SizedBox(height: 4),
-        Text(
-          count.toString(),
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: color.withOpacity(0.8),
-          ),
-        ),
-      ],
-    );
-  }
-
   String _buildNewCategoryTaskCountText() {
     final displayTasks = _tasks.length;
 
@@ -1482,40 +1457,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               // Task list section (only for saved categories)
               if (_categorySaved &&
                   (widget.category != null || _currentCategory != null)) ...[
-                // Task summary section with icons
-                if (widget.category != null) ...[
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildSummaryItem(
-                        'Available',
-                        _tasks
-                            .where(
-                                (task) => !task.finished && task.isSuggestible)
-                            .length,
-                        Colors.green,
-                        Icons.check_circle,
-                      ),
-                      _buildSummaryItem(
-                        'Deferred',
-                        _tasks
-                            .where((task) => !task.finished && task.isDeferred)
-                            .length,
-                        Colors.orange,
-                        Icons.schedule,
-                      ),
-                      _buildSummaryItem(
-                        'Finished',
-                        _tasks.where((task) => task.finished).length,
-                        Colors.blue,
-                        Icons.done_all,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
                 // Only show "Current tasks:" header if there are tasks
                 if (widget.category == null
                     ? _tasks.isNotEmpty

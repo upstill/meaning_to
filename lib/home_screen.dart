@@ -1087,9 +1087,7 @@ class HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_selectedCategory != null
-            ? 'I\'ve Been Meaning To ${_selectedCategory!.headline}'
-            : 'I\'ve Been Meaning To'),
+        title: const Text('I\'ve Been Meaning To...'),
         actions: [
           // Debug button - only show in debug mode
           if (foundation.kDebugMode)
@@ -1212,17 +1210,6 @@ class HomeScreenState extends State<HomeScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Center(
-                    child: Text(
-                      'I\'ve Been Meaning to...?',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A237E),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(
@@ -1286,19 +1273,31 @@ class HomeScreenState extends State<HomeScreen> {
                       ),
                       if (_selectedCategory != null) ...[
                         const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.info_outline),
-                          onPressed: () =>
-                              _showCategoryInfo(_selectedCategory!),
-                          tooltip: 'Show category information',
-                          color: Colors.blue[600],
-                        ),
-                        const SizedBox(width: 4),
-                        IconButton(
-                          icon: const Icon(Icons.share),
-                          onPressed: () => _shareCategory(_selectedCategory!),
-                          tooltip: 'Share category',
-                          color: Colors.green[600],
+                        Column(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.info_outline),
+                              onPressed: () =>
+                                  _showCategoryInfo(_selectedCategory!),
+                              tooltip: 'Show category information',
+                              color: Colors.blue[600],
+                            ),
+                            const SizedBox(height: 4),
+                            IconButton(
+                              icon: const Icon(Icons.share),
+                              onPressed: () =>
+                                  _shareCategory(_selectedCategory!),
+                              tooltip: 'Share category',
+                              color: Colors.green[600],
+                            ),
+                            const SizedBox(height: 4),
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () => _navigateToEditTasks(),
+                              tooltip: 'Edit category',
+                              color: Colors.orange[600],
+                            ),
+                          ],
                         ),
                       ],
                     ],
@@ -1571,13 +1570,7 @@ class HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 20),
-                                ElevatedButton.icon(
-                                  onPressed: _navigateToEditTasks,
-                                  icon: const Icon(Icons.edit),
-                                  label: Text(
-                                      'Manage Choices/Edit ${NamingUtils.categoriesName(plural: false)}'),
-                                  style: AppButtons.goForth(),
-                                ),
+                                // Removed "Manage Choices..." button since we now have a persistent Edit button above
                               ],
                             ),
                           ),
