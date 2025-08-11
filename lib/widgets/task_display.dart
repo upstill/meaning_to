@@ -113,9 +113,16 @@ class _TaskDisplayState extends State<TaskDisplay> {
     // Fix hasLinks check to handle List<String> of HTML links
     final hasLinks = widget.task.links != null &&
         widget.task.links!.isNotEmpty &&
-        widget.task.links!.first.contains('href="') && // Only check for href
-        widget.task.links!.first !=
-            '{}'; // Exclude empty PostgreSQL array string representation
+        widget.task.links!
+            .any((link) => link.trim().isNotEmpty && link != '{}');
+
+    // Debug logging for links
+    if (widget.task.links != null) {
+      print(
+          'TaskDisplay: Task "${widget.task.headline}" has ${widget.task.links!.length} links');
+      print('TaskDisplay: Links: ${widget.task.links}');
+      print('TaskDisplay: hasLinks: $hasLinks');
+    }
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
