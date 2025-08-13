@@ -932,7 +932,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                           border: const OutlineInputBorder(),
                           alignLabelWithHint: true,
                         ),
-                        maxLines: null,
+                        maxLines: 3,
                         minLines: 1,
                         keyboardType: TextInputType.multiline,
                         textInputAction: TextInputAction.newline,
@@ -1022,7 +1022,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                           hintText: 'Add any additional details...',
                           border: OutlineInputBorder(),
                         ),
-                        maxLines: 3,
+                        maxLines: 2,
                         enabled: !_isLoading,
                       ),
                       const SizedBox(height: 16),
@@ -1078,56 +1078,118 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               if (_localTask == null) ...[
                 const SizedBox(height: 16),
                 Center(
-                  child: FractionallySizedBox(
-                    widthFactor: 0.8,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Labeled divider to set off alternatives (now inside container)
-                        Row(
-                          children: const [
-                            Expanded(child: Divider()),
-                            Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 2.0),
-                              child: Text(
-                                'Alternative options',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.blue,
-                                ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Labeled divider to set off alternatives (now inside container)
+                      Row(
+                        children: const [
+                          Expanded(child: Divider()),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 2.0),
+                            child: Text(
+                              'Alternative options',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blue,
                               ),
                             ),
-                            Expanded(child: Divider()),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        // Add a List of Tasks button
-                        FractionallySizedBox(
-                          widthFactor: 0.6,
-                          child: ElevatedButton.icon(
-                            onPressed: _isLoading
-                                ? null
-                                : () async {
-                                    final result =
-                                        await Navigator.pushReplacement(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => AddTasksScreen(
-                                          category: widget.category,
-                                          currentTask: _currentTaskState,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                            icon: const Icon(Icons.add_task),
-                            label: Text(
-                                'Add a List of ${NamingUtils.tasksName(plural: true)}'),
-                            style: AppButtons.goForth(),
                           ),
+                          Expanded(child: Divider()),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      // Add a List of Tasks button
+                      FractionallySizedBox(
+                        widthFactor: 0.7,
+                        child: ElevatedButton.icon(
+                          onPressed: _isLoading
+                              ? null
+                              : () async {
+                                  final result =
+                                      await Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => AddTasksScreen(
+                                        category: widget.category,
+                                        currentTask: _currentTaskState,
+                                      ),
+                                    ),
+                                  );
+                                },
+                          icon: const Icon(Icons.add_task),
+                          label: Text(
+                              'Add a List of ${NamingUtils.tasksName(plural: true)}'),
+                          style: AppButtons.goForth(),
                         ),
+                      ),
+                      const SizedBox(height: 24),
+                      // Separator with helpful text for shop suggestions
+                      Row(
+                        children: [
+                          const Expanded(child: Divider()),
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Text(
+                              '** You can also get ${NamingUtils.tasksNamePlural} from other people! **',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[600],
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                          const Expanded(child: Divider()),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      // Shop for Suggestions button with pre-check
+                      FutureBuilder<bool>(
+                        future: ShopEndeavorsScreen
+                            .hasAnyPublicSuggestionsForCategory(
+                                widget.category),
+                        builder: (context, snapshot) {
+                          final hasSuggestions = snapshot.data == true;
+                          return FractionallySizedBox(
+                            widthFactor: 0.7,
+                            child: ElevatedButton.icon(
+                              onPressed: (_isLoading || !hasSuggestions)
+                                  ? null
+                                  : () async {
+                                      final result =
+                                          await Navigator.pushReplacement(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              ShopEndeavorsScreen(
+                                            existingCategory: widget.category,
+                                          ),
+                                        ),
+                                      );
+                                      print(
+                                          'TaskEditScreen: ShopEndeavorsScreen returned: $result');
+                                    },
+                              icon: const Icon(Icons.shopping_cart),
+                              label: Text(hasSuggestions
+                                  ? 'Shop for Suggestions'
+                                  : 'No Suggestions Out There'),
+                              style: hasSuggestions
+                                  ? AppButtons.goForth()
+                                  : ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.grey[300],
+                                      foregroundColor: Colors.grey[600],
+                                    ),
+                            ),
+                          );
+                        },
+                      ),
+                      if (widget.category.originalId != null &&
+                          (widget.category.originalId == 1 ||
+                              widget.category.originalId == 2)) ...[
                         const SizedBox(height: 24),
-                        // Separator with helpful text for shop suggestions
+                        // Separator with helpful text for JustWatch import
                         Row(
                           children: [
                             const Expanded(child: Divider()),
@@ -1135,7 +1197,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 16.0),
                               child: Text(
-                                '** You can also get ${NamingUtils.tasksNamePlural} from other people! **',
+                                '** OR...You can import your list from JustWatch. **',
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.grey[600],
@@ -1147,105 +1209,40 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        // Shop for Suggestions button with pre-check
-                        FutureBuilder<bool>(
-                          future: ShopEndeavorsScreen
-                              .hasAnyPublicSuggestionsForCategory(
-                                  widget.category),
-                          builder: (context, snapshot) {
-                            final hasSuggestions = snapshot.data == true;
-                            return FractionallySizedBox(
-                              widthFactor: 0.6,
-                              child: ElevatedButton.icon(
-                                onPressed: (_isLoading || !hasSuggestions)
-                                    ? null
-                                    : () async {
-                                        final result =
-                                            await Navigator.pushReplacement(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                ShopEndeavorsScreen(
-                                              existingCategory: widget.category,
-                                            ),
-                                          ),
-                                        );
-                                        print(
-                                            'TaskEditScreen: ShopEndeavorsScreen returned: $result');
-                                      },
-                                icon: const Icon(Icons.shopping_cart),
-                                label: Text(hasSuggestions
-                                    ? 'Shop for Suggestions'
-                                    : 'No Suggestions Out There'),
-                                style: hasSuggestions
-                                    ? AppButtons.goForth()
-                                    : ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.grey[300],
-                                        foregroundColor: Colors.grey[600],
-                                      ),
-                              ),
-                            );
-                          },
-                        ),
-                        if (widget.category.originalId != null &&
-                            (widget.category.originalId == 1 ||
-                                widget.category.originalId == 2)) ...[
-                          const SizedBox(height: 24),
-                          // Separator with helpful text for JustWatch import
-                          Row(
-                            children: [
-                              const Expanded(child: Divider()),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16.0),
-                                child: Text(
-                                  '** OR...You can import your list from JustWatch. **',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey[600],
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                              ),
-                              const Expanded(child: Divider()),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          // Single JustWatch Import button
-                          FractionallySizedBox(
-                            widthFactor: 0.6,
-                            child: ElevatedButton.icon(
-                              onPressed: _isLoading
-                                  ? null
-                                  : () {
-                                      print(
-                                          'Import from JustWatch button pressed');
-                                      print(
-                                          'Category: ${widget.category.headline}');
+                        // Single JustWatch Import button
+                        FractionallySizedBox(
+                          widthFactor: 0.7,
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading
+                                ? null
+                                : () {
+                                    print(
+                                        'Import from JustWatch button pressed');
+                                    print(
+                                        'Category: ${widget.category.headline}');
 
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              JustWatchImportScreen(
-                                            category: widget.category,
-                                          ),
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            JustWatchImportScreen(
+                                          category: widget.category,
                                         ),
-                                      ).then((result) {
-                                        if (result is Category && mounted) {
-                                          print('JustWatch import completed');
-                                          Navigator.pop(context, result);
-                                        }
-                                      });
-                                    },
-                              icon: const Icon(Icons.movie),
-                              label: const Text('Import from JustWatch'),
-                              style: AppButtons.goForth(),
-                            ),
+                                      ),
+                                    ).then((result) {
+                                      if (result is Category && mounted) {
+                                        print('JustWatch import completed');
+                                        Navigator.pop(context, result);
+                                      }
+                                    });
+                                  },
+                            icon: const Icon(Icons.movie),
+                            label: const Text('Import from JustWatch'),
+                            style: AppButtons.goForth(),
                           ),
-                        ],
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
               ],

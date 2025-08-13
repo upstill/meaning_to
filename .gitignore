@@ -48,3 +48,5 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .vercel
+AuthKey_6L983MM3BW.p8
+.gitignore

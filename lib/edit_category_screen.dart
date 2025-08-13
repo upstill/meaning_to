@@ -82,7 +82,19 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
   // Pure UI getter for tasks from the cache
   List<Task> get _tasks {
-    final tasks = CacheManager().currentTasks ?? [];
+    final allTasks = CacheManager().currentTasks ?? [];
+    final currentCategoryId = widget.category?.id ?? _currentCategory?.id;
+
+    // Filter tasks to only show tasks for the current category
+    final tasks =
+        allTasks.where((task) => task.categoryId == currentCategoryId).toList();
+
+    print('EditCategoryScreen: _tasks getter called');
+    print('EditCategoryScreen: All tasks in cache: ${allTasks.length}');
+    print('EditCategoryScreen: Current category ID: $currentCategoryId');
+    print('EditCategoryScreen: Tasks for current category: ${tasks.length}');
+    print(
+        'EditCategoryScreen: CacheManager.currentCategory: ${CacheManager().currentCategory?.headline}');
 
     // Always re-sort if the task list has changed (check by length and content)
     bool shouldResort = _cachedSortedTasks == null ||
@@ -113,12 +125,19 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Get tasks for progressive loading
   List<Task> get _displayedTasks {
     final allTasks = _tasks;
+    print('EditCategoryScreen: _displayedTasks getter called');
+    print('EditCategoryScreen: allTasks.length: ${allTasks.length}');
+    print('EditCategoryScreen: _displayedTaskCount: $_displayedTaskCount');
+
     if (_displayedTaskCount == 0) {
       // Show initial batch immediately
       _displayedTaskCount = _initialTaskCount;
       _startProgressiveLoading();
     }
-    return allTasks.take(_displayedTaskCount).toList();
+    final result = allTasks.take(_displayedTaskCount).toList();
+    print(
+        'EditCategoryScreen: _displayedTasks returning: ${result.length} tasks');
+    return result;
   }
 
   /// Sort tasks based on the current sort option
@@ -241,10 +260,33 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     try {
       print(
           'EditCategoryScreen: Initializing cache for category ${widget.category!.headline}');
+      print('EditCategoryScreen: Category ID: ${widget.category!.id}');
+      print('EditCategoryScreen: User ID: ${AuthUtils.getCurrentUserId()}');
       final cacheManager = CacheManager();
       await cacheManager.initializeWithSavedCategory(
           widget.category!, AuthUtils.getCurrentUserId());
       print('EditCategoryScreen: Cache initialization completed');
+      print(
+          'EditCategoryScreen: CacheManager.currentTasks length after init: ${cacheManager.currentTasks?.length ?? 0}');
+      print(
+          'EditCategoryScreen: CacheManager.currentCategory after init: ${cacheManager.currentCategory?.headline} (ID: ${cacheManager.currentCategory?.id})');
+
+      // Check if there's a mismatch
+      if (cacheManager.currentCategory?.id != widget.category!.id) {
+        print('EditCategoryScreen: WARNING - Category ID mismatch!');
+        print('EditCategoryScreen: Widget category ID: ${widget.category!.id}');
+        print(
+            'EditCategoryScreen: Cache category ID: ${cacheManager.currentCategory?.id}');
+      }
+
+      // Debug: Show all tasks in cache and their category IDs
+      if (cacheManager.currentTasks != null) {
+        print('EditCategoryScreen: All tasks in cache:');
+        for (final task in cacheManager.currentTasks!) {
+          print(
+              '  - "${task.headline}" (category: ${task.categoryId}, finished: ${task.finished})');
+        }
+      }
     } catch (e) {
       print('EditCategoryScreen: Error initializing cache: $e');
     }
@@ -725,6 +767,11 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   }
 
   Widget _buildTaskList() {
+    print('EditCategoryScreen: _buildTaskList called');
+    print('EditCategoryScreen: _tasks.length: ${_tasks.length}');
+    print(
+        'EditCategoryScreen: _displayedTasks.length: ${_displayedTasks.length}');
+
     if (_tasks.isEmpty) {
       print('EditCategoryScreen: No tasks to display');
       return Center(
@@ -1489,7 +1536,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
                         const Text('Sort by: '),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 4),
                         Row(
                           children: [
                             Radio<SortOption>(
@@ -1504,8 +1551,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                                 }
                               },
                             ),
+                            // const SizedBox(width: 2),
                             const Text('Priority'),
-                            const SizedBox(width: 16),
+                            const SizedBox(width: 12),
                             Radio<SortOption>(
                               value: SortOption.alphabetical,
                               groupValue: _currentSortOption,
@@ -1518,8 +1566,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                                 }
                               },
                             ),
+                            // const SizedBox(width: 2),
                             const Text('A-Z'),
-                            const SizedBox(width: 16),
+                            const SizedBox(width: 12),
                             Radio<SortOption>(
                               value: SortOption.age,
                               groupValue: _currentSortOption,
@@ -1532,7 +1581,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                                 }
                               },
                             ),
-                            const Text('Age (Newest first)'),
+                            // const SizedBox(width: 2),
+                            const Text('Age'),
                           ],
                         ),
                       ],

@@ -563,36 +563,36 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // File import option
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Import from JSON File',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Browse for a JustWatch JSON export file',
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _pickAndParseFile,
-                    icon: const Icon(Icons.folder_open),
-                    label: const Text('Browse for JSON File'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
+          // Card(
+          //   child: Padding(
+          //     padding: const EdgeInsets.all(16.0),
+          //     child: Column(
+          //       crossAxisAlignment: CrossAxisAlignment.stretch,
+          //       children: [
+          //         const Text(
+          //           'Import from JSON File',
+          //           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          //         ),
+          //         const SizedBox(height: 8),
+          //         const Text(
+          //           'Browse for a JustWatch JSON export file',
+          //           style: TextStyle(fontSize: 14, color: Colors.grey),
+          //         ),
+          //         const SizedBox(height: 16),
+          //         ElevatedButton.icon(
+          //           onPressed: _isLoading ? null : _pickAndParseFile,
+          //           icon: const Icon(Icons.folder_open),
+          //           label: const Text('Browse for JSON File'),
+          //           style: ElevatedButton.styleFrom(
+          //             backgroundColor: Colors.blue,
+          //             foregroundColor: Colors.white,
+          //           ),
+          //         ),
+          //       ],
+          //     ),
+          //   ),
+          // ),
+          // const SizedBox(height: 16),
           // API import option
           Card(
             child: Padding(
@@ -600,11 +600,6 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Import from JustWatch API',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
                   if (!_isLoggedIn) ...[
                     const Text(
                       'Login to JustWatch to fetch your titles',
@@ -629,13 +624,16 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                       obscureText: true,
                     ),
                     const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _login,
-                      icon: const Icon(Icons.login),
-                      label: const Text('Login to JustWatch'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _login,
+                        icon: const Icon(Icons.login),
+                        label: const Text('Login to JustWatch'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                        ),
                       ),
                     ),
                   ] else ...[
