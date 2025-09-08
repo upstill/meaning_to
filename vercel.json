@@ -1,5 +1,5 @@
 {
-  "buildCommand": "flutter pub get && flutter build web",
+  "buildCommand": "echo 'Using pre-built Flutter web files'",
   "outputDirectory": "build/web",
   "functions": {
     "api/index.js": {
