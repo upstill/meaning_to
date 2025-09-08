@@ -1,4 +1,6 @@
 {
+  "buildCommand": "flutter build web",
+  "outputDirectory": "build/web",
   "functions": {
     "api/index.js": {
       "runtime": "nodejs18.x"
