@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cp -r build/web web",
+  "buildCommand": "echo 'Using pre-built Flutter web files from web directory'",
   "outputDirectory": "web",
   "functions": {
     "api/index.js": {
