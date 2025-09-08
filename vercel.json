@@ -1,5 +1,5 @@
 {
-  "buildCommand": "bash build_vercel.sh",
+  "buildCommand": "flutter pub get && flutter build web",
   "outputDirectory": "build/web",
   "functions": {
     "api/index.js": {
