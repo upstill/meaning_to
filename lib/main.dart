@@ -16,9 +16,7 @@ import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/share_handler.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:supabase_flutter/src/supabase_auth.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
 
 // Remove the instance creation since we'll use static methods
@@ -221,7 +219,7 @@ class _MyAppState extends State<MyApp> {
         print('OAuth callback path detected!');
         try {
           print('Checking current session...');
-          final session = await Supabase.instance.client.auth.currentSession;
+          final session = Supabase.instance.client.auth.currentSession;
           print('Session: ${session != null ? "exists" : "null"}');
 
           if (session != null) {
@@ -533,12 +531,12 @@ class _MyAppState extends State<MyApp> {
                 builder: (context) => HomeScreen(initialCategoryId: categoryId),
               );
             case '/reset-password':
-              final args = settings.arguments as Map<String, dynamic>;
+              final args = settings.arguments as Map<String, dynamic>?;
               return MaterialPageRoute(
                 builder: (context) => ResetPasswordScreen(
-                  token: args['token'] as String,
-                  email: args['email'] as String?,
-                  verified: args['verified'] as bool? ?? false,
+                  token: args?['token'] as String? ?? '',
+                  email: args?['email'] as String?,
+                  verified: args?['verified'] as bool? ?? false,
                 ),
               );
             case '/edit-category':

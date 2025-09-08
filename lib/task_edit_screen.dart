@@ -543,6 +543,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             cleanHeadline.substring(0, cleanHeadline.length - 1).trim();
       }
 
+      // Remove @ prefix if it's the only text before the URL
+      if (cleanHeadline == '@') {
+        cleanHeadline = '';
+      }
+
       // If no headline text remains, fetch the webpage title
       if (cleanHeadline.isEmpty) {
         try {
@@ -1066,7 +1071,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                                 )
                               : Text(
                                   _localTask == null
-                                      ? 'Create ${NamingUtils.tasksName(plural: false)}'
+                                      ? 'Register ${NamingUtils.tasksName(plural: false)}'
                                       : 'Save Changes',
                                 ),
                         ),
@@ -1082,8 +1087,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Labeled divider to set off alternatives (now inside container)
-                      Row(
-                        children: const [
+                      const Row(
+                        children: [
                           Expanded(child: Divider()),
                           Padding(
                             padding: EdgeInsets.symmetric(horizontal: 2.0),
