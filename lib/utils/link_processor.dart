@@ -4,7 +4,6 @@ import 'package:meaning_to/models/icon.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'dart:convert';
 
@@ -281,21 +280,71 @@ class LinkProcessor {
     try {
       print('LinkProcessor: Fetching title for URL: $url');
 
-      // Try with more comprehensive headers first
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept':
-              'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'DNT': '1',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
-        },
-      );
+      // Try direct request first
+      http.Response response;
+      try {
+        response = await http.get(
+          Uri.parse(url),
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+          },
+        );
+      } catch (e) {
+        print(
+            'LinkProcessor: Direct request failed, trying alternative approaches: $e');
+
+        // Try using a reliable meta tag service
+        try {
+          print('LinkProcessor: Trying meta tag service...');
+          final metaUrl =
+              'https://api.microlink.io/?url=${Uri.encodeComponent(url)}&fields=title';
+          final metaResponse = await http.get(Uri.parse(metaUrl));
+
+          if (metaResponse.statusCode == 200) {
+            final data = json.decode(metaResponse.body);
+            final title = data['data']?['title'] as String?;
+            if (title != null && title.isNotEmpty) {
+              print(
+                  'LinkProcessor: Found title via meta tag service: "$title"');
+              return title;
+            }
+          }
+        } catch (metaError) {
+          print('LinkProcessor: Meta tag service failed: $metaError');
+        }
+
+        // Try using a different approach - link preview service
+        try {
+          print('LinkProcessor: Trying link preview service...');
+          final previewUrl =
+              'https://api.linkpreview.net/?key=5b578&q=${Uri.encodeComponent(url)}';
+          final previewResponse = await http.get(Uri.parse(previewUrl));
+
+          if (previewResponse.statusCode == 200) {
+            final data = json.decode(previewResponse.body);
+            final title = data['title'] as String?;
+            if (title != null && title.isNotEmpty) {
+              print(
+                  'LinkProcessor: Found title via link preview service: "$title"');
+              return title;
+            }
+          }
+        } catch (previewError) {
+          print('LinkProcessor: Link preview service failed: $previewError');
+        }
+
+        return null;
+      }
+      print('LinkProcessor: HTTP response status: ${response.statusCode}');
+      print('LinkProcessor: Response body length: ${response.body.length}');
       if (response.statusCode != 200) {
         print(
             'LinkProcessor: HTTP status code ${response.statusCode} for URL: $url');
@@ -306,6 +355,7 @@ class LinkProcessor {
 
       // First priority: <title> tag
       var title = document.querySelector('title')?.text.trim();
+      print('LinkProcessor: Title tag found: "$title"');
       if (title != null && title.isNotEmpty) {
         print('LinkProcessor: Found title from <title> tag: "$title"');
         return title;
@@ -348,7 +398,9 @@ class LinkProcessor {
       print('LinkProcessor: No title found for URL: $url');
       return null;
     } catch (e) {
-      print('Error fetching webpage title: $e');
+      print('LinkProcessor: Exception in fetchWebpageTitle for URL $url: $e');
+      print('LinkProcessor: Exception type: ${e.runtimeType}');
+      print('LinkProcessor: Stack trace: ${StackTrace.current}');
 
       // For JustWatch URLs, try using Browserless as a fallback
       if (url.contains('justwatch.com')) {
@@ -556,24 +608,34 @@ class LinkProcessor {
             path.split('/').where((part) => part.isNotEmpty).toList();
         if (pathParts.isNotEmpty) {
           final lastPart = pathParts.last;
-          // Clean up the path part (remove file extensions, replace dashes/underscores with spaces)
-          fallbackTitle = lastPart
-              .replaceAll(RegExp(r'\.(html|htm|php|asp|aspx)$'), '')
-              .replaceAll(RegExp(r'[-_]'), ' ')
-              .replaceAll(RegExp(r'\s+'), ' ')
-              .trim();
 
-          // Properly capitalize the title (title case)
-          if (fallbackTitle.isNotEmpty) {
-            fallbackTitle = fallbackTitle.split(' ').map((word) {
-              if (word.isEmpty) return word;
-              return word[0].toUpperCase() + word.substring(1).toLowerCase();
-            }).join(' ');
+          // Special handling for The Atlantic URLs
+          if (domain.contains('theatlantic.com')) {
+            // For The Atlantic, use a generic but descriptive title since URL paths don't reflect actual article titles
+            fallbackTitle = 'The Atlantic Article';
           }
 
-          // If the cleaned title is too short, use the domain
-          if (fallbackTitle.length < 3) {
-            fallbackTitle = domain;
+          // If we didn't get a good title from the special handling, use the regular logic
+          if (fallbackTitle == domain) {
+            // Clean up the path part (remove file extensions, replace dashes/underscores with spaces)
+            fallbackTitle = lastPart
+                .replaceAll(RegExp(r'\.(html|htm|php|asp|aspx)$'), '')
+                .replaceAll(RegExp(r'[-_]'), ' ')
+                .replaceAll(RegExp(r'\s+'), ' ')
+                .trim();
+
+            // Properly capitalize the title (title case)
+            if (fallbackTitle.isNotEmpty) {
+              fallbackTitle = fallbackTitle.split(' ').map((word) {
+                if (word.isEmpty) return word;
+                return word[0].toUpperCase() + word.substring(1).toLowerCase();
+              }).join(' ');
+            }
+
+            // If the cleaned title is too short, use the domain
+            if (fallbackTitle.length < 3) {
+              fallbackTitle = domain;
+            }
           }
         }
       }

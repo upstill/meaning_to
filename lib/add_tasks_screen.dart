@@ -412,19 +412,26 @@ class AddTasksScreenState extends State<AddTasksScreen> {
 
       // Check if the input is a single URL
       final trimmedText = _textInputController.text.trim();
-      print('Checking if "$trimmedText" is a valid URL...');
-      print(
-          'LinkProcessor.isValidUrl result: ${LinkProcessor.isValidUrl(trimmedText)}');
 
-      if (LinkProcessor.isValidUrl(trimmedText)) {
+      // Remove @ prefix if present for URL validation
+      String urlToCheck = trimmedText;
+      if (urlToCheck.startsWith('@')) {
+        urlToCheck = urlToCheck.substring(1);
+      }
+
+      print('Checking if "$urlToCheck" is a valid URL...');
+      print(
+          'LinkProcessor.isValidUrl result: ${LinkProcessor.isValidUrl(urlToCheck)}');
+
+      if (LinkProcessor.isValidUrl(urlToCheck)) {
         // Single URL detected - process it through LinkProcessor
         print('Single URL detected: $trimmedText');
         print('Taking single URL processing path...');
 
         try {
-          print('AddTasksScreen: Processing URL: $trimmedText');
+          print('AddTasksScreen: Processing URL: $urlToCheck');
           final processedLink = await LinkProcessor.validateAndProcessLink(
-            trimmedText,
+            urlToCheck,
             linkText: '', // Let LinkProcessor fetch the title
           );
 
@@ -691,7 +698,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -743,8 +750,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
+                    Align(
+                      alignment: Alignment.centerRight,
                       child: ElevatedButton.icon(
                         onPressed: _isLoading ||
                                 _textInputController.text.trim().isEmpty
@@ -760,7 +767,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                             : const Icon(Icons.add_task),
                         label: Text(_isLoading
                             ? 'Adding...'
-                            : 'Make ${NamingUtils.tasksName(plural: true)}'),
+                            : 'Register ${NamingUtils.tasksName(plural: true)}'),
                         style: AppButtons.finalize(),
                       ),
                     ),

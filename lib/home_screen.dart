@@ -1088,6 +1088,7 @@ class HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('I\'ve Been Meaning To...'),
+        automaticallyImplyLeading: false,
         actions: [
           // Debug button - only show in debug mode
           if (foundation.kDebugMode)

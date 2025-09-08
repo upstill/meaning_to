@@ -37,6 +37,18 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 
+# Build related
+build/
+**/build/
+*.dll
+*.so
+*.dylib
+*.exe
+*.app
+*.apk
+*.ipa
+*.aab
+
 # Symbolication related
 app.*.symbols
 

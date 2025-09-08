@@ -31,6 +31,7 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
 
   bool _isLoading = false;
   bool _isLoggedIn = false;
+  bool _obscurePassword = true;
   String? _error;
   List<JustWatchTitle> _filteredTitles = [];
 
@@ -617,11 +618,27 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _passwordController,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Password',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                        ),
                       ),
-                      obscureText: true,
+                      obscureText: _obscurePassword,
+                      enableInteractiveSelection: true,
+                      enableSuggestions: false,
+                      autocorrect: false,
+                      textInputAction: TextInputAction.done,
                     ),
                     const SizedBox(height: 16),
                     Align(
