@@ -1,6 +1,6 @@
 {
-  "buildCommand": "echo 'Using pre-built Flutter web files'",
-  "outputDirectory": "build/web",
+  "buildCommand": "cp -r build/web web",
+  "outputDirectory": "web",
   "functions": {
     "api/index.js": {
       "runtime": "nodejs22.x"
