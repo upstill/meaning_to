@@ -22,8 +22,4 @@ else
     flutter build web
 fi
 
-# Copy built files to root for Vercel
-echo "Copying built files to root directory..."
-cp -r build/web/* .
-
 echo "Build process completed!" 
