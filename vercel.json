@@ -3,13 +3,13 @@
   "outputDirectory": "build/web",
   "functions": {
     "api/index.js": {
-      "runtime": "nodejs18.x"
+      "runtime": "nodejs22.x"
     },
     "api/test.js": {
-      "runtime": "nodejs18.x"
+      "runtime": "nodejs22.x"
     },
     "api/simple.js": {
-      "runtime": "nodejs18.x"
+      "runtime": "nodejs22.x"
     }
   },
   "rewrites": [
