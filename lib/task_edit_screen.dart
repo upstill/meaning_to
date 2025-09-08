@@ -791,9 +791,25 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
       print('Deleted task: ${_localTask!.headline}');
 
-      // Update the task cache
-      if (Task.currentCategory?.id == widget.category.id) {
-        await Task.loadTaskSet(widget.category, userId);
+      // Update the task cache using CacheManager
+      print('TaskEditScreen: Updating task cache after deletion...');
+      final cacheManager = CacheManager();
+      if (cacheManager.currentCategory?.id == widget.category.id) {
+        print('TaskEditScreen: Removing task from cache...');
+        await cacheManager.removeTask(_localTask!.id);
+        print('TaskEditScreen: Task removed from cache successfully');
+      }
+
+      // Call the edit complete callback to notify the parent screen
+      if (TaskEditScreen.onEditComplete != null) {
+        print(
+            'TaskEditScreen: Calling edit complete callback after deletion...');
+        try {
+          TaskEditScreen.onEditComplete!();
+          print('TaskEditScreen: Edit complete callback executed successfully');
+        } catch (e) {
+          print('TaskEditScreen: Error executing edit complete callback: $e');
+        }
       }
 
       if (mounted) {
