@@ -1,6 +1,5 @@
 {
-  "buildCommand": "flutter build web",
-  "outputDirectory": "build/web",
+  "buildCommand": "bash build_vercel.sh",
   "functions": {
     "api/index.js": {
       "runtime": "nodejs18.x"
@@ -15,11 +14,11 @@
   "rewrites": [
     {
       "source": "/auth/callback",
-      "destination": "/build/web/index.html"
+      "destination": "/index.html"
     },
     {
       "source": "/(.*)",
-      "destination": "/build/web/$1"
+      "destination": "/$1"
     }
   ]
 } 
