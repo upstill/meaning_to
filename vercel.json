@@ -1,5 +1,5 @@
 {
-  "buildCommand": "mkdir -p web && ls -la web/ && echo 'Web directory ready'",
+  "buildCommand": "ls -la && echo '---' && ls -la web/ && echo '---' && find . -name 'index.html' && echo 'Web directory ready'",
   "outputDirectory": "web",
   "functions": {
     "api/index.js": {
