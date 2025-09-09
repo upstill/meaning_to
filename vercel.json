@@ -1,5 +1,5 @@
 {
-  "buildCommand": "rm -rf web && mkdir -p web && cp *.html *.js *.json *.png web/ && cp -r assets canvaskit icons web/ && echo 'Fresh build: $(date +%s)'",
+  "buildCommand": "rm -rf web && mkdir -p web && cp *.html *.js *.json *.png web/ && cp -r assets canvaskit icons web/ && echo 'BUILD_$(date +%s)_COMPLETE' > web/build_id.txt",
   "outputDirectory": "web",
   "functions": {
     "api/index.js": {
@@ -18,7 +18,7 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "no-cache, no-store, must-revalidate, max-age=0"
+          "value": "no-cache, no-store, must-revalidate, max-age=0, private"
         },
         {
           "key": "Pragma",
@@ -26,11 +26,7 @@
         },
         {
           "key": "Expires",
-          "value": "0"
-        },
-        {
-          "key": "Last-Modified",
-          "value": "$(date)"
+          "value": "-1"
         }
       ]
     }
