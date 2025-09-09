@@ -1,5 +1,5 @@
 {
-  "buildCommand": "rm -rf web && mkdir -p web && cp *.html *.js *.json *.png web/ && cp -r assets canvaskit icons web/ && echo 'DONE' > web/build_id.txt",
+  "buildCommand": "bash build.sh",
   "outputDirectory": "web",
   "functions": {
     "api/index.js": {
