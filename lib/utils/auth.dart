@@ -1,60 +1,61 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:meaning_to/utils/guest_user_manager.dart';
 
-/// Utility class for handling authentication, including guest access
+/// Utility class for handling authentication
+/// This class now delegates guest user functionality to GuestUserManager
 class AuthUtils {
-  /// Default guest user ID for when no user is logged in
-  static const String guestUserId = '35ed4d18-84b4-481d-96f4-1405c2f2f1ae';
-
   /// Get the current user ID, or the guest user ID if no user is logged in
   static String getCurrentUserId() {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user != null) {
-      return user.id;
-    }
-    return guestUserId;
+    return GuestUserManager.getCurrentUserId();
   }
 
   /// Ensure guest user is signed in for database access
   static Future<void> ensureGuestAccess() async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
-      // Try to sign in as guest user (this might not work depending on setup)
-      try {
-        print('AuthUtils: Attempting to sign in as guest user');
-        // This would require the guest user to have a password or use anonymous auth
-        // For now, we'll just log the attempt
-        print(
-            'AuthUtils: Guest user access not implemented - using unauthenticated access');
-      } catch (e) {
-        print('AuthUtils: Error signing in as guest: $e');
-      }
-    }
+    return GuestUserManager.ensureGuestAccess();
   }
 
   /// Check if the current user is a guest (not logged in)
   static bool isGuestUser() {
-    final user = Supabase.instance.client.auth.currentUser;
-    return user == null;
+    return GuestUserManager.isGuestUser();
   }
 
   /// Get the current user object, or null if guest
   static User? getCurrentUser() {
-    return Supabase.instance.client.auth.currentUser;
+    return GuestUserManager.getCurrentUser();
   }
 
   /// Check if a user ID is the guest user ID
   static bool isGuestUserId(String userId) {
-    return userId == guestUserId;
+    return GuestUserManager.isGuestUserId(userId);
   }
 
   /// Sign out the current user
   static Future<void> signOut() async {
-    try {
-      await Supabase.instance.client.auth.signOut();
-      print('AuthUtils: User signed out successfully');
-    } catch (e) {
-      print('AuthUtils: Error signing out: $e');
-      rethrow;
-    }
+    return GuestUserManager.signOut();
+  }
+
+  /// Get the current user email, or guest email if no user is logged in
+  static String getCurrentUserEmail() {
+    return GuestUserManager.getCurrentUserEmail();
+  }
+
+  /// Get the current user display name, or guest name if no user is logged in
+  static String getCurrentUserDisplayName() {
+    return GuestUserManager.getCurrentUserDisplayName();
+  }
+
+  /// Get user context information for display purposes
+  static Map<String, dynamic> getUserContext() {
+    return GuestUserManager.getUserContext();
+  }
+
+  /// Get user permissions based on authentication status
+  static Map<String, bool> getUserPermissions() {
+    return GuestUserManager.getUserPermissions();
+  }
+
+  /// Get a user-friendly description of the current user status
+  static String getUserStatusDescription() {
+    return GuestUserManager.getUserStatusDescription();
   }
 }

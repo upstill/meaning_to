@@ -4,6 +4,7 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/guest_user_manager.dart';
 
 class Task {
   final int id;
@@ -828,8 +829,9 @@ class Task {
   static Future<void> resetGuestTasks() async {
     try {
       print('Task.resetGuestTasks(): Resetting guest tasks...');
-      const guestUserId =
-          '35ed4d18-84b4-481d-96f4-1405c2f2f1ae'; // Guest user ID
+      
+      // Use the centralized guest user ID
+      final guestUserId = GuestUserManager.guestUserId;
 
       // Update all tasks owned by the guest user
       await ApiClient.updateGuestTasks(guestUserId);
