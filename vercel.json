@@ -1,17 +1,6 @@
 {
   "buildCommand": "rm -rf web && mkdir -p web && cp *.html *.js *.json *.png web/ && cp -r assets canvaskit icons web/ && echo 'BUILD_SUCCESS' > web/build_id.txt",
   "outputDirectory": "web",
-  "functions": {
-    "api/index.js": {
-      "runtime": "nodejs22.x"
-    },
-    "api/test.js": {
-      "runtime": "nodejs22.x"
-    },
-    "api/simple.js": {
-      "runtime": "nodejs22.x"
-    }
-  },
   "headers": [
     {
       "source": "/(.*)",
