@@ -1166,7 +1166,7 @@ class HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 8),
                     Text(
                       AuthUtils.isGuestUser()
-                          ? 'Guest users can only view demo data. Sign in to create your own ${NamingUtils.categoriesName()}.'
+                          ? 'Guest users can only view demo data. Sign up/in to create your own ${NamingUtils.categoriesName()}.'
                           : '',
                       style: const TextStyle(fontSize: 14, color: Colors.grey),
                       textAlign: TextAlign.center,
@@ -1604,7 +1604,7 @@ class HomeScreenState extends State<HomeScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'You\'re in guest mode. You can view and modify demo data. Sign in to create your own categories and tasks.',
+                        'You\'re in guest mode. You can view and modify demo data. Sign up/in to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}.',
                         style: TextStyle(
                           color: Colors.orange[700],
                           fontSize: 14,
