@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart' as foundation;
 import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/home_screen.dart';
-import 'package:meaning_to/reset_password_screen.dart';
 import 'package:meaning_to/email_confirmation_screen.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
@@ -529,15 +528,6 @@ class _MyAppState extends State<MyApp> {
               final categoryId = args?['categoryId'] as String?;
               return MaterialPageRoute(
                 builder: (context) => HomeScreen(initialCategoryId: categoryId),
-              );
-            case '/reset-password':
-              final args = settings.arguments as Map<String, dynamic>?;
-              return MaterialPageRoute(
-                builder: (context) => ResetPasswordScreen(
-                  token: args?['token'] as String? ?? '',
-                  email: args?['email'] as String?,
-                  verified: args?['verified'] as bool? ?? false,
-                ),
               );
             case '/edit-category':
               final args = settings.arguments as Map<String, dynamic>?;
