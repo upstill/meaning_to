@@ -220,6 +220,10 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  Future<void> _handleForgotPassword() async {
+    Navigator.pushNamed(context, '/forgot-password');
+  }
+
   // OAuth Sign-In Methods
   Future<void> _handleGoogleSignIn() async {
     setState(() {
@@ -456,7 +460,21 @@ class _AuthScreenState extends State<AuthScreen> {
                         textAlign: TextAlign.center,
                       ),
                     ],
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _isLoading ? null : _handleForgotPassword,
+                        child: const Text(
+                          'Forgot Password?',
+                          style: TextStyle(
+                            color: Colors.deepPurple,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
