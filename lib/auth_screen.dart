@@ -514,23 +514,6 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    Center(
-                      child: TextButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () {
-                                Navigator.pushNamed(context, '/reset-password');
-                              },
-                        child: const Text(
-                          'Forgot Password?',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.deepPurple,
-                          ),
-                        ),
-                      ),
-                    ),
                     const SizedBox(height: 32),
 
                     // OAuth Sign-In Buttons (smaller, horizontal)
