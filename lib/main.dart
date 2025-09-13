@@ -5,6 +5,9 @@ import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/email_confirmation_screen.dart';
+import 'package:meaning_to/forgot_password_screen.dart';
+import 'package:meaning_to/reset_password_screen.dart';
+import 'package:meaning_to/auth_verification_screen.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'package:meaning_to/edit_category_screen.dart';
@@ -332,6 +335,24 @@ class _MyAppState extends State<MyApp> {
       if (uri.scheme == 'meaningto' && uri.host == 'auth') {
         print('Processing auth deep link');
 
+        // Check if this is a password reset link
+        if (uri.path.contains('reset-password')) {
+          print('Password reset link detected');
+          
+          // Navigate to password reset screen
+          if (mounted) {
+            Navigator.pushReplacementNamed(
+              context, 
+              '/auth/reset-password',
+              arguments: {
+                'token': uri.queryParameters['token'],
+                'type': uri.queryParameters['type'],
+              },
+            );
+          }
+          return;
+        }
+        
         // Check if this is an email confirmation link
         if (uri.path.contains('confirm') ||
             uri.queryParameters.containsKey('token')) {
@@ -481,8 +502,35 @@ class _MyAppState extends State<MyApp> {
                 }
               }
 
-              // Also check for query parameter based category links
+              // Check for Supabase authentication verification (password reset, email confirmation, etc.)
               final queryParams = Uri.base.queryParameters;
+              final fragment = Uri.base.fragment;
+              
+              if (queryParams.containsKey('token') && queryParams.containsKey('type')) {
+                print('Supabase verification URL detected');
+                print('Query params: $queryParams');
+                print('Fragment: $fragment');
+                return MaterialPageRoute(
+                  builder: (context) => AuthVerificationScreen(
+                    token: queryParams['token'],
+                    type: queryParams['type'],
+                    redirectTo: queryParams['redirect_to'],
+                  ),
+                );
+              }
+
+              // Check for password reset URL
+              if (currentPath == '/auth/reset-password') {
+                print('Password reset URL detected');
+                return MaterialPageRoute(
+                  builder: (context) => ResetPasswordScreen(
+                    token: queryParams['token'],
+                    type: queryParams['type'],
+                  ),
+                );
+              }
+
+              // Also check for query parameter based category links
               if (queryParams.containsKey('category')) {
                 final categoryId = queryParams['category'];
                 print('Category ID from query parameter: $categoryId');
@@ -503,6 +551,27 @@ class _MyAppState extends State<MyApp> {
             case '/auth':
               return MaterialPageRoute(
                 builder: (context) => const AuthScreen(),
+              );
+            case '/forgot-password':
+              return MaterialPageRoute(
+                builder: (context) => const ForgotPasswordScreen(),
+              );
+            case '/auth/reset-password':
+              final args = settings.arguments as Map<String, dynamic>?;
+              return MaterialPageRoute(
+                builder: (context) => ResetPasswordScreen(
+                  token: args?['token'] as String?,
+                  type: args?['type'] as String?,
+                ),
+              );
+            case '/auth/verify':
+              final args = settings.arguments as Map<String, dynamic>?;
+              return MaterialPageRoute(
+                builder: (context) => AuthVerificationScreen(
+                  token: args?['token'] as String?,
+                  type: args?['type'] as String?,
+                  redirectTo: args?['redirect_to'] as String?,
+                ),
               );
             case '/auth/callback':
               print('Main: OAuth callback route detected');

@@ -122,7 +122,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Experience the joy of randomness',
+                    'Enjoy a little randomness',
                     // 'Roll the dice to pick something you\'ve been meaning to do',
                     style: TextStyle(
                       fontSize: 16,

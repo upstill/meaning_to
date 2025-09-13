@@ -95,8 +95,7 @@ class ShopEndeavorsScreen extends StatefulWidget {
       final tasksResponse = await supabase
           .from('Tasks')
           .select('id, original_id')
-          .inFilter('category_id', categoryIds)
-          .limit(100); // Get more tasks to check filtering
+          .inFilter('category_id', categoryIds); // Get all tasks for accurate filtering
 
       if (tasksResponse is List && tasksResponse.isNotEmpty) {
         // Filter to only show original tasks (where id equals original_id)
@@ -320,12 +319,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       _shopItems[index].isSelected = willBeSelected;
     });
 
-    // Update task selections based on category selection
-    if (_shopItems[index].tasks.isNotEmpty) {
-      for (final task in _shopItems[index].tasks) {
-        _taskImportSelections[task.id.toString()] = willBeSelected;
-      }
-    }
+    // Do not auto-select tasks when category is selected
+    // Users should individually select the tasks they want
 
     // If category is being selected and not already expanded, expand it
     if (!wasSelected && !_shopItems[index].isExpanded) {
@@ -432,11 +427,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
         setState(() {
           _shopItems[index].tasks = filteredTasks;
-          // Initialize import selections for new tasks
-          // If the category is selected, select all tasks by default
-          final shouldSelectAll = _shopItems[index].isSelected;
+          // Initialize import selections for new tasks - default to unchecked
           for (final task in filteredTasks) {
-            _taskImportSelections[task.id.toString()] = shouldSelectAll;
+            _taskImportSelections[task.id.toString()] = false;
           }
           // Clear redundant task cache when tasks are reloaded
           _redundantTaskCache.clear();
@@ -478,11 +471,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
         setState(() {
           _shopItems[index].tasks = filteredTasks;
-          // Initialize import selections for new tasks
-          // If the category is selected, select all tasks by default
-          final shouldSelectAll = _shopItems[index].isSelected;
+          // Initialize import selections for new tasks - default to unchecked
           for (final task in filteredTasks) {
-            _taskImportSelections[task.id.toString()] = shouldSelectAll;
+            _taskImportSelections[task.id.toString()] = false;
           }
           // Clear redundant task cache when tasks are reloaded
           _redundantTaskCache.clear();
