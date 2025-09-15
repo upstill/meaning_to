@@ -101,17 +101,22 @@ class ApiClient {
     }
   }
 
-  static Future<Task> deleteTask(String taskId) async {
+  static Future<Task?> deleteTask(String taskId) async {
     try {
       // Temporary: Use Supabase directly
       final response = await _supabase
           .from('Tasks')
           .delete()
           .eq('id', taskId)
-          .select()
-          .single();
+          .select();
 
-      return Task.fromJson(response);
+      if (response == null || (response as List).isEmpty) {
+        print('No task found to delete with ID: $taskId');
+        return null;
+      }
+
+      final taskData = (response as List).first;
+      return Task.fromJson(taskData);
     } catch (e) {
       print('Error deleting task in Supabase: $e');
       rethrow;

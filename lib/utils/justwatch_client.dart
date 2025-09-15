@@ -42,13 +42,18 @@ class JustWatchClient {
 
   /// Register device ID with JustWatch
   Future<String> registerDevice(String deviceId) async {
+    print('JustWatch registerDevice: Registering device ID: $deviceId');
+    
     final payload = {
       'query':
           'mutation RegisterDeviceId { registerDeviceId(input: "$deviceId") { deviceId } }'
     };
 
     final response = await _apiCall(_baseUrl, _baseHeaders, payload);
+    print('JustWatch registerDevice: Response received: $response');
+    
     final deviceIdResult = response['data']['registerDeviceId']['deviceId'];
+    print('JustWatch registerDevice: Device ID result: $deviceIdResult');
 
     _deviceId = deviceIdResult;
     _updateAuthHeaders();
@@ -58,6 +63,8 @@ class JustWatchClient {
 
   /// Login with email and password
   Future<Map<String, dynamic>> login(String email, String password) async {
+    print('JustWatch login: Attempting login for email: $email');
+    
     final url =
         'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$_identityApiKey';
     final payload = {
@@ -67,18 +74,23 @@ class JustWatchClient {
       'returnSecureToken': true,
     };
 
+    print('JustWatch login: Making signin request');
     final signinResponse = await _apiCall(url, _baseHeaders, payload);
+    print('JustWatch login: Signin successful, got token');
 
     // Verify token
     final verifyUrl =
         'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=$_identityApiKey';
     final verifyPayload = {'idToken': signinResponse['idToken']};
 
+    print('JustWatch login: Verifying token');
     await _apiCall(verifyUrl, _baseHeaders, verifyPayload);
+    print('JustWatch login: Token verification successful');
 
     _authToken = signinResponse['idToken'];
     _updateAuthHeaders();
-
+    
+    print('JustWatch login: Login completed successfully');
     return signinResponse;
   }
 
@@ -107,43 +119,110 @@ class JustWatchClient {
     String cursor = '',
     String country = 'US',
     String language = 'en',
-    int first = 20,
+    int first = 100, // Increased from 20 to get more titles per page
   }) async {
     if (_authToken == null) {
       throw Exception('Authentication required. Please login first.');
     }
 
+    // Try different list types if watchlist is empty
+    final listTypes = ['WATCHLIST', 'LIKELIST', 'CUSTOMLIST'];
+    
+    for (final listType in listTypes) {
+      print('JustWatch getTitleList: Trying list type: $listType');
+      
+      try {
+        final titles = await _getTitleListByType(
+          listType: listType,
+          cursor: cursor,
+          country: country,
+          language: language,
+          first: first,
+        );
+        
+        if (titles.isNotEmpty) {
+          print('JustWatch getTitleList: Found ${titles.length} titles in $listType');
+          return titles;
+        } else {
+          print('JustWatch getTitleList: No titles found in $listType, trying next type');
+        }
+      } catch (e) {
+        print('JustWatch getTitleList: Error with $listType: $e, trying next type');
+        continue;
+      }
+    }
+    
+    print('JustWatch getTitleList: No titles found in any list type');
+    return [];
+  }
+
+  /// Get title list by specific type (internal method)
+  Future<List<JustWatchTitle>> _getTitleListByType({
+    required String listType,
+    String cursor = '',
+    String country = 'US',
+    String language = 'en',
+    int first = 100,
+  }) async {
     final titles = <JustWatchTitle>[];
     String currentCursor = cursor;
+    int pageCount = 0;
+
+    print('JustWatch _getTitleListByType: Starting $listType with cursor: "$currentCursor"');
 
     while (true) {
+      pageCount++;
+      print('JustWatch _getTitleListByType: Fetching $listType page $pageCount');
+      
       final payload = _buildTitleListPayload(
         cursor: currentCursor,
         country: country,
         language: language,
         first: first,
+        listType: listType,
       );
 
       final data = await _apiCall(_baseUrl, _authHeaders!, payload);
+      print('JustWatch _getTitleListByType: API call successful for $listType');
+      
+      // Check if data structure is as expected
+      if (data['data'] == null) {
+        print('JustWatch _getTitleListByType: No data field in response: $data');
+        throw Exception('Invalid response structure: no data field');
+      }
+      
       final titleList = data['data']['titleListV2'];
+      if (titleList == null) {
+        print('JustWatch _getTitleListByType: No titleListV2 in response: ${data['data']}');
+        throw Exception('Invalid response structure: no titleListV2 field');
+      }
 
-      for (final edge in titleList['edges']) {
+      final edges = titleList['edges'] as List? ?? [];
+      print('JustWatch _getTitleListByType: Found ${edges.length} edges in $listType page $pageCount');
+
+      for (final edge in edges) {
         final node = edge['node'];
         final content = node['content'];
 
         if (content != null) {
           titles.add(JustWatchTitle.fromJson(node));
+        } else {
+          print('JustWatch _getTitleListByType: Skipping node with null content: $node');
         }
       }
 
       final pageInfo = titleList['pageInfo'];
+      print('JustWatch _getTitleListByType: $listType Page info - hasNextPage: ${pageInfo['hasNextPage']}, total titles so far: ${titles.length}');
+      
       if (!pageInfo['hasNextPage']) {
         break;
       }
 
       currentCursor = pageInfo['endCursor'];
+      print('JustWatch _getTitleListByType: $listType Next cursor: "$currentCursor"');
     }
 
+    print('JustWatch _getTitleListByType: Completed $listType. Total titles: ${titles.length}');
     return titles;
   }
 
@@ -318,8 +397,11 @@ class JustWatchClient {
     String cursor = '',
     String country = 'US',
     String language = 'en',
-    int first = 20,
+    int first = 100, // Updated default to match method signature
+    String listType = 'WATCHLIST',
   }) {
+    print('JustWatch _buildTitleListPayload: Building payload with cursor="$cursor", first=$first, country=$country, listType=$listType');
+    
     return {
       'operationName': 'GetTitleListV2',
       'variables': {
@@ -345,7 +427,7 @@ class JustWatchClient {
         'watchNowFilter': {'packages': [], 'monetizationTypes': []},
         'language': language,
         'country': country,
-        'titleListType': 'WATCHLIST',
+        'titleListType': listType,
         'titleListAfterCursor': cursor,
         'profile': 'S718',
         'backdropProfile': 'S1920',

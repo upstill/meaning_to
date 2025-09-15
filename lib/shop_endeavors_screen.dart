@@ -8,6 +8,8 @@ import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/widgets/link_display.dart';
+import 'package:flutter_html/flutter_html.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ShopEndeavorsScreen extends StatefulWidget {
   final Category?
@@ -425,6 +427,11 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
         print('ShopEndeavorsScreen: Filtered tasks: ${filteredTasks.length}');
 
+        // Sort tasks by creation date in reverse order (newest first)
+        filteredTasks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        print('ShopEndeavorsScreen: Sorted ${filteredTasks.length} tasks by creation date (newest first)');
+
         setState(() {
           _shopItems[index].tasks = filteredTasks;
           // Initialize import selections for new tasks - default to unchecked
@@ -468,6 +475,11 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
             allOriginalTasks.where((task) => !_isTaskRedundant(task)).toList();
 
         print('ShopEndeavorsScreen: Filtered tasks: ${filteredTasks.length}');
+
+        // Sort tasks by creation date in reverse order (newest first)
+        filteredTasks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        print('ShopEndeavorsScreen: Sorted ${filteredTasks.length} tasks by creation date (newest first)');
 
         setState(() {
           _shopItems[index].tasks = filteredTasks;
@@ -929,11 +941,29 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
             ),
             if (task.notes != null && task.notes!.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text(
-                task.notes!,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontStyle: FontStyle.italic,
-                    ),
+              Html(
+                data: task.notes!,
+                style: {
+                  "body": Style(
+                    fontSize: FontSize(Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14),
+                    fontStyle: FontStyle.italic,
+                    margin: Margins.zero,
+                    padding: HtmlPaddings.zero,
+                  ),
+                  "a": Style(
+                    color: Theme.of(context).colorScheme.primary,
+                    textDecoration: TextDecoration.underline,
+                  ),
+                },
+                onLinkTap: (url, _, __) async {
+                  if (url != null) {
+                    try {
+                      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                    } catch (e) {
+                      print('Could not launch URL: $url');
+                    }
+                  }
+                },
               ),
             ],
             if (hasLinks) ...[

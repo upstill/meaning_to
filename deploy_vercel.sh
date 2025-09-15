@@ -62,7 +62,7 @@ fi
 
 # Step 3: Build Flutter web with release mode
 print_status "🏗️  Building Flutter web (release mode)..."
-flutter build web --release --web-renderer html
+flutter build web --release
 if [ $? -ne 0 ]; then
     print_error "Flutter build failed"
     exit 1

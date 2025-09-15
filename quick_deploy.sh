@@ -10,7 +10,7 @@ echo "⚡ Quick Vercel deployment..."
 # Clean and build
 flutter clean
 flutter pub get
-flutter build web --release --web-renderer html
+flutter build web --release
 
 # Deploy with force flag
 vercel --force --yes
