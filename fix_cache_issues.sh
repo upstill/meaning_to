@@ -33,7 +33,7 @@ print_status "🚀 Deploying with unique build ID: $TIMESTAMP"
 # Build with timestamp
 flutter clean
 flutter pub get
-flutter build web --release --web-renderer html
+flutter build web --release
 
 # Deploy with force and unique identifier
 vercel --force --yes

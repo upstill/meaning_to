@@ -34,6 +34,11 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
   bool _obscurePassword = true;
   String? _error;
   List<JustWatchTitle> _filteredTitles = [];
+  String? _titlesFoundMessage;
+  int? _totalTitlesFound;
+  int _redundantTitlesCount = 0;
+  bool _isProcessingImport = false;
+  Set<String> _existingJustWatchPaths = {};
 
   @override
   void initState() {
@@ -142,6 +147,19 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                 // Create JustWatch link
                 final justWatchLink = '<a href="$fullPath">$title</a>';
 
+                // Extract shortDescription and create formatted notes
+                final shortDescription = content['shortDescription']?.toString() ?? '';
+                String? formattedNotes;
+                if (shortDescription.isNotEmpty) {
+                  // Truncate to first 100 characters
+                  String truncatedDescription = shortDescription.length > 100
+                      ? '${shortDescription.substring(0, 100)}...'
+                      : shortDescription;
+                  
+                  // Create formatted notes with description + JustWatch link
+                  formattedNotes = '$truncatedDescription <a href="$fullPath">(more)</a>';
+                }
+
                 // Check if this is a TV show and determine if it's finished
                 bool isFinished = false;
                 if (targetType == 'SHOW') {
@@ -215,7 +233,7 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                     id: -1,
                     categoryId: widget.category.id,
                     headline: title,
-                    notes: null,
+                    notes: formattedNotes,
                     ownerId: '',
                     createdAt: DateTime.now(),
                     suggestibleAt: DateTime.now(),
@@ -234,8 +252,8 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
         // Sort tasks by headline
         tasks.sort((a, b) => a.headline.compareTo(b.headline));
 
-        // Take first 3 tasks for testing
-        final tasksToImport = tasks.take(3).toList();
+        // Import all available tasks
+        final tasksToImport = tasks;
 
         if (tasksToImport.isEmpty) {
           setState(() {
@@ -307,6 +325,159 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
     }
   }
 
+  /// Generate message based on number of titles found
+  String _getTitlesFoundMessage(int totalTitles) {
+    if (totalTitles == 0) {
+      return 'No titles found in your JustWatch library.';
+    } else if (totalTitles == 1) {
+      return 'Found 1 title in your JustWatch library (movies and TV shows)! Processing...';
+    } else if (totalTitles <= 10) {
+      return 'Found $totalTitles titles in your JustWatch library (movies and TV shows)! Processing...';
+    } else {
+      return 'Found $totalTitles titles in your JustWatch library (movies and TV shows)! Give us a minute while we go through all that.';
+    }
+  }
+
+  /// Generate the final status message with redundancy info
+  String _getFinalStatusMessage() {
+    final movieType = widget.category.originalId == 1 ? 'movie' : 'show';
+    final movieTypePlural = widget.category.originalId == 1 ? 'movies' : 'shows';
+    
+    // If everything is redundant
+    if (_filteredTitles.isEmpty && _redundantTitlesCount > 0) {
+      return "Looks like everything's already here.";
+    }
+    
+    // Build the main message
+    String mainMessage;
+    if (_filteredTitles.length == 1) {
+      mainMessage = 'Found 1 $movieType ready to import';
+    } else {
+      mainMessage = 'Found ${_filteredTitles.length} $movieTypePlural ready to import';
+    }
+    
+    return mainMessage;
+  }
+
+  /// Generate the redundancy message if there are redundant titles
+  String? _getRedundancyMessage() {
+    if (_redundantTitlesCount == 0) {
+      return null;
+    }
+    
+    if (_redundantTitlesCount == 1) {
+      return '1 title is already here.';
+    } else {
+      return '$_redundantTitlesCount titles are already here.';
+    }
+  }
+
+  /// Convert technical error messages to user-friendly messages
+  String _getFriendlyLoginErrorMessage(String errorMessage) {
+    final lowerError = errorMessage.toLowerCase();
+    
+    // Check for common authentication error patterns
+    if (lowerError.contains('invalid_password') || 
+        lowerError.contains('wrong password') ||
+        lowerError.contains('password is invalid')) {
+      return 'The password you entered is incorrect. Please check your password and try again.';
+    }
+    
+    if (lowerError.contains('email_not_found') || 
+        lowerError.contains('user not found') ||
+        lowerError.contains('email address is not registered')) {
+      return 'No account found with this email address. Please check your email or sign up for a new account.';
+    }
+    
+    if (lowerError.contains('user_disabled') || 
+        lowerError.contains('account has been disabled')) {
+      return 'This account has been disabled. Please contact JustWatch support for assistance.';
+    }
+    
+    if (lowerError.contains('too_many_attempts') || 
+        lowerError.contains('too many failed attempts') ||
+        lowerError.contains('temporarily disabled')) {
+      return 'Too many failed login attempts. Please wait a while before trying again.';
+    }
+    
+    if (lowerError.contains('invalid_email') || 
+        lowerError.contains('email address is badly formatted')) {
+      return 'Please enter a valid email address.';
+    }
+    
+    if (lowerError.contains('network') || 
+        lowerError.contains('connection') ||
+        lowerError.contains('timeout')) {
+      return 'Network error. Please check your internet connection and try again.';
+    }
+    
+    if (lowerError.contains('400') && lowerError.contains('bad request')) {
+      return 'Invalid login credentials. Please check your email and password.';
+    }
+    
+    if (lowerError.contains('401') && lowerError.contains('unauthorized')) {
+      return 'Login failed. Please check your email and password and try again.';
+    }
+    
+    if (lowerError.contains('403') && lowerError.contains('forbidden')) {
+      return 'Access denied. Your account may not have permission to access JustWatch.';
+    }
+    
+    if (lowerError.contains('429') && lowerError.contains('too many requests')) {
+      return 'Too many login attempts. Please wait a few minutes before trying again.';
+    }
+    
+    // If no specific pattern matches, provide a generic but helpful message
+    return 'Login failed. Please check your JustWatch email and password and try again. If the problem persists, verify your credentials on the JustWatch website.';
+  }
+
+  /// Build a cache of existing JustWatch paths from current tasks
+  Future<void> _buildJustWatchPathsCache() async {
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+      final response = await supabase
+          .from('Tasks')
+          .select('links')
+          .eq('category_id', widget.category.id)
+          .eq('owner_id', userId);
+
+      final paths = <String>{};
+      
+      for (final taskData in response) {
+        final links = taskData['links'] as List<dynamic>?;
+        if (links != null) {
+          for (final link in links) {
+            final linkStr = link.toString();
+            // Extract href from HTML link tags like <a href="https://www.justwatch.com/us/movie/title">Title</a>
+            final hrefMatch = RegExp(r'href="([^"]*)"').firstMatch(linkStr);
+            if (hrefMatch != null) {
+              final url = hrefMatch.group(1)!;
+              // Extract path relative to justwatch.com
+              if (url.contains('justwatch.com')) {
+                final uri = Uri.parse(url);
+                if (uri.host.contains('justwatch.com')) {
+                  paths.add(uri.path);
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      setState(() {
+        _existingJustWatchPaths = paths;
+      });
+      
+      print('JustWatch paths cache built: ${paths.length} existing paths found for fast duplicate detection');
+    } catch (e) {
+      print('Error building JustWatch paths cache: $e');
+      // Continue without cache - fallback to existing behavior
+      setState(() {
+        _existingJustWatchPaths = {};
+      });
+    }
+  }
+
   Future<void> _login() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       setState(() {
@@ -331,27 +502,38 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
 
       setState(() {
         _isLoggedIn = true;
-        _isLoading = false;
+        // Don't set _isLoading = false here, keep loading until we have titles info
       });
 
       // Fetch titles
       await _fetchTitles();
     } catch (e) {
+      String friendlyErrorMessage = _getFriendlyLoginErrorMessage(e.toString());
       setState(() {
-        _error = 'Login failed: $e';
+        _error = friendlyErrorMessage;
         _isLoading = false;
       });
     }
   }
 
   Future<void> _fetchTitles() async {
+    // Don't reset loading state here since we're already loading from login
     setState(() {
-      _isLoading = true;
       _error = null;
     });
 
     try {
+      // Build cache of existing JustWatch paths before processing
+      await _buildJustWatchPathsCache();
+      
       final titles = await _justWatchClient.getTitleList();
+      
+      // Update UI to show titles found and continue processing
+      setState(() {
+        _titlesFoundMessage = _getTitlesFoundMessage(titles.length);
+        _totalTitlesFound = titles.length;
+      });
+      
       final filteredTitles = await _filterTitlesAndRemoveDuplicates(titles);
       setState(() {
         _filteredTitles = filteredTitles;
@@ -372,45 +554,40 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
         .where((title) => title.objectType.toUpperCase() == targetType)
         .toList();
 
-    // Remove duplicates by checking existing tasks
+    // Remove duplicates by checking existing JustWatch paths cache
     final List<JustWatchTitle> nonDuplicateTitles = [];
+    int redundantCount = 0;
 
     for (final title in filteredTitles) {
-      final isDuplicate = await _isTaskDuplicate(title.title);
+      // Quick check using the paths cache
+      final isDuplicate = _existingJustWatchPaths.contains(title.fullPath);
       if (!isDuplicate) {
         nonDuplicateTitles.add(title);
+      } else {
+        redundantCount++;
+        print('Fast duplicate detected: ${title.title} (path: ${title.fullPath})');
       }
     }
+
+    // Update redundant count in state
+    setState(() {
+      _redundantTitlesCount = redundantCount;
+    });
 
     return nonDuplicateTitles;
   }
 
-  Future<bool> _isTaskDuplicate(String title) async {
-    try {
-      final userId = AuthUtils.getCurrentUserId();
-      final response = await supabase
-          .from('Tasks')
-          .select()
-          .eq('category_id', widget.category.id)
-          .eq('owner_id', userId)
-          .eq('headline', title);
-
-      return response.isNotEmpty;
-    } catch (e) {
-      // If we can't check, assume it's not a duplicate
-      return false;
-    }
-  }
 
   Future<void> _processTitles() async {
     setState(() {
       _isLoading = true;
+      _isProcessingImport = true;
       _error = null;
     });
 
     try {
-      // Limit to first 3 titles for testing
-      final titlesToProcess = _filteredTitles.take(3).toList();
+      // Process all filtered titles
+      final titlesToProcess = _filteredTitles;
 
       // Convert to the format expected by the existing import functionality
       final jsonData = _convertToJsonFormat(titlesToProcess);
@@ -422,11 +599,13 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
       setState(() {
         _error = 'Failed to process titles: $e';
         _isLoading = false;
+        _isProcessingImport = false;
       });
     } finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _isProcessingImport = false;
         });
       }
     }
@@ -654,21 +833,65 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                       ),
                     ),
                   ] else ...[
-                    Text(
-                      'Found ${_filteredTitles.length} ${widget.category.originalId == 1 ? 'movies' : 'shows'} (Processing first 3 for testing)',
-                      style: const TextStyle(fontSize: 14, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _processTitles,
-                      icon: const Icon(Icons.api),
-                      label: const Text(
-                          'Process Titles (Max 3) - Uses Existing Import'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
+                    // Show different states based on progress
+                    if (_isProcessingImport) ...[
+                      // Import/processing state - highest priority
+                      Text(
+                        'Processing ${_filteredTitles.length} ${_filteredTitles.length == 1 ? (widget.category.originalId == 1 ? 'movie' : 'show') : (widget.category.originalId == 1 ? 'movies' : 'shows')}...',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      const CircularProgressIndicator(),
+                    ] else if (_isLoading && _filteredTitles.isEmpty && _titlesFoundMessage == null) ...[
+                      // Initial loading after login - fetching titles
+                      const Text(
+                        'Fetching your JustWatch library...',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 16),
+                      const CircularProgressIndicator(),
+                    ] else if (_titlesFoundMessage != null && _isLoading) ...[
+                      // Processing titles after fetching
+                      Text(
+                        _titlesFoundMessage!,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 16),
+                      const CircularProgressIndicator(),
+                    ] else ...[
+                      // Final state - ready to import
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Show redundancy message if there are redundant titles
+                          if (_getRedundancyMessage() != null) ...[
+                            Text(
+                              _getRedundancyMessage()!,
+                              style: const TextStyle(fontSize: 14, color: Colors.orange, fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          // Main status message
+                          Text(
+                            _getFinalStatusMessage(),
+                            style: const TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 16),
+                          // Only show button if there are titles to import
+                          if (_filteredTitles.isNotEmpty) ...[
+                            ElevatedButton.icon(
+                              onPressed: _isLoading ? null : _processTitles,
+                              icon: const Icon(Icons.api),
+                              label: const Text('Process All Titles'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
                   ],
                 ],
               ),
@@ -682,10 +905,9 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                 itemCount: _filteredTitles.length,
                 itemBuilder: (context, index) {
                   final title = _filteredTitles[index];
-                  final willBeProcessed = index < 3; // First 3 titles
 
                   return Card(
-                    color: willBeProcessed ? Colors.blue.shade50 : null,
+                    color: Colors.blue.shade50, // All titles will be processed
                     child: ListTile(
                       leading: Stack(
                         children: [
@@ -700,8 +922,7 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                             )
                           else
                             const Icon(Icons.movie),
-                          if (willBeProcessed)
-                            Positioned(
+                          Positioned( // All titles will be processed
                               top: 0,
                               right: 0,
                               child: Container(
@@ -724,10 +945,8 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                       ),
                       title: Text(
                         title.title,
-                        style: TextStyle(
-                          fontWeight: willBeProcessed
-                              ? FontWeight.bold
-                              : FontWeight.normal,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold, // All titles will be processed
                         ),
                       ),
                       subtitle: Column(
@@ -740,15 +959,14 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                                 'IMDB: ${title.imdbScore!.toStringAsFixed(1)}'),
                           if (title.packageName != null)
                             Text('Available on: ${title.packageName}'),
-                          if (willBeProcessed)
-                            Text(
-                              'Will be processed',
-                              style: TextStyle(
-                                color: Colors.blue.shade700,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
+                          Text(
+                            'Will be processed', // All titles will be processed
+                            style: TextStyle(
+                              color: Colors.blue.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
                             ),
+                          ),
                         ],
                       ),
                       onTap: () {

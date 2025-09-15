@@ -11,8 +11,6 @@ import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
-import 'package:flutter_html/flutter_html.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 
 class EditCategoryScreen extends StatefulWidget {
@@ -220,6 +218,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
     // Listen for cache changes to update UI
     _cacheSubscription = CacheManager.onCacheChanged.listen((_) {
+      print('EditCategoryScreen: Cache changed, rebuilding UI');
       if (mounted) {
         // Force task list re-evaluation so field changes (e.g., shared) are reflected
         _clearTaskCache();
@@ -227,6 +226,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
         // Check if this was triggered by an import
         if (EditCategoryScreen.onImportComplete != null) {
+          print(
+              'EditCategoryScreen: Import detected, switching to age sorting');
           switchToAgeSorting();
           EditCategoryScreen.onImportComplete!();
           EditCategoryScreen.onImportComplete = null;
@@ -249,9 +250,22 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
       // Check if there's a mismatch
       if (cacheManager.currentCategory?.id != widget.category!.id) {
+        print('EditCategoryScreen: WARNING - Category ID mismatch!');
+        print('EditCategoryScreen: Widget category ID: ${widget.category!.id}');
+        print(
+            'EditCategoryScreen: Cache category ID: ${cacheManager.currentCategory?.id}');
       }
 
+      // Debug: Show all tasks in cache and their category IDs
+      if (cacheManager.currentTasks != null) {
+        print('EditCategoryScreen: All tasks in cache:');
+        for (final task in cacheManager.currentTasks!) {
+          print(
+              '  - "${task.headline}" (category: ${task.categoryId}, finished: ${task.finished})');
+        }
+      }
     } catch (e) {
+      print('EditCategoryScreen: Error initializing cache: $e');
     }
   }
 
@@ -261,6 +275,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     // Only refresh cache if we haven't already initialized for this category
     if (widget.category != null &&
         _currentCategory?.id != widget.category!.id) {
+      print(
+          'EditCategoryScreen: didChangeDependencies called, refreshing cache');
       _refreshCacheIfNeeded();
     }
   }
@@ -272,9 +288,13 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     // Only refresh if we're switching to a different category or cache is empty
     if (cacheManager.currentCategory?.id != widget.category!.id ||
         cacheManager.currentTasks == null) {
+      print(
+          'EditCategoryScreen: Refreshing cache for category ${widget.category!.headline}');
       await cacheManager.initializeWithSavedCategory(
           widget.category!, AuthUtils.getCurrentUserId());
     } else {
+      print(
+          'EditCategoryScreen: Cache is up to date for category ${widget.category!.headline}');
       // Don't force refresh - cache is already current
     }
   }
@@ -291,21 +311,31 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
   // Pure UI method - no database operations
   void _handleBack() {
+    print('EditCategoryScreen: Back button pressed');
+    print('EditCategoryScreen: Current category: ${widget.category?.headline}');
+    print(
+        'EditCategoryScreen: Static callback available: ${EditCategoryScreen.onEditComplete != null}');
 
     // Call the static callback before popping
     if (EditCategoryScreen.onEditComplete != null) {
+      print('EditCategoryScreen: Calling static callback');
       try {
         EditCategoryScreen.onEditComplete!();
+        print('EditCategoryScreen: Static callback executed successfully');
       } catch (e) {
+        print('EditCategoryScreen: Error executing static callback: $e');
       }
     } else {
+      print('EditCategoryScreen: No static callback available');
     }
 
     // Pop after executing the callback
     if (mounted) {
       Navigator.of(context)
           .pop(true); // Always return true to indicate completion
+      print('EditCategoryScreen: Popped screen with true result');
     } else {
+      print('EditCategoryScreen: Widget not mounted, cannot pop');
     }
   }
 
@@ -345,6 +375,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
       if (result == true) {
         // Tasks were modified, trigger UI rebuild to reflect cache changes
+        print('EditCategoryScreen: Tasks were modified, rebuilding UI');
         if (mounted) {
           setState(() {});
         }
@@ -385,6 +416,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
       if (result == true) {
         // Tasks were added, trigger UI rebuild to reflect cache changes
+        print('EditCategoryScreen: Tasks were added, rebuilding UI');
         if (mounted) {
           setState(() {});
         }
@@ -425,6 +457,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
   // Pure UI method - no database operations
   Future<void> _deleteTask(Task task) async {
+    print(
+        '=== Starting delete task for: ${task.headline} (ID: ${task.id}) ===');
+    print('EditCategoryScreen: _deleteTask called with task: ${task.headline}');
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -433,12 +469,14 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         actions: [
           TextButton(
             onPressed: () {
+              print('EditCategoryScreen: Delete cancelled by user');
               Navigator.pop(context, false);
             },
             child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
+              print('EditCategoryScreen: Delete confirmed by user');
               Navigator.pop(context, true);
             },
             child: const Text('Delete'),
@@ -447,8 +485,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       ),
     );
 
+    print('EditCategoryScreen: Dialog result: $confirmed');
 
     if (confirmed != true) {
+      print('Delete cancelled by user');
       return;
     }
 
@@ -459,7 +499,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       // Trigger a rebuild to reflect the changes
       setState(() {});
 
+      print('Successfully deleted task: ${task.headline}');
     } catch (e) {
+      print('Error deleting task: $e');
 
       // Show error to user
       if (mounted) {
@@ -472,6 +514,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       }
     }
 
+    print('=== End delete task ===');
   }
 
   // Pure UI method - no database operations
@@ -484,6 +527,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       }
       setState(() {}); // Trigger rebuild to reflect cache changes
     } catch (e) {
+      print('Error toggling task completion: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -498,14 +542,22 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Pure UI method - no database operations
   Future<void> _toggleTaskShare(Task task, bool newSharedState) async {
     try {
+      print(
+          'EditCategoryScreen: _toggleTaskShare called for task: ${task.headline}');
+      print(
+          'EditCategoryScreen: Task ID: ${task.id}, new shared state: $newSharedState');
 
       // Use the existing CacheManager instance that's already initialized
       final cacheManager = CacheManager();
+      print('EditCategoryScreen: CacheManager instance created');
 
       await cacheManager.updateTaskShare(task.id, newSharedState);
+      print('EditCategoryScreen: cacheManager.updateTaskShare completed');
 
       setState(() {}); // Trigger rebuild to reflect cache changes
+      print('EditCategoryScreen: Task share state updated successfully');
     } catch (e) {
+      print('Error updating task share state: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -520,12 +572,16 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Pure UI method - no database operations
   Future<void> _makeCategoryPublic() async {
     try {
+      print('EditCategoryScreen: _makeCategoryPublic called');
 
       final currentCategory = widget.category ?? _currentCategory;
       if (currentCategory == null) {
+        print('EditCategoryScreen: No current category to make public');
         return;
       }
 
+      print(
+          'EditCategoryScreen: Making category "${currentCategory.headline}" public');
 
       // Update in API
       await ApiClient.updateCategory(currentCategory.id.toString(), {
@@ -553,6 +609,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       _isPrivate = false;
 
       setState(() {}); // Trigger rebuild to reflect changes
+      print('EditCategoryScreen: Category made public successfully');
 
       // Show success message
       if (mounted) {
@@ -564,6 +621,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         );
       }
     } catch (e) {
+      print('Error making category public: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -578,14 +636,21 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Pure UI method - no database operations
   Future<void> _makeTaskAvailable(Task task) async {
     try {
+      print(
+          'EditCategoryScreen: _makeTaskAvailable called for task: ${task.headline}');
+      print('EditCategoryScreen: Task ID: ${task.id}');
 
       // Use the existing CacheManager instance that's already initialized
       final cacheManager = CacheManager();
+      print('EditCategoryScreen: CacheManager instance created');
 
       await cacheManager.reviveTask(task.id);
+      print('EditCategoryScreen: cacheManager.reviveTask completed');
 
       setState(() {}); // Trigger rebuild to reflect cache changes
+      print('EditCategoryScreen: Task made available successfully');
     } catch (e) {
+      print('Error making task available: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -621,6 +686,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
     if (result == true) {
       // Tasks were added, trigger UI rebuild to reflect cache changes
+      print('EditCategoryScreen: Tasks were added from text, rebuilding UI');
       if (mounted) {
         setState(() {});
       }
@@ -653,24 +719,38 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
     if (result == true) {
       // Tasks were added, trigger UI rebuild to reflect cache changes
+      print('EditCategoryScreen: Tasks were added from shop, rebuilding UI');
       if (mounted) {
         setState(() {});
       }
 
       // Call the edit complete callback to notify Home screen to refresh
       if (EditCategoryScreen.onEditComplete != null) {
+        print(
+            'EditCategoryScreen: Calling edit complete callback after shop tasks added');
         try {
           EditCategoryScreen.onEditComplete!();
+          print(
+              'EditCategoryScreen: Edit complete callback executed successfully after shop tasks');
         } catch (e) {
+          print(
+              'EditCategoryScreen: Error executing edit complete callback after shop tasks: $e');
         }
       } else {
+        print(
+            'EditCategoryScreen: No edit complete callback available after shop tasks');
       }
     }
   }
 
   Widget _buildTaskList() {
+    print('EditCategoryScreen: _buildTaskList called');
+    print('EditCategoryScreen: _tasks.length: ${_tasks.length}');
+    print(
+        'EditCategoryScreen: _displayedTasks.length: ${_displayedTasks.length}');
 
     if (_tasks.isEmpty) {
+      print('EditCategoryScreen: No tasks to display');
       return Center(
           child: Text(
               'No ${NamingUtils.tasksName(plural: true)} yet. Add one to get started!'));
@@ -728,6 +808,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
   Widget _buildNewTaskList() {
     if (_tasks.isEmpty) {
+      print('EditCategoryScreen: No new tasks to display');
       return Center(
           child: Text(
               'No ${NamingUtils.tasksName(plural: true)} yet. Add one to get started!'));
@@ -744,31 +825,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
           margin: const EdgeInsets.symmetric(vertical: 4),
           child: ListTile(
             title: Text(task.headline),
-            subtitle: task.notes != null 
-                ? Html(
-                    data: task.notes!,
-                    style: {
-                      "body": Style(
-                        fontSize: FontSize(14),
-                        margin: Margins.zero,
-                        padding: HtmlPaddings.zero,
-                      ),
-                      "a": Style(
-                        color: Theme.of(context).colorScheme.primary,
-                        textDecoration: TextDecoration.underline,
-                      ),
-                    },
-                    onLinkTap: (url, _, __) async {
-                      if (url != null) {
-                        try {
-                          await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                        } catch (e) {
-                          print('Could not launch URL: $url');
-                        }
-                      }
-                    },
-                  )
-                : null,
+            subtitle: task.notes != null ? Text(task.notes!) : null,
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -872,6 +929,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   }
 
   String _buildTaskCountText() {
+    print('EditCategoryScreen: _buildTaskCountText called');
 
     // Get total tasks from cache manager (before limiting)
     final allTasks = CacheManager().currentTasks ?? [];
@@ -880,12 +938,23 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
             task.categoryId == (widget.category?.id ?? _currentCategory?.id))
         .toList();
 
+    print(
+        'EditCategoryScreen: Total tasks in cache: ${_tasks.length} (limited display)');
+    print('EditCategoryScreen: Total tasks available: ${totalTasks.length}');
+    print(
+        'EditCategoryScreen: Current category ID: ${widget.category?.id ?? _currentCategory?.id}');
 
     final tasks = _tasks
         .where((task) =>
             task.categoryId == (widget.category?.id ?? _currentCategory?.id))
         .toList();
 
+    print(
+        'EditCategoryScreen: Filtered tasks for current category: ${tasks.length}');
+    for (final task in tasks) {
+      print(
+          'EditCategoryScreen: Task "${task.headline}" - finished: ${task.finished}, isSuggestible: ${task.isSuggestible}');
+    }
 
     final availableTasks =
         tasks.where((task) => !task.finished && task.isSuggestible).length;
@@ -893,6 +962,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         tasks.where((task) => !task.finished && task.isDeferred).length;
     final finishedTasks = tasks.where((task) => task.finished).length;
 
+    print(
+        'EditCategoryScreen: availableTasks: $availableTasks, deferredTasks: $deferredTasks, finishedTasks: $finishedTasks');
 
     if (availableTasks == 0) {
       final parts = <String>[];
@@ -924,6 +995,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Save category changes to database
   Future<void> _saveCategory() async {
     if (widget.category == null) {
+      print('EditCategoryScreen: Cannot save - no category provided');
       return;
     }
 
@@ -935,6 +1007,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       final userId = AuthUtils.getCurrentUserId();
       final categoryId = widget.category!.id;
 
+      print(
+          'EditCategoryScreen: Saving category ${widget.category!.headline} (ID: $categoryId)');
 
       final data = {
         'headline': _headlineController.text,
@@ -954,6 +1028,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
           .single();
 
       final updatedCategory = Category.fromJson(response);
+      print(
+          'EditCategoryScreen: Category saved successfully: ${updatedCategory.headline}');
 
       // Update the widget's category with the new data
       widget.category!.headline = updatedCategory.headline;
@@ -975,6 +1051,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         );
       }
     } catch (e) {
+      print('EditCategoryScreen: Error saving category: $e');
       setState(() {
         _isLoading = false;
       });
@@ -994,6 +1071,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Delete category and all its tasks from database
   Future<void> _deleteCategory() async {
     if (widget.category == null) {
+      print('EditCategoryScreen: Cannot delete - no category provided');
       return;
     }
 
@@ -1005,40 +1083,58 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       final userId = AuthUtils.getCurrentUserId();
       final categoryId = widget.category!.id;
 
+      print(
+          'EditCategoryScreen: Deleting category ${widget.category!.headline} (ID: $categoryId)');
 
       // First, delete all tasks in this category
+      print('EditCategoryScreen: Deleting all tasks in category...');
       final deleteTasksResponse = await supabase
           .from('Tasks')
           .delete()
           .eq('category_id', categoryId)
           .eq('owner_id', userId);
 
+      print(
+          'EditCategoryScreen: Tasks deletion response: $deleteTasksResponse');
 
       // Then, delete the category itself
+      print('EditCategoryScreen: Deleting category...');
       final deleteCategoryResponse = await supabase
           .from('Categories')
           .delete()
           .eq('id', categoryId)
           .eq('owner_id', userId);
 
+      print(
+          'EditCategoryScreen: Category deletion response: $deleteCategoryResponse');
 
       // Clear the cache
       CacheManager().clearCache();
+      print('EditCategoryScreen: Cache cleared');
 
       // Call the edit complete callback to update home screen
       if (EditCategoryScreen.onEditComplete != null) {
+        print(
+            'EditCategoryScreen: Calling edit complete callback after deletion');
         try {
           EditCategoryScreen.onEditComplete!();
+          print(
+              'EditCategoryScreen: Edit complete callback executed successfully');
         } catch (e) {
+          print(
+              'EditCategoryScreen: Error executing edit complete callback: $e');
         }
       } else {
+        print('EditCategoryScreen: No edit complete callback available');
       }
 
       // Navigate back to home screen
       if (mounted) {
         Navigator.of(context).popUntil((route) => route.isFirst);
+        print('EditCategoryScreen: Navigated back to home screen');
       }
     } catch (e) {
+      print('EditCategoryScreen: Error deleting category: $e');
       setState(() {
         _isLoading = false;
       });
@@ -1059,6 +1155,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
+        print('EditCategoryScreen: WillPopScope triggered');
         _handleBack();
         return false;
       },
@@ -1067,6 +1164,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () {
+              print('EditCategoryScreen: Back button pressed in app bar');
               _handleBack();
             },
           ),

@@ -203,6 +203,19 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                 // Create both JustWatch and IMDB links
                 final justWatchLink = '<a href="$fullPath">$title</a>';
 
+                // Extract shortDescription and create formatted notes
+                final shortDescription = content['shortDescription']?.toString() ?? '';
+                String? formattedNotes;
+                if (shortDescription.isNotEmpty) {
+                  // Truncate to first 100 characters
+                  String truncatedDescription = shortDescription.length > 100
+                      ? '${shortDescription.substring(0, 100)}...'
+                      : shortDescription;
+                  
+                  // Create formatted notes with description + JustWatch link
+                  formattedNotes = '$truncatedDescription <a href="$fullPath">(more)</a>';
+                }
+
                 if (!await filterJustWatchItem(title, justWatchLink)) {
                   print('Skipping $title - already exists');
                   continue;
@@ -215,7 +228,7 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
                     id: -1,
                     categoryId: widget.category.id,
                     headline: title,
-                    notes: null,
+                    notes: formattedNotes,
                     ownerId: '',
                     createdAt: DateTime.now(),
                     suggestibleAt: DateTime.now(),
@@ -656,8 +669,8 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
     try {
       final userId = AuthUtils.getCurrentUserId();
 
-      // Take first three tasks
-      final tasksToImport = _tasks.take(3).toList();
+      // Import all available tasks
+      final tasksToImport = _tasks;
       print('Importing ${tasksToImport.length} tasks:');
       for (var task in tasksToImport) {
         print('- ${task.headline}');

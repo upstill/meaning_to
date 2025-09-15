@@ -321,7 +321,11 @@ class CacheManager with PerformanceMonitoring {
         print('CacheManager: Deleting task from API...');
         final deleteResponse = await ApiClient.deleteTask(taskId.toString());
 
-        print('CacheManager: API delete response: $deleteResponse');
+        if (deleteResponse == null) {
+          print('CacheManager: Task was not found in database (may have been already deleted)');
+        } else {
+          print('CacheManager: API delete response: $deleteResponse');
+        }
 
         // Verify the deletion by trying to fetch the task
         try {

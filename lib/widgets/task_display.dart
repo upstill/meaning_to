@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/auth.dart';
+import 'package:flutter_html/flutter_html.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class TaskDisplay extends StatefulWidget {
   final Task task;
@@ -121,7 +123,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
       print(
           'TaskDisplay: Task "${widget.task.headline}" has ${widget.task.links!.length} links');
       print('TaskDisplay: Links: ${widget.task.links}');
-      print('TaskDisplay: hasLinks: $hasLinks');
     }
 
     return Card(
@@ -370,12 +371,30 @@ class _TaskDisplayState extends State<TaskDisplay> {
                     widget.task.notes != null &&
                     widget.task.notes!.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  Text(
-                    widget.task.notes!,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontStyle: FontStyle.italic,
-                      color: theme.textTheme.bodySmall?.color,
-                    ),
+                  Html(
+                    data: widget.task.notes!,
+                    style: {
+                      "body": Style(
+                        fontSize: FontSize(theme.textTheme.bodyMedium?.fontSize ?? 14),
+                        fontStyle: FontStyle.italic,
+                        color: theme.textTheme.bodySmall?.color,
+                        margin: Margins.zero,
+                        padding: HtmlPaddings.zero,
+                      ),
+                      "a": Style(
+                        color: theme.colorScheme.primary,
+                        textDecoration: TextDecoration.underline,
+                      ),
+                    },
+                    onLinkTap: (url, _, __) async {
+                      if (url != null) {
+                        try {
+                          await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                        } catch (e) {
+                          print('Could not launch URL: $url');
+                        }
+                      }
+                    },
                   ),
                 ],
                 // Show links if expanded and present
