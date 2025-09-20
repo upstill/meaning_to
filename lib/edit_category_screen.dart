@@ -90,12 +90,11 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     final tasks =
         allTasks.where((task) => task.categoryId == currentCategoryId).toList();
 
-
     // Always re-sort if the task list has changed (check by length and content)
     bool shouldResort = _cachedSortedTasks == null ||
         _lastCachedTasks == null ||
         _lastCachedTasks!.length != tasks.length ||
-        !_areTaskListsEqual(_lastCachedTasks!, tasks);
+        !_haveSameTaskIds(_lastCachedTasks!, tasks);
 
     if (shouldResort) {
       _lastCachedTasks = List.from(tasks); // Create a copy
@@ -108,13 +107,14 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     return _cachedSortedTasks!;
   }
 
-  // Helper method to check if two task lists are equal
-  bool _areTaskListsEqual(List<Task> list1, List<Task> list2) {
+  // Helper method to check if two task lists have the same task IDs (order independent)
+  bool _haveSameTaskIds(List<Task> list1, List<Task> list2) {
     if (list1.length != list2.length) return false;
-    for (int i = 0; i < list1.length; i++) {
-      if (list1[i].id != list2[i].id) return false;
-    }
-    return true;
+
+    final ids1 = list1.map((task) => task.id).toSet();
+    final ids2 = list2.map((task) => task.id).toSet();
+
+    return ids1.length == ids2.length && ids1.containsAll(ids2);
   }
 
   // Get tasks for progressive loading
@@ -227,7 +227,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
         // Check if this was triggered by an import
         if (EditCategoryScreen.onImportComplete != null) {
-          switchToAgeSorting();
+          // Don't switch sorting - newly imported tasks with null suggestibleAt
+          // will appear at the top in Priority sorting automatically
           EditCategoryScreen.onImportComplete!();
           EditCategoryScreen.onImportComplete = null;
         }
@@ -248,11 +249,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
           widget.category!, AuthUtils.getCurrentUserId());
 
       // Check if there's a mismatch
-      if (cacheManager.currentCategory?.id != widget.category!.id) {
-      }
-
-    } catch (e) {
-    }
+      if (cacheManager.currentCategory?.id != widget.category!.id) {}
+    } catch (e) {}
   }
 
   @override
@@ -291,22 +289,18 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
   // Pure UI method - no database operations
   void _handleBack() {
-
     // Call the static callback before popping
     if (EditCategoryScreen.onEditComplete != null) {
       try {
         EditCategoryScreen.onEditComplete!();
-      } catch (e) {
-      }
-    } else {
-    }
+      } catch (e) {}
+    } else {}
 
     // Pop after executing the callback
     if (mounted) {
       Navigator.of(context)
           .pop(true); // Always return true to indicate completion
-    } else {
-    }
+    } else {}
   }
 
   // Pure UI method - no database operations
@@ -447,7 +441,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       ),
     );
 
-
     if (confirmed != true) {
       return;
     }
@@ -456,11 +449,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       // Use CacheManager to delete the task
       await CacheManager().removeTask(task.id);
 
-      // Trigger a rebuild to reflect the changes
-      setState(() {});
-
+      // Note: No manual setState() needed here as the cache change notification
+      // will automatically trigger a rebuild via the _cacheSubscription listener
     } catch (e) {
-
       // Show error to user
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -471,7 +462,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         );
       }
     }
-
   }
 
   // Pure UI method - no database operations
@@ -498,7 +488,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Pure UI method - no database operations
   Future<void> _toggleTaskShare(Task task, bool newSharedState) async {
     try {
-
       // Use the existing CacheManager instance that's already initialized
       final cacheManager = CacheManager();
 
@@ -520,12 +509,10 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Pure UI method - no database operations
   Future<void> _makeCategoryPublic() async {
     try {
-
       final currentCategory = widget.category ?? _currentCategory;
       if (currentCategory == null) {
         return;
       }
-
 
       // Update in API
       await ApiClient.updateCategory(currentCategory.id.toString(), {
@@ -578,7 +565,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Pure UI method - no database operations
   Future<void> _makeTaskAvailable(Task task) async {
     try {
-
       // Use the existing CacheManager instance that's already initialized
       final cacheManager = CacheManager();
 
@@ -661,15 +647,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       if (EditCategoryScreen.onEditComplete != null) {
         try {
           EditCategoryScreen.onEditComplete!();
-        } catch (e) {
-        }
-      } else {
-      }
+        } catch (e) {}
+      } else {}
     }
   }
 
   Widget _buildTaskList() {
-
     if (_tasks.isEmpty) {
       return Center(
           child: Text(
@@ -744,7 +727,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
           margin: const EdgeInsets.symmetric(vertical: 4),
           child: ListTile(
             title: Text(task.headline),
-            subtitle: task.notes != null 
+            subtitle: task.notes != null
                 ? Html(
                     data: task.notes!,
                     style: {
@@ -761,7 +744,19 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     onLinkTap: (url, _, __) async {
                       if (url != null) {
                         try {
-                          await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                          // Use Android-optimized external launch
+                          bool launched = await launchUrl(
+                            Uri.parse(url),
+                            mode: LaunchMode.externalApplication,
+                            webViewConfiguration: const WebViewConfiguration(
+                              enableJavaScript: false,
+                              enableDomStorage: false,
+                            ),
+                          );
+                          if (!launched) {
+                            // Fallback to platform default
+                            await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault);
+                          }
                         } catch (e) {
                           print('Could not launch URL: $url');
                         }
@@ -872,7 +867,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   }
 
   String _buildTaskCountText() {
-
     // Get total tasks from cache manager (before limiting)
     final allTasks = CacheManager().currentTasks ?? [];
     final totalTasks = allTasks
@@ -880,19 +874,16 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
             task.categoryId == (widget.category?.id ?? _currentCategory?.id))
         .toList();
 
-
     final tasks = _tasks
         .where((task) =>
             task.categoryId == (widget.category?.id ?? _currentCategory?.id))
         .toList();
-
 
     final availableTasks =
         tasks.where((task) => !task.finished && task.isSuggestible).length;
     final deferredTasks =
         tasks.where((task) => !task.finished && task.isDeferred).length;
     final finishedTasks = tasks.where((task) => task.finished).length;
-
 
     if (availableTasks == 0) {
       final parts = <String>[];
@@ -934,7 +925,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     try {
       final userId = AuthUtils.getCurrentUserId();
       final categoryId = widget.category!.id;
-
 
       final data = {
         'headline': _headlineController.text,
@@ -1005,14 +995,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       final userId = AuthUtils.getCurrentUserId();
       final categoryId = widget.category!.id;
 
-
       // First, delete all tasks in this category
       final deleteTasksResponse = await supabase
           .from('Tasks')
           .delete()
           .eq('category_id', categoryId)
           .eq('owner_id', userId);
-
 
       // Then, delete the category itself
       final deleteCategoryResponse = await supabase
@@ -1021,7 +1009,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
           .eq('id', categoryId)
           .eq('owner_id', userId);
 
-
       // Clear the cache
       CacheManager().clearCache();
 
@@ -1029,10 +1016,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       if (EditCategoryScreen.onEditComplete != null) {
         try {
           EditCategoryScreen.onEditComplete!();
-        } catch (e) {
-        }
-      } else {
-      }
+        } catch (e) {}
+      } else {}
 
       // Navigate back to home screen
       if (mounted) {

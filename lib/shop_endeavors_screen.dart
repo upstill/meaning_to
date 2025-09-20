@@ -958,7 +958,19 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                 onLinkTap: (url, _, __) async {
                   if (url != null) {
                     try {
-                      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                      // Use Android-optimized external launch
+                      bool launched = await launchUrl(
+                        Uri.parse(url), 
+                        mode: LaunchMode.externalApplication,
+                        webViewConfiguration: const WebViewConfiguration(
+                          enableJavaScript: false,
+                          enableDomStorage: false,
+                        ),
+                      );
+                      if (!launched) {
+                        // Fallback to platform default
+                        await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault);
+                      }
                     } catch (e) {
                       print('Could not launch URL: $url');
                     }

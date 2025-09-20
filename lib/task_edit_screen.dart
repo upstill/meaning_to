@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:html/parser.dart' as html_parser;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
-import 'package:flutter/services.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/link_edit_screen.dart';
 import 'package:meaning_to/utils/auth.dart';
@@ -12,6 +15,67 @@ import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/justwatch_import_screen.dart';
+import 'package:meaning_to/letterboxd_import_screen.dart';
+import 'package:meaning_to/models/icon.dart';
+
+// Widget to display favicon for a domain
+class DomainFaviconWidget extends StatelessWidget {
+  final String domain;
+  final double size;
+  final Widget fallbackIcon;
+
+  const DomainFaviconWidget({
+    super.key,
+    required this.domain,
+    this.size = 24,
+    required this.fallbackIcon,
+  });
+
+  /// Map certain domains to their canonical domains for icon fetching
+  String _getCanonicalDomain(String domain) {
+    // Handle Letterboxd short URLs
+    if (domain == 'boxd.it') {
+      return 'letterboxd.com';
+    }
+
+    // Add other domain mappings here as needed
+    return domain;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canonicalDomain = _getCanonicalDomain(domain);
+
+    return FutureBuilder<DomainIcon?>(
+      future: DomainIcon.getIconForDomain(canonicalDomain),
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data?.iconUrl != null) {
+          return Image.network(
+            snapshot.data!.iconUrl,
+            width: size,
+            height: size,
+            errorBuilder: (context, error, stackTrace) => fallbackIcon,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return SizedBox(
+                width: size,
+                height: size,
+                child: Center(
+                  child: SizedBox(
+                    width: size * 0.6,
+                    height: size * 0.6,
+                    child: const CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              );
+            },
+          );
+        }
+        return fallbackIcon;
+      },
+    );
+  }
+}
 
 class TaskEditScreen extends StatefulWidget {
   static VoidCallback? onEditComplete; // Static callback for edit completion
@@ -506,6 +570,125 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     return null; // No duplicate found
   }
 
+  /// Fetch Letterboxd notes/description for a URL (similar to the import screen logic)
+  Future<String?> _fetchLetterboxdNotes(String url) async {
+    // Skip description fetching for web platform due to CORS restrictions
+    if (kIsWeb) {
+      print(
+          'TaskEditScreen: Skipping Letterboxd notes fetch on web platform (CORS restriction)');
+      return null; // Leave as null to allow dynamic fetching
+    }
+
+    try {
+      print('TaskEditScreen: Fetching Letterboxd notes from: $url');
+
+      // Handle boxd.it redirects
+      String finalUrl = url;
+      if (url.contains('boxd.it')) {
+        print(
+            'TaskEditScreen: Detected boxd.it short URL, following redirect...');
+        try {
+          final redirectResponse = await http.head(Uri.parse(url));
+          if (redirectResponse.headers.containsKey('location')) {
+            finalUrl = redirectResponse.headers['location']!;
+            print('TaskEditScreen: Redirect found, new URL: $finalUrl');
+          } else {
+            final testResponse = await http.get(Uri.parse(url));
+            if (testResponse.request?.url != null) {
+              finalUrl = testResponse.request!.url.toString();
+              print('TaskEditScreen: Auto-redirected to: $finalUrl');
+            }
+          }
+        } catch (e) {
+          print(
+              'TaskEditScreen: Error following redirect: $e, continuing with original URL');
+        }
+      }
+
+      final response = await http.get(
+        Uri.parse(finalUrl),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept':
+              'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'DNT': '1',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        print(
+            'TaskEditScreen: HTTP status code ${response.statusCode} for URL: $url');
+        return null; // Leave as null to allow dynamic fetching
+      }
+
+      final document = html_parser.parse(response.body);
+
+      // Try different meta description tags in order of preference
+      String? description;
+
+      // First: Standard meta description
+      description = document
+          .querySelector('meta[name="description"]')
+          ?.attributes['content']
+          ?.trim();
+      if (description != null && description.isNotEmpty) {
+        print(
+            'TaskEditScreen: Found description from meta[name="description"]: "$description"');
+        return _formatLetterboxdNotes(description, url);
+      }
+
+      // Second: Open Graph description
+      description = document
+          .querySelector('meta[property="og:description"]')
+          ?.attributes['content']
+          ?.trim();
+      if (description == null || description.isEmpty) {
+        description = document
+            .querySelector('meta[name="og:description"]')
+            ?.attributes['content']
+            ?.trim();
+      }
+      if (description != null && description.isNotEmpty) {
+        print(
+            'TaskEditScreen: Found description from og:description: "$description"');
+        return _formatLetterboxdNotes(description, url);
+      }
+
+      // Third: Twitter Card description
+      description = document
+          .querySelector('meta[name="twitter:description"]')
+          ?.attributes['content']
+          ?.trim();
+      if (description != null && description.isNotEmpty) {
+        print(
+            'TaskEditScreen: Found description from twitter:description: "$description"');
+        return _formatLetterboxdNotes(description, url);
+      }
+
+      print('TaskEditScreen: No description found for Letterboxd URL: $url');
+      return null; // Leave as null to allow dynamic fetching
+    } catch (e) {
+      print('TaskEditScreen: Error fetching Letterboxd notes for $url: $e');
+      return null; // Leave as null to allow dynamic fetching
+    }
+  }
+
+  /// Format Letterboxd notes similar to JustWatch imports
+  String _formatLetterboxdNotes(String description, String url) {
+    // Truncate to first 100 characters
+    String truncatedDescription = description.length > 100
+        ? '${description.substring(0, 100)}...'
+        : description;
+
+    // Create formatted notes with description + Letterboxd link
+    return '$truncatedDescription <a href="$url">(more)</a>';
+  }
+
   /// Process headline text to extract links and set appropriate headline
   Future<Map<String, dynamic>> _processHeadlineText(String headlineText) async {
     print('TaskEditScreen: Processing headline text: "$headlineText"');
@@ -549,6 +732,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       }
 
       // If no headline text remains, fetch the webpage title
+      String? fetchedNotes;
       if (cleanHeadline.isEmpty) {
         try {
           print('TaskEditScreen: No headline text, fetching webpage title...');
@@ -556,6 +740,16 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               await LinkProcessor.validateAndProcessLink(cleanURL);
           cleanHeadline = processedLink.title ?? 'Link';
           print('TaskEditScreen: Fetched webpage title: "$cleanHeadline"');
+
+          // For Letterboxd URLs, also try to fetch description
+          if (cleanURL.contains('letterboxd.com') ||
+              cleanURL.contains('boxd.it')) {
+            fetchedNotes = await _fetchLetterboxdNotes(cleanURL);
+            if (fetchedNotes != null) {
+              print(
+                  'TaskEditScreen: Fetched Letterboxd notes: "$fetchedNotes"');
+            }
+          }
         } catch (e) {
           print('TaskEditScreen: Failed to fetch webpage title: $e');
           cleanHeadline = 'Link';
@@ -567,7 +761,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
       return {
         'headline': cleanHeadline,
-        'notes': null,
+        'notes': fetchedNotes,
         'links': [cleanURL],
       };
     }
@@ -1257,8 +1451,72 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                                       }
                                     });
                                   },
-                            icon: const Icon(Icons.movie),
+                            icon: DomainFaviconWidget(
+                              domain: 'www.justwatch.com',
+                              size: 20,
+                              fallbackIcon: const Icon(Icons.movie),
+                            ),
                             label: const Text('Import from JustWatch'),
+                            style: AppButtons.goForth(),
+                          ),
+                        ),
+                      ],
+                      // Add Letterboxd import button only for category original_id == 1
+                      if (widget.category.originalId == 1) ...[
+                        const SizedBox(height: 16),
+                        // Separator for Letterboxd import
+                        Row(
+                          children: [
+                            const Expanded(child: Divider()),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16.0),
+                              child: Text(
+                                '** OR...Import from Letterboxd **',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                            const Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // Letterboxd Import button
+                        FractionallySizedBox(
+                          widthFactor: 0.7,
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading
+                                ? null
+                                : () {
+                                    print(
+                                        'Import from Letterboxd button pressed');
+                                    print(
+                                        'Category: ${widget.category.headline}');
+
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            LetterboxdImportScreen(
+                                          category: widget.category,
+                                        ),
+                                      ),
+                                    ).then((result) {
+                                      if (result is Category && mounted) {
+                                        print('Letterboxd import completed');
+                                        Navigator.pop(context, result);
+                                      }
+                                    });
+                                  },
+                            icon: DomainFaviconWidget(
+                              domain: 'letterboxd.com',
+                              size: 20,
+                              fallbackIcon: const Icon(Icons.movie_outlined),
+                            ),
+                            label: const Text('Import from Letterboxd'),
                             style: AppButtons.goForth(),
                           ),
                         ),

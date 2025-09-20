@@ -221,7 +221,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _handleForgotPassword() async {
-    Navigator.pushNamed(context, '/forgot-password');
+    Navigator.pushNamed(context, '/password-reset-request');
   }
 
   // OAuth Sign-In Methods
