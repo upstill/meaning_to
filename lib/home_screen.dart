@@ -5,7 +5,7 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/widgets/link_display.dart';
+import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/performance_monitor_screen.dart';
@@ -1420,10 +1420,21 @@ class HomeScreenState extends State<HomeScreen> {
                                           else
                                            */
                                           const SizedBox(height: 14),
-                                          LinkListDisplay(
-                                            links: _randomTask!.links!,
-                                            showIcon: true,
-                                            showTitle: true,
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: _randomTask!.links!
+                                                .map((link) => Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                              bottom: 4),
+                                                      child: LinkDisplayWidget(
+                                                        linkText: link,
+                                                        showIcon: true,
+                                                        showTitle: true,
+                                                      ),
+                                                    ))
+                                                .toList(),
                                           ),
                                         ],
                                         if (_randomTask!.triggersAt !=
@@ -1543,7 +1554,25 @@ class HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 20),
-                                // Removed "Manage Choices..." button since we now have a persistent Edit button above
+                                // Edit button with descriptive text
+                                if (!AuthUtils.isGuestUser()) ...[
+                                  ElevatedButton.icon(
+                                    onPressed: () => _navigateToEditTasks(),
+                                    icon: const Icon(Icons.edit, size: 18),
+                                    label: const Text(
+                                      'Manage Choices/Edit Pursuit',
+                                      style: TextStyle(fontSize: 14),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue[600],
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size(0, 38),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16, vertical: 8),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                ],
                               ],
                             ),
                           ),
@@ -1637,14 +1666,6 @@ class HomeScreenState extends State<HomeScreen> {
               backgroundColor: Colors.green[600],
               foregroundColor: Colors.white,
               child: const Icon(Icons.share),
-            ),
-            const SizedBox(width: 16),
-            FloatingActionButton(
-              onPressed: () => _navigateToEditTasks(),
-              tooltip: 'Edit category',
-              backgroundColor: Colors.blue[600],
-              foregroundColor: Colors.white,
-              child: const Icon(Icons.edit),
             ),
             const SizedBox(width: 16),
           ],

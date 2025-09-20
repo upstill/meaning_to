@@ -166,6 +166,10 @@ class CacheManager with PerformanceMonitoring {
             'links': Task.linksToArray(task.links), // Ensure [] not null
             'original_id': task.originalId, // Preserve original_id if it exists
             'shared': task.shared, // Include shared field
+            'suggestible_at': task.suggestibleAt
+                ?.toIso8601String(), // Include suggestible_at to preserve null values
+            'created_at': task.createdAt
+                .toIso8601String(), // Include created_at for consistency
           };
 
           final savedTask = await ApiClient.createTask(taskData);
@@ -322,7 +326,8 @@ class CacheManager with PerformanceMonitoring {
         final deleteResponse = await ApiClient.deleteTask(taskId.toString());
 
         if (deleteResponse == null) {
-          print('CacheManager: Task was not found in database (may have been already deleted)');
+          print(
+              'CacheManager: Task was not found in database (may have been already deleted)');
         } else {
           print('CacheManager: API delete response: $deleteResponse');
         }
@@ -363,28 +368,13 @@ class CacheManager with PerformanceMonitoring {
       return null;
     }
 
-    print(
-        'CacheManager: Evaluating ${_currentTasks!.length} tasks for suggestibility...');
-
-    // Debug each task individually
-    for (final task in _currentTasks!) {
-      print('CacheManager: Task "${task.headline}":');
-      print('  finished: ${task.finished}');
-      print('  suggestibleAt: ${task.suggestibleAt}');
-      print('  isSuggestible: ${task.isSuggestible}');
-      print('  isDeferred: ${task.isDeferred}');
-    }
+    // Evaluate tasks for suggestibility (removed verbose debug output)
 
     // Find unfinished tasks that are suggestible using the Task method
     final unfinishedTasks =
         _currentTasks!.where((task) => task.isSuggestible).toList();
 
-    print(
-        'CacheManager: Found ${unfinishedTasks.length} unfinished and suggestible tasks out of ${_currentTasks!.length} total tasks');
-    for (final task in unfinishedTasks) {
-      print(
-          'CacheManager: Available task: "${task.headline}" - isSuggestible: ${task.isSuggestible}, finished: ${task.finished}');
-    }
+    // Found ${unfinishedTasks.length} available tasks
 
     if (unfinishedTasks.isEmpty) {
       print('CacheManager: No unfinished and suggestible tasks available');
@@ -395,7 +385,7 @@ class CacheManager with PerformanceMonitoring {
     final random =
         DateTime.now().millisecondsSinceEpoch % unfinishedTasks.length;
     final selectedTask = unfinishedTasks[random];
-    print('CacheManager: Selected random task: "${selectedTask.headline}"');
+    // Selected task: ${selectedTask.headline}
     return selectedTask;
   }
 

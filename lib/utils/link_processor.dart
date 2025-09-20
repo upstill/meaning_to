@@ -238,7 +238,8 @@ class LinkProcessor {
   static String extractDomain(String url) {
     try {
       final uri = Uri.parse(url);
-      return uri.host.toLowerCase();
+      final rawDomain = uri.host.toLowerCase();
+      return rawDomain;
     } catch (e) {
       return '';
     }
@@ -274,6 +275,17 @@ class LinkProcessor {
       return LinkType.webpage;
     }
     return LinkType.other;
+  }
+
+  /// Truncates Letterboxd titles at the year in parentheses
+  /// Example: "Phantom Thread (2017) directed by..." -> "Phantom Thread"
+  static String _truncateLetterboxdTitle(String title) {
+    // Look for pattern like " (YYYY)" where YYYY is a 4-digit year
+    final yearPattern = RegExp(r'\s*\(\d{4}\).*$');
+    final truncated = title.replaceFirst(yearPattern, '').trim();
+
+    // Remove any invisible characters at the beginning (like zero-width space)
+    return truncated.replaceFirst(RegExp(r'^\u200E?'), '');
   }
 
   static Future<String?> fetchWebpageTitle(String url) async {
@@ -357,6 +369,11 @@ class LinkProcessor {
       var title = document.querySelector('title')?.text.trim();
       print('LinkProcessor: Title tag found: "$title"');
       if (title != null && title.isNotEmpty) {
+        // Special handling for Letterboxd URLs - truncate at year in parentheses
+        if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
+          title = _truncateLetterboxdTitle(title);
+          print('LinkProcessor: Truncated Letterboxd title: "$title"');
+        }
         print('LinkProcessor: Found title from <title> tag: "$title"');
         return title;
       }
@@ -367,6 +384,11 @@ class LinkProcessor {
           ?.attributes['content']
           ?.trim();
       if (title != null && title.isNotEmpty) {
+        // Special handling for Letterboxd URLs - truncate at year in parentheses
+        if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
+          title = _truncateLetterboxdTitle(title);
+          print('LinkProcessor: Truncated Letterboxd og:title: "$title"');
+        }
         print('LinkProcessor: Found title from og:title: "$title"');
         return title;
       }
@@ -377,6 +399,11 @@ class LinkProcessor {
           ?.attributes['content']
           ?.trim();
       if (title != null && title.isNotEmpty) {
+        // Special handling for Letterboxd URLs - truncate at year in parentheses
+        if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
+          title = _truncateLetterboxdTitle(title);
+          print('LinkProcessor: Truncated Letterboxd twitter:title: "$title"');
+        }
         print('LinkProcessor: Found title from twitter:title: "$title"');
         return title;
       }
@@ -441,6 +468,9 @@ class LinkProcessor {
     final type = determineLinkType(url);
     final domain = extractDomain(url);
 
+    // Special debugging for JustWatch
+    if (url.contains('justwatch')) {}
+
     // Check if this is an internal link to a category
     String? finalTitle = title;
     if (finalTitle == null || finalTitle.isEmpty) {
@@ -456,12 +486,17 @@ class LinkProcessor {
     String? favicon;
     if (finalTitle == null || !_isInternalCategoryLink(url, domain)) {
       try {
+        if (url.contains('justwatch') || url.contains('boxd.it')) {
+          // Skip favicon fetching for these domains
+        }
         final domainIcon = await DomainIcon.getIconForDomain(domain);
         if (domainIcon != null) {
           favicon = domainIcon.iconUrl;
-        }
+          if (url.contains('justwatch') || url.contains('boxd.it')) {}
+        } else if (url.contains('justwatch') || url.contains('boxd.it')) {}
       } catch (e) {
         print('Error processing icon for domain $domain: $e');
+        if (url.contains('justwatch')) {}
       }
     }
 
@@ -832,7 +867,8 @@ class LinkDisplayWidget extends StatelessWidget {
   }
 
   /// Handle link clicks with special handling for internal/localhost links
-  void _handleLinkClick(BuildContext context, ProcessedLink link) {
+  Future<void> _handleLinkClick(
+      BuildContext context, ProcessedLink link) async {
     final url = link.url; // Use the original URL, not displayUrl
 
     // Check if this is an internal link (meaning-to.me in debug mode)
@@ -863,10 +899,22 @@ class LinkDisplayWidget extends StatelessWidget {
       print('LinkDisplayWidget: Falling back to external launch for: $url');
     }
 
-    // For external links or fallback, use the standard external application mode
-    launchUrl(
-      Uri.parse(url),
-      mode: LaunchMode.externalApplication,
-    );
+    // For external links or fallback, use Android-optimized external application mode
+    try {
+      bool launched = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+        webViewConfiguration: const WebViewConfiguration(
+          enableJavaScript: false,
+          enableDomStorage: false,
+        ),
+      );
+      if (!launched) {
+        // Fallback to platform default
+        await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      print('LinkDisplayWidget: Failed to launch URL: $url, error: $e');
+    }
   }
 }

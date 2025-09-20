@@ -8,6 +8,10 @@ import 'package:meaning_to/email_confirmation_screen.dart';
 import 'package:meaning_to/forgot_password_screen.dart';
 import 'package:meaning_to/reset_password_screen.dart';
 import 'package:meaning_to/auth_verification_screen.dart';
+import 'package:meaning_to/password_reset_request_screen.dart';
+import 'package:meaning_to/password_reset_otp_screen.dart';
+import 'package:meaning_to/password_reset_new_screen.dart';
+import 'package:meaning_to/letterboxd_import_screen.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'package:meaning_to/edit_category_screen.dart';
@@ -338,11 +342,11 @@ class _MyAppState extends State<MyApp> {
         // Check if this is a password reset link
         if (uri.path.contains('reset-password')) {
           print('Password reset link detected');
-          
+
           // Navigate to password reset screen
           if (mounted) {
             Navigator.pushReplacementNamed(
-              context, 
+              context,
               '/auth/reset-password',
               arguments: {
                 'token': uri.queryParameters['token'],
@@ -352,7 +356,7 @@ class _MyAppState extends State<MyApp> {
           }
           return;
         }
-        
+
         // Check if this is an email confirmation link
         if (uri.path.contains('confirm') ||
             uri.queryParameters.containsKey('token')) {
@@ -505,8 +509,9 @@ class _MyAppState extends State<MyApp> {
               // Check for Supabase authentication verification (password reset, email confirmation, etc.)
               final queryParams = Uri.base.queryParameters;
               final fragment = Uri.base.fragment;
-              
-              if (queryParams.containsKey('token') && queryParams.containsKey('type')) {
+
+              if (queryParams.containsKey('token') &&
+                  queryParams.containsKey('type')) {
                 print('Supabase verification URL detected');
                 print('Query params: $queryParams');
                 print('Fragment: $fragment');
@@ -587,6 +592,24 @@ class _MyAppState extends State<MyApp> {
                   email: args['email'] as String,
                 ),
               );
+            case '/password-reset-request':
+              return MaterialPageRoute(
+                builder: (context) => const PasswordResetRequestScreen(),
+              );
+            case '/password-reset-otp':
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => PasswordResetOtpScreen(
+                  email: args['email'] as String,
+                ),
+              );
+            case '/password-reset-new':
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => PasswordResetNewScreen(
+                  email: args['email'] as String,
+                ),
+              );
             case '/home':
               return MaterialPageRoute(
                 builder: (context) => const HomeScreen(),
@@ -633,6 +656,13 @@ class _MyAppState extends State<MyApp> {
                 builder: (context) => TaskEditScreen(
                   category: args['category'] as Category,
                   task: args['task'] as Task?,
+                ),
+              );
+            case '/letterboxd-import':
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => LetterboxdImportScreen(
+                  category: args['category'] as Category,
                 ),
               );
             default:

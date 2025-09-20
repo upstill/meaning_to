@@ -171,7 +171,7 @@ class Task {
       id: json['id'] as int,
       categoryId: json['category_id'] as int,
       headline: json['headline'] as String? ?? 'Untitled Task',
-      notes: json['notes'] as String? ?? '',
+      notes: json['notes'] as String?,
       ownerId: json['owner_id'] as String? ?? '',
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
@@ -795,12 +795,7 @@ class Task {
     // Compare UTC times directly to avoid timezone conversion issues
     final now = DateTime.now().toUtc();
 
-    // Debug logging
-    print('Task.isSuggestible for "$headline":');
-    print('  suggestibleAt (UTC): $suggestibleAt');
-    print('  now (UTC): $now');
-    print('  isAfter: ${suggestibleAt!.isAfter(now)}');
-    print('  result: ${!suggestibleAt!.isAfter(now)}');
+    // Compare UTC times to avoid timezone issues
 
     return !suggestibleAt!.isAfter(now);
   }
@@ -829,9 +824,9 @@ class Task {
   static Future<void> resetGuestTasks() async {
     try {
       print('Task.resetGuestTasks(): Resetting guest tasks...');
-      
+
       // Use the centralized guest user ID
-      final guestUserId = GuestUserManager.guestUserId;
+      const guestUserId = GuestUserManager.guestUserId;
 
       // Update all tasks owned by the guest user
       await ApiClient.updateGuestTasks(guestUserId);
