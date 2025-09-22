@@ -1,6 +1,11 @@
 {
   "buildCommand": "rm -rf web && mkdir -p web && cp *.html *.js *.json *.png web/ && cp -r assets canvaskit icons web/ && echo 'BUILD_SUCCESS' > web/build_id.txt",
   "outputDirectory": "web",
+  "functions": {
+    "api/fetch-content.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
