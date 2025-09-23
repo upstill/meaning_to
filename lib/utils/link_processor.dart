@@ -9,6 +9,14 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
+/// Container for webpage title and description extracted together
+class WebpageContent {
+  final String title;
+  final String? description;
+
+  WebpageContent({required this.title, this.description});
+}
+
 class ProcessedLink {
   final String url;
   final String? title;
@@ -16,6 +24,7 @@ class ProcessedLink {
   final LinkType type;
   final String domain;
   final String originalLink; // Store the original/modified link text
+  final String? description; // Extracted description (for JustWatch, etc.)
 
   ProcessedLink({
     required this.url,
@@ -24,6 +33,7 @@ class ProcessedLink {
     required this.type,
     required this.domain,
     required this.originalLink,
+    this.description,
   });
 
   String get displayTitle => title ?? url;
@@ -302,6 +312,160 @@ class LinkProcessor {
     return finalTitle;
   }
 
+  /// Fetches both title and description from a webpage in one request
+  static Future<WebpageContent?> fetchWebpageContent(String url) async {
+    try {
+      print('LinkProcessor: Fetching content for URL: $url');
+
+      // Try direct request first
+      http.Response response;
+      try {
+        // Check if we need to use proxy for web (JustWatch and Letterboxd)
+        if (kIsWeb && (url.contains('justwatch.com') || url.contains('letterboxd.com') || url.contains('boxd.it'))) {
+          // Use allorigins.win proxy for web
+          final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
+          print('LinkProcessor: Using proxy for web: $proxyUrl');
+          response = await http.get(Uri.parse(proxyUrl));
+        } else {
+          // Direct fetch for mobile or non-proxied sites
+          response = await http.get(
+            Uri.parse(url),
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            },
+          );
+        }
+
+        if (response.statusCode != 200) {
+          print('LinkProcessor: HTTP ${response.statusCode} for $url');
+          return null;
+        }
+      } catch (e) {
+        print('LinkProcessor: Direct request failed: $e');
+        return null;
+      }
+
+      final document = html_parser.parse(response.body);
+      String? title;
+      String? description;
+
+      // Extract title based on site type
+      if (url.contains('justwatch.com')) {
+        title = _extractJustWatchTitle(document);
+        description = _extractJustWatchDescription(document, url);
+      } else if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
+        title = _extractTitle(document, url);
+        // Add Letterboxd description extraction if needed
+      } else {
+        title = _extractTitle(document, url);
+      }
+
+      if (title != null && title.isNotEmpty) {
+        return WebpageContent(title: title, description: description);
+      }
+
+      return null;
+    } catch (e) {
+      print('LinkProcessor: Error fetching content: $e');
+      return null;
+    }
+  }
+
+  /// Extract JustWatch title from parsed document
+  static String? _extractJustWatchTitle(dom.Document document) {
+    // First priority: JustWatch-specific CSS selector
+    final titleElement = document.querySelector('h1.title-detail-hero__details__title');
+    if (titleElement != null) {
+      // Get only direct text content, not nested spans (which contain the year)
+      String directText = '';
+      for (final node in titleElement.nodes) {
+        if (node.nodeType == 3) { // Text node
+          directText += node.text ?? '';
+        }
+      }
+      final justWatchTitle = directText.trim();
+      if (justWatchTitle.isNotEmpty) {
+        print('LinkProcessor: Found JustWatch title via CSS selector (direct text only): "$justWatchTitle"');
+        return justWatchTitle;
+      }
+    }
+    return null;
+  }
+
+  /// Extract JustWatch description from parsed document
+  static String? _extractJustWatchDescription(dom.Document document, String url) {
+    try {
+      // Look for synopsis in div#synopsis > p
+      final synopsisElement = document.querySelector('div#synopsis > p');
+      if (synopsisElement != null) {
+        final synopsisText = synopsisElement.text.trim();
+        if (synopsisText.isNotEmpty) {
+          print('LinkProcessor: Found JustWatch synopsis via CSS selector');
+          return synopsisText;
+        }
+      }
+    } catch (e) {
+      print('LinkProcessor: Error extracting JustWatch description: $e');
+    }
+    return null;
+  }
+
+  /// Extract title from parsed document using generic methods
+  static String? _extractTitle(dom.Document document, String url) {
+    // Try different title extraction methods in priority order
+    String? title;
+
+    // Second priority: <title> tag
+    title = document.querySelector('title')?.text.trim();
+    if (title != null && title.isNotEmpty) {
+      // Special handling for Letterboxd URLs - truncate at year in parentheses
+      if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
+        title = _truncateLetterboxdTitle(title);
+      }
+      // Special handling for JustWatch URLs - truncate at year and streaming text
+      else if (url.contains('justwatch.com')) {
+        title = _truncateJustWatchTitle(title);
+      }
+      return title;
+    }
+
+    // Third priority: Open Graph title
+    title = document
+        .querySelector('meta[property="og:title"]')
+        ?.attributes['content']
+        ?.trim();
+    if (title != null && title.isNotEmpty) {
+      if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
+        title = _truncateLetterboxdTitle(title);
+      } else if (url.contains('justwatch.com')) {
+        title = _truncateJustWatchTitle(title);
+      }
+      return title;
+    }
+
+    // Fourth priority: Twitter Card title
+    title = document
+        .querySelector('meta[name="twitter:title"]')
+        ?.attributes['content']
+        ?.trim();
+    if (title != null && title.isNotEmpty) {
+      if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
+        title = _truncateLetterboxdTitle(title);
+      } else if (url.contains('justwatch.com')) {
+        title = _truncateJustWatchTitle(title);
+      }
+      return title;
+    }
+
+    // Fifth priority: First h1 tag
+    title = document.querySelector('h1')?.text.trim();
+    if (title != null && title.isNotEmpty) {
+      return title;
+    }
+
+    return null;
+  }
+
   static Future<String?> fetchWebpageTitle(String url) async {
     try {
       print('LinkProcessor: Fetching title for URL: $url');
@@ -552,6 +716,7 @@ class LinkProcessor {
         type: LinkType.other,
         domain: '',
         originalLink: linkText,
+        description: null,
       );
     }
 
@@ -573,8 +738,13 @@ class LinkProcessor {
     // If we still don't have a title and it's not an internal link, try to fetch it from the webpage
     if (finalTitle == null || finalTitle.isEmpty) {
       print('LinkProcessor.processLinkForDisplay: No title found, attempting to fetch from webpage...');
-      finalTitle = await fetchWebpageTitle(url);
-      print('LinkProcessor.processLinkForDisplay: After webpage fetch: "$finalTitle"');
+      final content = await fetchWebpageContent(url);
+      if (content != null) {
+        finalTitle = content.title;
+        print('LinkProcessor.processLinkForDisplay: After webpage fetch: "$finalTitle"');
+        // Note: Description is available in content.description but not used here
+        // as this method only returns ProcessedLink for display purposes
+      }
     } else {
       print('LinkProcessor.processLinkForDisplay: Using existing title, skipping webpage fetch');
     }
@@ -607,6 +777,7 @@ class LinkProcessor {
       type: type,
       domain: domain,
       originalLink: finalLink, // Use the final HTML link with the title
+      description: null, // Description not fetched in processLinkForDisplay
     );
   }
 
@@ -719,7 +890,22 @@ class LinkProcessor {
     print('LinkProcessor: validateAndProcessLink called for URL: $url');
     print('LinkProcessor: linkText: "$linkText"');
 
-    // If linkText is empty or null, don't include it in the HTML - let processLinkForDisplay fetch the title
+    String? description;
+
+    // If no linkText is provided, fetch both title and description from webpage
+    if (linkText == null || linkText.isEmpty) {
+      if (url.contains('justwatch.com') || url.contains('letterboxd.com') || url.contains('boxd.it')) {
+        print('LinkProcessor: No linkText provided, fetching title and description from webpage...');
+        final content = await fetchWebpageContent(url);
+        if (content != null) {
+          linkText = content.title;
+          description = content.description;
+          print('LinkProcessor: Fetched title: "$linkText", description: "${description?.substring(0, description.length > 100 ? 100 : description.length)}..."');
+        }
+      }
+    }
+
+    // Create HTML link
     final htmlLink = (linkText == null || linkText.isEmpty)
         ? '<a href="$url"></a>'
         : '<a href="$url">$linkText</a>';
@@ -813,6 +999,7 @@ class LinkProcessor {
         type: processedLink.type,
         domain: processedLink.domain,
         originalLink: '<a href="$url">$fallbackTitle</a>',
+        description: description, // Include the fetched description
       );
     }
 

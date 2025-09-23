@@ -745,8 +745,13 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           print('TaskEditScreen: Fetched webpage title: "$cleanHeadline"');
           print('TaskEditScreen: Using processed link: "$linkToStore"');
 
-          // For Letterboxd URLs, also try to fetch description
-          if (cleanURL.contains('letterboxd.com') ||
+          // Use description from ProcessedLink if available (for JustWatch)
+          if (processedLink.description != null && processedLink.description!.isNotEmpty) {
+            fetchedNotes = processedLink.description!;
+            print('TaskEditScreen: Using description from ProcessedLink: "$fetchedNotes"');
+          }
+          // For Letterboxd URLs, also try to fetch description (if not already fetched)
+          else if (cleanURL.contains('letterboxd.com') ||
               cleanURL.contains('boxd.it')) {
             fetchedNotes = await _fetchLetterboxdNotes(cleanURL);
             if (fetchedNotes != null) {
