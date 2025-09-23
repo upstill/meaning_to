@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:http/http.dart' as http;
+import 'package:html/parser.dart' as html_parser;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/auth.dart';
@@ -317,6 +320,110 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     return null; // No duplicate found
   }
 
+  /// Fetch description from JustWatch URL
+  Future<String?> _fetchJustWatchDescription(String url) async {
+    try {
+      late http.Response response;
+
+      if (kIsWeb) {
+        // Use proxy API for web to bypass CORS
+        final proxyUrl = 'https://meaning-to.vercel.app/api/proxy?url=${Uri.encodeComponent(url)}';
+        print('AddTasksScreen JustWatch: Using proxy for web: $proxyUrl');
+        response = await http.get(Uri.parse(proxyUrl));
+
+        // Check if proxy returned wrong content (JustWatch bot detection)
+        if (response.statusCode == 200 && response.body.length < 5000) {
+          print('AddTasksScreen JustWatch: Proxy returned suspicious response, checking content...');
+          if (response.body.contains('<title>Meaning To</title>') || response.body.contains('Meaning To')) {
+            print('AddTasksScreen JustWatch: JustWatch blocked proxy request, descriptions not available on web');
+            return null;
+          }
+        }
+      } else {
+        // Direct fetch for mobile
+        response = await http.get(
+          Uri.parse(url),
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        );
+      }
+
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final document = html_parser.parse(response.body);
+
+      // Extract title using CSS selector h1.title-detail-hero__details__title
+      String? title;
+      final titleElement = document.querySelector('h1.title-detail-hero__details__title');
+      if (titleElement != null) {
+        title = titleElement.text.trim();
+        if (title.isNotEmpty) {
+          print('AddTasksScreen JustWatch: Found title via CSS selector: $title');
+        }
+      }
+
+      // PRIORITY 1: Try CSS selector for synopsis div > p tag (preferred method)
+      final synopsisDiv = document.querySelector('div#synopsis');
+      if (synopsisDiv != null) {
+        print('AddTasksScreen JustWatch: Found synopsis div, innerHTML: ${synopsisDiv.innerHtml}');
+        final synopsisParagraph = synopsisDiv.querySelector('p');
+        if (synopsisParagraph != null) {
+          final synopsisText = synopsisParagraph.text.trim();
+          print('AddTasksScreen JustWatch: Raw synopsis text from CSS selector: "$synopsisText"');
+          if (synopsisText.isNotEmpty) {
+            print('AddTasksScreen JustWatch: Found synopsis via CSS selector: ${synopsisText.substring(0, synopsisText.length > 50 ? 50 : synopsisText.length)}...');
+            // Return just the synopsis - title is already used as task headline
+            return synopsisText;
+          }
+        } else {
+          print('AddTasksScreen JustWatch: No <p> tag found within synopsis div');
+        }
+      } else {
+        print('AddTasksScreen JustWatch: No div#synopsis found');
+      }
+
+      // PRIORITY 2: Try meta description (fallback)
+      String? description = document
+          .querySelector('meta[name="description"]')
+          ?.attributes['content']
+          ?.trim();
+
+      if (description != null && description.isNotEmpty) {
+        print('AddTasksScreen JustWatch: Found description via meta description tag');
+        // Return just the description - title is already used as task headline
+        return description;
+      }
+
+      // PRIORITY 3: Try og:description (fallback)
+      description = document
+          .querySelector('meta[property="og:description"]')
+          ?.attributes['content']
+          ?.trim();
+
+      if (description != null && description.isNotEmpty) {
+        print('AddTasksScreen JustWatch: Found description via og:description tag');
+        // Return just the description - title is already used as task headline
+        return description;
+      }
+
+      // If we only have title, don't return it since it's already the task headline
+      if (title != null && title.isNotEmpty) {
+        print('AddTasksScreen JustWatch: Found only title, but not returning since it\'s already the task headline');
+        return null;
+      }
+
+      print('AddTasksScreen JustWatch: No title or description found for URL: $url');
+      return null;
+    } catch (e) {
+      print('AddTasksScreen JustWatch: Error fetching description: $e');
+      return null;
+    }
+  }
+
   /// Extract URL from HTML link string
   String? _extractUrlFromHtmlLink(String htmlLink) {
     print('    _extractUrlFromHtmlLink called with: "$htmlLink"');
@@ -435,12 +542,26 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             linkText: '', // Let LinkProcessor fetch the title
           );
 
+          // For JustWatch URLs, try to fetch the description immediately
+          String? initialNotes;
+          if (urlToCheck.contains('justwatch.com')) {
+            try {
+              print('AddTasksScreen: Fetching JustWatch description for URL: $urlToCheck');
+              initialNotes = await _fetchJustWatchDescription(urlToCheck);
+              if (initialNotes != null && initialNotes.isNotEmpty) {
+                print('AddTasksScreen: Found JustWatch description: ${initialNotes.substring(0, initialNotes.length > 50 ? 50 : initialNotes.length)}...');
+              }
+            } catch (e) {
+              print('AddTasksScreen: Error fetching JustWatch description: $e');
+            }
+          }
+
           // Create a task object for duplicate checking
           final newTask = Task(
             id: DateTime.now().millisecondsSinceEpoch, // Temporary ID
             categoryId: widget.category.id,
             headline: processedLink.title ?? 'Link Task',
-            notes: null,
+            notes: initialNotes,
             ownerId: userId,
             createdAt: DateTime.now(),
             suggestibleAt: null, // Set to null to appear at the beginning
@@ -505,17 +626,39 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         } catch (e) {
           print('Error processing single URL: $e');
 
-          // If URL processing fails, create a task with the URL as the title
-          // This is better than falling back to text processing which can create malformed tasks
+          // If URL processing fails, create a task with a reasonable title and proper link
+          // Extract a title from the URL for better UX
+          String fallbackTitle = trimmedText;
+          try {
+            final uri = Uri.parse(trimmedText);
+            if (uri.host.contains('justwatch.com')) {
+              final pathParts = uri.path.split('/').where((part) => part.isNotEmpty).toList();
+              if (pathParts.length >= 2 && pathParts[pathParts.length - 2] == 'movie') {
+                final movieSlug = pathParts.last;
+                fallbackTitle = movieSlug
+                    .replaceAll('-', ' ')
+                    .split(' ')
+                    .map((word) {
+                      if (word.isEmpty) return word;
+                      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+                    })
+                    .join(' ');
+              }
+            }
+          } catch (e) {
+            // If URL parsing fails, keep the original URL as title
+            fallbackTitle = trimmedText;
+          }
+
           final newTask = Task(
             id: DateTime.now().millisecondsSinceEpoch, // Temporary ID
             categoryId: widget.category.id,
-            headline: trimmedText, // Use the URL as the title
+            headline: fallbackTitle, // Use extracted title or URL
             notes: 'Failed to fetch webpage title',
             ownerId: userId,
             createdAt: DateTime.now(),
             suggestibleAt: null, // Set to null to appear at the beginning
-            links: [trimmedText], // Store the original URL
+            links: ['<a href="$trimmedText">$fallbackTitle</a>'], // Store as proper HTML link
             processedLinks: null,
             finished: false,
             shared: !widget.category

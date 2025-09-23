@@ -733,13 +733,17 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
       // If no headline text remains, fetch the webpage title
       String? fetchedNotes;
+      String linkToStore = cleanURL; // Default to raw URL
+
       if (cleanHeadline.isEmpty) {
         try {
           print('TaskEditScreen: No headline text, fetching webpage title...');
           final processedLink =
               await LinkProcessor.validateAndProcessLink(cleanURL);
           cleanHeadline = processedLink.title ?? 'Link';
+          linkToStore = processedLink.originalLink; // Use the processed HTML link
           print('TaskEditScreen: Fetched webpage title: "$cleanHeadline"');
+          print('TaskEditScreen: Using processed link: "$linkToStore"');
 
           // For Letterboxd URLs, also try to fetch description
           if (cleanURL.contains('letterboxd.com') ||
@@ -753,16 +757,17 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         } catch (e) {
           print('TaskEditScreen: Failed to fetch webpage title: $e');
           cleanHeadline = 'Link';
+          // linkToStore remains the raw URL as fallback
         }
       }
 
       print('TaskEditScreen: Processed headline: "$cleanHeadline"');
-      print('TaskEditScreen: Extracted link: "$cleanURL"');
+      print('TaskEditScreen: Extracted link: "$linkToStore"');
 
       return {
         'headline': cleanHeadline,
         'notes': fetchedNotes,
-        'links': [cleanURL],
+        'links': [linkToStore],
       };
     }
 
@@ -862,11 +867,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             allLinks, // PostgreSQL array - always store as array, even if empty
       };
 
-      // For new tasks, explicitly exclude suggestible_at to ensure it remains null
+      // For new tasks, explicitly set suggestible_at to null to appear at top of list
       if (_localTask == null) {
-        // Don't include suggestible_at in the data to let database use its default (null)
+        data['suggestible_at'] = null;
         print(
-            'TaskEditScreen: Excluding suggestible_at from new task data to ensure null value');
+            'TaskEditScreen: Setting suggestible_at to null for new task to appear at top');
       }
 
       Task? updatedTask;
