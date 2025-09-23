@@ -288,6 +288,20 @@ class LinkProcessor {
     return truncated.replaceFirst(RegExp(r'^\u200E?'), '');
   }
 
+  /// Truncates JustWatch titles at the year in parentheses
+  /// Example: "K Pop Demon Hunters (2023)" -> "K Pop Demon Hunters"
+  static String _truncateJustWatchTitle(String title) {
+    // Look for pattern like " (YYYY)" where YYYY is a 4-digit year
+    final yearPattern = RegExp(r'\s*\(\d{4}\).*$');
+    final truncated = title.replaceFirst(yearPattern, '').trim();
+
+    // Also remove "streaming: where to watch online?" suffix if present
+    final streamingPattern = RegExp(r'\s*streaming:?\s*where to watch.*$', caseSensitive: false);
+    final finalTitle = truncated.replaceFirst(streamingPattern, '').trim();
+
+    return finalTitle;
+  }
+
   static Future<String?> fetchWebpageTitle(String url) async {
     try {
       print('LinkProcessor: Fetching title for URL: $url');
@@ -426,6 +440,11 @@ class LinkProcessor {
           title = _truncateLetterboxdTitle(title);
           print('LinkProcessor: Truncated Letterboxd title: "$title"');
         }
+        // Special handling for JustWatch URLs - truncate at year and streaming text
+        else if (url.contains('justwatch.com')) {
+          title = _truncateJustWatchTitle(title);
+          print('LinkProcessor: Truncated JustWatch title: "$title"');
+        }
         print('LinkProcessor: Found title from <title> tag: "$title"');
         return title;
       }
@@ -441,6 +460,11 @@ class LinkProcessor {
           title = _truncateLetterboxdTitle(title);
           print('LinkProcessor: Truncated Letterboxd og:title: "$title"');
         }
+        // Special handling for JustWatch URLs - truncate at year and streaming text
+        else if (url.contains('justwatch.com')) {
+          title = _truncateJustWatchTitle(title);
+          print('LinkProcessor: Truncated JustWatch og:title: "$title"');
+        }
         print('LinkProcessor: Found title from og:title: "$title"');
         return title;
       }
@@ -455,6 +479,11 @@ class LinkProcessor {
         if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
           title = _truncateLetterboxdTitle(title);
           print('LinkProcessor: Truncated Letterboxd twitter:title: "$title"');
+        }
+        // Special handling for JustWatch URLs - truncate at year and streaming text
+        else if (url.contains('justwatch.com')) {
+          title = _truncateJustWatchTitle(title);
+          print('LinkProcessor: Truncated JustWatch twitter:title: "$title"');
         }
         print('LinkProcessor: Found title from twitter:title: "$title"');
         return title;
