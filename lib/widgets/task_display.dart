@@ -125,10 +125,10 @@ class _TaskDisplayState extends State<TaskDisplay> {
         }
 
         if (description != null && description.isNotEmpty) {
-          // Format the description with a link
+          // Format the description with a link only if truncated
           final formattedNotes = description.length > 200
               ? '${description.substring(0, 200)}... <a href="$url">(more)</a>'
-              : '$description <a href="$url">(more)</a>';
+              : description;
 
           setState(() {
             _fetchedNotes = formattedNotes;
