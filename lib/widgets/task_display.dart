@@ -227,8 +227,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
       late http.Response response;
 
       if (kIsWeb) {
-        // Use proxy API for web to bypass CORS
-        final proxyUrl = 'https://meaning-to.vercel.app/api/proxy?url=${Uri.encodeComponent(url)}';
+        // Use allorigins.win proxy for web to bypass CORS
+        final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
         print('JustWatch: Using proxy for web: $proxyUrl');
         response = await http.get(Uri.parse(proxyUrl));
 
@@ -341,8 +341,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
       http.Response response;
       if (kIsWeb) {
-        // Use proxy API for web to bypass CORS
-        final proxyUrl = 'https://meaning-to.vercel.app/api/proxy?url=${Uri.encodeComponent(finalUrl)}';
+        // Use allorigins.win proxy for web to bypass CORS
+        final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(finalUrl)}';
         print('Letterboxd: Using proxy for web: $proxyUrl');
         response = await http.get(Uri.parse(proxyUrl));
       } else {

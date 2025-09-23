@@ -1,1 +1,5 @@
-{} 
+{
+  "functions": {
+    "functions/proxy.js": "functions/proxy.js"
+  }
+} 

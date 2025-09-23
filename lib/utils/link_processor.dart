@@ -297,7 +297,8 @@ class LinkProcessor {
       try {
         // Check if we need to use proxy for web (JustWatch and Letterboxd)
         if (kIsWeb && (url.contains('justwatch.com') || url.contains('letterboxd.com') || url.contains('boxd.it'))) {
-          final proxyUrl = 'https://meaning-to.vercel.app/api/proxy?url=${Uri.encodeComponent(url)}';
+          // Temporarily use allorigins.win proxy until Vercel API deploys
+          final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
           print('LinkProcessor: Using proxy for web: $proxyUrl');
           response = await http.get(Uri.parse(proxyUrl));
 

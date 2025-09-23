@@ -326,8 +326,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       late http.Response response;
 
       if (kIsWeb) {
-        // Use proxy API for web to bypass CORS
-        final proxyUrl = 'https://meaning-to.vercel.app/api/proxy?url=${Uri.encodeComponent(url)}';
+        // Use allorigins.win proxy for web to bypass CORS
+        final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
         print('AddTasksScreen JustWatch: Using proxy for web: $proxyUrl');
         response = await http.get(Uri.parse(proxyUrl));
 
