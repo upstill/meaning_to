@@ -423,9 +423,16 @@ class LinkProcessor {
       if (url.contains('justwatch.com')) {
         final titleElement = document.querySelector('h1.title-detail-hero__details__title');
         if (titleElement != null) {
-          final justWatchTitle = titleElement.text.trim();
+          // Get only direct text content, not nested spans (which contain the year)
+          String directText = '';
+          for (final node in titleElement.nodes) {
+            if (node.nodeType == 3) { // Text node
+              directText += node.text ?? '';
+            }
+          }
+          final justWatchTitle = directText.trim();
           if (justWatchTitle.isNotEmpty) {
-            print('LinkProcessor: Found JustWatch title via CSS selector: "$justWatchTitle"');
+            print('LinkProcessor: Found JustWatch title via CSS selector (direct text only): "$justWatchTitle"');
             return justWatchTitle;
           }
         }
