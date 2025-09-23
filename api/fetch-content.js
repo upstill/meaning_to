@@ -2,7 +2,7 @@
  * Vercel API proxy for fetching external content (JustWatch, Letterboxd)
  * This bypasses CORS restrictions by fetching content server-side
  */
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // Enable CORS for your Flutter web app
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
