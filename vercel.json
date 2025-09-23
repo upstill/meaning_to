@@ -1,1 +1,8 @@
-{} 
+{
+  "builds": [
+    {
+      "src": "api/fetch-content.js",
+      "use": "@vercel/node"
+    }
+  ]
+} 
