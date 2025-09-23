@@ -98,8 +98,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
   /// Fetch description from JustWatch or Letterboxd URLs if notes are null
   Future<void> _fetchNotesFromLinks() async {
-    // Skip if we're on web (CORS restrictions) or already fetching
-    if (kIsWeb || _isFetchingNotes || widget.task.links == null) {
+    // Skip if already fetching or no links
+    if (_isFetchingNotes || widget.task.links == null) {
       return;
     }
     setState(() {
@@ -126,8 +126,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
         if (description != null && description.isNotEmpty) {
           // Format the description with a link
-          final formattedNotes = description.length > 100
-              ? '${description.substring(0, 100)}... <a href="$url">(more)</a>'
+          final formattedNotes = description.length > 200
+              ? '${description.substring(0, 200)}... <a href="$url">(more)</a>'
               : '$description <a href="$url">(more)</a>';
 
           setState(() {
@@ -224,13 +224,32 @@ class _TaskDisplayState extends State<TaskDisplay> {
   /// Fetch description from JustWatch URL
   Future<String?> _fetchJustWatchDescription(String url) async {
     try {
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-      );
+      late http.Response response;
+
+      if (kIsWeb) {
+        // Use proxy API for web to bypass CORS
+        final proxyUrl = 'https://meaning-to.vercel.app/api/proxy?url=${Uri.encodeComponent(url)}';
+        print('JustWatch: Using proxy for web: $proxyUrl');
+        response = await http.get(Uri.parse(proxyUrl));
+
+        // Check if proxy returned wrong content (JustWatch bot detection)
+        if (response.statusCode == 200 && response.body.length < 5000) {
+          print('JustWatch: Proxy returned suspicious response, checking content...');
+          if (response.body.contains('<title>Meaning To</title>') || response.body.contains('Meaning To')) {
+            print('JustWatch: JustWatch blocked proxy request, descriptions not available on web');
+            return null;
+          }
+        }
+      } else {
+        // Direct fetch for mobile
+        response = await http.get(
+          Uri.parse(url),
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        );
+      }
 
       if (response.statusCode != 200) {
         return null;
@@ -238,28 +257,70 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
       final document = html_parser.parse(response.body);
 
-      // Try meta description first
+      // Extract title using CSS selector h1.title-detail-hero__details__title
+      String? title;
+      final titleElement = document.querySelector('h1.title-detail-hero__details__title');
+      if (titleElement != null) {
+        title = titleElement.text.trim();
+        if (title.isNotEmpty) {
+          print('JustWatch: Found title via CSS selector: $title');
+        }
+      }
+
+      // PRIORITY 1: Try CSS selector for synopsis div > p tag (preferred method)
+      final synopsisDiv = document.querySelector('div#synopsis');
+      if (synopsisDiv != null) {
+        print('JustWatch: Found synopsis div, innerHTML: ${synopsisDiv.innerHtml}');
+        final synopsisParagraph = synopsisDiv.querySelector('p');
+        if (synopsisParagraph != null) {
+          final synopsisText = synopsisParagraph.text.trim();
+          print('JustWatch: Raw synopsis text from CSS selector: "$synopsisText"');
+          if (synopsisText.isNotEmpty) {
+            print('JustWatch: Found synopsis via CSS selector: ${synopsisText.substring(0, synopsisText.length > 50 ? 50 : synopsisText.length)}...');
+            // Return just the synopsis - title is already used as task headline
+            return synopsisText;
+          }
+        } else {
+          print('JustWatch: No <p> tag found within synopsis div');
+        }
+      } else {
+        print('JustWatch: No div#synopsis found');
+      }
+
+      // PRIORITY 2: Try meta description (fallback)
       String? description = document
           .querySelector('meta[name="description"]')
           ?.attributes['content']
           ?.trim();
 
       if (description != null && description.isNotEmpty) {
+        print('JustWatch: Found description via meta description tag');
+        // Return just the description - title is already used as task headline
         return description;
       }
 
-      // Try og:description
+      // PRIORITY 3: Try og:description (fallback)
       description = document
           .querySelector('meta[property="og:description"]')
           ?.attributes['content']
           ?.trim();
 
       if (description != null && description.isNotEmpty) {
+        print('JustWatch: Found description via og:description tag');
+        // Return just the description - title is already used as task headline
         return description;
       }
 
+      // If we only have title, don't return it since it's already the task headline
+      if (title != null && title.isNotEmpty) {
+        print('JustWatch: Found only title, but not returning since it\'s already the task headline');
+        return null;
+      }
+
+      print('JustWatch: No title or description found for URL: $url');
       return null;
     } catch (e) {
+      print('JustWatch: Error fetching description: $e');
       return null;
     }
   }
@@ -278,13 +339,22 @@ class _TaskDisplayState extends State<TaskDisplay> {
         } catch (e) {}
       }
 
-      final response = await http.get(
-        Uri.parse(finalUrl),
-        headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-      );
+      http.Response response;
+      if (kIsWeb) {
+        // Use proxy API for web to bypass CORS
+        final proxyUrl = 'https://meaning-to.vercel.app/api/proxy?url=${Uri.encodeComponent(finalUrl)}';
+        print('Letterboxd: Using proxy for web: $proxyUrl');
+        response = await http.get(Uri.parse(proxyUrl));
+      } else {
+        // Direct fetch for mobile
+        response = await http.get(
+          Uri.parse(finalUrl),
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        );
+      }
 
       if (response.statusCode != 200) {
         return null;
@@ -425,13 +495,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
     // Use the new method from Task class for consistent evaluation
     // final isDeferred = widget.task.isDeferred; // Not currently used
 
-    // Fix hasLinks check to handle List<String> of HTML links
-    final hasLinks =
-        widget.task.links != null &&
-        widget.task.links!.isNotEmpty &&
-        widget.task.links!.any(
-          (link) => link.trim().isNotEmpty && link != '{}',
-        );
+    // Optimized hasLinks check - avoid complex operations during build
+    final hasLinks = widget.task.links?.isNotEmpty == true;
 
     // Links available for display
 

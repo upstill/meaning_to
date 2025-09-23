@@ -57,6 +57,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   Category?
       _currentCategory; // Track the current category (for new categories after creation)
   StreamSubscription<void>? _cacheSubscription;
+  bool _ignoringCacheChanges = false;
 
   // Sorting options
   SortOption _currentSortOption = SortOption.priority;
@@ -122,9 +123,14 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     final allTasks = _tasks;
 
     if (_displayedTaskCount == 0) {
-      // Show initial batch immediately
-      _displayedTaskCount = _initialTaskCount;
-      _startProgressiveLoading();
+      // Only use progressive loading for large task lists (>50 tasks)
+      // For smaller lists, show all tasks immediately to avoid flicker
+      if (allTasks.length > 50) {
+        _displayedTaskCount = _initialTaskCount;
+        _startProgressiveLoading();
+      } else {
+        _displayedTaskCount = allTasks.length;
+      }
     }
     final result = allTasks.take(_displayedTaskCount).toList();
     return result;
@@ -220,7 +226,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
     // Listen for cache changes to update UI
     _cacheSubscription = CacheManager.onCacheChanged.listen((_) {
-      if (mounted) {
+      if (mounted && !_ignoringCacheChanges) {
         // Force task list re-evaluation so field changes (e.g., shared) are reflected
         _clearTaskCache();
         setState(() {});
@@ -446,12 +452,22 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     }
 
     try {
-      // Use CacheManager to delete the task
+      // Set flag to ignore cache changes during deletion
+      _ignoringCacheChanges = true;
+
+      // Use CacheManager to delete the task first
       await CacheManager().removeTask(task.id);
 
-      // Note: No manual setState() needed here as the cache change notification
-      // will automatically trigger a rebuild via the _cacheSubscription listener
+      // Clear cached tasks and update the UI immediately
+      setState(() {
+        _clearTaskCache();
+      });
     } catch (e) {
+      // If there's an error, re-enable cache change listening and reload
+      _ignoringCacheChanges = false;
+      _clearTaskCache();
+      setState(() {});
+
       // Show error to user
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -461,6 +477,13 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
           ),
         );
       }
+    } finally {
+      // Always re-enable cache change listening after a delay
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          _ignoringCacheChanges = false;
+        }
+      });
     }
   }
 

@@ -7,7 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
 class ProcessedLink {
   final String url;
@@ -295,20 +295,59 @@ class LinkProcessor {
       // Try direct request first
       http.Response response;
       try {
-        response = await http.get(
-          Uri.parse(url),
-          headers: {
-            'User-Agent':
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept':
-                'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-          },
-        );
+        // Check if we need to use proxy for web (JustWatch and Letterboxd)
+        if (kIsWeb && (url.contains('justwatch.com') || url.contains('letterboxd.com') || url.contains('boxd.it'))) {
+          final proxyUrl = 'https://meaning-to.vercel.app/api/proxy?url=${Uri.encodeComponent(url)}';
+          print('LinkProcessor: Using proxy for web: $proxyUrl');
+          response = await http.get(Uri.parse(proxyUrl));
+
+          // Log the full response for debugging - write to file to avoid console truncation
+          if (url.contains('justwatch.com')) {
+            print('LinkProcessor: === JUSTWATCH PROXY DEBUG ===');
+            print('LinkProcessor: Status Code: ${response.statusCode}');
+            print('LinkProcessor: Headers: ${response.headers}');
+            print('LinkProcessor: Body Length: ${response.body.length}');
+            print('LinkProcessor: First 1000 chars: ${response.body.substring(0, response.body.length > 1000 ? 1000 : response.body.length)}');
+
+            // Try to write full response to debug file
+            try {
+              if (kIsWeb) {
+                // On web, just log key indicators
+                print('LinkProcessor: Contains title tag: ${response.body.contains('<title>')}');
+                print('LinkProcessor: Contains h1.title-detail-hero: ${response.body.contains('title-detail-hero')}');
+                print('LinkProcessor: Contains synopsis: ${response.body.contains('synopsis')}');
+              }
+            } catch (e) {
+              print('LinkProcessor: Error in debug logging: $e');
+            }
+            print('LinkProcessor: === END JUSTWATCH DEBUG ===');
+          }
+
+          // Check if proxy returned wrong content (JustWatch bot detection)
+          if (url.contains('justwatch.com') && response.statusCode == 200 && response.body.length < 5000) {
+            print('LinkProcessor: Proxy returned suspicious response for JustWatch, checking content...');
+            if (response.body.contains('<title>Meaning To</title>') || response.body.contains('Meaning To')) {
+              print('LinkProcessor: JustWatch blocked proxy request, falling back to URL parsing');
+              // Return null to trigger fallback title generation
+              return null;
+            }
+          }
+        } else {
+          response = await http.get(
+            Uri.parse(url),
+            headers: {
+              'User-Agent':
+                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept':
+                  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.5',
+              'Accept-Encoding': 'gzip, deflate, br',
+              'DNT': '1',
+              'Connection': 'keep-alive',
+              'Upgrade-Insecure-Requests': '1',
+            },
+          );
+        }
       } catch (e) {
         print(
             'LinkProcessor: Direct request failed, trying alternative approaches: $e');
@@ -365,7 +404,19 @@ class LinkProcessor {
 
       final document = html_parser.parse(response.body);
 
-      // First priority: <title> tag
+      // First priority: JustWatch-specific CSS selector
+      if (url.contains('justwatch.com')) {
+        final titleElement = document.querySelector('h1.title-detail-hero__details__title');
+        if (titleElement != null) {
+          final justWatchTitle = titleElement.text.trim();
+          if (justWatchTitle.isNotEmpty) {
+            print('LinkProcessor: Found JustWatch title via CSS selector: "$justWatchTitle"');
+            return justWatchTitle;
+          }
+        }
+      }
+
+      // Second priority: <title> tag
       var title = document.querySelector('title')?.text.trim();
       print('LinkProcessor: Title tag found: "$title"');
       if (title != null && title.isNotEmpty) {
@@ -453,8 +504,10 @@ class LinkProcessor {
   }
 
   static Future<ProcessedLink> processLinkForDisplay(String linkText) async {
+    print('LinkProcessor.processLinkForDisplay: Processing linkText: "$linkText"');
     // Parse the HTML link to get URL and title
     final (url, title) = parseHtmlLink(linkText);
+    print('LinkProcessor.processLinkForDisplay: Extracted URL: "$url", title: "$title"');
 
     if (!isValidUrl(url)) {
       return ProcessedLink(
@@ -473,13 +526,20 @@ class LinkProcessor {
 
     // Check if this is an internal link to a category
     String? finalTitle = title;
+    print('LinkProcessor.processLinkForDisplay: Initial finalTitle: "$finalTitle"');
+
     if (finalTitle == null || finalTitle.isEmpty) {
       finalTitle = await _handleInternalCategoryLink(url, domain);
+      print('LinkProcessor.processLinkForDisplay: After internal link check: "$finalTitle"');
     }
 
     // If we still don't have a title and it's not an internal link, try to fetch it from the webpage
     if (finalTitle == null || finalTitle.isEmpty) {
+      print('LinkProcessor.processLinkForDisplay: No title found, attempting to fetch from webpage...');
       finalTitle = await fetchWebpageTitle(url);
+      print('LinkProcessor.processLinkForDisplay: After webpage fetch: "$finalTitle"');
+    } else {
+      print('LinkProcessor.processLinkForDisplay: Using existing title, skipping webpage fetch');
     }
 
     // Get icon for domain with error handling (skip for internal links)
@@ -622,8 +682,12 @@ class LinkProcessor {
     print('LinkProcessor: validateAndProcessLink called for URL: $url');
     print('LinkProcessor: linkText: "$linkText"');
 
-    final processedLink =
-        await processLinkForDisplay('<a href="$url">${linkText ?? ""}</a>');
+    // If linkText is empty or null, don't include it in the HTML - let processLinkForDisplay fetch the title
+    final htmlLink = (linkText == null || linkText.isEmpty)
+        ? '<a href="$url"></a>'
+        : '<a href="$url">$linkText</a>';
+
+    final processedLink = await processLinkForDisplay(htmlLink);
 
     print('LinkProcessor: processedLink.title: "${processedLink.title}"');
 
@@ -644,8 +708,37 @@ class LinkProcessor {
         if (pathParts.isNotEmpty) {
           final lastPart = pathParts.last;
 
+          // Special handling for JustWatch URLs
+          if (domain.contains('justwatch.com')) {
+            // Extract movie/show name from JustWatch URL path
+            if (pathParts.length >= 2 && pathParts[pathParts.length - 2] == 'movie') {
+              final movieSlug = lastPart;
+              // Convert slug to title (replace dashes with spaces, title case)
+              fallbackTitle = movieSlug
+                  .replaceAll('-', ' ')
+                  .split(' ')
+                  .map((word) {
+                    if (word.isEmpty) return word;
+                    return word[0].toUpperCase() + word.substring(1).toLowerCase();
+                  })
+                  .join(' ');
+            } else if (pathParts.length >= 2 && pathParts[pathParts.length - 2] == 'tv-show') {
+              final showSlug = lastPart;
+              // Convert slug to title (replace dashes with spaces, title case)
+              fallbackTitle = showSlug
+                  .replaceAll('-', ' ')
+                  .split(' ')
+                  .map((word) {
+                    if (word.isEmpty) return word;
+                    return word[0].toUpperCase() + word.substring(1).toLowerCase();
+                  })
+                  .join(' ');
+            } else {
+              fallbackTitle = 'JustWatch Content';
+            }
+          }
           // Special handling for The Atlantic URLs
-          if (domain.contains('theatlantic.com')) {
+          else if (domain.contains('theatlantic.com')) {
             // For The Atlantic, use a generic but descriptive title since URL paths don't reflect actual article titles
             fallbackTitle = 'The Atlantic Article';
           }
