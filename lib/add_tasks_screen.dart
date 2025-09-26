@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:http/http.dart' as http;
-import 'package:html/parser.dart' as html_parser;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
-import 'package:meaning_to/utils/text_importer.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/utils/task_enricher.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/widgets/add_task_manually_button.dart';
 import 'package:meaning_to/edit_category_screen.dart';
@@ -49,7 +45,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     super.dispose();
   }
 
-  /// Select and load a file into the text input
+  /// Select and process a file directly into tasks
   Future<void> _selectAndLoadFile() async {
     try {
       const typeGroup = XTypeGroup(
@@ -62,35 +58,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       );
 
       if (file != null) {
-        final String contents = await file.readAsString();
-        String processedContents = contents;
-
-        // Handle different file types
-        final fileName = file.name.toLowerCase();
-        if (fileName.endsWith('.rtf')) {
-          processedContents = _rtfToText(contents);
-        } else if (fileName.endsWith('.pdf')) {
-          // For PDF files, we'll need to extract text
-          // This is a placeholder - you might want to add a PDF parser
-          processedContents = 'PDF text extraction not yet implemented';
-        } else if (fileName.endsWith('.doc') || fileName.endsWith('.docx')) {
-          // For Word documents, we'll need to extract text
-          // This is a placeholder - you might want to add a DOC parser
-          processedContents =
-              'Word document text extraction not yet implemented';
-        }
-        // For txt, md, csv, odt - use as is
-
-        setState(() {
-          _textInputController.text = processedContents;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('File loaded: ${file.name}'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        await _processUploadedFile(file);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -100,6 +68,151 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         ),
       );
     }
+  }
+
+  /// Process an uploaded file and create tasks
+  Future<void> _processUploadedFile(XFile file) async {
+    try {
+      final String contents = await file.readAsString();
+      String processedContents = contents;
+
+      // Handle different file types
+      final fileName = file.name.toLowerCase();
+      if (fileName.endsWith('.rtf')) {
+        processedContents = _rtfToText(contents);
+      } else if (fileName.endsWith('.pdf')) {
+        // For PDF files, we'll need to extract text
+        // This is a placeholder - you might want to add a PDF parser
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('PDF text extraction not yet implemented'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      } else if (fileName.endsWith('.doc') || fileName.endsWith('.docx')) {
+        // For Word documents, we'll need to extract text
+        // This is a placeholder - you might want to add a DOC parser
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Word document text extraction not yet implemented'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      // For txt, md, csv, odt - use as is
+
+      // Detect origin hint from filename
+      final originHint = _detectOriginHint(fileName);
+
+      // Get current user ID
+      final userId = AuthUtils.getCurrentUserId();
+
+      // Process the file contents using TaskEnricher.processBulkInput
+      final results = await TaskEnricher.processBulkInput(
+        inputText: processedContents,
+        categoryId: widget.category.id,
+        ownerId: userId,
+        originSiteHint: originHint,
+      );
+
+      if (results.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No tasks found in file'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // Get existing tasks for duplicate checking - query database directly
+      final response = await supabase
+          .from('Tasks')
+          .select()
+          .eq('category_id', widget.category.id)
+          .eq('owner_id', userId)
+          .order('created_at', ascending: false);
+
+      final existingTasks = (response as List)
+          .map((json) => Task.fromJson(json as Map<String, dynamic>))
+          .toList();
+
+      // Process each task result for duplicate checking and database operations
+      int createdCount = 0;
+      int updatedCount = 0;
+      List<Task> tasksForDuplicateChecking = List.from(existingTasks);
+
+      for (final result in results) {
+        // Set shared property based on category setting
+        final taskToSave = Task(
+          id: result.enrichedTask.id,
+          categoryId: result.enrichedTask.categoryId,
+          headline: result.enrichedTask.headline,
+          notes: result.enrichedTask.notes,
+          ownerId: result.enrichedTask.ownerId,
+          createdAt: result.enrichedTask.createdAt,
+          suggestibleAt: null, // Set to null to appear at the beginning
+          links: result.enrichedTask.links,
+          processedLinks: result.enrichedTask.processedLinks,
+          finished: result.enrichedTask.finished,
+          shared: !widget.category.tasksArePrivate, // Use category's tasksArePrivate setting
+        );
+
+        // Check for duplicates and merge information if needed
+        final existingOrUpdatedTask = await _checkForDuplicateAndMerge(
+            taskToSave, tasksForDuplicateChecking);
+
+        if (existingOrUpdatedTask != null &&
+            existingOrUpdatedTask.id != taskToSave.id) {
+          // This was a duplicate - existing task was updated
+          updatedCount++;
+        } else {
+          // No duplicate found - create new task
+          final cacheManager = CacheManager();
+          await cacheManager.addTask(taskToSave);
+          createdCount++;
+        }
+      }
+
+      // Show summary message
+      final summary = <String>[];
+      if (createdCount > 0) summary.add('$createdCount new');
+      if (updatedCount > 0) summary.add('$updatedCount updated');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('File processed: ${summary.join(', ')} tasks from ${file.name}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Navigate to Edit Category screen to show the results
+      if (mounted) {
+        _navigateToEditCategory();
+      }
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error processing file: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Detect origin site hint from filename
+  String? _detectOriginHint(String fileName) {
+    final lowerName = fileName.toLowerCase();
+    if (lowerName.contains('justwatch')) {
+      return 'justwatch.com';
+    } else if (lowerName.contains('letterboxd')) {
+      return 'letterboxd.com';
+    }
+    // Could add more site detection logic based on filename patterns
+    return null;
   }
 
   /// Convert RTF content to plain text
@@ -320,109 +433,6 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     return null; // No duplicate found
   }
 
-  /// Fetch description from JustWatch URL
-  Future<String?> _fetchJustWatchDescription(String url) async {
-    try {
-      late http.Response response;
-
-      if (kIsWeb) {
-        // Use allorigins.win proxy for web to bypass CORS
-        final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
-        print('AddTasksScreen JustWatch: Using proxy for web: $proxyUrl');
-        response = await http.get(Uri.parse(proxyUrl));
-
-        // Check if proxy returned wrong content (JustWatch bot detection)
-        if (response.statusCode == 200 && response.body.length < 5000) {
-          print('AddTasksScreen JustWatch: Proxy returned suspicious response, checking content...');
-          if (response.body.contains('<title>Meaning To</title>') || response.body.contains('Meaning To')) {
-            print('AddTasksScreen JustWatch: JustWatch blocked proxy request, descriptions not available on web');
-            return null;
-          }
-        }
-      } else {
-        // Direct fetch for mobile
-        response = await http.get(
-          Uri.parse(url),
-          headers: {
-            'User-Agent':
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          },
-        );
-      }
-
-      if (response.statusCode != 200) {
-        return null;
-      }
-
-      final document = html_parser.parse(response.body);
-
-      // Extract title using CSS selector h1.title-detail-hero__details__title
-      String? title;
-      final titleElement = document.querySelector('h1.title-detail-hero__details__title');
-      if (titleElement != null) {
-        title = titleElement.text.trim();
-        if (title.isNotEmpty) {
-          print('AddTasksScreen JustWatch: Found title via CSS selector: $title');
-        }
-      }
-
-      // PRIORITY 1: Try CSS selector for synopsis div > p tag (preferred method)
-      final synopsisDiv = document.querySelector('div#synopsis');
-      if (synopsisDiv != null) {
-        print('AddTasksScreen JustWatch: Found synopsis div, innerHTML: ${synopsisDiv.innerHtml}');
-        final synopsisParagraph = synopsisDiv.querySelector('p');
-        if (synopsisParagraph != null) {
-          final synopsisText = synopsisParagraph.text.trim();
-          print('AddTasksScreen JustWatch: Raw synopsis text from CSS selector: "$synopsisText"');
-          if (synopsisText.isNotEmpty) {
-            print('AddTasksScreen JustWatch: Found synopsis via CSS selector: ${synopsisText.substring(0, synopsisText.length > 50 ? 50 : synopsisText.length)}...');
-            // Return just the synopsis - title is already used as task headline
-            return synopsisText;
-          }
-        } else {
-          print('AddTasksScreen JustWatch: No <p> tag found within synopsis div');
-        }
-      } else {
-        print('AddTasksScreen JustWatch: No div#synopsis found');
-      }
-
-      // PRIORITY 2: Try meta description (fallback)
-      String? description = document
-          .querySelector('meta[name="description"]')
-          ?.attributes['content']
-          ?.trim();
-
-      if (description != null && description.isNotEmpty) {
-        print('AddTasksScreen JustWatch: Found description via meta description tag');
-        // Return just the description - title is already used as task headline
-        return description;
-      }
-
-      // PRIORITY 3: Try og:description (fallback)
-      description = document
-          .querySelector('meta[property="og:description"]')
-          ?.attributes['content']
-          ?.trim();
-
-      if (description != null && description.isNotEmpty) {
-        print('AddTasksScreen JustWatch: Found description via og:description tag');
-        // Return just the description - title is already used as task headline
-        return description;
-      }
-
-      // If we only have title, don't return it since it's already the task headline
-      if (title != null && title.isNotEmpty) {
-        print('AddTasksScreen JustWatch: Found only title, but not returning since it\'s already the task headline');
-        return null;
-      }
-
-      print('AddTasksScreen JustWatch: No title or description found for URL: $url');
-      return null;
-    } catch (e) {
-      print('AddTasksScreen JustWatch: Error fetching description: $e');
-      return null;
-    }
-  }
 
   /// Extract URL from HTML link string
   String? _extractUrlFromHtmlLink(String htmlLink) {
@@ -517,79 +527,44 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         }
       }
 
-      // Check if the input is a single URL
+      // Check if the input is single line or multi-line
       final trimmedText = _textInputController.text.trim();
 
-      // Remove @ prefix if present for URL validation
-      String urlToCheck = trimmedText;
-      if (urlToCheck.startsWith('@')) {
-        urlToCheck = urlToCheck.substring(1);
-      }
-
-      print('Checking if "$urlToCheck" is a valid URL...');
-      print(
-          'LinkProcessor.isValidUrl result: ${LinkProcessor.isValidUrl(urlToCheck)}');
-
-      if (LinkProcessor.isValidUrl(urlToCheck)) {
-        // Single URL detected - process it through LinkProcessor
-        print('Single URL detected: $trimmedText');
-        print('Taking single URL processing path...');
+      // Handle case where headline is empty but currentTask has links - use link as input
+      if (trimmedText.isEmpty && widget.currentTask != null &&
+          widget.currentTask!.links != null && widget.currentTask!.links!.isNotEmpty) {
+        print('AddTasksScreen: Empty headline but currentTask has links, using first link as input');
+        final linkToProcess = widget.currentTask!.links!.first;
+        print('AddTasksScreen: Processing link: $linkToProcess');
 
         try {
-          print('AddTasksScreen: Processing URL: $urlToCheck');
-          final processedLink = await LinkProcessor.validateAndProcessLink(
-            urlToCheck,
-            linkText: '', // Let LinkProcessor fetch the title
-          );
-
-          // For JustWatch URLs, try to fetch the description immediately
-          String? initialNotes;
-          if (urlToCheck.contains('justwatch.com')) {
-            try {
-              print('AddTasksScreen: Fetching JustWatch description for URL: $urlToCheck');
-              initialNotes = await _fetchJustWatchDescription(urlToCheck);
-              if (initialNotes != null && initialNotes.isNotEmpty) {
-                print('AddTasksScreen: Found JustWatch description: ${initialNotes.substring(0, initialNotes.length > 50 ? 50 : initialNotes.length)}...');
-              }
-            } catch (e) {
-              print('AddTasksScreen: Error fetching JustWatch description: $e');
-            }
-          }
-
-          // Create a task object for duplicate checking
-          final newTask = Task(
-            id: DateTime.now().millisecondsSinceEpoch, // Temporary ID
+          final enrichmentResult = await TaskEnricher.processSingleLineInput(
+            inputLine: linkToProcess,
             categoryId: widget.category.id,
-            headline: processedLink.title ?? 'Link Task',
-            notes: initialNotes,
             ownerId: userId,
-            createdAt: DateTime.now(),
-            suggestibleAt: null, // Set to null to appear at the beginning
-            links: [
-              processedLink.originalLink
-            ], // Store the processed HTML link with title
-            processedLinks: null,
-            finished: false,
-            shared: !widget.category
-                .tasksArePrivate, // Use category's tasksArePrivate setting
           );
 
-          print(
-              'AddTasksScreen: Creating task with headline: "${newTask.headline}"');
+          // Set shared property based on category setting
+          final newTask = Task(
+            id: enrichmentResult.enrichedTask.id,
+            categoryId: enrichmentResult.enrichedTask.categoryId,
+            headline: enrichmentResult.enrichedTask.headline,
+            notes: enrichmentResult.enrichedTask.notes,
+            ownerId: enrichmentResult.enrichedTask.ownerId,
+            createdAt: enrichmentResult.enrichedTask.createdAt,
+            suggestibleAt: null, // Set to null to appear at the beginning
+            links: enrichmentResult.enrichedTask.links,
+            processedLinks: enrichmentResult.enrichedTask.processedLinks,
+            finished: enrichmentResult.enrichedTask.finished,
+            shared: !widget.category.tasksArePrivate, // Use category's tasksArePrivate setting
+          );
+
+          print('AddTasksScreen: Created task from link with headline: "${newTask.headline}"');
           print('AddTasksScreen: Task links: ${newTask.links}');
-          print('AddTasksScreen: About to call duplicate detection...');
 
           // Check for duplicates and merge information if needed
           final existingOrUpdatedTask = await _checkForDuplicateAndMerge(
               newTask, tasksForDuplicateChecking);
-
-          print('Duplicate check result for "${newTask.headline}":');
-          print(
-              '  existingOrUpdatedTask: ${existingOrUpdatedTask?.headline} (ID: ${existingOrUpdatedTask?.id})');
-          print('  newTask.id: ${newTask.id}');
-          print('  existingOrUpdatedTask?.id: ${existingOrUpdatedTask?.id}');
-          print(
-              '  isDuplicate: ${existingOrUpdatedTask != null && existingOrUpdatedTask.id != newTask.id}');
 
           if (existingOrUpdatedTask != null &&
               existingOrUpdatedTask.id != newTask.id) {
@@ -613,8 +588,6 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             );
           }
 
-          // Cache is already updated by addTask, no need to refresh
-
           // Clear the text input
           _textInputController.clear();
 
@@ -624,46 +597,46 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           }
           return;
         } catch (e) {
-          print('Error processing single URL: $e');
-
-          // If URL processing fails, create a task with a reasonable title and proper link
-          // Extract a title from the URL for better UX
-          String fallbackTitle = trimmedText;
-          try {
-            final uri = Uri.parse(trimmedText);
-            if (uri.host.contains('justwatch.com')) {
-              final pathParts = uri.path.split('/').where((part) => part.isNotEmpty).toList();
-              if (pathParts.length >= 2 && pathParts[pathParts.length - 2] == 'movie') {
-                final movieSlug = pathParts.last;
-                fallbackTitle = movieSlug
-                    .replaceAll('-', ' ')
-                    .split(' ')
-                    .map((word) {
-                      if (word.isEmpty) return word;
-                      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-                    })
-                    .join(' ');
-              }
-            }
-          } catch (e) {
-            // If URL parsing fails, keep the original URL as title
-            fallbackTitle = trimmedText;
-          }
-
-          final newTask = Task(
-            id: DateTime.now().millisecondsSinceEpoch, // Temporary ID
-            categoryId: widget.category.id,
-            headline: fallbackTitle, // Use extracted title or URL
-            notes: 'Failed to fetch webpage title',
-            ownerId: userId,
-            createdAt: DateTime.now(),
-            suggestibleAt: null, // Set to null to appear at the beginning
-            links: ['<a href="$trimmedText">$fallbackTitle</a>'], // Store as proper HTML link
-            processedLinks: null,
-            finished: false,
-            shared: !widget.category
-                .tasksArePrivate, // Use category's tasksArePrivate setting
+          print('Error processing link from currentTask: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error processing link: $e'),
+              backgroundColor: Colors.red,
+            ),
           );
+          return;
+        }
+      }
+
+      final lines = trimmedText.split('\n').where((line) => line.trim().isNotEmpty).toList();
+
+      if (lines.length == 1) {
+        // Single line input - use TaskEnricher.processSingleLineInput
+        print('Single line input detected: $trimmedText');
+
+        try {
+          final enrichmentResult = await TaskEnricher.processSingleLineInput(
+            inputLine: trimmedText,
+            categoryId: widget.category.id,
+            ownerId: userId,
+          );
+          // Set shared property based on category setting
+          final newTask = Task(
+            id: enrichmentResult.enrichedTask.id,
+              categoryId: enrichmentResult.enrichedTask.categoryId,
+              headline: enrichmentResult.enrichedTask.headline,
+              notes: enrichmentResult.enrichedTask.notes,
+              ownerId: enrichmentResult.enrichedTask.ownerId,
+              createdAt: enrichmentResult.enrichedTask.createdAt,
+              suggestibleAt: null, // Set to null to appear at the beginning
+              links: enrichmentResult.enrichedTask.links,
+            processedLinks: enrichmentResult.enrichedTask.processedLinks,
+            finished: enrichmentResult.enrichedTask.finished,
+            shared: !widget.category.tasksArePrivate, // Use category's tasksArePrivate setting
+          );
+
+          print('AddTasksScreen: Created task with headline: "${newTask.headline}"');
+          print('AddTasksScreen: Task links: ${newTask.links}');
 
           // Check for duplicates and merge information if needed
           final existingOrUpdatedTask = await _checkForDuplicateAndMerge(
@@ -685,13 +658,11 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             await cacheManager.addTask(newTask);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Created task with URL: "${newTask.headline}"'),
-                backgroundColor: Colors.orange,
+                content: Text('Created task: "${newTask.headline}"'),
+                backgroundColor: Colors.green,
               ),
             );
           }
-
-          // Cache is already updated by addTask, no need to refresh
 
           // Clear the text input
           _textInputController.clear();
@@ -701,43 +672,64 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             _navigateToEditCategory();
           }
           return;
+        } catch (e) {
+          print('Error processing single line input: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error processing input: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
         }
       }
 
-      // Use TextImporter to process the text input
+      // Multi-line input - process each line with TaskEnricher
       final tasksToProcess = <Task>[];
-      final now = DateTime.now();
-      int taskIndex = 0;
 
       final inputText = _textInputController.text;
-      print('AddTasksScreen: Input text: "$inputText"');
+      print('AddTasksScreen: Multi-line input text: "$inputText"');
       print('AddTasksScreen: Text length: ${inputText.length}');
-      print('AddTasksScreen: Contains \\r: ${inputText.contains('\r')}');
-      print('AddTasksScreen: Contains \\n: ${inputText.contains('\n')}');
 
-      await for (final task in TextImporter.processForNewCategory(
-        inputText,
-        category: widget.category,
-        ownerId: userId,
-      )) {
-        // Set suggestibleAt to null so new tasks appear at the beginning
-        // Tasks with null suggestibleAt are sorted first in the list
+      // Split input into lines and process each line
+      final inputLines = inputText.split('\n')
+          .map((line) => line.trim())
+          .where((line) => line.isNotEmpty)
+          .toList();
 
-        final modifiedTask = Task(
-          id: task.id,
-          categoryId: task.categoryId,
-          ownerId: task.ownerId,
-          headline: task.headline,
-          notes: task.notes,
-          links: task.links ?? <String>[],
-          processedLinks: task.processedLinks,
-          createdAt: task.createdAt,
-          suggestibleAt: null, // Set to null to appear at the beginning
-          finished: task.finished,
-        );
+      print('AddTasksScreen: Processing ${inputLines.length} lines');
 
-        tasksToProcess.add(modifiedTask);
-        taskIndex++;
+      for (int i = 0; i < inputLines.length; i++) {
+        final line = inputLines[i];
+        print('AddTasksScreen: Processing line ${i + 1}: "$line"');
+
+        try {
+          final enrichmentResult = await TaskEnricher.processSingleLineInput(
+            inputLine: line,
+            categoryId: widget.category.id,
+            ownerId: userId,
+          );
+          // Set shared property based on category setting and suggestibleAt to null
+          final modifiedTask = Task(
+            id: enrichmentResult.enrichedTask.id,
+            categoryId: enrichmentResult.enrichedTask.categoryId,
+            headline: enrichmentResult.enrichedTask.headline,
+            notes: enrichmentResult.enrichedTask.notes,
+            ownerId: enrichmentResult.enrichedTask.ownerId,
+            createdAt: enrichmentResult.enrichedTask.createdAt,
+            suggestibleAt: null, // Set to null to appear at the beginning
+            links: enrichmentResult.enrichedTask.links,
+            processedLinks: enrichmentResult.enrichedTask.processedLinks,
+            finished: enrichmentResult.enrichedTask.finished,
+            shared: !widget.category.tasksArePrivate, // Use category's tasksArePrivate setting
+          );
+
+          tasksToProcess.add(modifiedTask);
+          print('AddTasksScreen: Successfully processed line ${i + 1}: "${modifiedTask.headline}"');
+        } catch (e) {
+          print('AddTasksScreen: Error processing line ${i + 1} ("$line"): $e');
+          // Continue processing other lines even if one fails
+        }
       }
 
       if (tasksToProcess.isEmpty) {

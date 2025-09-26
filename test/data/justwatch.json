@@ -1,0 +1,165 @@
+[
+    {
+        "cursor": "MQ==",
+        "node": {
+            "__typename": "Show",
+            "id": "ts423021",
+            "objectId": 423021,
+            "objectType": "SHOW",
+            "offerCount": 5,
+            "content": {
+                "title": "Sirens",
+                "fullPath": "/us/tv-show/sirens-0",
+                "originalReleaseYear": 2025,
+                "shortDescription": "Worried about her sister's too-close relationship with her billionaire boss, a scrappy everywoman seeks answers at a lavish seaside estate.",
+                "scoring": {
+                    "imdbScore": 6.8,
+                    "imdbVotes": 13457,
+                    "tmdbScore": null,
+                    "tmdbPopularity": 2.7701,
+                    "__typename": "Scoring"
+                },
+                "posterUrl": "/poster/331585330/{profile}/sirens-0.{format}",
+                "backdrops": [
+                    {
+                        "backdropUrl": "/backdrop/327459410/{profile}/sirens-0.{format}",
+                        "__typename": "Backdrop"
+                    }
+                ],
+                "upcomingReleases": [],
+                "isReleased": true,
+                "__typename": "ShowContent"
+            },
+            "likelistEntry": null,
+            "dislikelistEntry": null,
+            "watchlistEntryV2": {
+                "createdAt": "2025-05-28T17:01:22.09Z",
+                "__typename": "TitleListEntry"
+            },
+            "customlistEntries": [],
+            "watchNowOffer": {
+                "__typename": "Offer",
+                "id": "b2Z8dHM0MjMwMjE6VVM6ODpmbGF0cmF0ZTo0aw==",
+                "standardWebURL": "https://www.netflix.com/title/81589551",
+                "preAffiliatedStandardWebURL": null,
+                "streamUrl": null,
+                "package": {
+                    "id": "cGF8OA==",
+                    "icon": "/icon/207360008/{profile}/netflix.{format}",
+                    "packageId": 8,
+                    "clearName": "Netflix",
+                    "shortName": "nfx",
+                    "technicalName": "netflix",
+                    "iconWide": "/icon_wide/321739379/s160/netflix.{format}",
+                    "hasRectangularIcon": true,
+                    "__typename": "Package"
+                },
+                "retailPrice": null,
+                "retailPriceValue": null,
+                "lastChangeRetailPriceValue": null,
+                "currency": "USD",
+                "presentationType": "_4K",
+                "monetizationType": "FLATRATE",
+                "availableTo": null,
+                "dateCreated": "2025-05-23",
+                "newElementCount": 1
+            },
+            "tvShowTrackingEntry": null,
+            "seenState": {
+                "seenEpisodeCount": 0,
+                "releasedEpisodeCount": 5,
+                "progress": 0,
+                "caughtUp": false,
+                "lastSeenEpisodeNumber": null,
+                "lastSeenSeasonNumber": null,
+                "__typename": "ShowSeenState"
+            }
+        },
+        "__typename": "TitleListEdgeV2"
+    },
+    {
+        "cursor": "Mg==",
+        "node": {
+            "__typename": "Movie",
+            "id": "tm357148",
+            "objectId": 357148,
+            "objectType": "MOVIE",
+            "offerCount": 39,
+            "content": {
+                "title": "Crazy Rich Asians",
+                "fullPath": "/us/movie/crazy-rich-asians",
+                "originalReleaseYear": 2018,
+                "shortDescription": "An American-born Chinese economics professor accompanies her boyfriend to Singapore for his best friend's wedding, only to get thrust into the lives of Asia's rich and famous.",
+                "scoring": {
+                    "imdbScore": 6.9,
+                    "imdbVotes": 201502,
+                    "tmdbScore": 7.1,
+                    "tmdbPopularity": 6.4001,
+                    "__typename": "Scoring"
+                },
+                "posterUrl": "/poster/77295196/{profile}/crazy-rich-asians.{format}",
+                "backdrops": [
+                    {
+                        "backdropUrl": "/backdrop/69395902/{profile}/crazy-rich-asians.{format}",
+                        "__typename": "Backdrop"
+                    },
+                    {
+                        "backdropUrl": "/backdrop/60573010/{profile}/crazy-rich-asians.{format}",
+                        "__typename": "Backdrop"
+                    },
+                    {
+                        "backdropUrl": "/backdrop/92049670/{profile}/crazy-rich-asians.{format}",
+                        "__typename": "Backdrop"
+                    },
+                    {
+                        "backdropUrl": "/backdrop/74646421/{profile}/crazy-rich-asians.{format}",
+                        "__typename": "Backdrop"
+                    },
+                    {
+                        "backdropUrl": "/backdrop/183500841/{profile}/crazy-rich-asians.{format}",
+                        "__typename": "Backdrop"
+                    }
+                ],
+                "upcomingReleases": [],
+                "isReleased": true,
+                "__typename": "MovieContent"
+            },
+            "likelistEntry": null,
+            "dislikelistEntry": null,
+            "watchlistEntryV2": {
+                "createdAt": "2025-05-28T04:46:51.387Z",
+                "__typename": "TitleListEntry"
+            },
+            "customlistEntries": [],
+            "watchNowOffer": {
+                "__typename": "Offer",
+                "id": "b2Z8dG0zNTcxNDg6VVM6MTg5OTpmbGF0cmF0ZTo0aw==",
+                "standardWebURL": "https://play.max.com/show/c0f0e603-1a84-423d-a56c-3bebe5754f56?utm_source=universal_search",
+                "preAffiliatedStandardWebURL": null,
+                "streamUrl": null,
+                "package": {
+                    "id": "cGF8MTg5OQ==",
+                    "icon": "/icon/329328010/{profile}/max.{format}",
+                    "packageId": 1899,
+                    "clearName": "Max",
+                    "shortName": "mxx",
+                    "technicalName": "max",
+                    "iconWide": "/icon_wide/329328297/s160/max.{format}",
+                    "hasRectangularIcon": true,
+                    "__typename": "Package"
+                },
+                "retailPrice": null,
+                "retailPriceValue": null,
+                "lastChangeRetailPriceValue": null,
+                "currency": "USD",
+                "presentationType": "_4K",
+                "monetizationType": "FLATRATE",
+                "availableTo": "2025-06-06",
+                "dateCreated": "2025-01-01",
+                "newElementCount": 0
+            },
+            "seenlistEntry": null
+        },
+        "__typename": "TitleListEdgeV2"
+    }
+]

@@ -678,15 +678,20 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
-  /// Format Letterboxd notes similar to JustWatch imports
-  String _formatLetterboxdNotes(String description, String url) {
+  /// Format notes with description truncation and "more" link
+  String _formatDescriptionNotes(String description, String url) {
     // Truncate to first 100 characters
     String truncatedDescription = description.length > 100
         ? '${description.substring(0, 100)}...'
         : description;
 
-    // Create formatted notes with description + Letterboxd link
+    // Create formatted notes with description + link to original page
     return '$truncatedDescription <a href="$url">(more)</a>';
+  }
+
+  /// Format Letterboxd notes similar to JustWatch imports
+  String _formatLetterboxdNotes(String description, String url) {
+    return _formatDescriptionNotes(description, url);
   }
 
   /// Process headline text to extract links and set appropriate headline
@@ -699,6 +704,78 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         'notes': null,
         'links': <String>[],
       };
+    }
+
+    // Only process HTML/URLs for NEW tasks, not when editing existing tasks
+    if (widget.task != null) {
+      print('TaskEditScreen: Editing existing task - treating headline as plain text');
+      return {
+        'headline': headlineText.trim(),
+        'notes': null,
+        'links': <String>[],
+      };
+    }
+
+    // Check if text is an HTML link FIRST (before URL detection)
+    if (headlineText.trim().startsWith('<a href="') && headlineText.trim().contains('">')) {
+      String htmlToProcess = headlineText.trim();
+
+      // Fix common malformed HTML patterns
+      if (htmlToProcess.endsWith('<a>')) {
+        htmlToProcess = htmlToProcess.replaceAll(RegExp(r'<a>$'), '</a>');
+        print('TaskEditScreen: Fixed malformed HTML link - changed <a> to </a>');
+      } else if (!htmlToProcess.endsWith('</a>')) {
+        if (htmlToProcess.contains('<a>')) {
+          htmlToProcess = htmlToProcess.replaceAll('<a>', '</a>');
+          print('TaskEditScreen: Fixed malformed HTML link - changed <a> to </a>');
+        } else {
+          htmlToProcess = htmlToProcess + '</a>';
+          print('TaskEditScreen: Added missing closing tag </a>');
+        }
+      }
+
+      print('TaskEditScreen: Attempting HTML link parsing');
+      final (url, title) = LinkProcessor.parseHtmlLink(htmlToProcess);
+      if (url != headlineText && title != null && title.isNotEmpty) {
+        print(
+            'TaskEditScreen: Parsed HTML link - title: "$title", url: "$url"');
+
+        // Fetch webpage content for description if it's a supported site
+        String? formattedNotes;
+        try {
+          if (url.contains('justwatch.com') || url.contains('letterboxd.com') || url.contains('boxd.it')) {
+            final fetchStartTime = DateTime.now();
+            print('🕐 TaskEditScreen: Starting webpage fetch for $url at ${fetchStartTime.toIso8601String()}');
+
+            final processedLink = await LinkProcessor.validateAndProcessLink(url, linkText: title);
+
+            final fetchEndTime = DateTime.now();
+            final fetchDuration = fetchEndTime.difference(fetchStartTime);
+            print('🕐 TaskEditScreen: Webpage fetch completed in ${fetchDuration.inMilliseconds}ms');
+
+            final description = processedLink.description;
+            if (description != null && description.isNotEmpty) {
+              final formatStartTime = DateTime.now();
+              formattedNotes = _formatDescriptionNotes(description, url);
+              final formatEndTime = DateTime.now();
+              final formatDuration = formatEndTime.difference(formatStartTime);
+
+              print('🕐 TaskEditScreen: Description formatting completed in ${formatDuration.inMilliseconds}ms');
+              print('TaskEditScreen: Formatted description: ${formattedNotes.substring(0, formattedNotes.length > 100 ? 100 : formattedNotes.length)}...');
+            }
+          }
+        } catch (e) {
+          final fetchEndTime = DateTime.now();
+          print('🕐 TaskEditScreen: Webpage fetch failed after ${fetchEndTime.difference(DateTime.now()).inMilliseconds}ms: $e');
+          // Continue without description
+        }
+
+        return {
+          'headline': title,
+          'notes': formattedNotes,
+          'links': [url],
+        };
+      }
     }
 
     // Check if text contains a URL
@@ -737,9 +814,16 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
       if (cleanHeadline.isEmpty) {
         try {
-          print('TaskEditScreen: No headline text, fetching webpage title...');
+          final titleFetchStartTime = DateTime.now();
+          print('🕐 TaskEditScreen: Starting webpage title fetch for $cleanURL at ${titleFetchStartTime.toIso8601String()}');
+
           final processedLink =
               await LinkProcessor.validateAndProcessLink(cleanURL);
+
+          final titleFetchEndTime = DateTime.now();
+          final titleFetchDuration = titleFetchEndTime.difference(titleFetchStartTime);
+          print('🕐 TaskEditScreen: Webpage title fetch completed in ${titleFetchDuration.inMilliseconds}ms');
+
           cleanHeadline = processedLink.title ?? 'Link';
           linkToStore = processedLink.originalLink; // Use the processed HTML link
           print('TaskEditScreen: Fetched webpage title: "$cleanHeadline"');
@@ -747,8 +831,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
           // Use description from ProcessedLink if available (for JustWatch)
           if (processedLink.description != null && processedLink.description!.isNotEmpty) {
-            fetchedNotes = processedLink.description!;
-            print('TaskEditScreen: Using description from ProcessedLink: "$fetchedNotes"');
+            final descFormatStartTime = DateTime.now();
+            // Format JustWatch descriptions with truncation and "more" link
+            if (cleanURL.contains('justwatch.com')) {
+              fetchedNotes = _formatDescriptionNotes(processedLink.description!, cleanURL);
+            } else {
+              fetchedNotes = processedLink.description!;
+            }
+            final descFormatEndTime = DateTime.now();
+            final descFormatDuration = descFormatEndTime.difference(descFormatStartTime);
+
+            print('🕐 TaskEditScreen: Description processing completed in ${descFormatDuration.inMilliseconds}ms');
+            print('TaskEditScreen: Using description from ProcessedLink: "${fetchedNotes?.substring(0, fetchedNotes.length > 100 ? 100 : fetchedNotes.length)}..."');
           }
           // For Letterboxd URLs, also try to fetch description (if not already fetched)
           else if (cleanURL.contains('letterboxd.com') ||
@@ -811,21 +905,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       }
     }
 
-    // Check if text is an HTML link
-    if (headlineText.trim().startsWith('<a') &&
-        headlineText.trim().endsWith('</a>')) {
-      print('TaskEditScreen: Attempting HTML link parsing');
-      final (url, title) = LinkProcessor.parseHtmlLink(headlineText);
-      if (url != headlineText) {
-        print(
-            'TaskEditScreen: Parsed HTML link - title: "$title", url: "$url"');
-        return {
-          'headline': title ?? 'Link',
-          'notes': null,
-          'links': [url],
-        };
-      }
-    }
 
     // Treat as plain text
     print('TaskEditScreen: Treating as plain text: "$headlineText"');
@@ -839,6 +918,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final saveStartTime = DateTime.now();
+    print('🕐 TaskEditScreen._saveTask: Starting at ${saveStartTime.toIso8601String()}');
+
     setState(() {
       _isLoading = true;
       _error = null;
@@ -848,8 +930,15 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       final userId = AuthUtils.getCurrentUserId();
 
       // Process the headline text to extract links and set appropriate headline
+      final processStartTime = DateTime.now();
+      print('🕐 TaskEditScreen._saveTask: Starting headline processing at ${processStartTime.toIso8601String()}');
+
       final processedData =
           await _processHeadlineText(_headlineController.text);
+
+      final processEndTime = DateTime.now();
+      final processDuration = processEndTime.difference(processStartTime);
+      print('🕐 TaskEditScreen._saveTask: Headline processing completed in ${processDuration.inMilliseconds}ms');
       final processedHeadline = processedData['headline'] as String;
       final processedNotes = processedData['notes'] as String?;
       final newLinks = processedData['links'] as List<String>;
@@ -882,9 +971,14 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       Task? updatedTask;
       if (_localTask == null) {
         // Check for duplicates before creating new task
-        print(
-            'TaskEditScreen: Checking for duplicates before creating new task...');
+        final duplicateCheckStartTime = DateTime.now();
+        print('🕐 TaskEditScreen: Starting duplicate check at ${duplicateCheckStartTime.toIso8601String()}');
+
         final existingTask = await _checkForDuplicateAndMerge(data, userId);
+
+        final duplicateCheckEndTime = DateTime.now();
+        final duplicateCheckDuration = duplicateCheckEndTime.difference(duplicateCheckStartTime);
+        print('🕐 TaskEditScreen: Duplicate check completed in ${duplicateCheckDuration.inMilliseconds}ms');
 
         if (existingTask != null) {
           // Found a duplicate - use the existing task
@@ -893,9 +987,15 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           updatedTask = existingTask;
         } else {
           // No duplicate found - create new task
-          print('TaskEditScreen: No duplicate found, creating new task...');
+          final dbInsertStartTime = DateTime.now();
+          print('🕐 TaskEditScreen: Starting database insert at ${dbInsertStartTime.toIso8601String()}');
+
           final response =
               await supabase.from('Tasks').insert(data).select().single();
+
+          final dbInsertEndTime = DateTime.now();
+          final dbInsertDuration = dbInsertEndTime.difference(dbInsertStartTime);
+          print('🕐 TaskEditScreen: Database insert completed in ${dbInsertDuration.inMilliseconds}ms');
 
           updatedTask = Task.fromJson(response);
           print('TaskEditScreen: Created new task: ${updatedTask.headline}');
@@ -915,16 +1015,24 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         print('TaskEditScreen: Updated task: ${updatedTask.headline}');
       }
 
-      // Wait longer for database transaction to commit
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Database transaction should be committed immediately, no delay needed
 
       // Update the task cache using CacheManager only when saving
-      print('TaskEditScreen: Updating task cache...');
+      final cacheUpdateStartTime = DateTime.now();
+      print('🕐 TaskEditScreen: Starting cache update at ${cacheUpdateStartTime.toIso8601String()}');
+
       final cacheManager = CacheManager();
       if (cacheManager.currentCategory?.id == widget.category.id) {
         print('TaskEditScreen: Updating task in cache...');
         await cacheManager.updateTask(updatedTask);
       }
+
+      final cacheUpdateEndTime = DateTime.now();
+      final cacheUpdateDuration = cacheUpdateEndTime.difference(cacheUpdateStartTime);
+      print('🕐 TaskEditScreen: Cache update completed in ${cacheUpdateDuration.inMilliseconds}ms');
+
+      final totalSaveTime = DateTime.now().difference(saveStartTime);
+      print('🕐 TaskEditScreen: TOTAL SAVE TIME: ${totalSaveTime.inMilliseconds}ms');
 
       print(
         'TaskEditScreen: Task saved successfully, calling edit complete callback...',
@@ -1169,8 +1277,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         },
                         enabled: !_isLoading,
                       ),
-                      // Show preview of links that will be extracted from headline
-                      if (_headlineController.text.isNotEmpty) ...[
+                      // Show preview of links that will be extracted from headline (only for new tasks)
+                      if (widget.task == null && _headlineController.text.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         FutureBuilder<Map<String, dynamic>>(
                           future:

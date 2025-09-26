@@ -77,6 +77,14 @@ class LinkProcessor {
 
   static final Map<String, List<Map<String, String>>> _cookies = {};
 
+  // Global cache for webpage content to avoid redundant fetches
+  static final Map<String, WebpageContent> _webpageContentCache = {};
+  static const Duration _cacheExpiration = Duration(minutes: 5); // Cache for 5 minutes
+  static final Map<String, DateTime> _cacheTimestamps = {};
+
+  // Request deduplication - track in-flight requests to prevent duplicate fetches
+  static final Map<String, Future<WebpageContent?>> _pendingRequests = {};
+
   static Map<String, String>? parseCookieString(String cookieStr) {
     try {
       final parts = cookieStr.split(';').map((s) => s.trim()).toList();
@@ -316,7 +324,37 @@ class LinkProcessor {
   /// Fetches both title and description from a webpage in one request
   static Future<WebpageContent?> fetchWebpageContent(String url) async {
     try {
-      print('LinkProcessor: Fetching content for URL: $url');
+      // Check cache first
+      final cachedContent = _getCachedContent(url);
+      if (cachedContent != null) {
+        return cachedContent;
+      }
+
+      // Check if request is already in progress
+      if (_pendingRequests.containsKey(url)) {
+        return await _pendingRequests[url];
+      }
+
+      // Start new request and track it
+      final requestFuture = _performWebpageContentFetch(url);
+      _pendingRequests[url] = requestFuture;
+
+      try {
+        final result = await requestFuture;
+        return result;
+      } finally {
+        // Clean up pending request
+        _pendingRequests.remove(url);
+      }
+    } catch (e) {
+      print('Error fetching webpage content: $e');
+      return null;
+    }
+  }
+
+  /// Internal method to perform the actual webpage content fetch
+  static Future<WebpageContent?> _performWebpageContentFetch(String url) async {
+    try {
 
       // Try direct request first
       http.Response response;
@@ -326,15 +364,30 @@ class LinkProcessor {
           // Use allorigins.win proxy for web
           final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
           print('LinkProcessor: Using proxy for web: $proxyUrl');
+
+          final httpRequestStartTime = DateTime.now();
+          print('🕐 LinkProcessor: Starting HTTP GET (proxy) at ${httpRequestStartTime.toIso8601String()}');
+
           response = await http.get(Uri.parse(proxyUrl));
+
+          final httpRequestEndTime = DateTime.now();
+          final httpRequestDuration = httpRequestEndTime.difference(httpRequestStartTime);
+          print('🕐 LinkProcessor: HTTP GET (proxy) completed in ${httpRequestDuration.inMilliseconds}ms');
         } else {
           // Direct fetch for mobile or non-proxied sites
+          final httpRequestStartTime = DateTime.now();
+          print('🕐 LinkProcessor: Starting HTTP GET (direct) at ${httpRequestStartTime.toIso8601String()}');
+
           response = await http.get(
             Uri.parse(url),
             headers: {
               'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
             },
           );
+
+          final httpRequestEndTime = DateTime.now();
+          final httpRequestDuration = httpRequestEndTime.difference(httpRequestStartTime);
+          print('🕐 LinkProcessor: HTTP GET (direct) completed in ${httpRequestDuration.inMilliseconds}ms');
         }
 
         if (response.statusCode != 200) {
@@ -346,11 +399,22 @@ class LinkProcessor {
         return null;
       }
 
+      final htmlParseStartTime = DateTime.now();
+      print('🕐 LinkProcessor: Starting HTML parsing at ${htmlParseStartTime.toIso8601String()}');
+
       final document = html_parser.parse(response.body);
+
+      final htmlParseEndTime = DateTime.now();
+      final htmlParseDuration = htmlParseEndTime.difference(htmlParseStartTime);
+      print('🕐 LinkProcessor: HTML parsing completed in ${htmlParseDuration.inMilliseconds}ms');
+
       String? title;
       String? description;
 
       // Extract title based on site type
+      final titleExtractStartTime = DateTime.now();
+      print('🕐 LinkProcessor: Starting title/description extraction at ${titleExtractStartTime.toIso8601String()}');
+
       if (url.contains('justwatch.com')) {
         title = _extractJustWatchTitle(document);
         description = _extractJustWatchDescription(document, url);
@@ -361,15 +425,62 @@ class LinkProcessor {
         title = _extractTitle(document, url);
       }
 
+      final titleExtractEndTime = DateTime.now();
+      final titleExtractDuration = titleExtractEndTime.difference(titleExtractStartTime);
+      print('🕐 LinkProcessor: Title/description extraction completed in ${titleExtractDuration.inMilliseconds}ms');
+
       if (title != null && title.isNotEmpty) {
-        return WebpageContent(title: title, description: description);
+        print('🕐 LinkProcessor: Successfully extracted title: "$title"');
+        if (description != null) {
+          print('🕐 LinkProcessor: Successfully extracted description length: ${description.length} chars');
+        }
+        final content = WebpageContent(title: title, description: description);
+
+        // Cache the result for future use
+        _cacheContent(url, content);
+
+        return content;
       }
 
+      print('🕐 LinkProcessor: Failed to extract title from webpage');
       return null;
     } catch (e) {
       print('LinkProcessor: Error fetching content: $e');
       return null;
     }
+  }
+
+  // Cache helper methods for webpage content
+  static WebpageContent? _getCachedContent(String url) {
+    final cachedContent = _webpageContentCache[url];
+
+    if (cachedContent != null) {
+      final timestamp = _cacheTimestamps[url];
+
+      if (timestamp != null) {
+        final age = DateTime.now().difference(timestamp);
+
+        if (age < _cacheExpiration) {
+          return cachedContent;
+        } else {
+          // Cache expired, remove it
+          _webpageContentCache.remove(url);
+          _cacheTimestamps.remove(url);
+        }
+      }
+    }
+    return null;
+  }
+
+  static void _cacheContent(String url, WebpageContent content) {
+    _webpageContentCache[url] = content;
+    _cacheTimestamps[url] = DateTime.now();
+  }
+
+  // Method to clear cache if needed
+  static void clearWebpageContentCache() {
+    _webpageContentCache.clear();
+    _cacheTimestamps.clear();
   }
 
   /// Extract JustWatch title from parsed document
@@ -396,8 +507,8 @@ class LinkProcessor {
   /// Extract JustWatch description from parsed document
   static String? _extractJustWatchDescription(dom.Document document, String url) {
     try {
-      // Look for synopsis in div#synopsis > p
-      final synopsisElement = document.querySelector('div#synopsis > p');
+      // Look for synopsis in div#synopsis p (descendant, not direct child)
+      final synopsisElement = document.querySelector('div#synopsis p');
       if (synopsisElement != null) {
         final synopsisText = synopsisElement.text.trim();
         if (synopsisText.isNotEmpty) {
@@ -893,16 +1004,30 @@ class LinkProcessor {
 
     String? description;
 
-    // If no linkText is provided, fetch both title and description from webpage
-    if (linkText == null || linkText.isEmpty) {
-      if (url.contains('justwatch.com') || url.contains('letterboxd.com') || url.contains('boxd.it')) {
+    // Always fetch webpage content for validation and description extraction on supported sites
+    if (url.contains('justwatch.com') || url.contains('letterboxd.com') || url.contains('boxd.it')) {
+      if (linkText == null || linkText.isEmpty) {
         print('LinkProcessor: No linkText provided, fetching title and description from webpage...');
-        final content = await fetchWebpageContent(url);
-        if (content != null) {
+      } else {
+        print('LinkProcessor: linkText provided ("$linkText"), fetching description from webpage for validation...');
+      }
+
+      final webpageContentStartTime = DateTime.now();
+      print('🕐 LinkProcessor: Starting fetchWebpageContent for $url at ${webpageContentStartTime.toIso8601String()}');
+
+      final content = await fetchWebpageContent(url);
+
+      final webpageContentEndTime = DateTime.now();
+      final webpageContentDuration = webpageContentEndTime.difference(webpageContentStartTime);
+      print('🕐 LinkProcessor: fetchWebpageContent completed in ${webpageContentDuration.inMilliseconds}ms');
+      if (content != null) {
+        // If no linkText was provided, use the fetched title
+        if (linkText == null || linkText.isEmpty) {
           linkText = content.title;
-          description = content.description;
-          print('LinkProcessor: Fetched title: "$linkText", description: "${description?.substring(0, description.length > 100 ? 100 : description.length)}..."');
         }
+        // Always use the fetched description
+        description = content.description;
+        print('LinkProcessor: Fetched title: "${content.title}", description: "${description?.substring(0, description != null && description.length > 100 ? 100 : description.length)}..."');
       }
     }
 
@@ -1006,6 +1131,20 @@ class LinkProcessor {
 
     print(
         'LinkProcessor: Returning processed link with title: "${processedLink.title}"');
+
+    // If we fetched a description, include it in the returned ProcessedLink
+    if (description != null) {
+      return ProcessedLink(
+        url: processedLink.url,
+        title: processedLink.title,
+        favicon: processedLink.favicon,
+        type: processedLink.type,
+        domain: processedLink.domain,
+        originalLink: processedLink.originalLink,
+        description: description, // Include the fetched description
+      );
+    }
+
     return processedLink;
   }
 }
