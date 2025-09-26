@@ -91,8 +91,15 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
   }
 
   void _updateUrlTextState() {
-    final hasText = _urlController.text.trim().isNotEmpty;
-    print('URL text changed: "${_urlController.text}" -> hasText: $hasText');
+    final inputText = _urlController.text.trim();
+    final hasText = inputText.isNotEmpty;
+    print('URL text changed: "$inputText" -> hasText: $hasText');
+
+    // Check if input looks like an HTML link
+    if (hasText && inputText.startsWith('<a href="') && inputText.contains('">')) {
+      _parseHtmlLinkInput(inputText);
+    }
+
     if (hasText != _hasUrlText) {
       print('Updating _hasUrlText from $_hasUrlText to $hasText');
       setState(() {
@@ -100,6 +107,47 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
         // Clear duplicate task name when URL changes
         _duplicateTaskName = null;
         _lastDuplicateResult = null;
+        _error = null;
+      });
+    }
+  }
+
+  void _parseHtmlLinkInput(String htmlInput) {
+    print('LinkEditScreen: Detected HTML link input: "$htmlInput"');
+
+    // Fix common malformed HTML patterns (similar to TaskEnricher and TaskEditScreen)
+    String htmlToProcess = htmlInput;
+    if (htmlToProcess.endsWith('<a>')) {
+      htmlToProcess = htmlToProcess.replaceAll(RegExp(r'<a>$'), '</a>');
+      print('LinkEditScreen: Fixed malformed HTML link - changed <a> to </a>');
+    } else if (!htmlToProcess.endsWith('</a>')) {
+      if (htmlToProcess.contains('<a>')) {
+        htmlToProcess = htmlToProcess.replaceAll('<a>', '</a>');
+        print('LinkEditScreen: Fixed malformed HTML link - changed <a> to </a>');
+      } else {
+        htmlToProcess = htmlToProcess + '</a>';
+        print('LinkEditScreen: Added missing closing tag </a>');
+      }
+    }
+
+    final (url, title) = LinkProcessor.parseHtmlLink(htmlToProcess);
+
+    if (url.isNotEmpty && url != htmlInput) {
+      print('LinkEditScreen: Parsed HTML - URL: "$url", title: "$title"');
+
+      // Update both fields without triggering infinite loops
+      _urlController.removeListener(_updateUrlTextState);
+
+      _urlController.text = url;
+      if (title != null && title.isNotEmpty) {
+        _textController.text = title;
+      }
+
+      _urlController.addListener(_updateUrlTextState);
+
+      // Update state
+      setState(() {
+        _hasUrlText = true;
         _error = null;
       });
     }
