@@ -2,6 +2,8 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/performance_profiler.dart';
+import 'package:meaning_to/utils/app_state_manager.dart';
+import 'package:meaning_to/utils/auth.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:meaning_to/utils/text_importer.dart';
@@ -46,6 +48,9 @@ class CacheManager with PerformanceMonitoring {
       _currentCategory = category;
       _currentUserId = userId;
       _isUnsavedCategory = false;
+
+      // Persist the current category for state restoration
+      await AppStateManager.saveCurrentCategory(category);
 
       await _loadTasksFromApi();
     } catch (e, stackTrace) {
@@ -114,8 +119,8 @@ class CacheManager with PerformanceMonitoring {
 
   /// Initialize cache with a new unsaved Category and its Tasks
   /// The Category and Tasks are not yet saved to the database
-  void initializeWithUnsavedCategory(
-      Category category, List<Task> tasks, String userId) {
+  Future<void> initializeWithUnsavedCategory(
+      Category category, List<Task> tasks, String userId) async {
     print(
         'CacheManager: Initializing with unsaved category ${category.headline}');
 
@@ -124,6 +129,9 @@ class CacheManager with PerformanceMonitoring {
         List.from(tasks); // Create a copy to avoid external modifications
     _currentUserId = userId;
     _isUnsavedCategory = true;
+
+    // Persist the current category for state restoration
+    await AppStateManager.saveCurrentCategory(category);
 
     // Sort tasks: unfinished first, then by suggestibleAt ascending
     _sortTasks();
@@ -583,6 +591,53 @@ class CacheManager with PerformanceMonitoring {
     _currentUserId = null;
     _isUnsavedCategory = false;
     print('CacheManager: Cache cleared');
+  }
+
+  /// Attempt to restore the last category from persistent storage
+  Future<Category?> restoreLastCategory(String userId) async {
+    try {
+      // First verify the user is still authenticated
+      final currentUser = AuthUtils.getCurrentUser();
+      if (currentUser == null || currentUser.id != userId) {
+        print('CacheManager: User authentication mismatch or expired');
+        print('CacheManager: Expected user: $userId, current: ${currentUser?.id ?? 'null'}');
+        await AppStateManager.clearState();
+        return null;
+      }
+
+      final categoryId = await AppStateManager.getCurrentCategoryId();
+      if (categoryId == null) {
+        print('CacheManager: No saved category ID found');
+        return null;
+      }
+
+      print('CacheManager: Attempting to restore category: $categoryId for user: $userId');
+
+      // Load the category from the database
+      final categoryIdInt = int.tryParse(categoryId);
+      if (categoryIdInt == null) {
+        print('CacheManager: Invalid category ID format: $categoryId');
+        await AppStateManager.clearState();
+        return null;
+      }
+
+      final category = await ApiClient.getCategoryById(categoryIdInt);
+      if (category != null) {
+        // Initialize with the restored category
+        await initializeWithSavedCategory(category, userId);
+        print('CacheManager: Successfully restored category: ${category.headline}');
+        return category;
+      } else {
+        print('CacheManager: Category $categoryId not found in database');
+        // Clear the invalid saved state
+        await AppStateManager.clearState();
+      }
+    } catch (e) {
+      print('CacheManager: Error restoring last category: $e');
+      // Clear potentially corrupted state
+      await AppStateManager.clearState();
+    }
+    return null;
   }
 
   /// Sort tasks: unfinished first, then by suggestibleAt ascending
@@ -1251,6 +1306,66 @@ class CacheManager with PerformanceMonitoring {
       print('CacheManager: Error in force refresh: $e');
       print('CacheManager: Stack trace: $stackTrace');
       rethrow;
+    }
+  }
+
+  // Recent Category Management
+  static const String _recentCategoriesKey = 'recent_categories';
+  static const int _maxRecentCategories = 5;
+
+  /// Get list of recent category IDs in order of most recent first
+  static Future<List<int>> getRecentCategoryIds() async {
+    try {
+      // For now, return empty list - in future could use SharedPreferences
+      // final prefs = await SharedPreferences.getInstance();
+      // final recentJson = prefs.getString(_recentCategoriesKey);
+      // if (recentJson != null) {
+      //   final List<dynamic> recentList = json.decode(recentJson);
+      //   return recentList.cast<int>();
+      // }
+      return [];
+    } catch (e) {
+      print('CacheManager: Error loading recent categories: $e');
+      return [];
+    }
+  }
+
+  /// Add a category to the recent list (moves to front if already exists)
+  static Future<void> addRecentCategory(int categoryId) async {
+    try {
+      // For now, just log - in future could use SharedPreferences
+      print('CacheManager: Would add category $categoryId to recent list');
+
+      // final prefs = await SharedPreferences.getInstance();
+      // final currentRecent = await getRecentCategoryIds();
+      //
+      // // Remove if already exists
+      // currentRecent.removeWhere((id) => id == categoryId);
+      //
+      // // Add to front
+      // currentRecent.insert(0, categoryId);
+      //
+      // // Limit to max recent
+      // if (currentRecent.length > _maxRecentCategories) {
+      //   currentRecent.removeRange(_maxRecentCategories, currentRecent.length);
+      // }
+      //
+      // await prefs.setString(_recentCategoriesKey, json.encode(currentRecent));
+    } catch (e) {
+      print('CacheManager: Error saving recent category: $e');
+    }
+  }
+
+  /// Clear recent categories list
+  static Future<void> clearRecentCategories() async {
+    try {
+      // For now, just log - in future could use SharedPreferences
+      print('CacheManager: Would clear recent categories');
+
+      // final prefs = await SharedPreferences.getInstance();
+      // await prefs.remove(_recentCategoriesKey);
+    } catch (e) {
+      print('CacheManager: Error clearing recent categories: $e');
     }
   }
 }

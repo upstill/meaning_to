@@ -487,9 +487,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
   @override
   Widget build(BuildContext context) {
-    print(
-      '🔍 TaskDisplay build called for: ${widget.task.headline}, expanded: $_isExpanded',
-    );
     final theme = Theme.of(context);
 
     // Use the new method from Task class for consistent evaluation
