@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/main.dart';
 import 'package:meaning_to/utils/auth.dart';
+import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/app_state_manager.dart';
 import 'package:meaning_to/models/task.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -29,7 +31,7 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     // Add a delay to ensure everything is initialized
-    Future.delayed(const Duration(seconds: 2), () {
+    Future.delayed(const Duration(seconds: 2), () async {
       if (!mounted) return;
 
       // Check authentication status
@@ -42,10 +44,14 @@ class _SplashScreenState extends State<SplashScreen> {
       print('SplashScreen: Is authenticated: $isAuthenticated');
 
       if (isAuthenticated) {
-        print('SplashScreen: User is authenticated, navigating to home');
-        Navigator.of(context).pushReplacementNamed('/home');
+        print('🔥🔥🔥 SPLASH SCREEN: NEW CODE RUNNING - ATTEMPTING STATE RESTORATION 🔥🔥🔥');
+        _navigateWithStateRestoration(currentUser!.id);
       } else {
         print('SplashScreen: Showing welcome screen (user not authenticated)');
+        // Clear any saved state since user is not authenticated
+        await AppStateManager.clearState();
+        // Mark state restoration as complete for non-authenticated users
+        MyApp.isStateRestored = true;
         setState(() {
           _showWelcomeScreen = true;
         });
@@ -56,6 +62,44 @@ class _SplashScreenState extends State<SplashScreen> {
   void _navigateToLogin() {
     print('SplashScreen: Navigating to login screen');
     Navigator.of(context).pushReplacementNamed('/auth');
+  }
+
+  /// Attempt to restore the user's last state and navigate accordingly
+  Future<void> _navigateWithStateRestoration(String userId) async {
+    try {
+      print('SplashScreen: Attempting to restore last category for user: $userId');
+
+      final cacheManager = CacheManager();
+      final restoredCategory = await cacheManager.restoreLastCategory(userId);
+
+      print('SplashScreen: State restoration result: ${restoredCategory?.headline ?? 'null'}');
+
+      // Mark state restoration as complete
+      MyApp.isStateRestored = true;
+
+      if (restoredCategory != null) {
+        print('SplashScreen: State restored successfully');
+        print('SplashScreen: Category ID: ${restoredCategory.id}');
+        print('SplashScreen: Category headline: ${restoredCategory.headline}');
+        print('SplashScreen: Navigating to /category with ID: ${restoredCategory.id}');
+
+        // Navigate to home screen with the restored category
+        Navigator.of(context).pushReplacementNamed('/category', arguments: {
+          'categoryId': restoredCategory.id.toString(),
+        });
+      } else {
+        print('SplashScreen: No category to restore, navigating to normal home screen');
+        Navigator.of(context).pushReplacementNamed('/home');
+      }
+    } catch (e, stackTrace) {
+      print('SplashScreen: Error during state restoration: $e');
+      print('SplashScreen: Stack trace: $stackTrace');
+      // Mark state restoration as complete even if failed
+      MyApp.isStateRestored = true;
+      // Fallback to normal home screen
+      print('SplashScreen: Falling back to normal home screen');
+      Navigator.of(context).pushReplacementNamed('/home');
+    }
   }
 
   void _navigateAsGuest() async {

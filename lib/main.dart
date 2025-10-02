@@ -24,6 +24,7 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/share_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // Remove the instance creation since we'll use static methods
 // final _receiveSharingIntent = ReceiveSharingIntent();
@@ -53,6 +54,15 @@ void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
 
+    // Load environment variables
+    try {
+      await dotenv.load(fileName: '.env');
+      print('Environment variables loaded successfully');
+    } catch (e) {
+      print('Warning: Could not load .env file: $e');
+      // Continue without .env file - app should still work with hardcoded values
+    }
+
     // Configure debug port for DeepLinkGenerator if running in debug mode
     if (foundation.kDebugMode && foundation.kIsWeb) {
       try {
@@ -69,11 +79,15 @@ void main() async {
       }
     }
 
-    // Initialize Supabase with hardcoded credentials for Vercel deployment
+    // Initialize Supabase with secure environment variables
+    const supabaseUrl = String.fromEnvironment('SUPABASE_URL',
+        defaultValue: 'https://zhpxdayfpysoixxjjqik.supabase.co'); // Fallback for local dev
+    const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY',
+        defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpocHhkYXlmcHlzb2l4eGpqcWlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0Mjk4MjAsImV4cCI6MjA2MTAwNTgyMH0.vWogNfl_98kZaTLFFf3sMSyddZBSjBt9D1yxTTiamVQ'); // Fallback for local dev
+
     await Supabase.initialize(
-      url: 'https://zhpxdayfpysoixxjjqik.supabase.co',
-      anonKey:
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpocHhkYXlmcHlzb2l4eGpqcWlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0Mjk4MjAsImV4cCI6MjA2MTAwNTgyMH0.vWogNfl_98kZaTLFFf3sMSyddZBSjBt9D1yxTTiamVQ',
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
     );
 
     print(
@@ -109,6 +123,7 @@ class MyApp extends StatefulWidget {
       GlobalKey<NavigatorState>();
   static bool isHandlingDeepLink =
       false; // Static flag for other widgets to check
+  static bool isStateRestored = false; // Flag to track if state restoration is complete
 
   const MyApp({super.key});
 

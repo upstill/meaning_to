@@ -16,6 +16,8 @@ import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
 import 'package:clipboard/clipboard.dart';
+import 'package:flutter_html/flutter_html.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
@@ -1386,31 +1388,37 @@ class HomeScreenState extends State<HomeScreen> {
                                         if (_randomTask!.notes != null &&
                                             _randomTask!.notes!.isNotEmpty) ...[
                                           const SizedBox(height: 8),
-                                          Text.rich(
-                                            textAlign: TextAlign.left,
-                                            TextSpan(
-                                              children: [
-                                                TextSpan(
-                                                  text: _randomTask!.notes!,
-                                                  style: Theme.of(context)
-                                                      .textTheme
-                                                      .bodyMedium
-                                                      ?.copyWith(
-                                                        color: _randomTask!
-                                                                        .suggestibleAt !=
-                                                                    null &&
-                                                                _randomTask!
-                                                                    .suggestibleAt!
-                                                                    .isAfter(
-                                                                  DateTime
-                                                                      .now(),
-                                                                )
-                                                            ? Colors.grey
-                                                            : null,
-                                                      ),
+                                          Html(
+                                            data: _randomTask!.notes!,
+                                            style: {
+                                              "body": Style(
+                                                fontSize: FontSize(
+                                                  Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14,
                                                 ),
-                                              ],
-                                            ),
+                                                color: _randomTask!.suggestibleAt != null &&
+                                                        _randomTask!.suggestibleAt!.isAfter(DateTime.now())
+                                                    ? Colors.grey
+                                                    : Theme.of(context).textTheme.bodyMedium?.color,
+                                                margin: Margins.zero,
+                                                padding: HtmlPaddings.zero,
+                                              ),
+                                              "a": Style(
+                                                color: Theme.of(context).colorScheme.primary,
+                                                textDecoration: TextDecoration.underline,
+                                              ),
+                                            },
+                                            onLinkTap: (url, htmlContext, attributes) async {
+                                              if (url != null) {
+                                                try {
+                                                  final uri = Uri.parse(url);
+                                                  if (await canLaunchUrl(uri)) {
+                                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                                  }
+                                                } catch (e) {
+                                                  // Error handling without verbose logging
+                                                }
+                                              }
+                                            },
                                           ),
                                         ],
                                         if (_randomTask!.links != null &&

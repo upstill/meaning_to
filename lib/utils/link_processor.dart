@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/site_configurations.dart';
+import 'package:meaning_to/utils/youtube_api.dart';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
@@ -357,22 +359,100 @@ class LinkProcessor {
     try {
 
       // Try direct request first
-      http.Response response;
+      http.Response? response;
       try {
-        // Check if we need to use proxy for web (JustWatch and Letterboxd)
-        if (kIsWeb && (url.contains('justwatch.com') || url.contains('letterboxd.com') || url.contains('boxd.it'))) {
-          // Use allorigins.win proxy for web
-          final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
-          print('LinkProcessor: Using proxy for web: $proxyUrl');
+        final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
 
-          final httpRequestStartTime = DateTime.now();
-          print('🕐 LinkProcessor: Starting HTTP GET (proxy) at ${httpRequestStartTime.toIso8601String()}');
+        // For YouTube with API available, try API first without fetching HTML
+        if (url.contains('youtube.com') && YouTubeApiService.isAvailable) {
+          print('LinkProcessor: Attempting YouTube API extraction first');
+          try {
+            final videoInfo = await YouTubeApiService.getVideoInfoFromUrl(url);
+            if (videoInfo != null) {
+              String title = videoInfo.title;
+              // Apply title processing from site config
+              if (siteConfig.customSettings?['truncateTitle'] == true) {
+                final pattern = siteConfig.customSettings?['titleTruncationPattern'] as String?;
+                if (pattern != null) {
+                  title = title.replaceFirst(RegExp(pattern), '').trim();
+                }
+              }
+              print('LinkProcessor: Successfully extracted title via YouTube API: "$title"');
+              final content = WebpageContent(title: title, description: videoInfo.description);
+              _cacheContent(url, content);
+              return content;
+            }
+          } catch (e) {
+            print('LinkProcessor: YouTube API extraction failed: $e');
+          }
+          print('LinkProcessor: YouTube API failed, falling back to web scraping with proxy');
+        }
 
-          response = await http.get(Uri.parse(proxyUrl));
+        // Check if we need to use proxy for web based on site configuration or API fallback
+        if (kIsWeb && (SiteConfigRegistry.shouldUseProxy(url) || siteConfig.needsProxyForFallback())) {
+          print('LinkProcessor: Web environment detected, using CORS proxy for: $url');
 
-          final httpRequestEndTime = DateTime.now();
-          final httpRequestDuration = httpRequestEndTime.difference(httpRequestStartTime);
-          print('🕐 LinkProcessor: HTTP GET (proxy) completed in ${httpRequestDuration.inMilliseconds}ms');
+          // Try multiple proxy services for better reliability
+          // Order matters: corsproxy.io works best for YouTube
+          final proxyUrls = [
+            'https://corsproxy.io/?${Uri.encodeComponent(url)}',
+            'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}',
+            'https://cors-anywhere.herokuapp.com/$url',
+          ];
+
+          bool proxySuccess = false;
+
+          for (final proxyUrl in proxyUrls) {
+            try {
+              print('LinkProcessor: Attempting proxy: ${proxyUrl.split('?')[0]}...');
+
+              final httpRequestStartTime = DateTime.now();
+              print('🕐 LinkProcessor: Starting HTTP GET (proxy) at ${httpRequestStartTime.toIso8601String()}');
+
+              response = await http.get(
+                Uri.parse(proxyUrl),
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                },
+              ).timeout(Duration(seconds: 10));
+
+              final httpRequestEndTime = DateTime.now();
+              final httpRequestDuration = httpRequestEndTime.difference(httpRequestStartTime);
+              print('🕐 LinkProcessor: HTTP GET (proxy) completed in ${httpRequestDuration.inMilliseconds}ms');
+
+              if (response.statusCode == 200 && response.body.length > 1000) {
+                // For YouTube, validate that we actually got YouTube content
+                bool isValidYouTubeContent = true;
+                if (url.contains('youtube.com')) {
+                  // Check for basic YouTube indicators in the content
+                  final hasYouTubeContent = response.body.contains('ytInitialData') ||
+                                          response.body.contains('watch?v=') ||
+                                          response.body.contains('<title>') ||
+                                          response.body.contains('meta name="title"');
+                  isValidYouTubeContent = hasYouTubeContent;
+                  print('LinkProcessor: YouTube content validation: $isValidYouTubeContent');
+                }
+
+                if (isValidYouTubeContent) {
+                  print('LinkProcessor: Proxy successful with ${proxyUrl.split('?')[0]}');
+                  proxySuccess = true;
+                  break;
+                } else {
+                  print('LinkProcessor: Proxy returned invalid YouTube content');
+                }
+              } else {
+                print('LinkProcessor: Proxy returned status ${response.statusCode}, body length: ${response.body.length}');
+              }
+            } catch (e) {
+              print('LinkProcessor: Proxy ${proxyUrl.split('?')[0]} failed: $e');
+              continue;
+            }
+          }
+
+          if (!proxySuccess) {
+            print('LinkProcessor: All proxy attempts failed, unable to fetch content');
+            return null;
+          }
         } else {
           // Direct fetch for mobile or non-proxied sites
           final httpRequestStartTime = DateTime.now();
@@ -390,8 +470,8 @@ class LinkProcessor {
           print('🕐 LinkProcessor: HTTP GET (direct) completed in ${httpRequestDuration.inMilliseconds}ms');
         }
 
-        if (response.statusCode != 200) {
-          print('LinkProcessor: HTTP ${response.statusCode} for $url');
+        if (response == null || response.statusCode != 200) {
+          print('LinkProcessor: HTTP ${response?.statusCode ?? 'null'} for $url');
           return null;
         }
       } catch (e) {
@@ -411,19 +491,18 @@ class LinkProcessor {
       String? title;
       String? description;
 
-      // Extract title based on site type
+      // Extract title and description using site configuration
       final titleExtractStartTime = DateTime.now();
       print('🕐 LinkProcessor: Starting title/description extraction at ${titleExtractStartTime.toIso8601String()}');
 
-      if (url.contains('justwatch.com')) {
-        title = _extractJustWatchTitle(document);
-        description = _extractJustWatchDescription(document, url);
-      } else if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
-        title = _extractTitle(document, url);
-        // Add Letterboxd description extraction if needed
-      } else {
-        title = _extractTitle(document, url);
-      }
+      final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
+      print('LinkProcessor: Using site configuration for ${siteConfig.displayName}');
+
+      // Use HTML parsing for title extraction (API was already tried above for YouTube)
+      title = siteConfig.extractTitle(document);
+
+      // Extract description using traditional HTML parsing
+      description = siteConfig.extractDescription(document);
 
       final titleExtractEndTime = DateTime.now();
       final titleExtractDuration = titleExtractEndTime.difference(titleExtractStartTime);
@@ -483,44 +562,7 @@ class LinkProcessor {
     _cacheTimestamps.clear();
   }
 
-  /// Extract JustWatch title from parsed document
-  static String? _extractJustWatchTitle(dom.Document document) {
-    // First priority: JustWatch-specific CSS selector
-    final titleElement = document.querySelector('h1.title-detail-hero__details__title');
-    if (titleElement != null) {
-      // Get only direct text content, not nested spans (which contain the year)
-      String directText = '';
-      for (final node in titleElement.nodes) {
-        if (node.nodeType == 3) { // Text node
-          directText += node.text ?? '';
-        }
-      }
-      final justWatchTitle = directText.trim();
-      if (justWatchTitle.isNotEmpty) {
-        print('LinkProcessor: Found JustWatch title via CSS selector (direct text only): "$justWatchTitle"');
-        return justWatchTitle;
-      }
-    }
-    return null;
-  }
-
-  /// Extract JustWatch description from parsed document
-  static String? _extractJustWatchDescription(dom.Document document, String url) {
-    try {
-      // Look for synopsis in div#synopsis p (descendant, not direct child)
-      final synopsisElement = document.querySelector('div#synopsis p');
-      if (synopsisElement != null) {
-        final synopsisText = synopsisElement.text.trim();
-        if (synopsisText.isNotEmpty) {
-          print('LinkProcessor: Found JustWatch synopsis via CSS selector');
-          return synopsisText;
-        }
-      }
-    } catch (e) {
-      print('LinkProcessor: Error extracting JustWatch description: $e');
-    }
-    return null;
-  }
+  // JustWatch-specific extraction methods removed - now handled by SiteConfig system
 
   /// Extract title from parsed document using generic methods
   static String? _extractTitle(dom.Document document, String url) {
@@ -530,14 +572,7 @@ class LinkProcessor {
     // Second priority: <title> tag
     title = document.querySelector('title')?.text.trim();
     if (title != null && title.isNotEmpty) {
-      // Special handling for Letterboxd URLs - truncate at year in parentheses
-      if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
-        title = _truncateLetterboxdTitle(title);
-      }
-      // Special handling for JustWatch URLs - truncate at year and streaming text
-      else if (url.contains('justwatch.com')) {
-        title = _truncateJustWatchTitle(title);
-      }
+      // Site-specific processing now handled by SiteConfig system
       return title;
     }
 
@@ -585,8 +620,8 @@ class LinkProcessor {
       // Try direct request first
       http.Response response;
       try {
-        // Check if we need to use proxy for web (JustWatch and Letterboxd)
-        if (kIsWeb && (url.contains('justwatch.com') || url.contains('letterboxd.com') || url.contains('boxd.it'))) {
+        // Check if we need to use proxy for web based on site configuration
+        if (kIsWeb && SiteConfigRegistry.shouldUseProxy(url)) {
           // Temporarily use allorigins.win proxy until Vercel API deploys
           final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
           print('LinkProcessor: Using proxy for web: $proxyUrl');
@@ -1004,8 +1039,11 @@ class LinkProcessor {
 
     String? description;
 
-    // Always fetch webpage content for validation and description extraction on supported sites
-    if (url.contains('justwatch.com') || url.contains('letterboxd.com') || url.contains('boxd.it')) {
+    // Determine if we should fetch webpage content
+    final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
+    final shouldFetchContent = _shouldFetchWebpageContent(url, linkText, siteConfig);
+
+    if (shouldFetchContent) {
       if (linkText == null || linkText.isEmpty) {
         print('LinkProcessor: No linkText provided, fetching title and description from webpage...');
       } else {
@@ -1146,6 +1184,26 @@ class LinkProcessor {
     }
 
     return processedLink;
+  }
+
+  /// Determines whether webpage content should be fetched for a given URL
+  static bool _shouldFetchWebpageContent(String url, String? linkText, SiteConfig siteConfig) {
+    // Always fetch for specifically registered sites (JustWatch, Letterboxd, etc.)
+    if (siteConfig.domain != '*') {
+      return true;
+    }
+
+    // For unregistered sites using default config, fetch if:
+    // 1. No linkText provided (need to extract title)
+    // 2. LinkText is empty or just a URL (need better title)
+    if (linkText == null || linkText.isEmpty || linkText == url) {
+      return true;
+    }
+
+    // Don't fetch for unregistered sites when we already have descriptive linkText
+    // This avoids unnecessary requests while still allowing default config to work
+    // when content extraction is actually needed
+    return false;
   }
 }
 

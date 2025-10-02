@@ -17,6 +17,7 @@ import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/justwatch_import_screen.dart';
 import 'package:meaning_to/letterboxd_import_screen.dart';
 import 'package:meaning_to/models/icon.dart';
+import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 
 // Widget to display favicon for a domain
 class DomainFaviconWidget extends StatelessWidget {
@@ -82,8 +83,20 @@ class TaskEditScreen extends StatefulWidget {
 
   final Category category;
   final Task? task; // null for new task, existing task for edit
+  final List<String>? initialLinks; // Links to pre-populate for new tasks
+  final String? initialHeadline; // Headline to pre-populate for new tasks
+  final String? initialNotes; // Notes to pre-populate for new tasks
+  final bool showAlternativeOptions; // Whether to show bulk import options
 
-  const TaskEditScreen({super.key, required this.category, this.task});
+  const TaskEditScreen({
+    super.key,
+    required this.category,
+    this.task,
+    this.initialLinks,
+    this.initialHeadline,
+    this.initialNotes,
+    this.showAlternativeOptions = true,
+  });
 
   @override
   State<TaskEditScreen> createState() => _TaskEditScreenState();
@@ -125,11 +138,20 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       }
     }
 
-    _headlineController =
-        TextEditingController(text: _localTask?.headline ?? '');
-    _notesController = TextEditingController(text: _localTask?.notes ?? '');
-    _links =
-        _localTask?.links != null ? List<String>.from(_localTask!.links!) : [];
+    // Initialize controllers with task data or initial values
+    _headlineController = TextEditingController(
+        text: _localTask?.headline ?? widget.initialHeadline ?? '');
+    _notesController = TextEditingController(
+        text: _localTask?.notes ?? widget.initialNotes ?? '');
+
+    // Initialize links from task or initial values
+    if (_localTask?.links != null) {
+      _links = List<String>.from(_localTask!.links!);
+    } else if (widget.initialLinks != null) {
+      _links = List<String>.from(widget.initialLinks!);
+    } else {
+      _links = [];
+    }
 
     // For existing tasks, use their current shared state
     // For new tasks, use the category's tasksArePrivate setting
@@ -155,6 +177,184 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     _headlineController.dispose();
     _notesController.dispose();
     super.dispose();
+  }
+
+  /// Show category selection dialog
+  void _showCategorySelectionDialog() async {
+    await CategoryPickerDialog.show(
+      context,
+      title:
+          'Select ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+      defaultCategory: widget.category,
+      onCategorySelected: (Category selectedCategory) async {
+        if (selectedCategory.id != widget.category.id) {
+          if (_localTask == null) {
+            // For new tasks, just change the category
+            await _changeCategoryForNewTask(selectedCategory);
+          } else {
+            // For existing tasks, show move/copy dialog
+            await _showMoveOrCopyDialog(selectedCategory);
+          }
+        }
+      },
+    );
+  }
+
+  /// Change category for a new task
+  Future<void> _changeCategoryForNewTask(Category newCategory) async {
+    // Navigate back to TaskEditScreen with the new category
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => TaskEditScreen(
+          category: newCategory,
+          initialLinks: _links.isNotEmpty ? _links : null,
+          initialHeadline: _headlineController.text.isNotEmpty
+              ? _headlineController.text
+              : null,
+          initialNotes:
+              _notesController.text.isNotEmpty ? _notesController.text : null,
+          showAlternativeOptions: widget.showAlternativeOptions,
+        ),
+      ),
+    );
+  }
+
+  /// Show dialog to choose between moving or copying the task
+  Future<void> _showMoveOrCopyDialog(Category newCategory) async {
+    bool shouldMove = true; // Default to move
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(
+              'Change ${NamingUtils.categoriesName(capitalize: false, plural: false)}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  'Move this ${NamingUtils.tasksName(capitalize: false, plural: false)} to "${newCategory.headline}"?'),
+              const SizedBox(height: 16),
+              RadioListTile<bool>(
+                title: Text(
+                    'Move ${NamingUtils.tasksName(capitalize: false, plural: false)}'),
+                subtitle: Text('Remove from "${widget.category.headline}"'),
+                value: true,
+                groupValue: shouldMove,
+                onChanged: (value) {
+                  setState(() {
+                    shouldMove = value ?? true;
+                  });
+                },
+              ),
+              RadioListTile<bool>(
+                title: Text(
+                    'Copy ${NamingUtils.tasksName(capitalize: false, plural: false)}'),
+                subtitle: Text(
+                    'Keep in both "${widget.category.headline}" and "${newCategory.headline}"'),
+                value: false,
+                groupValue: shouldMove,
+                onChanged: (value) {
+                  setState(() {
+                    shouldMove = value ?? false;
+                  });
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(shouldMove),
+              child: const Text('Okay'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && _localTask != null) {
+      try {
+        if (result) {
+          // Move the task - update the category_id
+          await supabase
+              .from('Tasks')
+              .update({'category_id': newCategory.id}).eq('id', _localTask!.id);
+
+          // Navigate to the new category's TaskEditScreen
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => TaskEditScreen(
+                category: newCategory,
+                task: _localTask,
+              ),
+            ),
+          );
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  '${NamingUtils.tasksName(capitalize: true, plural: false)} moved to "${newCategory.headline}"'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          // Copy the task - create a new task in the new category
+          final newTaskData = {
+            'category_id': newCategory.id,
+            'headline': _localTask!.headline,
+            'links': _localTask!.links,
+            'notes': _localTask!.notes,
+            'owner_id': _localTask!.ownerId,
+            'suggestible_at': _localTask!.suggestibleAt?.toIso8601String(),
+            'triggers_at': _localTask!.triggersAt?.toIso8601String(),
+            'deferral': _localTask!.deferral,
+            'finished': _localTask!.finished,
+            'shared': _localTask!.shared,
+          };
+
+          final response = await supabase
+              .from('Tasks')
+              .insert(newTaskData)
+              .select()
+              .single();
+          final copiedTask = Task.fromJson(response);
+
+          // Navigate to the new category's TaskEditScreen with the copied task
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => TaskEditScreen(
+                category: newCategory,
+                task: copiedTask,
+              ),
+            ),
+          );
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  '${NamingUtils.tasksName(capitalize: true, plural: false)} copied to "${newCategory.headline}"'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+        // Refresh the cache
+        await CacheManager().refreshCurrentCategoryTasks();
+      } catch (e) {
+        print('Error moving/copying task: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _addLink() async {
@@ -678,20 +878,15 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
-  /// Format notes with description truncation and "more" link
-  String _formatDescriptionNotes(String description, String url) {
+  /// Format Letterboxd notes similar to JustWatch imports
+  String _formatLetterboxdNotes(String description, String url) {
     // Truncate to first 100 characters
     String truncatedDescription = description.length > 100
         ? '${description.substring(0, 100)}...'
         : description;
 
-    // Create formatted notes with description + link to original page
+    // Create formatted notes with description + Letterboxd link
     return '$truncatedDescription <a href="$url">(more)</a>';
-  }
-
-  /// Format Letterboxd notes similar to JustWatch imports
-  String _formatLetterboxdNotes(String description, String url) {
-    return _formatDescriptionNotes(description, url);
   }
 
   /// Process headline text to extract links and set appropriate headline
@@ -704,78 +899,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         'notes': null,
         'links': <String>[],
       };
-    }
-
-    // Only process HTML/URLs for NEW tasks, not when editing existing tasks
-    if (widget.task != null) {
-      print('TaskEditScreen: Editing existing task - treating headline as plain text');
-      return {
-        'headline': headlineText.trim(),
-        'notes': null,
-        'links': <String>[],
-      };
-    }
-
-    // Check if text is an HTML link FIRST (before URL detection)
-    if (headlineText.trim().startsWith('<a href="') && headlineText.trim().contains('">')) {
-      String htmlToProcess = headlineText.trim();
-
-      // Fix common malformed HTML patterns
-      if (htmlToProcess.endsWith('<a>')) {
-        htmlToProcess = htmlToProcess.replaceAll(RegExp(r'<a>$'), '</a>');
-        print('TaskEditScreen: Fixed malformed HTML link - changed <a> to </a>');
-      } else if (!htmlToProcess.endsWith('</a>')) {
-        if (htmlToProcess.contains('<a>')) {
-          htmlToProcess = htmlToProcess.replaceAll('<a>', '</a>');
-          print('TaskEditScreen: Fixed malformed HTML link - changed <a> to </a>');
-        } else {
-          htmlToProcess = htmlToProcess + '</a>';
-          print('TaskEditScreen: Added missing closing tag </a>');
-        }
-      }
-
-      print('TaskEditScreen: Attempting HTML link parsing');
-      final (url, title) = LinkProcessor.parseHtmlLink(htmlToProcess);
-      if (url != headlineText && title != null && title.isNotEmpty) {
-        print(
-            'TaskEditScreen: Parsed HTML link - title: "$title", url: "$url"');
-
-        // Fetch webpage content for description if it's a supported site
-        String? formattedNotes;
-        try {
-          if (url.contains('justwatch.com') || url.contains('letterboxd.com') || url.contains('boxd.it')) {
-            final fetchStartTime = DateTime.now();
-            print('🕐 TaskEditScreen: Starting webpage fetch for $url at ${fetchStartTime.toIso8601String()}');
-
-            final processedLink = await LinkProcessor.validateAndProcessLink(url, linkText: title);
-
-            final fetchEndTime = DateTime.now();
-            final fetchDuration = fetchEndTime.difference(fetchStartTime);
-            print('🕐 TaskEditScreen: Webpage fetch completed in ${fetchDuration.inMilliseconds}ms');
-
-            final description = processedLink.description;
-            if (description != null && description.isNotEmpty) {
-              final formatStartTime = DateTime.now();
-              formattedNotes = _formatDescriptionNotes(description, url);
-              final formatEndTime = DateTime.now();
-              final formatDuration = formatEndTime.difference(formatStartTime);
-
-              print('🕐 TaskEditScreen: Description formatting completed in ${formatDuration.inMilliseconds}ms');
-              print('TaskEditScreen: Formatted description: ${formattedNotes.substring(0, formattedNotes.length > 100 ? 100 : formattedNotes.length)}...');
-            }
-          }
-        } catch (e) {
-          final fetchEndTime = DateTime.now();
-          print('🕐 TaskEditScreen: Webpage fetch failed after ${fetchEndTime.difference(DateTime.now()).inMilliseconds}ms: $e');
-          // Continue without description
-        }
-
-        return {
-          'headline': title,
-          'notes': formattedNotes,
-          'links': [url],
-        };
-      }
     }
 
     // Check if text contains a URL
@@ -810,42 +933,16 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
       // If no headline text remains, fetch the webpage title
       String? fetchedNotes;
-      String linkToStore = cleanURL; // Default to raw URL
-
       if (cleanHeadline.isEmpty) {
         try {
-          final titleFetchStartTime = DateTime.now();
-          print('🕐 TaskEditScreen: Starting webpage title fetch for $cleanURL at ${titleFetchStartTime.toIso8601String()}');
-
+          print('TaskEditScreen: No headline text, fetching webpage title...');
           final processedLink =
               await LinkProcessor.validateAndProcessLink(cleanURL);
-
-          final titleFetchEndTime = DateTime.now();
-          final titleFetchDuration = titleFetchEndTime.difference(titleFetchStartTime);
-          print('🕐 TaskEditScreen: Webpage title fetch completed in ${titleFetchDuration.inMilliseconds}ms');
-
           cleanHeadline = processedLink.title ?? 'Link';
-          linkToStore = processedLink.originalLink; // Use the processed HTML link
           print('TaskEditScreen: Fetched webpage title: "$cleanHeadline"');
-          print('TaskEditScreen: Using processed link: "$linkToStore"');
 
-          // Use description from ProcessedLink if available (for JustWatch)
-          if (processedLink.description != null && processedLink.description!.isNotEmpty) {
-            final descFormatStartTime = DateTime.now();
-            // Format JustWatch descriptions with truncation and "more" link
-            if (cleanURL.contains('justwatch.com')) {
-              fetchedNotes = _formatDescriptionNotes(processedLink.description!, cleanURL);
-            } else {
-              fetchedNotes = processedLink.description!;
-            }
-            final descFormatEndTime = DateTime.now();
-            final descFormatDuration = descFormatEndTime.difference(descFormatStartTime);
-
-            print('🕐 TaskEditScreen: Description processing completed in ${descFormatDuration.inMilliseconds}ms');
-            print('TaskEditScreen: Using description from ProcessedLink: "${fetchedNotes?.substring(0, fetchedNotes.length > 100 ? 100 : fetchedNotes.length)}..."');
-          }
-          // For Letterboxd URLs, also try to fetch description (if not already fetched)
-          else if (cleanURL.contains('letterboxd.com') ||
+          // For Letterboxd URLs, also try to fetch description
+          if (cleanURL.contains('letterboxd.com') ||
               cleanURL.contains('boxd.it')) {
             fetchedNotes = await _fetchLetterboxdNotes(cleanURL);
             if (fetchedNotes != null) {
@@ -856,17 +953,16 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         } catch (e) {
           print('TaskEditScreen: Failed to fetch webpage title: $e');
           cleanHeadline = 'Link';
-          // linkToStore remains the raw URL as fallback
         }
       }
 
       print('TaskEditScreen: Processed headline: "$cleanHeadline"');
-      print('TaskEditScreen: Extracted link: "$linkToStore"');
+      print('TaskEditScreen: Extracted link: "$cleanURL"');
 
       return {
         'headline': cleanHeadline,
         'notes': fetchedNotes,
-        'links': [linkToStore],
+        'links': [cleanURL],
       };
     }
 
@@ -905,6 +1001,21 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       }
     }
 
+    // Check if text is an HTML link
+    if (headlineText.trim().startsWith('<a') &&
+        headlineText.trim().endsWith('</a>')) {
+      print('TaskEditScreen: Attempting HTML link parsing');
+      final (url, title) = LinkProcessor.parseHtmlLink(headlineText);
+      if (url != headlineText) {
+        print(
+            'TaskEditScreen: Parsed HTML link - title: "$title", url: "$url"');
+        return {
+          'headline': title ?? 'Link',
+          'notes': null,
+          'links': [url],
+        };
+      }
+    }
 
     // Treat as plain text
     print('TaskEditScreen: Treating as plain text: "$headlineText"');
@@ -918,9 +1029,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final saveStartTime = DateTime.now();
-    print('🕐 TaskEditScreen._saveTask: Starting at ${saveStartTime.toIso8601String()}');
-
     setState(() {
       _isLoading = true;
       _error = null;
@@ -930,15 +1038,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       final userId = AuthUtils.getCurrentUserId();
 
       // Process the headline text to extract links and set appropriate headline
-      final processStartTime = DateTime.now();
-      print('🕐 TaskEditScreen._saveTask: Starting headline processing at ${processStartTime.toIso8601String()}');
-
       final processedData =
           await _processHeadlineText(_headlineController.text);
-
-      final processEndTime = DateTime.now();
-      final processDuration = processEndTime.difference(processStartTime);
-      print('🕐 TaskEditScreen._saveTask: Headline processing completed in ${processDuration.inMilliseconds}ms');
       final processedHeadline = processedData['headline'] as String;
       final processedNotes = processedData['notes'] as String?;
       final newLinks = processedData['links'] as List<String>;
@@ -961,24 +1062,19 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             allLinks, // PostgreSQL array - always store as array, even if empty
       };
 
-      // For new tasks, explicitly set suggestible_at to null to appear at top of list
+      // For new tasks, explicitly exclude suggestible_at to ensure it remains null
       if (_localTask == null) {
-        data['suggestible_at'] = null;
+        // Don't include suggestible_at in the data to let database use its default (null)
         print(
-            'TaskEditScreen: Setting suggestible_at to null for new task to appear at top');
+            'TaskEditScreen: Excluding suggestible_at from new task data to ensure null value');
       }
 
       Task? updatedTask;
       if (_localTask == null) {
         // Check for duplicates before creating new task
-        final duplicateCheckStartTime = DateTime.now();
-        print('🕐 TaskEditScreen: Starting duplicate check at ${duplicateCheckStartTime.toIso8601String()}');
-
+        print(
+            'TaskEditScreen: Checking for duplicates before creating new task...');
         final existingTask = await _checkForDuplicateAndMerge(data, userId);
-
-        final duplicateCheckEndTime = DateTime.now();
-        final duplicateCheckDuration = duplicateCheckEndTime.difference(duplicateCheckStartTime);
-        print('🕐 TaskEditScreen: Duplicate check completed in ${duplicateCheckDuration.inMilliseconds}ms');
 
         if (existingTask != null) {
           // Found a duplicate - use the existing task
@@ -987,15 +1083,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           updatedTask = existingTask;
         } else {
           // No duplicate found - create new task
-          final dbInsertStartTime = DateTime.now();
-          print('🕐 TaskEditScreen: Starting database insert at ${dbInsertStartTime.toIso8601String()}');
-
+          print('TaskEditScreen: No duplicate found, creating new task...');
           final response =
               await supabase.from('Tasks').insert(data).select().single();
-
-          final dbInsertEndTime = DateTime.now();
-          final dbInsertDuration = dbInsertEndTime.difference(dbInsertStartTime);
-          print('🕐 TaskEditScreen: Database insert completed in ${dbInsertDuration.inMilliseconds}ms');
 
           updatedTask = Task.fromJson(response);
           print('TaskEditScreen: Created new task: ${updatedTask.headline}');
@@ -1015,24 +1105,16 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         print('TaskEditScreen: Updated task: ${updatedTask.headline}');
       }
 
-      // Database transaction should be committed immediately, no delay needed
+      // Wait longer for database transaction to commit
+      await Future.delayed(const Duration(milliseconds: 500));
 
       // Update the task cache using CacheManager only when saving
-      final cacheUpdateStartTime = DateTime.now();
-      print('🕐 TaskEditScreen: Starting cache update at ${cacheUpdateStartTime.toIso8601String()}');
-
+      print('TaskEditScreen: Updating task cache...');
       final cacheManager = CacheManager();
       if (cacheManager.currentCategory?.id == widget.category.id) {
         print('TaskEditScreen: Updating task in cache...');
         await cacheManager.updateTask(updatedTask);
       }
-
-      final cacheUpdateEndTime = DateTime.now();
-      final cacheUpdateDuration = cacheUpdateEndTime.difference(cacheUpdateStartTime);
-      print('🕐 TaskEditScreen: Cache update completed in ${cacheUpdateDuration.inMilliseconds}ms');
-
-      final totalSaveTime = DateTime.now().difference(saveStartTime);
-      print('🕐 TaskEditScreen: TOTAL SAVE TIME: ${totalSaveTime.inMilliseconds}ms');
 
       print(
         'TaskEditScreen: Task saved successfully, calling edit complete callback...',
@@ -1230,8 +1312,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           ),
           title: Text(
             _localTask == null
-                ? 'New ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}'
-                : 'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}',
+                ? 'New ${NamingUtils.tasksName(capitalize: true, plural: false)} to ...'
+                : 'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)} to ...',
           ),
           actions: [
             // Only show delete button for authenticated users
@@ -1249,6 +1331,36 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
+              // Category selector
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Row(
+                    children: [
+                      const Text(
+                        '...',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        widget.category.headline,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: _showCategorySelectionDialog,
+                        tooltip:
+                            'Change ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -1277,8 +1389,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         },
                         enabled: !_isLoading,
                       ),
-                      // Show preview of links that will be extracted from headline (only for new tasks)
-                      if (widget.task == null && _headlineController.text.isNotEmpty) ...[
+                      // Show preview of links that will be extracted from headline
+                      if (_headlineController.text.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         FutureBuilder<Map<String, dynamic>>(
                           future:
@@ -1414,231 +1526,234 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Labeled divider to set off alternatives (now inside container)
-                      const Row(
-                        children: [
-                          Expanded(child: Divider()),
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 2.0),
-                            child: Text(
-                              'Alternative options',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.blue,
+                      // Alternative options section - only show if enabled
+                      if (widget.showAlternativeOptions) ...[
+                        // Labeled divider to set off alternatives (now inside container)
+                        const Row(
+                          children: [
+                            Expanded(child: Divider()),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 2.0),
+                              child: Text(
+                                'Alternative options',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.blue,
+                                ),
                               ),
                             ),
-                          ),
-                          Expanded(child: Divider()),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      // Add a List of Tasks button
-                      FractionallySizedBox(
-                        widthFactor: 0.7,
-                        child: ElevatedButton.icon(
-                          onPressed: _isLoading
-                              ? null
-                              : () async {
-                                  final result =
-                                      await Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => AddTasksScreen(
-                                        category: widget.category,
-                                        currentTask: _currentTaskState,
-                                      ),
-                                    ),
-                                  );
-                                },
-                          icon: const Icon(Icons.add_task),
-                          label: Text(
-                              'Add a List of ${NamingUtils.tasksName(plural: true)}'),
-                          style: AppButtons.goForth(),
+                            Expanded(child: Divider()),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                      // Separator with helpful text for shop suggestions
-                      Row(
-                        children: [
-                          const Expanded(child: Divider()),
-                          Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 16.0),
-                            child: Text(
-                              '** You can also get ${NamingUtils.tasksNamePlural} from other people! **',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[600],
-                                fontStyle: FontStyle.italic,
+                        const SizedBox(height: 16),
+                        // Add a List of Tasks button
+                        FractionallySizedBox(
+                          widthFactor: 0.7,
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading
+                                ? null
+                                : () async {
+                                    final result =
+                                        await Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => AddTasksScreen(
+                                          category: widget.category,
+                                          currentTask: _currentTaskState,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                            icon: const Icon(Icons.add_task),
+                            label: Text(
+                                'Add a List of ${NamingUtils.tasksName(plural: true)}'),
+                            style: AppButtons.goForth(),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        // Separator with helpful text for shop suggestions
+                        Row(
+                          children: [
+                            const Expanded(child: Divider()),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16.0),
+                              child: Text(
+                                '** You can also get ${NamingUtils.tasksNamePlural} from other people! **',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                  fontStyle: FontStyle.italic,
+                                ),
                               ),
                             ),
+                            const Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // Shop for Suggestions button with pre-check
+                        FutureBuilder<bool>(
+                          future: ShopEndeavorsScreen
+                              .hasAnyPublicSuggestionsForCategory(
+                                  widget.category),
+                          builder: (context, snapshot) {
+                            final hasSuggestions = snapshot.data == true;
+                            return FractionallySizedBox(
+                              widthFactor: 0.7,
+                              child: ElevatedButton.icon(
+                                onPressed: (_isLoading || !hasSuggestions)
+                                    ? null
+                                    : () async {
+                                        final result =
+                                            await Navigator.pushReplacement(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                ShopEndeavorsScreen(
+                                              existingCategory: widget.category,
+                                            ),
+                                          ),
+                                        );
+                                        print(
+                                            'TaskEditScreen: ShopEndeavorsScreen returned: $result');
+                                      },
+                                icon: const Icon(Icons.shopping_cart),
+                                label: Text(hasSuggestions
+                                    ? 'Shop for Suggestions'
+                                    : 'No Suggestions Out There'),
+                                style: hasSuggestions
+                                    ? AppButtons.goForth()
+                                    : ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.grey[300],
+                                        foregroundColor: Colors.grey[600],
+                                      ),
+                              ),
+                            );
+                          },
+                        ),
+                        if (widget.category.originalId != null &&
+                            (widget.category.originalId == 1 ||
+                                widget.category.originalId == 2)) ...[
+                          const SizedBox(height: 24),
+                          // Separator with helpful text for JustWatch import
+                          Row(
+                            children: [
+                              const Expanded(child: Divider()),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0),
+                                child: Text(
+                                  '** OR...You can import your list from JustWatch. **',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                              const Expanded(child: Divider()),
+                            ],
                           ),
-                          const Expanded(child: Divider()),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      // Shop for Suggestions button with pre-check
-                      FutureBuilder<bool>(
-                        future: ShopEndeavorsScreen
-                            .hasAnyPublicSuggestionsForCategory(
-                                widget.category),
-                        builder: (context, snapshot) {
-                          final hasSuggestions = snapshot.data == true;
-                          return FractionallySizedBox(
+                          const SizedBox(height: 16),
+                          // Single JustWatch Import button
+                          FractionallySizedBox(
                             widthFactor: 0.7,
                             child: ElevatedButton.icon(
-                              onPressed: (_isLoading || !hasSuggestions)
+                              onPressed: _isLoading
                                   ? null
-                                  : () async {
-                                      final result =
-                                          await Navigator.pushReplacement(
+                                  : () {
+                                      print(
+                                          'Import from JustWatch button pressed');
+                                      print(
+                                          'Category: ${widget.category.headline}');
+
+                                      Navigator.push(
                                         context,
                                         MaterialPageRoute(
                                           builder: (context) =>
-                                              ShopEndeavorsScreen(
-                                            existingCategory: widget.category,
+                                              JustWatchImportScreen(
+                                            category: widget.category,
                                           ),
                                         ),
-                                      );
-                                      print(
-                                          'TaskEditScreen: ShopEndeavorsScreen returned: $result');
+                                      ).then((result) {
+                                        if (result is Category && mounted) {
+                                          print('JustWatch import completed');
+                                          Navigator.pop(context, result);
+                                        }
+                                      });
                                     },
-                              icon: const Icon(Icons.shopping_cart),
-                              label: Text(hasSuggestions
-                                  ? 'Shop for Suggestions'
-                                  : 'No Suggestions Out There'),
-                              style: hasSuggestions
-                                  ? AppButtons.goForth()
-                                  : ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.grey[300],
-                                      foregroundColor: Colors.grey[600],
-                                    ),
+                              icon: const DomainFaviconWidget(
+                                domain: 'www.justwatch.com',
+                                size: 20,
+                                fallbackIcon: Icon(Icons.movie),
+                              ),
+                              label: const Text('Import from JustWatch'),
+                              style: AppButtons.goForth(),
                             ),
-                          );
-                        },
-                      ),
-                      if (widget.category.originalId != null &&
-                          (widget.category.originalId == 1 ||
-                              widget.category.originalId == 2)) ...[
-                        const SizedBox(height: 24),
-                        // Separator with helpful text for JustWatch import
-                        Row(
-                          children: [
-                            const Expanded(child: Divider()),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16.0),
-                              child: Text(
-                                '** OR...You can import your list from JustWatch. **',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[600],
-                                  fontStyle: FontStyle.italic,
+                          ),
+                        ],
+                        // Add Letterboxd import button only for category original_id == 1
+                        if (widget.category.originalId == 1) ...[
+                          const SizedBox(height: 16),
+                          // Separator for Letterboxd import
+                          Row(
+                            children: [
+                              const Expanded(child: Divider()),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0),
+                                child: Text(
+                                  '** OR...Import from Letterboxd **',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                    fontStyle: FontStyle.italic,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const Expanded(child: Divider()),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        // Single JustWatch Import button
-                        FractionallySizedBox(
-                          widthFactor: 0.7,
-                          child: ElevatedButton.icon(
-                            onPressed: _isLoading
-                                ? null
-                                : () {
-                                    print(
-                                        'Import from JustWatch button pressed');
-                                    print(
-                                        'Category: ${widget.category.headline}');
-
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            JustWatchImportScreen(
-                                          category: widget.category,
-                                        ),
-                                      ),
-                                    ).then((result) {
-                                      if (result is Category && mounted) {
-                                        print('JustWatch import completed');
-                                        Navigator.pop(context, result);
-                                      }
-                                    });
-                                  },
-                            icon: DomainFaviconWidget(
-                              domain: 'www.justwatch.com',
-                              size: 20,
-                              fallbackIcon: const Icon(Icons.movie),
-                            ),
-                            label: const Text('Import from JustWatch'),
-                            style: AppButtons.goForth(),
+                              const Expanded(child: Divider()),
+                            ],
                           ),
-                        ),
-                      ],
-                      // Add Letterboxd import button only for category original_id == 1
-                      if (widget.category.originalId == 1) ...[
-                        const SizedBox(height: 16),
-                        // Separator for Letterboxd import
-                        Row(
-                          children: [
-                            const Expanded(child: Divider()),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16.0),
-                              child: Text(
-                                '** OR...Import from Letterboxd **',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[600],
-                                  fontStyle: FontStyle.italic,
-                                ),
+                          const SizedBox(height: 16),
+                          // Letterboxd Import button
+                          FractionallySizedBox(
+                            widthFactor: 0.7,
+                            child: ElevatedButton.icon(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () {
+                                      print(
+                                          'Import from Letterboxd button pressed');
+                                      print(
+                                          'Category: ${widget.category.headline}');
+
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              LetterboxdImportScreen(
+                                            category: widget.category,
+                                          ),
+                                        ),
+                                      ).then((result) {
+                                        if (result is Category && mounted) {
+                                          print('Letterboxd import completed');
+                                          Navigator.pop(context, result);
+                                        }
+                                      });
+                                    },
+                              icon: const DomainFaviconWidget(
+                                domain: 'letterboxd.com',
+                                size: 20,
+                                fallbackIcon: Icon(Icons.movie_outlined),
                               ),
+                              label: const Text('Import from Letterboxd'),
+                              style: AppButtons.goForth(),
                             ),
-                            const Expanded(child: Divider()),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        // Letterboxd Import button
-                        FractionallySizedBox(
-                          widthFactor: 0.7,
-                          child: ElevatedButton.icon(
-                            onPressed: _isLoading
-                                ? null
-                                : () {
-                                    print(
-                                        'Import from Letterboxd button pressed');
-                                    print(
-                                        'Category: ${widget.category.headline}');
-
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            LetterboxdImportScreen(
-                                          category: widget.category,
-                                        ),
-                                      ),
-                                    ).then((result) {
-                                      if (result is Category && mounted) {
-                                        print('Letterboxd import completed');
-                                        Navigator.pop(context, result);
-                                      }
-                                    });
-                                  },
-                            icon: DomainFaviconWidget(
-                              domain: 'letterboxd.com',
-                              size: 20,
-                              fallbackIcon: const Icon(Icons.movie_outlined),
-                            ),
-                            label: const Text('Import from Letterboxd'),
-                            style: AppButtons.goForth(),
                           ),
-                        ),
-                      ],
+                        ],
+                      ], // Close the showAlternativeOptions conditional
                     ],
                   ),
                 ),
