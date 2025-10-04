@@ -268,7 +268,7 @@ class LinkActionDialog extends StatelessWidget {
       context,
       title: 'Select Category for New Task',
       defaultCategory: defaultCategory,
-      onCategorySelected: (category) {
+      onCategorySelected: (category, {bool? shouldMove}) {
         _createTaskInCategory(context, category);
       },
     );

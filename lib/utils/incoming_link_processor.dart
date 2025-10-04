@@ -287,7 +287,7 @@ class IncomingLinkProcessor {
         await CategoryPickerDialog.show(
           context,
           title: 'Select Category for New Task',
-          onCategorySelected: (Category selectedCategory) async {
+          onCategorySelected: (Category selectedCategory, {bool? shouldMove}) async {
             await Future.delayed(const Duration(milliseconds: 100));
             await _openTaskEditScreen(context, result, selectedCategory);
           },
@@ -510,7 +510,7 @@ class IncomingLinkProcessor {
       context,
       title: 'Select Category for New Task',
       defaultCategory: defaultCategory,
-      onCategorySelected: (Category category) async {
+      onCategorySelected: (Category category, {bool? shouldMove}) async {
         // Use the stored root context instead of the dialog context
         // Add a small delay to ensure the dialog is fully dismissed
         await Future.delayed(const Duration(milliseconds: 100));

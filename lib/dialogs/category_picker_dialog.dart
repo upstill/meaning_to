@@ -9,8 +9,11 @@ import 'package:meaning_to/new_category_screen.dart';
 class CategoryPickerDialog extends StatefulWidget {
   final String title;
   final Category? defaultCategory;
-  final Function(Category) onCategorySelected;
+  final Function(Category, {bool? shouldMove}) onCategorySelected;
   final bool showCreateNew;
+  final Category? excludeCategory; // Category to exclude from the list
+  final bool showMoveAndCopy; // Show move/copy buttons instead of create new
+  final String? taskHeadline; // Optional task headline for custom title
 
   const CategoryPickerDialog({
     super.key,
@@ -18,14 +21,20 @@ class CategoryPickerDialog extends StatefulWidget {
     this.defaultCategory,
     required this.onCategorySelected,
     this.showCreateNew = true,
+    this.excludeCategory,
+    this.showMoveAndCopy = false,
+    this.taskHeadline,
   });
 
   static Future<void> show(
     BuildContext context, {
     required String title,
     Category? defaultCategory,
-    required Function(Category) onCategorySelected,
+    required Function(Category, {bool? shouldMove}) onCategorySelected,
     bool showCreateNew = true,
+    Category? excludeCategory,
+    bool showMoveAndCopy = false,
+    String? taskHeadline,
   }) {
     return showDialog(
       context: context,
@@ -34,6 +43,9 @@ class CategoryPickerDialog extends StatefulWidget {
         defaultCategory: defaultCategory,
         onCategorySelected: onCategorySelected,
         showCreateNew: showCreateNew,
+        excludeCategory: excludeCategory,
+        showMoveAndCopy: showMoveAndCopy,
+        taskHeadline: taskHeadline,
       ),
     );
   }
@@ -49,6 +61,8 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
   String? _error;
   String _searchQuery = '';
   final _searchController = TextEditingController();
+  Category? _selectedCategory;
+  bool _shouldMove = true; // true = move, false = copy
 
   @override
   void initState() {
@@ -129,14 +143,24 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
   }
 
   List<Category> get _filteredCategories {
-    if (_searchQuery.isEmpty) {
-      return _categories;
+    var filtered = _categories;
+
+    // Exclude the specified category if provided
+    if (widget.excludeCategory != null) {
+      filtered = filtered
+          .where((category) => category.id != widget.excludeCategory!.id)
+          .toList();
     }
 
-    return _categories
-        .where((category) =>
-            category.headline.toLowerCase().contains(_searchQuery.toLowerCase()))
-        .toList();
+    // Apply search filter
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered
+          .where((category) =>
+              category.headline.toLowerCase().contains(_searchQuery.toLowerCase()))
+          .toList();
+    }
+
+    return filtered;
   }
 
   List<Category> get _prioritizedCategories {
@@ -170,12 +194,61 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.title),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              widget.taskHeadline != null
+                ? 'Reassign "${widget.taskHeadline}"'
+                : widget.title
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+            tooltip: 'Close',
+          ),
+        ],
+      ),
       content: SizedBox(
         width: double.maxFinite,
         height: 400,
         child: Column(
           children: [
+            // Current category display (if excluding one)
+            if (widget.excludeCategory != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Currently assigned to:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.excludeCategory!.headline,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
             // Search field
             TextField(
               controller: _searchController,
@@ -206,16 +279,60 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        if (widget.showCreateNew)
-          TextButton.icon(
+        if (widget.showCreateNew && !widget.showMoveAndCopy)
+          ElevatedButton.icon(
             onPressed: _createNewCategory,
             icon: const Icon(Icons.add, size: 18),
             label: const Text('Create New'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
           ),
+        if (widget.showMoveAndCopy) ...[
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Move/Copy toggle
+              Row(
+                children: [
+                  Radio<bool>(
+                    value: true,
+                    groupValue: _shouldMove,
+                    onChanged: (value) {
+                      setState(() {
+                        _shouldMove = value ?? true;
+                      });
+                    },
+                  ),
+                  const Text('Move'),
+                  const SizedBox(width: 8),
+                  Radio<bool>(
+                    value: false,
+                    groupValue: _shouldMove,
+                    onChanged: (value) {
+                      setState(() {
+                        _shouldMove = value ?? false;
+                      });
+                    },
+                  ),
+                  const Text('Copy'),
+                ],
+              ),
+              const SizedBox(width: 16),
+              ElevatedButton(
+                onPressed: _selectedCategory != null
+                    ? () {
+                        Navigator.of(context).pop();
+                        // Pass both the category and the action type
+                        widget.onCategorySelected(_selectedCategory!, shouldMove: _shouldMove);
+                      }
+                    : null,
+                child: Text(_shouldMove ? 'Move' : 'Copy'),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -296,7 +413,10 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
             ),
           ),
           subtitle: _buildCategorySubtitle(category, isDefault, isRecent),
-          onTap: () => _selectCategory(category),
+          onTap: () => widget.showMoveAndCopy
+              ? _selectCategoryForMoveOrCopy(category)
+              : _selectCategory(category),
+          selected: widget.showMoveAndCopy && _selectedCategory?.id == category.id,
           dense: true,
         );
       },
@@ -351,6 +471,12 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
 
     Navigator.of(context).pop();
     widget.onCategorySelected(category);
+  }
+
+  void _selectCategoryForMoveOrCopy(Category category) {
+    setState(() {
+      _selectedCategory = category;
+    });
   }
 
   void _createNewCategory() async {
