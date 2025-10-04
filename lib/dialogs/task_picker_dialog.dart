@@ -417,7 +417,7 @@ class _TaskPickerDialogState extends State<TaskPickerDialog> {
       title: 'Select Category',
       defaultCategory: _selectedCategory,
       showCreateNew: false,
-      onCategorySelected: (category) {
+      onCategorySelected: (category, {bool? shouldMove}) {
         setState(() {
           _selectedCategory = category;
           _tasks = [];

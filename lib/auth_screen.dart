@@ -56,6 +56,7 @@ class _AuthScreenState extends State<AuthScreen> {
       final githubIcon = await DomainIcon.getIconForDomain('github.com');
       if (githubIcon != null) {
         print('AuthScreen: GitHub icon loaded successfully');
+        print('AuthScreen: GitHub icon data size: ${githubIcon.iconData?.length} bytes');
         setState(() {
           _githubIcon = githubIcon;
         });
@@ -400,7 +401,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      '...or, sign in with:',
+                      'Sign In or Sign Up',
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontSize: 14,
@@ -538,7 +539,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     const Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '...or, sign in with:',
+                        'Sign In or Sign Up',
                         style: TextStyle(
                           color: Color.fromARGB(255, 57, 56, 56),
                           fontSize: 18,
@@ -557,14 +558,18 @@ class _AuthScreenState extends State<AuthScreen> {
                                   onPressed:
                                       _isLoading ? null : _handleGoogleSignIn,
                                   icon: _googleIcon?.iconData != null
-                                      ? Image.memory(
-                                          _googleIcon!.iconData!,
-                                          width: 26,
-                                          height: 26,
-                                          fit: BoxFit.contain,
+                                      ? SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: Image.memory(
+                                            _googleIcon!.iconData!,
+                                            width: 20,
+                                            height: 20,
+                                            fit: BoxFit.contain,
+                                          ),
                                         )
                                       : const Icon(Icons.g_mobiledata,
-                                          color: Colors.white, size: 26),
+                                          color: Colors.white, size: 20),
                                   label: const Text(
                                     'Google',
                                     style: TextStyle(
@@ -591,14 +596,18 @@ class _AuthScreenState extends State<AuthScreen> {
                                   onPressed:
                                       _isLoading ? null : _handleGitHubSignIn,
                                   icon: _githubIcon?.iconData != null
-                                      ? Image.memory(
-                                          _githubIcon!.iconData!,
-                                          width: 26,
-                                          height: 26,
-                                          fit: BoxFit.contain,
+                                      ? SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: Image.memory(
+                                            _githubIcon!.iconData!,
+                                            width: 20,
+                                            height: 20,
+                                            fit: BoxFit.contain,
+                                          ),
                                         )
                                       : const Icon(Icons.code,
-                                          color: Colors.white, size: 26),
+                                          color: Colors.white, size: 20),
                                   label: const Text(
                                     'GitHub',
                                     style: TextStyle(
