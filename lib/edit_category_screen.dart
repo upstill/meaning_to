@@ -778,7 +778,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           );
                           if (!launched) {
                             // Fallback to platform default
-                            await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault);
+                            await launchUrl(Uri.parse(url),
+                                mode: LaunchMode.platformDefault);
                           }
                         } catch (e) {
                           print('Could not launch URL: $url');
@@ -1111,8 +1112,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                         showDialog(
                           context: context,
                           builder: (context) => AlertDialog(
-                            title:
-                                Text('Delete ${NamingUtils.categoriesName()}?'),
+                            title: Text(
+                                'Delete the ${NamingUtils.categoriesName(plural: false)} "${widget.category!.headline}" and all its ${NamingUtils.tasksName(plural: true)}?'),
                             content: Text(
                               'This will also delete all ${NamingUtils.tasksName(plural: true)} in this category. This action cannot be undone.',
                             ),
@@ -1136,7 +1137,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                         );
                       },
                 tooltip:
-                    'Delete ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+                    'Delete the ${NamingUtils.categoriesName(plural: false)} "${widget.category!.headline}" and all its ${NamingUtils.tasksName(plural: true)}',
               ),
           ],
         ),

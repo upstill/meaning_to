@@ -101,10 +101,10 @@ class _PasswordResetOtpScreenState extends State<PasswordResetOtpScreen> {
     try {
       print('PasswordResetOTP: Resending OTP to: ${widget.email}');
 
-      // Resend OTP
-      await Supabase.instance.client.auth.signInWithOtp(
-        email: widget.email,
-        emailRedirectTo: null,
+      // Resend OTP for password recovery
+      await Supabase.instance.client.auth.resetPasswordForEmail(
+        widget.email,
+        // No redirectTo parameter - this should send an OTP code if configured properly
       );
 
       print('PasswordResetOTP: OTP resent successfully');
@@ -176,7 +176,7 @@ class _PasswordResetOtpScreenState extends State<PasswordResetOtpScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'We sent a 6-digit verification code to:',
+                'We sent a 6-digit verification code to your email. If you received a link instead, look for a 6-digit code in the email text:',
                 style: const TextStyle(
                   fontSize: 16,
                   color: Colors.grey,

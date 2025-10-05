@@ -8,8 +8,6 @@ import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/widgets/link_display.dart';
-import 'package:flutter_html/flutter_html.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class ShopEndeavorsScreen extends StatefulWidget {
   final Category?
@@ -31,7 +29,7 @@ class ShopEndeavorsScreen extends StatefulWidget {
           .eq('private', false)
           .limit(1);
 
-      if (response is List && response.isNotEmpty) {
+      if (response.isNotEmpty) {
         // Check if any of these public categories have tasks
         final categoryIds = response.map((json) => json['id'] as int).toList();
         final tasksResponse = await supabase
@@ -40,7 +38,7 @@ class ShopEndeavorsScreen extends StatefulWidget {
             .inFilter('category_id', categoryIds)
             .limit(10); // Get more tasks to check filtering
 
-        if (tasksResponse is List && tasksResponse.isNotEmpty) {
+        if (tasksResponse.isNotEmpty) {
           // Filter to only show original tasks (where id equals original_id)
           final originalTasks = tasksResponse.where((task) {
             final taskId = task['id'] as int;
@@ -97,9 +95,10 @@ class ShopEndeavorsScreen extends StatefulWidget {
       final tasksResponse = await supabase
           .from('Tasks')
           .select('id, original_id')
-          .inFilter('category_id', categoryIds); // Get all tasks for accurate filtering
+          .inFilter('category_id', categoryIds)
+          .limit(100); // Get more tasks to check filtering
 
-      if (tasksResponse is List && tasksResponse.isNotEmpty) {
+      if (tasksResponse.isNotEmpty) {
         // Filter to only show original tasks (where id equals original_id)
         final originalTasks = tasksResponse.where((task) {
           final taskId = task['id'] as int;
@@ -321,8 +320,12 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       _shopItems[index].isSelected = willBeSelected;
     });
 
-    // Do not auto-select tasks when category is selected
-    // Users should individually select the tasks they want
+    // Update task selections based on category selection
+    if (_shopItems[index].tasks.isNotEmpty) {
+      for (final task in _shopItems[index].tasks) {
+        _taskImportSelections[task.id.toString()] = willBeSelected;
+      }
+    }
 
     // If category is being selected and not already expanded, expand it
     if (!wasSelected && !_shopItems[index].isExpanded) {
@@ -427,16 +430,13 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
         print('ShopEndeavorsScreen: Filtered tasks: ${filteredTasks.length}');
 
-        // Sort tasks by creation date in reverse order (newest first)
-        filteredTasks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-        print('ShopEndeavorsScreen: Sorted ${filteredTasks.length} tasks by creation date (newest first)');
-
         setState(() {
           _shopItems[index].tasks = filteredTasks;
-          // Initialize import selections for new tasks - default to unchecked
+          // Initialize import selections for new tasks
+          // If the category is selected, select all tasks by default
+          final shouldSelectAll = _shopItems[index].isSelected;
           for (final task in filteredTasks) {
-            _taskImportSelections[task.id.toString()] = false;
+            _taskImportSelections[task.id.toString()] = shouldSelectAll;
           }
           // Clear redundant task cache when tasks are reloaded
           _redundantTaskCache.clear();
@@ -476,16 +476,13 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
         print('ShopEndeavorsScreen: Filtered tasks: ${filteredTasks.length}');
 
-        // Sort tasks by creation date in reverse order (newest first)
-        filteredTasks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-        print('ShopEndeavorsScreen: Sorted ${filteredTasks.length} tasks by creation date (newest first)');
-
         setState(() {
           _shopItems[index].tasks = filteredTasks;
-          // Initialize import selections for new tasks - default to unchecked
+          // Initialize import selections for new tasks
+          // If the category is selected, select all tasks by default
+          final shouldSelectAll = _shopItems[index].isSelected;
           for (final task in filteredTasks) {
-            _taskImportSelections[task.id.toString()] = false;
+            _taskImportSelections[task.id.toString()] = shouldSelectAll;
           }
           // Clear redundant task cache when tasks are reloaded
           _redundantTaskCache.clear();
@@ -941,41 +938,11 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
             ),
             if (task.notes != null && task.notes!.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Html(
-                data: task.notes!,
-                style: {
-                  "body": Style(
-                    fontSize: FontSize(Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14),
-                    fontStyle: FontStyle.italic,
-                    margin: Margins.zero,
-                    padding: HtmlPaddings.zero,
-                  ),
-                  "a": Style(
-                    color: Theme.of(context).colorScheme.primary,
-                    textDecoration: TextDecoration.underline,
-                  ),
-                },
-                onLinkTap: (url, _, __) async {
-                  if (url != null) {
-                    try {
-                      // Use Android-optimized external launch
-                      bool launched = await launchUrl(
-                        Uri.parse(url), 
-                        mode: LaunchMode.externalApplication,
-                        webViewConfiguration: const WebViewConfiguration(
-                          enableJavaScript: false,
-                          enableDomStorage: false,
-                        ),
-                      );
-                      if (!launched) {
-                        // Fallback to platform default
-                        await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault);
-                      }
-                    } catch (e) {
-                      print('Could not launch URL: $url');
-                    }
-                  }
-                },
+              Text(
+                task.notes!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontStyle: FontStyle.italic,
+                    ),
               ),
             ],
             if (hasLinks) ...[
@@ -1113,7 +1080,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                           ),
                         )
                       : ListView.builder(
-                          padding: const EdgeInsets.all(16.0),
+                          padding:
+                              const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 80.0),
                           itemCount: _shopItems.length,
                           itemBuilder: (context, index) {
                             final item = _shopItems[index];

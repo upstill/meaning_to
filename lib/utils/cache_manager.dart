@@ -1242,26 +1242,6 @@ class CacheManager with PerformanceMonitoring {
     }
   }
 
-  /// Remove a task from the current cache without making any API calls
-  /// This is used when the task has already been moved/deleted from the database
-  void removeTaskFromCache(int taskId) {
-    if (_currentTasks == null) {
-      print('CacheManager: Cannot remove task from cache - no tasks loaded');
-      return;
-    }
-
-    final taskIndex = _currentTasks!.indexWhere((t) => t.id == taskId);
-    if (taskIndex != -1) {
-      final removedTask = _currentTasks!.removeAt(taskIndex);
-      print('CacheManager: Removed task "${removedTask.headline}" from cache');
-
-      // Notify listeners that cache has changed
-      _cacheChangeController.add(null);
-    } else {
-      print('CacheManager: Task with ID $taskId not found in cache');
-    }
-  }
-
   /// Force refresh and verify API state
   /// This method will reload from API and show detailed debugging
   Future<void> forceRefreshAndVerify() async {
