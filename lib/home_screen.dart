@@ -18,6 +18,9 @@ import 'package:meaning_to/utils/deep_link_generator.dart';
 import 'package:clipboard/clipboard.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+import 'package:html/parser.dart' as html_parser;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
@@ -52,6 +55,9 @@ class HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
   bool _isLoadingTask = false;
   String? _error;
+  // Notes fetching state
+  bool _isFetchingNotes = false;
+  String? _fetchedNotes;
 
   // CacheManager instance for managing current category and tasks
   final CacheManager _cacheManager = CacheManager();
@@ -219,8 +225,14 @@ class HomeScreenState extends State<HomeScreen> {
         setState(() {
           _randomTask = task;
           _isLoadingTask = false;
+          _fetchedNotes = null; // Reset fetched notes for new task
         });
         print('HomeScreen: State updated with new task');
+
+        // Try to fetch notes if the task has no notes but has links
+        if (_shouldFetchNotes()) {
+          _fetchNotesFromLinks();
+        }
       } else {
         print('HomeScreen: Widget not mounted after loading task');
       }
@@ -390,7 +402,7 @@ class HomeScreenState extends State<HomeScreen> {
         if (!AuthUtils.isGuestUser() &&
             categories.isEmpty &&
             !_welcomeDialogShown) {
-          _showWelcomeDialog();
+          _checkAndShowWelcomeDialog();
         }
       } catch (e) {
         print('Error loading categories: $e');
@@ -886,6 +898,28 @@ class HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _checkAndShowWelcomeDialog() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = AuthUtils.getCurrentUserId();
+      final welcomeKey = 'welcome_dialog_shown_$userId';
+
+      final hasBeenWelcomed = prefs.getBool(welcomeKey) ?? false;
+
+      if (!hasBeenWelcomed) {
+        // Mark as welcomed before showing dialog
+        await prefs.setBool(welcomeKey, true);
+        _showWelcomeDialog();
+      }
+    } catch (e) {
+      print('Error checking welcome dialog status: $e');
+      // Fallback to showing dialog once per session
+      if (!_welcomeDialogShown) {
+        _showWelcomeDialog();
+      }
+    }
+  }
+
   void _showWelcomeDialog() {
     if (_welcomeDialogShown) return;
 
@@ -899,15 +933,15 @@ class HomeScreenState extends State<HomeScreen> {
           builder: (BuildContext context) {
             return AlertDialog(
               title: const Text(
-                'Welcome to \'I\'ve Been Meaning To\'!',
+                'Welcome to I\'ve Been Meaning To...!',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              content: const Text(
-                'It\'ll be a pretty empty experience in the beginning, so the first thing you\'ll want is to define some Pursuits.',
-                style: TextStyle(fontSize: 16),
+              content: Text(
+                'It\'ll be a pretty empty experience in the beginning, so the first thing you\'ll want is to define some ${NamingUtils.categoriesName()} (like \'Watch a Movie\'), and then some ${NamingUtils.tasksName()} for pursuing them (like \'The Godfather\' or \'Die Hard\')',
+                style: const TextStyle(fontSize: 16),
               ),
               actions: [
                 ElevatedButton(
@@ -1083,6 +1117,233 @@ class HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       print('HomeScreen: Error handling category edit complete: $e');
     }
+  }
+
+  /// Fetch description from JustWatch or Letterboxd URLs if notes are null
+  Future<void> _fetchNotesFromLinks() async {
+    // Skip if already fetching or no task or no links
+    if (_isFetchingNotes || _randomTask == null || _randomTask!.links == null) {
+      return;
+    }
+    setState(() {
+      _isFetchingNotes = true;
+    });
+
+    try {
+      for (final link in _randomTask!.links!) {
+        // Extract URL from HTML link or return plain URL
+        final url = _extractUrlFromHtmlLink(link);
+        if (url == null || url.isEmpty) {
+          continue;
+        }
+
+        String? description;
+
+        // Check if it's a JustWatch or Letterboxd URL
+        if (url.contains('justwatch.com')) {
+          description = await _fetchJustWatchDescription(url);
+        } else if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
+          description = await _fetchLetterboxdDescription(url);
+        }
+
+        if (description != null && description.isNotEmpty) {
+          // Check if this is a fallback error message that shouldn't be saved
+          final isErrorMessage =
+              description.startsWith('Synopsis not available') ||
+                  description.startsWith('Description not available') ||
+                  description.contains('content protection');
+
+          // Format the description with a link only if truncated (and not an error message)
+          final formattedNotes = !isErrorMessage && description.length > 200
+              ? '${description.substring(0, 200)}... <a href="$url">(more)</a>'
+              : description;
+
+          setState(() {
+            _fetchedNotes = formattedNotes;
+          });
+
+          // Only save to database if it's not an error message
+          if (!isErrorMessage) {
+            await _updateTaskWithNotes(formattedNotes);
+          }
+          break; // Stop after finding the first description
+        }
+      }
+    } catch (e) {
+      // Error handling without verbose logging
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFetchingNotes = false;
+        });
+      }
+    }
+  }
+
+  /// Extract URL from HTML link like "<a href=\"URL\">text</a>" or return plain URL
+  String? _extractUrlFromHtmlLink(String linkText) {
+    // If it's already a plain URL, return it as-is
+    if (linkText.startsWith('http://') || linkText.startsWith('https://')) {
+      return linkText;
+    }
+
+    // Otherwise, try to extract from HTML format
+    final regex = RegExp(r'href=["\x27]([^"\x27]+)["\x27]');
+    final match = regex.firstMatch(linkText);
+    return match?.group(1);
+  }
+
+  /// Fetch description from JustWatch URL
+  Future<String?> _fetchJustWatchDescription(String url) async {
+    try {
+      late http.Response response;
+
+      if (foundation.kIsWeb) {
+        // Try multiple proxy services for better reliability
+        final proxyUrls = [
+          'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}',
+          'https://cors-anywhere.herokuapp.com/$url',
+          'https://api.codetabs.com/v1/proxy?quest=$url',
+        ];
+
+        String? workingProxy;
+        for (final proxyUrl in proxyUrls) {
+          try {
+            response = await http.get(
+              Uri.parse(proxyUrl),
+              headers: {
+                'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept':
+                    'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+              },
+            );
+
+            // Check if this proxy worked
+            if (response.statusCode == 200 &&
+                response.body.length > 5000 &&
+                !response.body.contains('<title>Meaning To</title>') &&
+                !response.body.contains('Meaning To') &&
+                response.body.contains('justwatch')) {
+              workingProxy = proxyUrl;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (workingProxy == null) {
+          // Return a helpful message instead of null to inform the user
+          return 'Synopsis not available via web browser due to content protection. Try viewing on the mobile app for full descriptions.';
+        }
+      } else {
+        // Direct fetch for mobile
+        response = await http.get(
+          Uri.parse(url),
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        );
+      }
+
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final document = html_parser.parse(response.body);
+
+      // Try CSS selector for synopsis div > p tag (preferred method)
+      final synopsisDiv = document.querySelector('div#synopsis');
+      if (synopsisDiv != null) {
+        final synopsisParagraph = synopsisDiv.querySelector('p');
+        if (synopsisParagraph != null) {
+          final synopsisText = synopsisParagraph.text.trim();
+          if (synopsisText.isNotEmpty) {
+            return synopsisText;
+          }
+        }
+      }
+
+      // Fallback: Try meta description
+      String? description = document
+          .querySelector('meta[name="description"]')
+          ?.attributes['content']
+          ?.trim();
+
+      return description;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Fetch description from Letterboxd URL (placeholder)
+  Future<String?> _fetchLetterboxdDescription(String url) async {
+    // Placeholder for Letterboxd description fetching
+    return null;
+  }
+
+  /// Update task with fetched notes and save to database
+  Future<void> _updateTaskWithNotes(String notes) async {
+    try {
+      // Only save if the task doesn't already have notes to avoid overwriting user content
+      if (_randomTask!.notes == null || _randomTask!.notes!.trim().isEmpty) {
+        // Update the task directly in the API
+        await ApiClient.updateTask(
+            _randomTask!.id.toString(), {'notes': notes});
+
+        // Update the task in the cache
+        final cache = CacheManager();
+        if (cache.currentTasks != null) {
+          final taskIndex =
+              cache.currentTasks!.indexWhere((t) => t.id == _randomTask!.id);
+          if (taskIndex != -1) {
+            // Create updated task for cache
+            final updatedTask = Task(
+              id: _randomTask!.id,
+              categoryId: _randomTask!.categoryId,
+              headline: _randomTask!.headline,
+              notes: notes,
+              ownerId: _randomTask!.ownerId,
+              createdAt: _randomTask!.createdAt,
+              suggestibleAt: _randomTask!.suggestibleAt,
+              triggersAt: _randomTask!.triggersAt,
+              deferral: _randomTask!.deferral,
+              links: _randomTask!.links,
+              processedLinks: _randomTask!.processedLinks,
+              finished: _randomTask!.finished,
+              shared: _randomTask!.shared,
+              originalId: _randomTask!.originalId,
+              dirty: false,
+            );
+
+            // Update cache silently without notifications
+            cache.currentTasks![taskIndex] = updatedTask;
+
+            // Update the current random task reference too
+            setState(() {
+              _randomTask = updatedTask;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // Error handling without verbose logging
+    }
+  }
+
+  /// Check if we should fetch notes for the current task
+  bool _shouldFetchNotes() {
+    return _randomTask != null &&
+        (_randomTask!.notes == null || _randomTask!.notes!.trim().isEmpty) &&
+        _randomTask!.links != null &&
+        _randomTask!.links!.isNotEmpty;
   }
 
   @override
@@ -1385,40 +1646,90 @@ class HomeScreenState extends State<HomeScreen> {
                                             size: 28,
                                           ),
                                         ],
-                                        if (_randomTask!.notes != null &&
-                                            _randomTask!.notes!.isNotEmpty) ...[
+                                        // Show notes if they exist (either existing or fetched)
+                                        if ((_randomTask!.notes != null &&
+                                                _randomTask!
+                                                    .notes!.isNotEmpty) ||
+                                            (_fetchedNotes != null &&
+                                                _fetchedNotes!.isNotEmpty)) ...[
                                           const SizedBox(height: 8),
                                           Html(
-                                            data: _randomTask!.notes!,
+                                            data: _fetchedNotes ??
+                                                _randomTask!.notes!,
                                             style: {
                                               "body": Style(
                                                 fontSize: FontSize(
-                                                  Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14,
+                                                  Theme.of(context)
+                                                          .textTheme
+                                                          .bodyMedium
+                                                          ?.fontSize ??
+                                                      14,
                                                 ),
-                                                color: _randomTask!.suggestibleAt != null &&
-                                                        _randomTask!.suggestibleAt!.isAfter(DateTime.now())
+                                                color: _randomTask!
+                                                                .suggestibleAt !=
+                                                            null &&
+                                                        _randomTask!
+                                                            .suggestibleAt!
+                                                            .isAfter(
+                                                                DateTime.now())
                                                     ? Colors.grey
-                                                    : Theme.of(context).textTheme.bodyMedium?.color,
+                                                    : Theme.of(context)
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.color,
                                                 margin: Margins.zero,
                                                 padding: HtmlPaddings.zero,
                                               ),
                                               "a": Style(
-                                                color: Theme.of(context).colorScheme.primary,
-                                                textDecoration: TextDecoration.underline,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .primary,
+                                                textDecoration:
+                                                    TextDecoration.underline,
                                               ),
                                             },
-                                            onLinkTap: (url, htmlContext, attributes) async {
+                                            onLinkTap: (url, htmlContext,
+                                                attributes) async {
                                               if (url != null) {
                                                 try {
                                                   final uri = Uri.parse(url);
                                                   if (await canLaunchUrl(uri)) {
-                                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                                    await launchUrl(uri,
+                                                        mode: LaunchMode
+                                                            .externalApplication);
                                                   }
                                                 } catch (e) {
                                                   // Error handling without verbose logging
                                                 }
                                               }
                                             },
+                                          ),
+                                        ],
+                                        // Show loading indicator if fetching notes
+                                        if (_isFetchingNotes) ...[
+                                          const SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                        strokeWidth: 2),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Fetching description...',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodySmall
+                                                    ?.copyWith(
+                                                      fontStyle:
+                                                          FontStyle.italic,
+                                                      color: Colors.grey[600],
+                                                    ),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                         if (_randomTask!.links != null &&

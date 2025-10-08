@@ -98,20 +98,26 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
   /// Fetch description from JustWatch or Letterboxd URLs if notes are null
   Future<void> _fetchNotesFromLinks() async {
+    print('TaskDisplay: _fetchNotesFromLinks called for task: ${widget.task.headline}');
     // Skip if already fetching or no links
     if (_isFetchingNotes || widget.task.links == null) {
+      print('TaskDisplay: Skipping fetch - already fetching: $_isFetchingNotes, no links: ${widget.task.links == null}');
       return;
     }
     setState(() {
       _isFetchingNotes = true;
     });
+    print('TaskDisplay: Starting notes fetch from links: ${widget.task.links}');
 
     try {
       for (final link in widget.task.links!) {
         // Extract URL from HTML link
         final url = _extractUrlFromHtmlLink(link);
+        print('TaskDisplay: Processing link: $link');
+        print('TaskDisplay: Extracted URL: $url');
 
-        if (url == null) {
+        if (url == null || url.isEmpty) {
+          print('TaskDisplay: Skipping empty URL');
           continue;
         }
 
@@ -119,14 +125,20 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
         // Check if it's a JustWatch or Letterboxd URL
         if (url.contains('justwatch.com')) {
+          print('TaskDisplay: Detected JustWatch URL, calling _fetchJustWatchDescription');
           description = await _fetchJustWatchDescription(url);
         } else if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
           description = await _fetchLetterboxdDescription(url);
         }
 
         if (description != null && description.isNotEmpty) {
-          // Format the description with a link only if truncated
-          final formattedNotes = description.length > 200
+          // Check if this is a fallback error message that shouldn't be saved
+          final isErrorMessage = description.startsWith('Synopsis not available') ||
+                                 description.startsWith('Description not available') ||
+                                 description.contains('content protection');
+
+          // Format the description with a link only if truncated (and not an error message)
+          final formattedNotes = !isErrorMessage && description.length > 200
               ? '${description.substring(0, 200)}... <a href="$url">(more)</a>'
               : description;
 
@@ -134,8 +146,12 @@ class _TaskDisplayState extends State<TaskDisplay> {
             _fetchedNotes = formattedNotes;
           });
 
-          // Update the task in the cache
-          await _updateTaskWithNotes(formattedNotes);
+          // Only save to database if it's not an error message
+          if (!isErrorMessage) {
+            await _updateTaskWithNotes(formattedNotes);
+          } else {
+            print('TaskDisplay: Not saving error message to database: $description');
+          }
           break; // Stop after finding the first description
         }
       }
@@ -150,11 +166,25 @@ class _TaskDisplayState extends State<TaskDisplay> {
     }
   }
 
-  /// Extract URL from HTML link like "<a href=\"URL\">text</a>"
-  String? _extractUrlFromHtmlLink(String htmlLink) {
+  /// Extract URL from HTML link like "<a href=\"URL\">text</a>" or return plain URL
+  String? _extractUrlFromHtmlLink(String linkText) {
+    print('TaskDisplay: _extractUrlFromHtmlLink called with: "$linkText"');
+    print('TaskDisplay: linkText type: ${linkText.runtimeType}');
+    print('TaskDisplay: linkText length: ${linkText.length}');
+    print('TaskDisplay: linkText starts with http: ${linkText.startsWith('http')}');
+
+    // If it's already a plain URL, return it as-is
+    if (linkText.startsWith('http://') || linkText.startsWith('https://')) {
+      print('TaskDisplay: Plain URL detected: $linkText');
+      return linkText;
+    }
+
+    // Otherwise, try to extract from HTML format
     final regex = RegExp(r'href=["\x27]([^"\x27]+)["\x27]');
-    final match = regex.firstMatch(htmlLink);
-    return match?.group(1);
+    final match = regex.firstMatch(linkText);
+    final extractedUrl = match?.group(1);
+    print('TaskDisplay: HTML link extraction result: $extractedUrl');
+    return extractedUrl;
   }
 
   /// Update task with fetched notes and save to database
@@ -224,21 +254,56 @@ class _TaskDisplayState extends State<TaskDisplay> {
   /// Fetch description from JustWatch URL
   Future<String?> _fetchJustWatchDescription(String url) async {
     try {
+      print('JustWatch: _fetchJustWatchDescription called with URL: $url');
       late http.Response response;
 
       if (kIsWeb) {
-        // Use allorigins.win proxy for web to bypass CORS
-        final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
-        print('JustWatch: Using proxy for web: $proxyUrl');
-        response = await http.get(Uri.parse(proxyUrl));
+        // Try multiple proxy services for better reliability
+        final proxyUrls = [
+          'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}',
+          'https://cors-anywhere.herokuapp.com/$url',
+          'https://api.codetabs.com/v1/proxy?quest=$url',
+        ];
 
-        // Check if proxy returned wrong content (JustWatch bot detection)
-        if (response.statusCode == 200 && response.body.length < 5000) {
-          print('JustWatch: Proxy returned suspicious response, checking content...');
-          if (response.body.contains('<title>Meaning To</title>') || response.body.contains('Meaning To')) {
-            print('JustWatch: JustWatch blocked proxy request, descriptions not available on web');
-            return null;
+        String? workingProxy;
+        for (final proxyUrl in proxyUrls) {
+          try {
+            print('JustWatch: Trying proxy: $proxyUrl');
+            response = await http.get(
+              Uri.parse(proxyUrl),
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+              },
+            );
+
+            // Check if this proxy worked
+            if (response.statusCode == 200 &&
+                response.body.length > 5000 &&
+                !response.body.contains('<title>Meaning To</title>') &&
+                !response.body.contains('Meaning To') &&
+                response.body.contains('justwatch')) {
+              workingProxy = proxyUrl;
+              print('JustWatch: Successfully got content via proxy: $proxyUrl');
+              break;
+            } else {
+              print('JustWatch: Proxy $proxyUrl failed or returned blocked content');
+            }
+          } catch (e) {
+            print('JustWatch: Proxy $proxyUrl error: $e');
+            continue;
           }
+        }
+
+        if (workingProxy == null) {
+          print('JustWatch: All proxies failed, descriptions not available on web');
+          // Return a helpful message instead of null to inform the user
+          return 'Synopsis not available via web browser due to content protection. Try viewing on the mobile app for full descriptions.';
         }
       } else {
         // Direct fetch for mobile
@@ -898,9 +963,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          kIsWeb
-                              ? 'Description available on mobile platforms'
-                              : 'No description found',
+                          'No description found',
                           style: theme.textTheme.bodySmall?.copyWith(
                             fontStyle: FontStyle.italic,
                             color: Colors.grey[600],

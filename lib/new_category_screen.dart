@@ -132,9 +132,9 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
               }
             },
             icon: const Icon(Icons.shopping_cart),
-            label: const Text(
-              'Shop for Ideas',
-              style: TextStyle(fontSize: 18),
+            label: Text(
+              'Shop for ${NamingUtils.categoriesName(capitalize: true)}',
+              style: const TextStyle(fontSize: 18),
             ),
             style: AppButtons.goForth().copyWith(
               minimumSize:
