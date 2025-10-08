@@ -186,7 +186,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       title:
           'Select ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
       defaultCategory: widget.category,
-      onCategorySelected: (Category selectedCategory, {bool? shouldMove}) async {
+      onCategorySelected: (Category selectedCategory,
+          {bool? shouldMove}) async {
         if (selectedCategory.id != widget.category.id) {
           if (_localTask == null) {
             // For new tasks, just change the category
@@ -1518,7 +1519,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 16.0),
                               child: Text(
-                                '** You can also get ${NamingUtils.tasksNamePlural} from other people! **',
+                                '** You can also get ${NamingUtils.tasksName(plural: true)} from other people! **',
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.grey[600],

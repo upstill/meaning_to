@@ -389,30 +389,10 @@ class _AuthScreenState extends State<AuthScreen> {
                 'I\'ve Been Meaning To',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 24,
+                  fontSize: 32,
                 ),
               ),
-              const SizedBox(height: 24.0),
-
-              // Divider
-              Row(
-                children: [
-                  const Expanded(child: Divider()),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'Sign In or Sign Up',
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                  const Expanded(child: Divider()),
-                ],
-              ),
-
-              const SizedBox(height: 24),
+              const SizedBox(height: 48.0),
 
               Form(
                 key: _formKey,
@@ -533,20 +513,17 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
+
+                    // Divider
+                    const Divider(
+                      thickness: 1,
+                      color: Colors.grey,
+                    ),
+
+                    const SizedBox(height: 24),
 
                     // OAuth Sign-In Buttons (smaller, horizontal)
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Sign In or Sign Up',
-                        style: TextStyle(
-                          color: Color.fromARGB(255, 57, 56, 56),
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
                     Column(
                       children: [
                         Row(
@@ -557,19 +534,14 @@ class _AuthScreenState extends State<AuthScreen> {
                                 child: ElevatedButton.icon(
                                   onPressed:
                                       _isLoading ? null : _handleGoogleSignIn,
-                                  icon: _googleIcon?.iconData != null
-                                      ? SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: Image.memory(
-                                            _googleIcon!.iconData!,
-                                            width: 20,
-                                            height: 20,
-                                            fit: BoxFit.contain,
-                                          ),
-                                        )
-                                      : const Icon(Icons.g_mobiledata,
-                                          color: Colors.white, size: 20),
+                                  icon: const Text(
+                                    'G',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
                                   label: const Text(
                                     'Google',
                                     style: TextStyle(
@@ -595,19 +567,11 @@ class _AuthScreenState extends State<AuthScreen> {
                                 child: ElevatedButton.icon(
                                   onPressed:
                                       _isLoading ? null : _handleGitHubSignIn,
-                                  icon: _githubIcon?.iconData != null
-                                      ? SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: Image.memory(
-                                            _githubIcon!.iconData!,
-                                            width: 20,
-                                            height: 20,
-                                            fit: BoxFit.contain,
-                                          ),
-                                        )
-                                      : const Icon(Icons.code,
-                                          color: Colors.white, size: 20),
+                                  icon: const Icon(
+                                    Icons.code,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
                                   label: const Text(
                                     'GitHub',
                                     style: TextStyle(

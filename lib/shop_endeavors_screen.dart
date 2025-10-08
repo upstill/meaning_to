@@ -132,6 +132,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       {}; // Cache for redundant task checks
   final Set<int> _userTaskOriginalIds =
       {}; // Store user's task original_ids for redundancy checking
+  final Map<String, bool> _expandedInvitations =
+      {}; // Track which category invitations are expanded
 
   @override
   void initState() {
@@ -295,6 +297,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           _isLoading = false;
         });
 
+        // Check which categories have tasks available
+        _checkTaskAvailability();
+
         print('Loaded ${items.length} public categories for shop');
       } catch (e) {
         print('ShopEndeavorsScreen: Error getting categories from API: $e');
@@ -309,6 +314,81 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
         _error = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _checkTaskAvailability() async {
+    print('ShopEndeavorsScreen: Checking task availability for categories');
+
+    for (int i = 0; i < _shopItems.length; i++) {
+      final item = _shopItems[i];
+
+      try {
+        if (widget.existingCategory != null) {
+          // In "Get Suggestions to..." mode
+          final originalId = widget.existingCategory!.originalId;
+
+          if (originalId == null) {
+            setState(() {
+              _shopItems[i].hasTasksAvailable = false;
+            });
+            continue;
+          }
+
+          // Get all categories with the same original_id
+          final categoriesResponse = await supabase
+              .from('Categories')
+              .select('id')
+              .eq('original_id', originalId);
+
+          if (categoriesResponse.isEmpty) {
+            setState(() {
+              _shopItems[i].hasTasksAvailable = false;
+            });
+            continue;
+          }
+
+          final categoryIds = (categoriesResponse as List)
+              .map((json) => json['id'] as int)
+              .toList();
+
+          // Count tasks - just check if any exist
+          final tasksResponse = await supabase
+              .from('Tasks')
+              .select('id')
+              .inFilter('category_id', categoryIds)
+              .limit(1);
+
+          final count = (tasksResponse as List).length;
+
+          setState(() {
+            _shopItems[i].hasTasksAvailable = count > 0;
+          });
+
+          print(
+              'ShopEndeavorsScreen: Category ${item.headline} has $count tasks');
+        } else {
+          // In "Shop Endeavors" mode - just check if any tasks exist
+          final tasksResponse = await supabase
+              .from('Tasks')
+              .select('id')
+              .inFilter('category_id', item.categoryIds)
+              .limit(1);
+
+          final count = (tasksResponse as List).length;
+
+          setState(() {
+            _shopItems[i].hasTasksAvailable = count > 0;
+          });
+
+          print(
+              'ShopEndeavorsScreen: Category ${item.headline} has $count tasks');
+        }
+      } catch (e) {
+        print(
+            'ShopEndeavorsScreen: Error checking task availability for item $i: $e');
+        // Leave hasTasksAvailable as null to show expand icon (fail-safe)
+      }
     }
   }
 
@@ -328,7 +408,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     }
 
     // If category is being selected and not already expanded, expand it
-    if (!wasSelected && !_shopItems[index].isExpanded) {
+    if (willBeSelected && !_shopItems[index].isExpanded) {
       await _toggleExpansion(index);
 
       // Show prompt if this is the first time selecting a category
@@ -374,6 +454,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           print('ShopEndeavorsScreen: No original_id for existing category');
           setState(() {
             _shopItems[index].tasks = [];
+            _shopItems[index].tasksLoaded = true;
+            _shopItems[index].isExpanded = false;
           });
           return;
         }
@@ -392,6 +474,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
               'ShopEndeavorsScreen: No categories found with same original_id');
           setState(() {
             _shopItems[index].tasks = [];
+            _shopItems[index].tasksLoaded = true;
+            _shopItems[index].isExpanded = false;
           });
           return;
         }
@@ -432,6 +516,11 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
         setState(() {
           _shopItems[index].tasks = filteredTasks;
+          _shopItems[index].tasksLoaded = true;
+          // If no tasks found, collapse the item
+          if (filteredTasks.isEmpty) {
+            _shopItems[index].isExpanded = false;
+          }
           // Initialize import selections for new tasks
           // If the category is selected, select all tasks by default
           final shouldSelectAll = _shopItems[index].isSelected;
@@ -478,6 +567,11 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
         setState(() {
           _shopItems[index].tasks = filteredTasks;
+          _shopItems[index].tasksLoaded = true;
+          // If no tasks found, collapse the item
+          if (filteredTasks.isEmpty) {
+            _shopItems[index].isExpanded = false;
+          }
           // Initialize import selections for new tasks
           // If the category is selected, select all tasks by default
           final shouldSelectAll = _shopItems[index].isSelected;
@@ -500,7 +594,107 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
   void _toggleTaskImportSelection(String taskId) {
     setState(() {
       _taskImportSelections[taskId] = !(_taskImportSelections[taskId] ?? false);
+
+      // If a task is being selected, automatically select its category
+      if (_taskImportSelections[taskId] == true) {
+        // Find the category that contains this task
+        for (int i = 0; i < _shopItems.length; i++) {
+          final item = _shopItems[i];
+          if (item.tasks.any((task) => task.id.toString() == taskId)) {
+            _shopItems[i].isSelected = true;
+            break;
+          }
+        }
+      }
     });
+  }
+
+  void _toggleSelectAllTasks(int itemIndex) {
+    final item = _shopItems[itemIndex];
+    final bool allTasksSelected = _areAllTasksSelected(itemIndex);
+
+    // If all tasks are selected, deselect all. Otherwise, select all.
+    final bool shouldSelectAll = !allTasksSelected;
+
+    setState(() {
+      for (final task in item.tasks) {
+        _taskImportSelections[task.id.toString()] = shouldSelectAll;
+      }
+      // If selecting tasks, ensure category is selected
+      // If deselecting tasks, keep category selected (user can manually deselect category if desired)
+      if (shouldSelectAll) {
+        _shopItems[itemIndex].isSelected = true;
+      }
+      // Note: We don't automatically deselect the category when deselecting all tasks
+    });
+  }
+
+  bool _areAllTasksSelected(int itemIndex) {
+    final item = _shopItems[itemIndex];
+    if (item.tasks.isEmpty) return false;
+
+    return item.tasks
+        .every((task) => _taskImportSelections[task.id.toString()] == true);
+  }
+
+  bool _areSomeTasksSelected(int itemIndex) {
+    final item = _shopItems[itemIndex];
+    if (item.tasks.isEmpty) return false;
+
+    return item.tasks
+        .any((task) => _taskImportSelections[task.id.toString()] == true);
+  }
+
+  void _toggleInvitationExpansion(String itemId) {
+    setState(() {
+      _expandedInvitations[itemId] = !(_expandedInvitations[itemId] ?? false);
+    });
+  }
+
+  Widget? _buildInvitationWidget(ShopItem item) {
+    if (item.invitation == null || item.invitation!.isEmpty) {
+      return null;
+    }
+
+    const int maxLength = 200;
+    final bool isExpanded = _expandedInvitations[item.originalId] ?? false;
+    final bool needsTruncation = item.invitation!.length > maxLength;
+
+    final String displayText = needsTruncation && !isExpanded
+        ? '${item.invitation!.substring(0, maxLength)}...'
+        : item.invitation!;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 0.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            displayText,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
+          ),
+          if (needsTruncation)
+            TextButton(
+              onPressed: () => _toggleInvitationExpansion(item.originalId),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                isExpanded ? '(Less)' : '(More)',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   /// Check if a task is redundant (has same original_id as existing task)
@@ -1001,197 +1195,322 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                     ],
                   ),
                 )
-              : _shopItems.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.shopping_cart_outlined,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No public ${NamingUtils.categoriesName(plural: true)} available',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Check back later for new ${NamingUtils.categoriesName(plural: true)}!',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
+              : _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(),
                     )
-                  : _shouldShowNoSuggestionsAlert()
+                  : _shopItems.isEmpty
                       ? Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const Icon(
-                                Icons.search_off,
+                                Icons.shopping_cart_outlined,
                                 size: 64,
                                 color: Colors.grey,
                               ),
                               const SizedBox(height: 16),
-                              const Text(
-                                'Nothing Found!',
-                                style: TextStyle(
-                                  fontSize: 24,
+                              Text(
+                                'No public ${NamingUtils.categoriesName(plural: true)} available',
+                                style: const TextStyle(
+                                  fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              const Text(
-                                'You\'ve already taken on all the suggestions there are.',
-                                style: TextStyle(
-                                  fontSize: 16,
+                              Text(
+                                'Check back later for new ${NamingUtils.categoriesName(plural: true)}!',
+                                style: const TextStyle(
+                                  fontSize: 14,
                                   color: Colors.grey,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 24),
-                              ElevatedButton(
-                                onPressed: () => Navigator.pop(context),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 12,
-                                  ),
-                                ),
-                                child: const Text(
-                                  'Return',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
                                 ),
                               ),
                             ],
                           ),
                         )
-                      : ListView.builder(
-                          padding:
-                              const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 80.0),
-                          itemCount: _shopItems.length,
-                          itemBuilder: (context, index) {
-                            final item = _shopItems[index];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8.0),
+                      : _shouldShowNoSuggestionsAlert()
+                          ? Center(
                               child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  ListTile(
-                                    leading: widget.existingCategory == null
-                                        ? Checkbox(
-                                            value: item.isSelected,
-                                            onChanged: (_) =>
-                                                _toggleSelection(index),
-                                          )
-                                        : null,
-                                    title: GestureDetector(
-                                      onTap: () => _toggleExpansion(index),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              widget.existingCategory != null
-                                                  ? "...${item.headline}"
-                                                  : item.headline,
-                                              style: const TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.black,
-                                              ),
-                                            ),
-                                          ),
-                                          if (widget.existingCategory == null)
-                                            Icon(
-                                              item.isExpanded
-                                                  ? Icons.expand_less
-                                                  : Icons.expand_more,
-                                              color: Colors.grey,
-                                            ),
-                                        ],
+                                  const Icon(
+                                    Icons.search_off,
+                                    size: 64,
+                                    color: Colors.grey,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    'Nothing Found!',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'You\'ve already taken on all the suggestions there are.',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.grey,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 24),
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Return',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ),
-                                  if (item.isExpanded) ...[
-                                    if (widget.existingCategory == null) ...[
-                                      if (item.invitation != null)
-                                        Padding(
-                                          padding: const EdgeInsets.fromLTRB(
-                                              16.0, 0.0, 16.0, 8.0),
-                                          child: Text(
-                                            item.invitation!,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodyMedium
-                                                ?.copyWith(
-                                                  color: Colors.grey[600],
-                                                  fontStyle: FontStyle.italic,
-                                                ),
-                                          ),
-                                        ),
-                                    ],
-                                    if (item.tasks.isNotEmpty) ...[
-                                      Padding(
-                                        padding: const EdgeInsets.fromLTRB(
-                                            16.0, 0.0, 16.0, 16.0),
-                                        child: Column(
+                                ],
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(
+                                  16.0, 16.0, 16.0, 80.0),
+                              itemCount: _shopItems.length,
+                              itemBuilder: (context, index) {
+                                final item = _shopItems[index];
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 8.0),
+                                  child: Column(
+                                    children: [
+                                      ListTile(
+                                        title: Column(
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            if (widget.existingCategory == null)
-                                              Text(
-                                                'Suggestions',
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .bodySmall
-                                                    ?.copyWith(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color: Colors.grey[700],
-                                                    ),
+                                            // Headline row with checkbox and expand functionality
+                                            widget.existingCategory != null
+                                                ? Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          item.headline,
+                                                          style:
+                                                              const TextStyle(
+                                                            fontSize: 20,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: Colors.black,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      if (item.hasTasksAvailable ==
+                                                              null ||
+                                                          item.hasTasksAvailable ==
+                                                              true)
+                                                        GestureDetector(
+                                                          onTap: () =>
+                                                              _toggleExpansion(
+                                                                  index),
+                                                          child: Icon(
+                                                            item.isExpanded
+                                                                ? Icons
+                                                                    .expand_less
+                                                                : Icons
+                                                                    .expand_more,
+                                                            color: Colors.grey,
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  )
+                                                : Row(
+                                                    children: [
+                                                      Checkbox(
+                                                        value: item.isSelected,
+                                                        onChanged: (_) =>
+                                                            _toggleSelection(
+                                                                index),
+                                                        materialTapTargetSize:
+                                                            MaterialTapTargetSize
+                                                                .shrinkWrap,
+                                                        visualDensity:
+                                                            VisualDensity
+                                                                .compact,
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Expanded(
+                                                        child: Text(
+                                                          item.headline,
+                                                          style:
+                                                              const TextStyle(
+                                                            fontSize: 20,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: Colors.black,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      if (item.hasTasksAvailable ==
+                                                              null ||
+                                                          item.hasTasksAvailable ==
+                                                              true)
+                                                        GestureDetector(
+                                                          onTap: () =>
+                                                              _toggleExpansion(
+                                                                  index),
+                                                          child: Icon(
+                                                            item.isExpanded
+                                                                ? Icons
+                                                                    .expand_less
+                                                                : Icons
+                                                                    .expand_more,
+                                                            color: Colors.grey,
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                            // Add invitation below headline
+                                            if (_buildInvitationWidget(item) !=
+                                                null)
+                                              _buildInvitationWidget(item)!,
+                                            // Show "No suggestions" text immediately if no tasks available
+                                            if (item.hasTasksAvailable == false)
+                                              Padding(
+                                                padding: EdgeInsets.fromLTRB(
+                                                    16.0, 8.0, 16.0, 0.0),
+                                                child: Text(
+                                                  '(Your ${NamingUtils.tasksName()} here)',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    color: Colors.grey,
+                                                    fontStyle: FontStyle.italic,
+                                                  ),
+                                                ),
                                               ),
-                                            if (widget.existingCategory == null)
-                                              const SizedBox(height: 8),
-                                            ...item.tasks
-                                                .map((task) =>
-                                                    _buildTaskCard(task))
-                                                .toList(),
                                           ],
                                         ),
                                       ),
-                                    ] else if (item.isExpanded)
-                                      const Padding(
-                                        padding: EdgeInsets.fromLTRB(
-                                            16.0, 0.0, 16.0, 16.0),
-                                        child: Text(
-                                          'No suggestions',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey,
-                                            fontStyle: FontStyle.italic,
+                                      if (widget.existingCategory != null ||
+                                          item.isExpanded) ...[
+                                        if (item.tasks.isNotEmpty) ...[
+                                          Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                                16.0, 0.0, 16.0, 16.0),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                widget.existingCategory == null
+                                                    ? Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal:
+                                                                    20.0),
+                                                        child: Row(
+                                                          mainAxisAlignment:
+                                                              MainAxisAlignment
+                                                                  .spaceBetween,
+                                                          children: [
+                                                            Text(
+                                                              'Suggestions:',
+                                                              style: Theme.of(
+                                                                      context)
+                                                                  .textTheme
+                                                                  .bodySmall
+                                                                  ?.copyWith(
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold,
+                                                                    fontStyle:
+                                                                        FontStyle
+                                                                            .italic,
+                                                                    color: Colors
+                                                                            .grey[
+                                                                        700],
+                                                                    fontSize:
+                                                                        (Theme.of(context).textTheme.bodySmall?.fontSize ??
+                                                                                12) +
+                                                                            4,
+                                                                  ),
+                                                            ),
+                                                            Checkbox(
+                                                              value: _areAllTasksSelected(
+                                                                      index)
+                                                                  ? true
+                                                                  : _areSomeTasksSelected(
+                                                                          index)
+                                                                      ? null
+                                                                      : false,
+                                                              tristate: true,
+                                                              onChanged: (_) =>
+                                                                  _toggleSelectAllTasks(
+                                                                      index),
+                                                              materialTapTargetSize:
+                                                                  MaterialTapTargetSize
+                                                                      .shrinkWrap,
+                                                              visualDensity:
+                                                                  VisualDensity
+                                                                      .compact,
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      )
+                                                    : Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal:
+                                                                    20.0),
+                                                        child: Row(
+                                                          mainAxisAlignment:
+                                                              MainAxisAlignment
+                                                                  .end,
+                                                          children: [
+                                                            Checkbox(
+                                                              value: _areAllTasksSelected(
+                                                                      index)
+                                                                  ? true
+                                                                  : _areSomeTasksSelected(
+                                                                          index)
+                                                                      ? null
+                                                                      : false,
+                                                              tristate: true,
+                                                              onChanged: (_) =>
+                                                                  _toggleSelectAllTasks(
+                                                                      index),
+                                                              materialTapTargetSize:
+                                                                  MaterialTapTargetSize
+                                                                      .shrinkWrap,
+                                                              visualDensity:
+                                                                  VisualDensity
+                                                                      .compact,
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                const SizedBox(height: 8),
+                                                ...item.tasks
+                                                    .map((task) =>
+                                                        _buildTaskCard(task))
+                                                    .toList(),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                  ],
-                                ],
-                              ),
-                            );
-                          },
-                        ),
+                                        ],
+                                      ],
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
       floatingActionButton: _shopItems.isNotEmpty &&
-              !_shouldShowNoSuggestionsAlert()
+              !_shouldShowNoSuggestionsAlert() &&
+              _shopItems.any((item) => item.isSelected)
           ? SizedBox(
               height: 40, // Reduced from default 56 to 44 (12 points shorter)
               child: FloatingActionButton.extended(
