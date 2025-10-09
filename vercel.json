@@ -1,6 +1,6 @@
 {
   "functions": {
-    "functions/proxy.js": {
+    "api/proxy.js": {
       "runtime": "@vercel/node@3.0.7"
     }
   },
