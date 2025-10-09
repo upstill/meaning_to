@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "api/proxy.js": {
-      "runtime": "@vercel/node@3.0.7"
-    }
-  },
   "buildCommand": "flutter build web --dart-define=YOUTUBE_API_KEY=$YOUTUBE_API_KEY --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY",
   "framework": null
 } 
