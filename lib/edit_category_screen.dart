@@ -487,44 +487,221 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     }
   }
 
-  // Pure UI method - no database operations
-  Future<void> _toggleTaskCompletion(Task task) async {
-    try {
-      if (task.finished) {
-        await CacheManager().unfinishTask(task.id);
-      } else {
-        await CacheManager().finishTask(task.id);
+  // Pure UI method - optimistic update with async database save
+  void _toggleTaskCompletion(Task task) {
+    // Ignore cache changes while updating finished state to avoid unnecessary reloads
+    _ignoringCacheChanges = true;
+
+    final newFinishedState = !task.finished;
+
+    // Create updated task with new finished state immediately (optimistic update)
+    final updatedTask = Task(
+      id: task.id,
+      categoryId: task.categoryId,
+      headline: task.headline,
+      notes: task.notes,
+      ownerId: task.ownerId,
+      createdAt: task.createdAt,
+      suggestibleAt: task.suggestibleAt,
+      triggersAt: task.triggersAt,
+      deferral: task.deferral,
+      links: task.links,
+      processedLinks: task.processedLinks,
+      finished: newFinishedState,
+      shared: task.shared,
+      dirty: task.dirty,
+    );
+
+    // Update the task in the sorted cache directly to avoid scroll reset
+    if (_cachedSortedTasks != null) {
+      final index = _cachedSortedTasks!.indexWhere((t) => t.id == task.id);
+      if (index != -1) {
+        _cachedSortedTasks![index] = updatedTask;
       }
-      setState(() {}); // Trigger rebuild to reflect cache changes
+    }
+
+    // Also update _lastCachedTasks to keep them in sync
+    if (_lastCachedTasks != null) {
+      final index = _lastCachedTasks!.indexWhere((t) => t.id == task.id);
+      if (index != -1) {
+        _lastCachedTasks![index] = updatedTask;
+      }
+    }
+
+    // Update UI immediately - note: with large task lists this rebuild can be slow
+    setState(() {});
+
+    // Save to database asynchronously (don't await)
+    _saveTaskFinishedToDatabase(task.id, newFinishedState).then((_) {
+      // Re-enable cache change listening after save completes
+      if (mounted) {
+        _ignoringCacheChanges = false;
+      }
+    }).catchError((_) {
+      // Re-enable even on error
+      if (mounted) {
+        _ignoringCacheChanges = false;
+      }
+    });
+  }
+
+  // Background database save - updates database directly without triggering cache notifications
+  Future<void> _saveTaskFinishedToDatabase(
+      int taskId, bool newFinishedState) async {
+    try {
+      // Update only the finished column in database - minimal, fast operation
+      await ApiClient.updateTaskFinished(taskId, newFinishedState);
+
+      // Update the task in the main cache silently (without triggering notifications)
+      final cacheManager = CacheManager();
+      final allTasks = cacheManager.currentTasks;
+      if (allTasks != null) {
+        final taskIndex = allTasks.indexWhere((t) => t.id == taskId);
+        if (taskIndex != -1) {
+          final task = allTasks[taskIndex];
+          // Update the task in cache with clean (non-dirty) state since we just saved to DB
+          final cleanTask = Task(
+            id: task.id,
+            categoryId: task.categoryId,
+            headline: task.headline,
+            notes: task.notes,
+            ownerId: task.ownerId,
+            createdAt: task.createdAt,
+            suggestibleAt: task.suggestibleAt,
+            triggersAt: task.triggersAt,
+            deferral: task.deferral,
+            links: task.links,
+            processedLinks: task.processedLinks,
+            finished: newFinishedState,
+            shared: task.shared,
+            dirty: false, // Mark as clean since we just saved to database
+          );
+          allTasks[taskIndex] = cleanTask;
+        }
+      }
+
+      print(
+          'Edit Category: Task $taskId finished state saved to database: $newFinishedState');
     } catch (e) {
+      print('Edit Category: Error saving finished state: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error updating task: $e'),
+            content: Text('Error saving finished state: $e'),
             backgroundColor: Colors.red,
           ),
         );
+        // On error, force a refresh to revert to database state
+        _clearTaskCache();
+        setState(() {});
       }
     }
   }
 
-  // Pure UI method - no database operations
-  Future<void> _toggleTaskShare(Task task, bool newSharedState) async {
+  // Pure UI method - optimistic update with async database save
+  void _toggleTaskShare(Task task, bool newSharedState) {
+    // Ignore cache changes while updating share state to avoid unnecessary reloads
+    _ignoringCacheChanges = true;
+
+    // Create updated task with new share state immediately (optimistic update)
+    final updatedTask = Task(
+      id: task.id,
+      categoryId: task.categoryId,
+      headline: task.headline,
+      notes: task.notes,
+      ownerId: task.ownerId,
+      createdAt: task.createdAt,
+      suggestibleAt: task.suggestibleAt,
+      triggersAt: task.triggersAt,
+      deferral: task.deferral,
+      links: task.links,
+      processedLinks: task.processedLinks,
+      finished: task.finished,
+      shared: newSharedState,
+      dirty: task.dirty,
+    );
+
+    // Update the task in the sorted cache directly to avoid scroll reset
+    if (_cachedSortedTasks != null) {
+      final index = _cachedSortedTasks!.indexWhere((t) => t.id == task.id);
+      if (index != -1) {
+        _cachedSortedTasks![index] = updatedTask;
+      }
+    }
+
+    // Also update _lastCachedTasks to keep them in sync
+    if (_lastCachedTasks != null) {
+      final index = _lastCachedTasks!.indexWhere((t) => t.id == task.id);
+      if (index != -1) {
+        _lastCachedTasks![index] = updatedTask;
+      }
+    }
+
+    // Update UI immediately - note: with large task lists this rebuild can be slow
+    setState(() {});
+
+    // Save to database asynchronously (don't await)
+    _saveTaskShareToDatabase(task.id, newSharedState).then((_) {
+      // Re-enable cache change listening after save completes
+      if (mounted) {
+        _ignoringCacheChanges = false;
+      }
+    }).catchError((_) {
+      // Re-enable even on error
+      if (mounted) {
+        _ignoringCacheChanges = false;
+      }
+    });
+  }
+
+  // Background database save - updates database directly without triggering cache notifications
+  Future<void> _saveTaskShareToDatabase(int taskId, bool newSharedState) async {
     try {
-      // Use the existing CacheManager instance that's already initialized
+      // Update only the shared column in database - minimal, fast operation
+      await ApiClient.updateTaskShared(taskId, newSharedState);
+
+      // Update the task in the main cache silently (without triggering notifications)
       final cacheManager = CacheManager();
+      final allTasks = cacheManager.currentTasks;
+      if (allTasks != null) {
+        final taskIndex = allTasks.indexWhere((t) => t.id == taskId);
+        if (taskIndex != -1) {
+          final task = allTasks[taskIndex];
+          // Update the task in cache with clean (non-dirty) state since we just saved to DB
+          final cleanTask = Task(
+            id: task.id,
+            categoryId: task.categoryId,
+            headline: task.headline,
+            notes: task.notes,
+            ownerId: task.ownerId,
+            createdAt: task.createdAt,
+            suggestibleAt: task.suggestibleAt,
+            triggersAt: task.triggersAt,
+            deferral: task.deferral,
+            links: task.links,
+            processedLinks: task.processedLinks,
+            finished: task.finished,
+            shared: newSharedState,
+            dirty: false, // Mark as clean since we just saved to database
+          );
+          allTasks[taskIndex] = cleanTask;
+        }
+      }
 
-      await cacheManager.updateTaskShare(task.id, newSharedState);
-
-      setState(() {}); // Trigger rebuild to reflect cache changes
+      print(
+          'Edit Category: Task $taskId shared state saved to database: $newSharedState');
     } catch (e) {
+      print('Edit Category: Error saving share state: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error updating task share state: $e'),
+            content: Text('Error saving share state: $e'),
             backgroundColor: Colors.red,
           ),
         );
+        // On error, force a refresh to revert to database state
+        _clearTaskCache();
+        setState(() {});
       }
     }
   }

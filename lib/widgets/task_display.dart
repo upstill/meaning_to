@@ -5,6 +5,7 @@ import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/link_processor.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
@@ -98,10 +99,12 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
   /// Fetch description from JustWatch or Letterboxd URLs if notes are null
   Future<void> _fetchNotesFromLinks() async {
-    print('TaskDisplay: _fetchNotesFromLinks called for task: ${widget.task.headline}');
+    print(
+        'TaskDisplay: _fetchNotesFromLinks called for task: ${widget.task.headline}');
     // Skip if already fetching or no links
     if (_isFetchingNotes || widget.task.links == null) {
-      print('TaskDisplay: Skipping fetch - already fetching: $_isFetchingNotes, no links: ${widget.task.links == null}');
+      print(
+          'TaskDisplay: Skipping fetch - already fetching: $_isFetchingNotes, no links: ${widget.task.links == null}');
       return;
     }
     setState(() {
@@ -123,19 +126,24 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
         String? description;
 
-        // Check if it's a JustWatch or Letterboxd URL
+        // Check if it's a JustWatch, Letterboxd, or TED URL
         if (url.contains('justwatch.com')) {
-          print('TaskDisplay: Detected JustWatch URL, calling _fetchJustWatchDescription');
+          print(
+              'TaskDisplay: Detected JustWatch URL, calling _fetchJustWatchDescription');
           description = await _fetchJustWatchDescription(url);
         } else if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
           description = await _fetchLetterboxdDescription(url);
+        } else if (url.contains('ted.com')) {
+          print('TaskDisplay: Detected TED URL, fetching description');
+          description = await _fetchGenericDescription(url);
         }
 
         if (description != null && description.isNotEmpty) {
           // Check if this is a fallback error message that shouldn't be saved
-          final isErrorMessage = description.startsWith('Synopsis not available') ||
-                                 description.startsWith('Description not available') ||
-                                 description.contains('content protection');
+          final isErrorMessage =
+              description.startsWith('Synopsis not available') ||
+                  description.startsWith('Description not available') ||
+                  description.contains('content protection');
 
           // Format the description with a link only if truncated (and not an error message)
           final formattedNotes = !isErrorMessage && description.length > 200
@@ -150,7 +158,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
           if (!isErrorMessage) {
             await _updateTaskWithNotes(formattedNotes);
           } else {
-            print('TaskDisplay: Not saving error message to database: $description');
+            print(
+                'TaskDisplay: Not saving error message to database: $description');
           }
           break; // Stop after finding the first description
         }
@@ -171,7 +180,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
     print('TaskDisplay: _extractUrlFromHtmlLink called with: "$linkText"');
     print('TaskDisplay: linkText type: ${linkText.runtimeType}');
     print('TaskDisplay: linkText length: ${linkText.length}');
-    print('TaskDisplay: linkText starts with http: ${linkText.startsWith('http')}');
+    print(
+        'TaskDisplay: linkText starts with http: ${linkText.startsWith('http')}');
 
     // If it's already a plain URL, return it as-is
     if (linkText.startsWith('http://') || linkText.startsWith('https://')) {
@@ -192,15 +202,18 @@ class _TaskDisplayState extends State<TaskDisplay> {
     try {
       // Only save if the task doesn't already have notes to avoid overwriting user content
       if (widget.task.notes == null || widget.task.notes!.trim().isEmpty) {
-        print('TaskDisplay: Saving generated description to task notes for task: ${widget.task.headline}');
+        print(
+            'TaskDisplay: Saving generated description to task notes for task: ${widget.task.headline}');
 
         // Update the task directly in the API without triggering cache notifications
         // This avoids rebuilding the entire task list for a simple notes update
         await _saveNotesToDatabase(notes);
 
-        print('TaskDisplay: Successfully saved generated description to database');
+        print(
+            'TaskDisplay: Successfully saved generated description to database');
       } else {
-        print('TaskDisplay: Task already has notes, not overwriting with generated description');
+        print(
+            'TaskDisplay: Task already has notes, not overwriting with generated description');
       }
     } catch (e) {
       print('TaskDisplay: Error saving generated description: $e');
@@ -220,7 +233,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
       // Silently update the task in the cache without triggering notifications
       final cache = CacheManager();
       if (cache.currentTasks != null) {
-        final taskIndex = cache.currentTasks!.indexWhere((t) => t.id == widget.task.id);
+        final taskIndex =
+            cache.currentTasks!.indexWhere((t) => t.id == widget.task.id);
         if (taskIndex != -1) {
           // Create updated task for cache
           final updatedTask = Task(
@@ -272,8 +286,10 @@ class _TaskDisplayState extends State<TaskDisplay> {
             response = await http.get(
               Uri.parse(proxyUrl),
               headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept':
+                    'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.5',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'DNT': '1',
@@ -292,7 +308,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
               print('JustWatch: Successfully got content via proxy: $proxyUrl');
               break;
             } else {
-              print('JustWatch: Proxy $proxyUrl failed or returned blocked content');
+              print(
+                  'JustWatch: Proxy $proxyUrl failed or returned blocked content');
             }
           } catch (e) {
             print('JustWatch: Proxy $proxyUrl error: $e');
@@ -301,7 +318,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
         }
 
         if (workingProxy == null) {
-          print('JustWatch: All proxies failed, descriptions not available on web');
+          print(
+              'JustWatch: All proxies failed, descriptions not available on web');
           // Return a helpful message instead of null to inform the user
           return 'Synopsis not available via web browser due to content protection. Try viewing on the mobile app for full descriptions.';
         }
@@ -324,7 +342,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
       // Extract title using CSS selector h1.title-detail-hero__details__title
       String? title;
-      final titleElement = document.querySelector('h1.title-detail-hero__details__title');
+      final titleElement =
+          document.querySelector('h1.title-detail-hero__details__title');
       if (titleElement != null) {
         title = titleElement.text.trim();
         if (title.isNotEmpty) {
@@ -335,13 +354,16 @@ class _TaskDisplayState extends State<TaskDisplay> {
       // PRIORITY 1: Try CSS selector for synopsis div > p tag (preferred method)
       final synopsisDiv = document.querySelector('div#synopsis');
       if (synopsisDiv != null) {
-        print('JustWatch: Found synopsis div, innerHTML: ${synopsisDiv.innerHtml}');
+        print(
+            'JustWatch: Found synopsis div, innerHTML: ${synopsisDiv.innerHtml}');
         final synopsisParagraph = synopsisDiv.querySelector('p');
         if (synopsisParagraph != null) {
           final synopsisText = synopsisParagraph.text.trim();
-          print('JustWatch: Raw synopsis text from CSS selector: "$synopsisText"');
+          print(
+              'JustWatch: Raw synopsis text from CSS selector: "$synopsisText"');
           if (synopsisText.isNotEmpty) {
-            print('JustWatch: Found synopsis via CSS selector: ${synopsisText.substring(0, synopsisText.length > 50 ? 50 : synopsisText.length)}...');
+            print(
+                'JustWatch: Found synopsis via CSS selector: ${synopsisText.substring(0, synopsisText.length > 50 ? 50 : synopsisText.length)}...');
             // Return just the synopsis - title is already used as task headline
             return synopsisText;
           }
@@ -378,7 +400,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
       // If we only have title, don't return it since it's already the task headline
       if (title != null && title.isNotEmpty) {
-        print('JustWatch: Found only title, but not returning since it\'s already the task headline');
+        print(
+            'JustWatch: Found only title, but not returning since it\'s already the task headline');
         return null;
       }
 
@@ -407,7 +430,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
       http.Response response;
       if (kIsWeb) {
         // Use allorigins.win proxy for web to bypass CORS
-        final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(finalUrl)}';
+        final proxyUrl =
+            'https://api.allorigins.win/raw?url=${Uri.encodeComponent(finalUrl)}';
         print('Letterboxd: Using proxy for web: $proxyUrl');
         response = await http.get(Uri.parse(proxyUrl));
       } else {
@@ -449,6 +473,28 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
       return null;
     } catch (e) {
+      return null;
+    }
+  }
+
+  /// Fetch description from any site using the site configuration system
+  Future<String?> _fetchGenericDescription(String url) async {
+    try {
+      print('TaskDisplay: _fetchGenericDescription called with URL: $url');
+
+      // Use LinkProcessor to fetch webpage content
+      final content = await LinkProcessor.fetchWebpageContent(url);
+
+      if (content?.description != null && content!.description!.isNotEmpty) {
+        print(
+            'TaskDisplay: Successfully fetched description: ${content.description}');
+        return content.description;
+      }
+
+      print('TaskDisplay: No description found in webpage content');
+      return null;
+    } catch (e) {
+      print('TaskDisplay: Error fetching generic description: $e');
       return null;
     }
   }
@@ -591,19 +637,18 @@ class _TaskDisplayState extends State<TaskDisplay> {
                               child: Builder(
                                 builder: (context) {
                                   // Use gray for deferred or finished tasks, black for available tasks
-                                  final textColor =
-                                      (widget.task.isDeferred ||
+                                  final textColor = (widget.task.isDeferred ||
                                           widget.task.finished)
                                       ? Colors.grey
                                       : Colors.black;
 
                                   return Text(
                                     widget.task.headline,
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                          color: textColor,
-                                        ),
+                                    style:
+                                        theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: textColor,
+                                    ),
                                     softWrap: true,
                                     maxLines: null,
                                   );
@@ -667,12 +712,10 @@ class _TaskDisplayState extends State<TaskDisplay> {
                                         : Icons.share_sharp,
                                     size:
                                         18, // Slightly larger for better visibility
-                                    color:
-                                        (widget.isCategoryPrivate == true ||
+                                    color: (widget.isCategoryPrivate == true ||
                                             !widget.task.shared)
-                                        ? Colors
-                                              .grey
-                                              .shade400 // Medium gray for unshared state
+                                        ? Colors.grey
+                                            .shade400 // Medium gray for unshared state
                                         : Colors.green.shade700,
                                   ),
                                   onPressed: () {
@@ -686,8 +729,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                                       );
                                     }
                                   },
-                                  tooltip:
-                                      (widget.isCategoryPrivate == true ||
+                                  tooltip: (widget.isCategoryPrivate == true ||
                                           !widget.task.shared)
                                       ? 'Share task'
                                       : 'Unshare task',
@@ -846,8 +888,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                         final htmlData = _fetchedNotes ?? widget.task.notes!;
 
                         // Check if this is a Letterboxd or JustWatch task with a (more) link
-                        final isLetterboxdTask =
-                            htmlData.contains('boxd.it') ||
+                        final isLetterboxdTask = htmlData.contains('boxd.it') ||
                             htmlData.contains('letterboxd.com');
                         final isJustWatchTask = htmlData.contains(
                           'justwatch.com',
@@ -877,11 +918,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
                                   Text(
                                     beforeLink,
                                     style: TextStyle(
-                                      fontSize:
-                                          theme
-                                              .textTheme
-                                              .bodyMedium
-                                              ?.fontSize ??
+                                      fontSize: theme
+                                              .textTheme.bodyMedium?.fontSize ??
                                           14,
                                       fontStyle: FontStyle.italic,
                                       color: theme.textTheme.bodySmall?.color,
@@ -892,7 +930,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
                                       final urlToLaunch =
                                           _resolvedMoreUrl ?? url;
                                       try {
-                                        await LinkDisplay.handleUrl(urlToLaunch, context);
+                                        await LinkDisplay.handleUrl(
+                                            urlToLaunch, context);
                                       } catch (e) {
                                         print('Error launching URL: $e');
                                       }
@@ -900,10 +939,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                                     child: Text(
                                       linkText,
                                       style: TextStyle(
-                                        fontSize:
-                                            theme
-                                                .textTheme
-                                                .bodyMedium
+                                        fontSize: theme.textTheme.bodyMedium
                                                 ?.fontSize ??
                                             14,
                                         fontStyle: FontStyle.italic,
@@ -943,7 +979,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
                                 final urlToLaunch = _resolvedMoreUrl ?? url;
 
                                 // Use centralized URL handling with letterboxd protection
-                                await LinkDisplay.handleUrl(urlToLaunch, context);
+                                await LinkDisplay.handleUrl(
+                                    urlToLaunch, context);
                               } catch (e) {
                                 // Error handling without verbose logging
                               }

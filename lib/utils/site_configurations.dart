@@ -3,9 +3,9 @@ import 'package:meaning_to/utils/youtube_api.dart';
 
 /// Defines how content should be extracted from a specific website
 enum ExtractionStrategy {
-  cssSelectors,  // Use CSS selectors to extract content
-  api,          // Use API calls (future expansion)
-  custom,       // Custom extraction logic (future expansion)
+  cssSelectors, // Use CSS selectors to extract content
+  api, // Use API calls (future expansion)
+  custom, // Custom extraction logic (future expansion)
 }
 
 /// Configuration for extracting content from a specific website
@@ -27,7 +27,8 @@ class SiteConfig {
   });
 
   /// Extract title using API first (for supported sites), then fall back to HTML parsing
-  Future<String?> extractTitleWithApi(String url, dom.Document? document) async {
+  Future<String?> extractTitleWithApi(
+      String url, dom.Document? document) async {
     // For YouTube, try API first
     if (domain == 'youtube.com' && YouTubeApiService.isAvailable) {
       print('SiteConfig: Attempting YouTube API extraction for: $url');
@@ -37,13 +38,15 @@ class SiteConfig {
           String title = videoInfo.title;
           // Apply title processing (remove "- YouTube" suffix)
           title = _processTitle(title) ?? title;
-          print('SiteConfig: Successfully extracted title via YouTube API: "$title"');
+          print(
+              'SiteConfig: Successfully extracted title via YouTube API: "$title"');
           return title;
         }
       } catch (e) {
         print('SiteConfig: YouTube API extraction failed: $e');
       }
-      print('SiteConfig: YouTube API extraction failed, will need proxy for scraping fallback');
+      print(
+          'SiteConfig: YouTube API extraction failed, will need proxy for scraping fallback');
     }
 
     // Fall back to HTML parsing
@@ -57,7 +60,8 @@ class SiteConfig {
 
   /// Check if this site needs proxy for fallback scraping
   bool needsProxyForFallback() {
-    return domain == 'youtube.com' || customSettings?['requiresProxyFallback'] == true;
+    return domain == 'youtube.com' ||
+        customSettings?['requiresProxyFallback'] == true;
   }
 
   /// Extract title from the document using configured selectors
@@ -71,14 +75,16 @@ class SiteConfig {
         final element = document.querySelector(titleSelector);
         if (element != null) {
           // For meta tags, extract from content attribute; for other elements, use text
-          final useMetaAttributes = customSettings?['useMetaAttributes'] == true;
+          final useMetaAttributes =
+              customSettings?['useMetaAttributes'] == true;
           if (useMetaAttributes && element.localName == 'meta') {
             title = element.attributes['content']?.trim();
           } else if (domain == 'justwatch.com') {
             // For JustWatch, extract only direct text content (not nested spans)
             String directText = '';
             for (final node in element.nodes) {
-              if (node.nodeType == 3) { // Text node
+              if (node.nodeType == 3) {
+                // Text node
                 directText += node.text ?? '';
               }
             }
@@ -100,7 +106,8 @@ class SiteConfig {
           final element = document.querySelector(fallbackSelector);
           if (element != null) {
             // For meta tags, extract from content attribute; for other elements, use text
-            final useMetaAttributes = customSettings?['useMetaAttributes'] == true;
+            final useMetaAttributes =
+                customSettings?['useMetaAttributes'] == true;
             if (useMetaAttributes && element.localName == 'meta') {
               title = element.attributes['content']?.trim();
             } else {
@@ -116,7 +123,8 @@ class SiteConfig {
       if ((title == null || title.isEmpty) && domain == 'youtube.com') {
         // Try og:title meta tag
         try {
-          final ogTitleElement = document.querySelector('meta[property="og:title"]');
+          final ogTitleElement =
+              document.querySelector('meta[property="og:title"]');
           if (ogTitleElement != null) {
             title = ogTitleElement.attributes['content']?.trim();
           }
@@ -127,7 +135,8 @@ class SiteConfig {
         // Try twitter:title meta tag
         if ((title == null || title.isEmpty)) {
           try {
-            final twitterTitleElement = document.querySelector('meta[name="twitter:title"]');
+            final twitterTitleElement =
+                document.querySelector('meta[name="twitter:title"]');
             if (twitterTitleElement != null) {
               title = twitterTitleElement.attributes['content']?.trim();
             }
@@ -156,13 +165,16 @@ class SiteConfig {
     // Apply year truncation pattern
     final yearPattern = customSettings?['titleTruncationPattern'] as String?;
     if (yearPattern != null) {
-      processedTitle = processedTitle.replaceFirst(RegExp(yearPattern), '').trim();
+      processedTitle =
+          processedTitle.replaceFirst(RegExp(yearPattern), '').trim();
     }
 
     // Apply streaming text removal for JustWatch
     final streamingPattern = customSettings?['streamingPattern'] as String?;
     if (streamingPattern != null) {
-      processedTitle = processedTitle.replaceFirst(RegExp(streamingPattern, caseSensitive: false), '').trim();
+      processedTitle = processedTitle
+          .replaceFirst(RegExp(streamingPattern, caseSensitive: false), '')
+          .trim();
     }
 
     // Remove invisible characters at the beginning (like zero-width space)
@@ -182,7 +194,8 @@ class SiteConfig {
         final element = document.querySelector(descriptionSelector);
         if (element != null) {
           // For meta tags, extract from content attribute; for other elements, use text
-          final useMetaAttributes = customSettings?['useMetaAttributes'] == true;
+          final useMetaAttributes =
+              customSettings?['useMetaAttributes'] == true;
           if (useMetaAttributes && element.localName == 'meta') {
             description = element.attributes['content']?.trim();
           } else {
@@ -201,7 +214,8 @@ class SiteConfig {
         try {
           final element = document.querySelector(fallbackSelector);
           if (element != null) {
-            final useMetaAttributes = customSettings?['useMetaAttributes'] == true;
+            final useMetaAttributes =
+                customSettings?['useMetaAttributes'] == true;
             if (useMetaAttributes && element.localName == 'meta') {
               description = element.attributes['content']?.trim();
             } else {
@@ -209,7 +223,8 @@ class SiteConfig {
             }
           }
         } catch (e) {
-          print('SiteConfig: Error extracting fallback description for $domain: $e');
+          print(
+              'SiteConfig: Error extracting fallback description for $domain: $e');
         }
       }
     }
@@ -238,7 +253,8 @@ class SiteConfigRegistry {
       customSettings: {
         'truncateTitle': true,
         'titleTruncationPattern': r'\s*\(\d{4}\).*$', // Remove year and after
-        'streamingPattern': r'\s*streaming:?\s*where to watch.*$', // Remove streaming text
+        'streamingPattern':
+            r'\s*streaming:?\s*where to watch.*$', // Remove streaming text
       },
     ),
     'letterboxd.com': const SiteConfig(
@@ -282,7 +298,22 @@ class SiteConfigRegistry {
       customSettings: {
         'useMetaAttributes': true, // Extract from attributes, not text content
         'truncateTitle': true,
-        'titleTruncationPattern': r'\s*-\s*YouTube\s*$', // Remove "- YouTube" suffix
+        'titleTruncationPattern':
+            r'\s*-\s*YouTube\s*$', // Remove "- YouTube" suffix
+      },
+    ),
+    'ted.com': const SiteConfig(
+      domain: 'ted.com',
+      displayName: 'TED',
+      cssSelectors: {
+        'title': 'meta[name="title"]', // Primary: Meta title tag
+        'title_fallback': 'meta[property="og:title"]', // Fallback: OG title
+        'description': 'meta[name="description"]',
+        'description_fallback': 'meta[property="og:description"]',
+      },
+      requiresProxy: true, // TED.com blocks direct requests
+      customSettings: {
+        'useMetaAttributes': true, // Extract from attributes, not text content
       },
     ),
   };
@@ -300,7 +331,8 @@ class SiteConfigRegistry {
       'title': 'title', // HTML title tag
       'title_fallback': 'h1', // First h1 as fallback
       'description': 'meta[name="description"]', // Meta description
-      'description_fallback': 'meta[property="og:description"]', // OG description fallback
+      'description_fallback':
+          'meta[property="og:description"]', // OG description fallback
     },
     customSettings: {
       'useMetaAttributes': true, // Extract from attributes, not text content

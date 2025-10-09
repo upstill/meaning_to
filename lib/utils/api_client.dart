@@ -104,13 +104,10 @@ class ApiClient {
   static Future<Task?> deleteTask(String taskId) async {
     try {
       // Temporary: Use Supabase directly
-      final response = await _supabase
-          .from('Tasks')
-          .delete()
-          .eq('id', taskId)
-          .select();
+      final response =
+          await _supabase.from('Tasks').delete().eq('id', taskId).select();
 
-      if (response == null || (response as List).isEmpty) {
+      if ((response as List).isEmpty) {
         print('No task found to delete with ID: $taskId');
         return null;
       }
@@ -153,6 +150,17 @@ class ApiClient {
           .update({'deferral': deferral}).eq('id', taskId.toString());
     } catch (e) {
       print('Error updating task deferral in Supabase: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> updateTaskShared(int taskId, bool shared) async {
+    try {
+      await _supabase
+          .from('Tasks')
+          .update({'shared': shared}).eq('id', taskId.toString());
+    } catch (e) {
+      print('Error updating task shared in Supabase: $e');
       rethrow;
     }
   }
