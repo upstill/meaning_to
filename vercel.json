@@ -1,17 +1,29 @@
 {
   "version": 2,
-  "builds": [
+  "functions": {
+    "api/proxy.js": {
+      "runtime": "@vercel/node@3"
+    }
+  },
+  "rewrites": [
     {
-      "src": "pubspec.yaml",
-      "use": "@vercel/static-build",
-      "config": {
-        "buildCommand": "flutter build web --dart-define=YOUTUBE_API_KEY=$YOUTUBE_API_KEY --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY",
-        "outputDirectory": "build/web"
-      }
-    },
+      "source": "/((?!api/).*)",
+      "destination": "/web/$1"
+    }
+  ],
+  "headers": [
     {
-      "src": "api/proxy.js",
-      "use": "@vercel/node"
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "require-corp"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        }
+      ]
     }
   ]
 } 

@@ -1,4 +1,40 @@
-api/
-node_modules/
-.git/
+# Ignore source files - we only need the built web app and API
+android/
+ios/
+linux/
+macos/
+windows/
+test/
+lib/
+.dart_tool/
+.idea/
+.vscode/
+*.log
+*.iml
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+pubspec.lock
+pubspec.yaml
+
+# Ignore build artifacts except web output
 build/
+
+# Ignore docs and config
+docs/
+documents/
+supabase/
+*.sql
+*.md
+*.sh
+*.p8
+
+# Node modules
+node_modules/
+
+# Git
+.git/
+
+# Keep these:
+# !web/
+# !api/
