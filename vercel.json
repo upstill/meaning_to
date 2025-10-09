@@ -1,6 +1,17 @@
 {
-  "buildCommand": "flutter build web --dart-define=YOUTUBE_API_KEY=$YOUTUBE_API_KEY --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY",
-  "outputDirectory": "build/web",
-  "installCommand": "flutter pub get",
-  "framework": null
+  "version": 2,
+  "builds": [
+    {
+      "src": "pubspec.yaml",
+      "use": "@vercel/static-build",
+      "config": {
+        "buildCommand": "flutter build web --dart-define=YOUTUBE_API_KEY=$YOUTUBE_API_KEY --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY",
+        "outputDirectory": "build/web"
+      }
+    },
+    {
+      "src": "api/proxy.js",
+      "use": "@vercel/node"
+    }
+  ]
 } 
