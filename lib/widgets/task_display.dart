@@ -7,7 +7,6 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:flutter_html/flutter_html.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 
@@ -223,44 +222,23 @@ class _TaskDisplayState extends State<TaskDisplay> {
   /// Save notes directly to database without triggering cache rebuild
   Future<void> _saveNotesToDatabase(String notes) async {
     try {
+      print(
+          'TaskDisplay: Saving notes for task ID ${widget.task.id}: ${widget.task.headline}');
+
       // Import ApiClient for direct database update
       final taskData = {
         'notes': notes,
       };
 
+      // Save to database only - don't manipulate the cache directly
+      // This avoids race conditions when multiple tasks are fetching descriptions simultaneously
       await ApiClient.updateTask(widget.task.id.toString(), taskData);
 
-      // Silently update the task in the cache without triggering notifications
-      final cache = CacheManager();
-      if (cache.currentTasks != null) {
-        final taskIndex =
-            cache.currentTasks!.indexWhere((t) => t.id == widget.task.id);
-        if (taskIndex != -1) {
-          // Create updated task for cache
-          final updatedTask = Task(
-            id: widget.task.id,
-            categoryId: widget.task.categoryId,
-            headline: widget.task.headline,
-            notes: notes,
-            ownerId: widget.task.ownerId,
-            createdAt: widget.task.createdAt,
-            suggestibleAt: widget.task.suggestibleAt,
-            triggersAt: widget.task.triggersAt,
-            deferral: widget.task.deferral,
-            links: widget.task.links,
-            processedLinks: widget.task.processedLinks,
-            finished: widget.task.finished,
-            shared: widget.task.shared,
-            originalId: widget.task.originalId,
-            dirty: false, // Mark as clean since we just saved to database
-          );
-
-          // Update cache silently without notifications
-          cache.currentTasks![taskIndex] = updatedTask;
-        }
-      }
+      print(
+          'TaskDisplay: Successfully saved notes for task ID ${widget.task.id}');
     } catch (e) {
-      print('TaskDisplay: Error in direct database save: $e');
+      print(
+          'TaskDisplay: Error in direct database save for task ID ${widget.task.id}: $e');
       rethrow;
     }
   }

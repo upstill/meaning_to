@@ -188,8 +188,20 @@ class ApiClient {
 
   static Future<void> updateGuestTasks(String guestUserId) async {
     try {
-      // This would be a complex operation, for now just log
-      print('updateGuestTasks called for user: $guestUserId');
+      print(
+          'updateGuestTasks: Resetting all tasks for guest user: $guestUserId');
+
+      // Reset all guest tasks to their initial state:
+      // - suggestible_at: null (immediately suggestible)
+      // - deferral: null (reset deferral counter)
+      // - finished: false (mark as unfinished)
+      await _supabase.from('Tasks').update({
+        'suggestible_at': null,
+        'deferral': null,
+        'finished': false,
+      }).eq('owner_id', guestUserId);
+
+      print('updateGuestTasks: Successfully reset ${guestUserId} tasks');
     } catch (e) {
       print('Error updating guest tasks in Supabase: $e');
       rethrow;
