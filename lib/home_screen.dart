@@ -933,7 +933,7 @@ class HomeScreenState extends State<HomeScreen> {
           builder: (BuildContext context) {
             return AlertDialog(
               title: const Text(
-                'Welcome to I\'ve Been Meaning To...!',
+                'Welcome to I\'ve Been Meaning To...r!',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -1942,21 +1942,45 @@ class HomeScreenState extends State<HomeScreen> {
                     width: 1,
                   ),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: Colors.orange[700],
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'You\'re in guest mode. You can view and modify demo data. Sign up/in to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}.',
-                        style: TextStyle(
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
                           color: Colors.orange[700],
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'You\'re in guest mode, so you can play with demo data. Sign up/in for full access to making your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}.',
+                            style: TextStyle(
+                              color: Colors.orange[700],
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/auth');
+                        },
+                        icon: const Icon(Icons.login, size: 18),
+                        label: const Text('Sign Up / Sign In'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange[700],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
                         ),
                       ),
                     ),

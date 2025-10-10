@@ -36,5 +36,5 @@ node_modules/
 .git/
 
 # Keep these:
-# !web/
-# !api/
+!web/
+!api/
