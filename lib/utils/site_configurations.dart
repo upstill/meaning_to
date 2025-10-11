@@ -316,6 +316,21 @@ class SiteConfigRegistry {
         'useMetaAttributes': true, // Extract from attributes, not text content
       },
     ),
+    'tidal.com': const SiteConfig(
+      domain: 'tidal.com',
+      displayName: 'TIDAL',
+      cssSelectors: {
+        'title': 'h2.wave-text-title-bold', // Primary: TIDAL title element
+        'title_fallback': 'title', // Fallback: HTML title tag
+        'description': 'meta[name="description"]',
+        'description_fallback': 'meta[property="og:description"]',
+      },
+      requiresProxy: true, // TIDAL requires proxy due to CORS
+      customSettings: {
+        'useMetaAttributes':
+            false, // Extract text content from h2, not attributes
+      },
+    ),
   };
 
   /// Get configuration for a specific domain
