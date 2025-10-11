@@ -17,7 +17,8 @@ class ShareHandler {
   StreamSubscription<SharedMedia?>? _shareSubscription;
   String? _sharedText;
   late GlobalKey<NavigatorState> _navigatorKey;
-  String? _pendingContent; // Store content that needs processing when context is available
+  String?
+      _pendingContent; // Store content that needs processing when context is available
 
   /// Initialize the share handler and set up listeners
   void initialize({
@@ -56,10 +57,12 @@ class ShareHandler {
   /// Log intent with context awareness
   void _logContextAwareIntent(String type, dynamic data,
       void Function(String, dynamic) onIntentReceived) {
-    print('🚀🚀🚀 SHAREHANDLER: NEW CODE RUNNING - PROCESSING INTENT: $type 🚀🚀🚀');
+    print(
+        '🚀🚀🚀 SHAREHANDLER: NEW CODE RUNNING - PROCESSING INTENT: $type 🚀🚀🚀');
     final context = _navigatorKey.currentContext;
 
-    print('ShareHandler: Context check - context is ${context != null ? 'AVAILABLE' : 'NULL'}');
+    print(
+        'ShareHandler: Context check - context is ${context != null ? 'AVAILABLE' : 'NULL'}');
 
     if (context == null) {
       print('ShareHandler: No context available, will process content later');
@@ -69,15 +72,18 @@ class ShareHandler {
       return;
     }
 
-    print('ShareHandler: Context is available, proceeding with normal processing');
+    print(
+        'ShareHandler: Context is available, proceeding with normal processing');
 
     // Get the current route
     print('ShareHandler: STEP 1 - Getting current route...');
     final currentRoute = ModalRoute.of(context);
-    print('ShareHandler: STEP 2 - Current route: ${currentRoute?.settings.name ?? 'null'}');
+    print(
+        'ShareHandler: STEP 2 - Current route: ${currentRoute?.settings.name ?? 'null'}');
 
     // Don't return early if currentRoute is null - we can still process shared content
-    print('ShareHandler: STEP 4 - Continuing with context info (route may be null during startup)...');
+    print(
+        'ShareHandler: STEP 4 - Continuing with context info (route may be null during startup)...');
 
     // Add context information to the data
     print('ShareHandler: STEP 5 - Creating contextInfo object...');
@@ -92,7 +98,8 @@ class ShareHandler {
     // Add source app information if this is a SharedMedia object
     print('ShareHandler: STEP 7 - Checking if data is SharedMedia...');
     if (data is SharedMedia) {
-      print('ShareHandler: STEP 8 - Data is SharedMedia, adding source info...');
+      print(
+          'ShareHandler: STEP 8 - Data is SharedMedia, adding source info...');
       contextInfo['source'] = <String, dynamic>{
         'content': data.content,
         'serviceName': data.serviceName,
@@ -103,17 +110,20 @@ class ShareHandler {
       };
       print('ShareHandler: STEP 9 - Source info added successfully');
     } else {
-      print('ShareHandler: STEP 8 - Data is not SharedMedia, skipping source info');
+      print(
+          'ShareHandler: STEP 8 - Data is not SharedMedia, skipping source info');
     }
 
     // Add HomeScreen specific information
     print('ShareHandler: STEP 10 - Checking route for screen-specific info...');
     final routeName = currentRoute?.settings.name;
     if (routeName == '/home') {
-      print('ShareHandler: STEP 11 - On home route, looking for HomeScreenState...');
+      print(
+          'ShareHandler: STEP 11 - On home route, looking for HomeScreenState...');
       final homeState = context.findAncestorStateOfType<HomeScreenState>();
       if (homeState != null) {
-        print('ShareHandler: STEP 12 - Found HomeScreenState, adding category info...');
+        print(
+            'ShareHandler: STEP 12 - Found HomeScreenState, adding category info...');
         contextInfo['context']['currentCategory'] =
             homeState.selectedCategory?.headline;
         contextInfo['context']['hasCategory'] =
@@ -126,11 +136,13 @@ class ShareHandler {
 
     // Add EditCategoryScreen specific information
     else if (routeName == '/edit-category') {
-      print('ShareHandler: STEP 14 - On edit-category route, looking for EditCategoryScreenState...');
+      print(
+          'ShareHandler: STEP 14 - On edit-category route, looking for EditCategoryScreenState...');
       final editState =
           context.findAncestorStateOfType<EditCategoryScreenState>();
       if (editState != null) {
-        print('ShareHandler: STEP 15 - Found EditCategoryScreenState, adding category info...');
+        print(
+            'ShareHandler: STEP 15 - Found EditCategoryScreenState, adding category info...');
         contextInfo['context']['currentCategory'] =
             editState.widget.category?.headline;
         print('ShareHandler: STEP 16 - Edit category info added');
@@ -138,7 +150,8 @@ class ShareHandler {
         print('ShareHandler: STEP 15 - No EditCategoryScreenState found');
       }
     } else {
-      print('ShareHandler: STEP 11 - Route is not home or edit-category: ${routeName ?? 'null'}');
+      print(
+          'ShareHandler: STEP 11 - Route is not home or edit-category: ${routeName ?? 'null'}');
     }
 
     // Log the intent with context information
@@ -185,11 +198,18 @@ class ShareHandler {
     print('ShareHandler: STEP 21 - Shared content extracted successfully');
 
     // Check if the shared content contains URLs and process them
-    print('ShareHandler: STEP 22 - About to call _processSharedContent with content: ${sharedContent?.substring(0, 50) ?? 'null'}...');
+    final contentPreview = sharedContent != null
+        ? (sharedContent.length > 50
+            ? sharedContent.substring(0, 50)
+            : sharedContent)
+        : 'null';
+    print(
+        'ShareHandler: STEP 22 - About to call _processSharedContent with content: $contentPreview...');
 
     try {
       _processSharedContent(context, sharedContent, contextInfo);
-      print('ShareHandler: STEP 23 - _processSharedContent completed successfully');
+      print(
+          'ShareHandler: STEP 23 - _processSharedContent completed successfully');
     } catch (e, stackTrace) {
       print('ShareHandler: ERROR in _processSharedContent: $e');
       print('ShareHandler: Stack trace: $stackTrace');
@@ -198,7 +218,8 @@ class ShareHandler {
     print('ShareHandler: STEP 24 - Calling onIntentReceived callback');
     try {
       onIntentReceived(type, contextInfo);
-      print('ShareHandler: STEP 25 - onIntentReceived callback completed successfully');
+      print(
+          'ShareHandler: STEP 25 - onIntentReceived callback completed successfully');
     } catch (e, stackTrace) {
       print('ShareHandler: ERROR in onIntentReceived: $e');
       print('ShareHandler: Stack trace: $stackTrace');
@@ -209,7 +230,8 @@ class ShareHandler {
   String? get sharedText => _sharedText;
 
   /// Process shared content for URLs and trigger link processing workflow
-  void _processSharedContent(BuildContext? context, String? content, Map<String, dynamic> contextInfo) {
+  void _processSharedContent(BuildContext? context, String? content,
+      Map<String, dynamic> contextInfo) {
     print('ShareHandler: _processSharedContent called');
     print('ShareHandler: context = ${context != null ? 'not null' : 'NULL'}');
     print('ShareHandler: content = ${content ?? 'NULL'}');
@@ -245,11 +267,14 @@ class ShareHandler {
       // First try to get from cache manager
       defaultCategory = CacheManager().currentCategory;
       if (defaultCategory != null) {
-        print('ShareHandler: Using cached category: ${defaultCategory.headline}');
+        print(
+            'ShareHandler: Using cached category: ${defaultCategory.headline}');
       } else {
-        final currentCategoryName = contextInfo['context']['currentCategory'] as String?;
+        final currentCategoryName =
+            contextInfo['context']['currentCategory'] as String?;
         if (currentCategoryName != null) {
-          print('ShareHandler: Current category context: $currentCategoryName (no cached object)');
+          print(
+              'ShareHandler: Current category context: $currentCategoryName (no cached object)');
         } else {
           print('ShareHandler: No current category available');
         }
@@ -265,8 +290,10 @@ class ShareHandler {
       print('ShareHandler: Processing first URL: $firstUrl');
 
       // Wait for state restoration to complete before showing the dialog
-      print('ShareHandler: URL found, waiting for state restoration to complete...');
-      _waitForStateRestorationThenShowDialog(context, firstUrl, defaultCategory);
+      print(
+          'ShareHandler: URL found, waiting for state restoration to complete...');
+      _waitForStateRestorationThenShowDialog(
+          context, firstUrl, defaultCategory);
       print('ShareHandler: Called _waitForStateRestorationThenShowDialog');
     } catch (e, stackTrace) {
       print('ShareHandler: ERROR in URL processing: $e');
@@ -289,8 +316,10 @@ class ShareHandler {
       await Future.delayed(const Duration(milliseconds: 500));
       attempts++;
 
-      if (attempts % 4 == 0) { // Log every 2 seconds
-        print('ShareHandler: Still waiting for state restoration... (${attempts * 500}ms)');
+      if (attempts % 4 == 0) {
+        // Log every 2 seconds
+        print(
+            'ShareHandler: Still waiting for state restoration... (${attempts * 500}ms)');
       }
     }
 
@@ -303,7 +332,8 @@ class ShareHandler {
         final currentCategory = CacheManager().currentCategory;
         if (currentCategory != null) {
           updatedDefaultCategory = currentCategory;
-          print('ShareHandler: Using restored category: ${currentCategory.headline}');
+          print(
+              'ShareHandler: Using restored category: ${currentCategory.headline}');
         }
       } catch (e) {
         print('ShareHandler: Error getting restored category: $e');
@@ -318,7 +348,8 @@ class ShareHandler {
         );
       }
     } else {
-      print('ShareHandler: Timeout waiting for state restoration, proceeding anyway');
+      print(
+          'ShareHandler: Timeout waiting for state restoration, proceeding anyway');
       if (context.mounted) {
         IncomingLinkProcessor.showLinkActionDialog(
           context,
