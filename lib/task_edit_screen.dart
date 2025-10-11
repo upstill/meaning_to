@@ -1001,11 +1001,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             allLinks, // PostgreSQL array - always store as array, even if empty
       };
 
-      // For new tasks, explicitly exclude suggestible_at to ensure it remains null
+      // For new tasks, explicitly set suggestible_at to null to ensure they appear at the top
       if (_localTask == null) {
-        // Don't include suggestible_at in the data to let database use its default (null)
+        data['suggestible_at'] = null;
         print(
-            'TaskEditScreen: Excluding suggestible_at from new task data to ensure null value');
+            'TaskEditScreen: Explicitly setting suggestible_at to null for new task to ensure it appears at top of list');
       }
 
       Task? updatedTask;
