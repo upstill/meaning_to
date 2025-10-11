@@ -1878,8 +1878,8 @@ class HomeScreenState extends State<HomeScreen> {
                                   ElevatedButton.icon(
                                     onPressed: () => _navigateToEditTasks(),
                                     icon: const Icon(Icons.edit, size: 18),
-                                    label: const Text(
-                                      'Manage Choices/Edit Pursuit',
+                                    label: Text(
+                                      'Manage ${NamingUtils.categoriesName(plural: false)} / Edit ${NamingUtils.categoriesName(plural: false)}',
                                       style: TextStyle(fontSize: 14),
                                     ),
                                     style: ElevatedButton.styleFrom(
