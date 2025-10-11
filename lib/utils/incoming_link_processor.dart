@@ -287,7 +287,8 @@ class IncomingLinkProcessor {
         await CategoryPickerDialog.show(
           context,
           title: 'Select Category for New Task',
-          onCategorySelected: (Category selectedCategory, {bool? shouldMove}) async {
+          onCategorySelected: (Category selectedCategory,
+              {bool? shouldMove}) async {
             await Future.delayed(const Duration(milliseconds: 100));
             await _openTaskEditScreen(context, result, selectedCategory);
           },
@@ -316,6 +317,17 @@ class IncomingLinkProcessor {
           ? '<a href="${result.url}">${result.title}</a>'
           : '<a href="${result.url}">${result.url}</a>';
 
+      // Format description with truncation and (more) link if needed
+      String? formattedNotes;
+      if (result.description != null && result.description!.isNotEmpty) {
+        if (result.description!.length > 200) {
+          formattedNotes =
+              '${result.description!.substring(0, 200)}... <a href="${result.url}">(more)</a>';
+        } else {
+          formattedNotes = result.description;
+        }
+      }
+
       // Navigate to TaskEditScreen with initial data
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -323,7 +335,7 @@ class IncomingLinkProcessor {
             category: category,
             initialLinks: [htmlLink],
             initialHeadline: result.title,
-            initialNotes: result.description,
+            initialNotes: formattedNotes,
             showAlternativeOptions:
                 false, // Hide bulk import options for single task
           ),
