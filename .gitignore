@@ -21,7 +21,9 @@ migrate_working_dir/
 .idea/
 
 # .env file for Supabase credentials
-# .env
+.env
+.env.*
+!.env.example
 
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
@@ -48,6 +50,7 @@ build/
 *.apk
 *.ipa
 *.aab
+deploy_to_vercel.sh
 
 # Symbolication related
 app.*.symbols
