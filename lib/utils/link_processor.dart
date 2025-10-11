@@ -81,7 +81,8 @@ class LinkProcessor {
 
   // Global cache for webpage content to avoid redundant fetches
   static final Map<String, WebpageContent> _webpageContentCache = {};
-  static const Duration _cacheExpiration = Duration(minutes: 5); // Cache for 5 minutes
+  static const Duration _cacheExpiration =
+      Duration(minutes: 5); // Cache for 5 minutes
   static final Map<String, DateTime> _cacheTimestamps = {};
 
   // Request deduplication - track in-flight requests to prevent duplicate fetches
@@ -317,7 +318,8 @@ class LinkProcessor {
     final truncated = title.replaceFirst(yearPattern, '').trim();
 
     // Also remove "streaming: where to watch online?" suffix if present
-    final streamingPattern = RegExp(r'\s*streaming:?\s*where to watch.*$', caseSensitive: false);
+    final streamingPattern =
+        RegExp(r'\s*streaming:?\s*where to watch.*$', caseSensitive: false);
     final finalTitle = truncated.replaceFirst(streamingPattern, '').trim();
 
     return finalTitle;
@@ -354,10 +356,59 @@ class LinkProcessor {
     }
   }
 
+  /// Try proxy fallback when direct request fails on web
+  static Future<WebpageContent?> _tryProxyFallback(String url) async {
+    print('LinkProcessor: Trying proxy fallback for: $url');
+
+    final proxyUrls = [
+      'https://corsproxy.io/?${Uri.encodeComponent(url)}',
+      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}',
+      'https://cors-anywhere.herokuapp.com/$url',
+    ];
+
+    for (final proxyUrl in proxyUrls) {
+      try {
+        print('LinkProcessor: Attempting proxy: ${proxyUrl.split('?')[0]}...');
+
+        final response = await http.get(
+          Uri.parse(proxyUrl),
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          },
+        ).timeout(Duration(seconds: 10));
+
+        if (response.statusCode == 200 && response.body.length > 500) {
+          print(
+              'LinkProcessor: Proxy successful with ${proxyUrl.split('?')[0]}');
+
+          // Parse and extract title/description
+          final document = html_parser.parse(response.body);
+          final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
+
+          final title = siteConfig.extractTitle(document);
+          final description = siteConfig.extractDescription(document);
+
+          if (title != null && title.isNotEmpty) {
+            final content =
+                WebpageContent(title: title, description: description);
+            _cacheContent(url, content);
+            return content;
+          }
+        }
+      } catch (e) {
+        print('LinkProcessor: Proxy ${proxyUrl.split('?')[0]} failed: $e');
+        continue;
+      }
+    }
+
+    print('LinkProcessor: All proxy attempts failed');
+    return null;
+  }
+
   /// Internal method to perform the actual webpage content fetch
   static Future<WebpageContent?> _performWebpageContentFetch(String url) async {
     try {
-
       // Try direct request first
       http.Response? response;
       try {
@@ -372,25 +423,32 @@ class LinkProcessor {
               String title = videoInfo.title;
               // Apply title processing from site config
               if (siteConfig.customSettings?['truncateTitle'] == true) {
-                final pattern = siteConfig.customSettings?['titleTruncationPattern'] as String?;
+                final pattern = siteConfig
+                    .customSettings?['titleTruncationPattern'] as String?;
                 if (pattern != null) {
                   title = title.replaceFirst(RegExp(pattern), '').trim();
                 }
               }
-              print('LinkProcessor: Successfully extracted title via YouTube API: "$title"');
-              final content = WebpageContent(title: title, description: videoInfo.description);
+              print(
+                  'LinkProcessor: Successfully extracted title via YouTube API: "$title"');
+              final content = WebpageContent(
+                  title: title, description: videoInfo.description);
               _cacheContent(url, content);
               return content;
             }
           } catch (e) {
             print('LinkProcessor: YouTube API extraction failed: $e');
           }
-          print('LinkProcessor: YouTube API failed, falling back to web scraping with proxy');
+          print(
+              'LinkProcessor: YouTube API failed, falling back to web scraping with proxy');
         }
 
         // Check if we need to use proxy for web based on site configuration or API fallback
-        if (kIsWeb && (SiteConfigRegistry.shouldUseProxy(url) || siteConfig.needsProxyForFallback())) {
-          print('LinkProcessor: Web environment detected, using CORS proxy for: $url');
+        if (kIsWeb &&
+            (SiteConfigRegistry.shouldUseProxy(url) ||
+                siteConfig.needsProxyForFallback())) {
+          print(
+              'LinkProcessor: Web environment detected, using CORS proxy for: $url');
 
           // Try multiple proxy services for better reliability
           // Order matters: corsproxy.io works best for YouTube
@@ -404,99 +462,134 @@ class LinkProcessor {
 
           for (final proxyUrl in proxyUrls) {
             try {
-              print('LinkProcessor: Attempting proxy: ${proxyUrl.split('?')[0]}...');
+              print(
+                  'LinkProcessor: Attempting proxy: ${proxyUrl.split('?')[0]}...');
 
               final httpRequestStartTime = DateTime.now();
-              print('🕐 LinkProcessor: Starting HTTP GET (proxy) at ${httpRequestStartTime.toIso8601String()}');
+              print(
+                  '🕐 LinkProcessor: Starting HTTP GET (proxy) at ${httpRequestStartTime.toIso8601String()}');
 
               response = await http.get(
                 Uri.parse(proxyUrl),
                 headers: {
-                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                  'User-Agent':
+                      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
                 },
               ).timeout(Duration(seconds: 10));
 
               final httpRequestEndTime = DateTime.now();
-              final httpRequestDuration = httpRequestEndTime.difference(httpRequestStartTime);
-              print('🕐 LinkProcessor: HTTP GET (proxy) completed in ${httpRequestDuration.inMilliseconds}ms');
+              final httpRequestDuration =
+                  httpRequestEndTime.difference(httpRequestStartTime);
+              print(
+                  '🕐 LinkProcessor: HTTP GET (proxy) completed in ${httpRequestDuration.inMilliseconds}ms');
 
               if (response.statusCode == 200 && response.body.length > 1000) {
                 // For YouTube, validate that we actually got YouTube content
                 bool isValidYouTubeContent = true;
                 if (url.contains('youtube.com')) {
                   // Check for basic YouTube indicators in the content
-                  final hasYouTubeContent = response.body.contains('ytInitialData') ||
-                                          response.body.contains('watch?v=') ||
-                                          response.body.contains('<title>') ||
-                                          response.body.contains('meta name="title"');
+                  final hasYouTubeContent =
+                      response.body.contains('ytInitialData') ||
+                          response.body.contains('watch?v=') ||
+                          response.body.contains('<title>') ||
+                          response.body.contains('meta name="title"');
                   isValidYouTubeContent = hasYouTubeContent;
-                  print('LinkProcessor: YouTube content validation: $isValidYouTubeContent');
+                  print(
+                      'LinkProcessor: YouTube content validation: $isValidYouTubeContent');
                 }
 
                 if (isValidYouTubeContent) {
-                  print('LinkProcessor: Proxy successful with ${proxyUrl.split('?')[0]}');
+                  print(
+                      'LinkProcessor: Proxy successful with ${proxyUrl.split('?')[0]}');
                   proxySuccess = true;
                   break;
                 } else {
-                  print('LinkProcessor: Proxy returned invalid YouTube content');
+                  print(
+                      'LinkProcessor: Proxy returned invalid YouTube content');
                 }
               } else {
-                print('LinkProcessor: Proxy returned status ${response.statusCode}, body length: ${response.body.length}');
+                print(
+                    'LinkProcessor: Proxy returned status ${response.statusCode}, body length: ${response.body.length}');
               }
             } catch (e) {
-              print('LinkProcessor: Proxy ${proxyUrl.split('?')[0]} failed: $e');
+              print(
+                  'LinkProcessor: Proxy ${proxyUrl.split('?')[0]} failed: $e');
               continue;
             }
           }
 
           if (!proxySuccess) {
-            print('LinkProcessor: All proxy attempts failed, unable to fetch content');
+            print(
+                'LinkProcessor: All proxy attempts failed, unable to fetch content');
             return null;
           }
         } else {
           // Direct fetch for mobile or non-proxied sites
           final httpRequestStartTime = DateTime.now();
-          print('🕐 LinkProcessor: Starting HTTP GET (direct) at ${httpRequestStartTime.toIso8601String()}');
+          print(
+              '🕐 LinkProcessor: Starting HTTP GET (direct) at ${httpRequestStartTime.toIso8601String()}');
 
           response = await http.get(
             Uri.parse(url),
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+              'User-Agent':
+                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
             },
           );
 
           final httpRequestEndTime = DateTime.now();
-          final httpRequestDuration = httpRequestEndTime.difference(httpRequestStartTime);
-          print('🕐 LinkProcessor: HTTP GET (direct) completed in ${httpRequestDuration.inMilliseconds}ms');
+          final httpRequestDuration =
+              httpRequestEndTime.difference(httpRequestStartTime);
+          print(
+              '🕐 LinkProcessor: HTTP GET (direct) completed in ${httpRequestDuration.inMilliseconds}ms');
         }
 
         if (response == null || response.statusCode != 200) {
-          print('LinkProcessor: HTTP ${response?.statusCode ?? 'null'} for $url');
+          print(
+              'LinkProcessor: HTTP ${response?.statusCode ?? 'null'} for $url');
+
+          // On web, if direct request failed, try proxies as fallback
+          if (kIsWeb) {
+            print(
+                'LinkProcessor: Direct request failed on web, trying proxy fallback...');
+            return await _tryProxyFallback(url);
+          }
           return null;
         }
       } catch (e) {
         print('LinkProcessor: Direct request failed: $e');
+
+        // On web, if direct request failed, try proxies as fallback
+        if (kIsWeb) {
+          print(
+              'LinkProcessor: Direct request failed on web, trying proxy fallback...');
+          return await _tryProxyFallback(url);
+        }
         return null;
       }
 
       final htmlParseStartTime = DateTime.now();
-      print('🕐 LinkProcessor: Starting HTML parsing at ${htmlParseStartTime.toIso8601String()}');
+      print(
+          '🕐 LinkProcessor: Starting HTML parsing at ${htmlParseStartTime.toIso8601String()}');
 
       final document = html_parser.parse(response.body);
 
       final htmlParseEndTime = DateTime.now();
       final htmlParseDuration = htmlParseEndTime.difference(htmlParseStartTime);
-      print('🕐 LinkProcessor: HTML parsing completed in ${htmlParseDuration.inMilliseconds}ms');
+      print(
+          '🕐 LinkProcessor: HTML parsing completed in ${htmlParseDuration.inMilliseconds}ms');
 
       String? title;
       String? description;
 
       // Extract title and description using site configuration
       final titleExtractStartTime = DateTime.now();
-      print('🕐 LinkProcessor: Starting title/description extraction at ${titleExtractStartTime.toIso8601String()}');
+      print(
+          '🕐 LinkProcessor: Starting title/description extraction at ${titleExtractStartTime.toIso8601String()}');
 
       final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
-      print('LinkProcessor: Using site configuration for ${siteConfig.displayName}');
+      print(
+          'LinkProcessor: Using site configuration for ${siteConfig.displayName}');
 
       // Use HTML parsing for title extraction (API was already tried above for YouTube)
       title = siteConfig.extractTitle(document);
@@ -505,13 +598,16 @@ class LinkProcessor {
       description = siteConfig.extractDescription(document);
 
       final titleExtractEndTime = DateTime.now();
-      final titleExtractDuration = titleExtractEndTime.difference(titleExtractStartTime);
-      print('🕐 LinkProcessor: Title/description extraction completed in ${titleExtractDuration.inMilliseconds}ms');
+      final titleExtractDuration =
+          titleExtractEndTime.difference(titleExtractStartTime);
+      print(
+          '🕐 LinkProcessor: Title/description extraction completed in ${titleExtractDuration.inMilliseconds}ms');
 
       if (title != null && title.isNotEmpty) {
         print('🕐 LinkProcessor: Successfully extracted title: "$title"');
         if (description != null) {
-          print('🕐 LinkProcessor: Successfully extracted description length: ${description.length} chars');
+          print(
+              '🕐 LinkProcessor: Successfully extracted description length: ${description.length} chars');
         }
         final content = WebpageContent(title: title, description: description);
 
@@ -623,7 +719,8 @@ class LinkProcessor {
         // Check if we need to use proxy for web based on site configuration
         if (kIsWeb && SiteConfigRegistry.shouldUseProxy(url)) {
           // Temporarily use allorigins.win proxy until Vercel API deploys
-          final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
+          final proxyUrl =
+              'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
           print('LinkProcessor: Using proxy for web: $proxyUrl');
           response = await http.get(Uri.parse(proxyUrl));
 
@@ -633,15 +730,19 @@ class LinkProcessor {
             print('LinkProcessor: Status Code: ${response.statusCode}');
             print('LinkProcessor: Headers: ${response.headers}');
             print('LinkProcessor: Body Length: ${response.body.length}');
-            print('LinkProcessor: First 1000 chars: ${response.body.substring(0, response.body.length > 1000 ? 1000 : response.body.length)}');
+            print(
+                'LinkProcessor: First 1000 chars: ${response.body.substring(0, response.body.length > 1000 ? 1000 : response.body.length)}');
 
             // Try to write full response to debug file
             try {
               if (kIsWeb) {
                 // On web, just log key indicators
-                print('LinkProcessor: Contains title tag: ${response.body.contains('<title>')}');
-                print('LinkProcessor: Contains h1.title-detail-hero: ${response.body.contains('title-detail-hero')}');
-                print('LinkProcessor: Contains synopsis: ${response.body.contains('synopsis')}');
+                print(
+                    'LinkProcessor: Contains title tag: ${response.body.contains('<title>')}');
+                print(
+                    'LinkProcessor: Contains h1.title-detail-hero: ${response.body.contains('title-detail-hero')}');
+                print(
+                    'LinkProcessor: Contains synopsis: ${response.body.contains('synopsis')}');
               }
             } catch (e) {
               print('LinkProcessor: Error in debug logging: $e');
@@ -650,10 +751,15 @@ class LinkProcessor {
           }
 
           // Check if proxy returned wrong content (JustWatch bot detection)
-          if (url.contains('justwatch.com') && response.statusCode == 200 && response.body.length < 5000) {
-            print('LinkProcessor: Proxy returned suspicious response for JustWatch, checking content...');
-            if (response.body.contains('<title>Meaning To</title>') || response.body.contains('Meaning To')) {
-              print('LinkProcessor: JustWatch blocked proxy request, falling back to URL parsing');
+          if (url.contains('justwatch.com') &&
+              response.statusCode == 200 &&
+              response.body.length < 5000) {
+            print(
+                'LinkProcessor: Proxy returned suspicious response for JustWatch, checking content...');
+            if (response.body.contains('<title>Meaning To</title>') ||
+                response.body.contains('Meaning To')) {
+              print(
+                  'LinkProcessor: JustWatch blocked proxy request, falling back to URL parsing');
               // Return null to trigger fallback title generation
               return null;
             }
@@ -732,18 +838,21 @@ class LinkProcessor {
 
       // First priority: JustWatch-specific CSS selector
       if (url.contains('justwatch.com')) {
-        final titleElement = document.querySelector('h1.title-detail-hero__details__title');
+        final titleElement =
+            document.querySelector('h1.title-detail-hero__details__title');
         if (titleElement != null) {
           // Get only direct text content, not nested spans (which contain the year)
           String directText = '';
           for (final node in titleElement.nodes) {
-            if (node.nodeType == 3) { // Text node
+            if (node.nodeType == 3) {
+              // Text node
               directText += node.text ?? '';
             }
           }
           final justWatchTitle = directText.trim();
           if (justWatchTitle.isNotEmpty) {
-            print('LinkProcessor: Found JustWatch title via CSS selector (direct text only): "$justWatchTitle"');
+            print(
+                'LinkProcessor: Found JustWatch title via CSS selector (direct text only): "$justWatchTitle"');
             return justWatchTitle;
           }
         }
@@ -852,10 +961,12 @@ class LinkProcessor {
   }
 
   static Future<ProcessedLink> processLinkForDisplay(String linkText) async {
-    print('LinkProcessor.processLinkForDisplay: Processing linkText: "$linkText"');
+    print(
+        'LinkProcessor.processLinkForDisplay: Processing linkText: "$linkText"');
     // Parse the HTML link to get URL and title
     final (url, title) = parseHtmlLink(linkText);
-    print('LinkProcessor.processLinkForDisplay: Extracted URL: "$url", title: "$title"');
+    print(
+        'LinkProcessor.processLinkForDisplay: Extracted URL: "$url", title: "$title"');
 
     if (!isValidUrl(url)) {
       return ProcessedLink(
@@ -875,25 +986,30 @@ class LinkProcessor {
 
     // Check if this is an internal link to a category
     String? finalTitle = title;
-    print('LinkProcessor.processLinkForDisplay: Initial finalTitle: "$finalTitle"');
+    print(
+        'LinkProcessor.processLinkForDisplay: Initial finalTitle: "$finalTitle"');
 
     if (finalTitle == null || finalTitle.isEmpty) {
       finalTitle = await _handleInternalCategoryLink(url, domain);
-      print('LinkProcessor.processLinkForDisplay: After internal link check: "$finalTitle"');
+      print(
+          'LinkProcessor.processLinkForDisplay: After internal link check: "$finalTitle"');
     }
 
     // If we still don't have a title and it's not an internal link, try to fetch it from the webpage
     if (finalTitle == null || finalTitle.isEmpty) {
-      print('LinkProcessor.processLinkForDisplay: No title found, attempting to fetch from webpage...');
+      print(
+          'LinkProcessor.processLinkForDisplay: No title found, attempting to fetch from webpage...');
       final content = await fetchWebpageContent(url);
       if (content != null) {
         finalTitle = content.title;
-        print('LinkProcessor.processLinkForDisplay: After webpage fetch: "$finalTitle"');
+        print(
+            'LinkProcessor.processLinkForDisplay: After webpage fetch: "$finalTitle"');
         // Note: Description is available in content.description but not used here
         // as this method only returns ProcessedLink for display purposes
       }
     } else {
-      print('LinkProcessor.processLinkForDisplay: Using existing title, skipping webpage fetch');
+      print(
+          'LinkProcessor.processLinkForDisplay: Using existing title, skipping webpage fetch');
     }
 
     // Get icon for domain with error handling (skip for internal links)
@@ -1041,23 +1157,29 @@ class LinkProcessor {
 
     // Determine if we should fetch webpage content
     final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
-    final shouldFetchContent = _shouldFetchWebpageContent(url, linkText, siteConfig);
+    final shouldFetchContent =
+        _shouldFetchWebpageContent(url, linkText, siteConfig);
 
     if (shouldFetchContent) {
       if (linkText == null || linkText.isEmpty) {
-        print('LinkProcessor: No linkText provided, fetching title and description from webpage...');
+        print(
+            'LinkProcessor: No linkText provided, fetching title and description from webpage...');
       } else {
-        print('LinkProcessor: linkText provided ("$linkText"), fetching description from webpage for validation...');
+        print(
+            'LinkProcessor: linkText provided ("$linkText"), fetching description from webpage for validation...');
       }
 
       final webpageContentStartTime = DateTime.now();
-      print('🕐 LinkProcessor: Starting fetchWebpageContent for $url at ${webpageContentStartTime.toIso8601String()}');
+      print(
+          '🕐 LinkProcessor: Starting fetchWebpageContent for $url at ${webpageContentStartTime.toIso8601String()}');
 
       final content = await fetchWebpageContent(url);
 
       final webpageContentEndTime = DateTime.now();
-      final webpageContentDuration = webpageContentEndTime.difference(webpageContentStartTime);
-      print('🕐 LinkProcessor: fetchWebpageContent completed in ${webpageContentDuration.inMilliseconds}ms');
+      final webpageContentDuration =
+          webpageContentEndTime.difference(webpageContentStartTime);
+      print(
+          '🕐 LinkProcessor: fetchWebpageContent completed in ${webpageContentDuration.inMilliseconds}ms');
       if (content != null) {
         // If no linkText was provided, use the fetched title
         if (linkText == null || linkText.isEmpty) {
@@ -1065,7 +1187,8 @@ class LinkProcessor {
         }
         // Always use the fetched description
         description = content.description;
-        print('LinkProcessor: Fetched title: "${content.title}", description: "${description?.substring(0, description != null && description.length > 100 ? 100 : description.length)}..."');
+        print(
+            'LinkProcessor: Fetched title: "${content.title}", description: "${description?.substring(0, description != null && description.length > 100 ? 100 : description.length)}..."');
       }
     }
 
@@ -1098,28 +1221,24 @@ class LinkProcessor {
           // Special handling for JustWatch URLs
           if (domain.contains('justwatch.com')) {
             // Extract movie/show name from JustWatch URL path
-            if (pathParts.length >= 2 && pathParts[pathParts.length - 2] == 'movie') {
+            if (pathParts.length >= 2 &&
+                pathParts[pathParts.length - 2] == 'movie') {
               final movieSlug = lastPart;
               // Convert slug to title (replace dashes with spaces, title case)
-              fallbackTitle = movieSlug
-                  .replaceAll('-', ' ')
-                  .split(' ')
-                  .map((word) {
-                    if (word.isEmpty) return word;
-                    return word[0].toUpperCase() + word.substring(1).toLowerCase();
-                  })
-                  .join(' ');
-            } else if (pathParts.length >= 2 && pathParts[pathParts.length - 2] == 'tv-show') {
+              fallbackTitle =
+                  movieSlug.replaceAll('-', ' ').split(' ').map((word) {
+                if (word.isEmpty) return word;
+                return word[0].toUpperCase() + word.substring(1).toLowerCase();
+              }).join(' ');
+            } else if (pathParts.length >= 2 &&
+                pathParts[pathParts.length - 2] == 'tv-show') {
               final showSlug = lastPart;
               // Convert slug to title (replace dashes with spaces, title case)
-              fallbackTitle = showSlug
-                  .replaceAll('-', ' ')
-                  .split(' ')
-                  .map((word) {
-                    if (word.isEmpty) return word;
-                    return word[0].toUpperCase() + word.substring(1).toLowerCase();
-                  })
-                  .join(' ');
+              fallbackTitle =
+                  showSlug.replaceAll('-', ' ').split(' ').map((word) {
+                if (word.isEmpty) return word;
+                return word[0].toUpperCase() + word.substring(1).toLowerCase();
+              }).join(' ');
             } else {
               fallbackTitle = 'JustWatch Content';
             }
@@ -1187,7 +1306,8 @@ class LinkProcessor {
   }
 
   /// Determines whether webpage content should be fetched for a given URL
-  static bool _shouldFetchWebpageContent(String url, String? linkText, SiteConfig siteConfig) {
+  static bool _shouldFetchWebpageContent(
+      String url, String? linkText, SiteConfig siteConfig) {
     // Always fetch for specifically registered sites (JustWatch, Letterboxd, etc.)
     if (siteConfig.domain != '*') {
       return true;
