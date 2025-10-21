@@ -193,10 +193,8 @@ class SiteConfig {
       try {
         final element = document.querySelector(descriptionSelector);
         if (element != null) {
-          // For meta tags, extract from content attribute; for other elements, use text
-          final useMetaAttributes =
-              customSettings?['useMetaAttributes'] == true;
-          if (useMetaAttributes && element.localName == 'meta') {
+          // For meta tags, always extract from content attribute; for other elements, use text
+          if (element.localName == 'meta') {
             description = element.attributes['content']?.trim();
           } else {
             description = element.text.trim();
@@ -214,9 +212,8 @@ class SiteConfig {
         try {
           final element = document.querySelector(fallbackSelector);
           if (element != null) {
-            final useMetaAttributes =
-                customSettings?['useMetaAttributes'] == true;
-            if (useMetaAttributes && element.localName == 'meta') {
+            // For meta tags, always extract from content attribute; for other elements, use text
+            if (element.localName == 'meta') {
               description = element.attributes['content']?.trim();
             } else {
               description = element.text.trim();
@@ -322,13 +319,14 @@ class SiteConfigRegistry {
       cssSelectors: {
         'title': 'h2.wave-text-title-bold', // Primary: TIDAL title element
         'title_fallback': 'title', // Fallback: HTML title tag
-        'description': 'meta[name="description"]',
-        'description_fallback': 'meta[property="og:description"]',
+        'description': 'div[data-test="biography"]', // Primary: Biography div
+        'description_fallback':
+            'meta[property="og:description"]', // Fallback: OG description
       },
       requiresProxy: true, // TIDAL requires proxy due to CORS
       customSettings: {
         'useMetaAttributes':
-            false, // Extract text content from h2, not attributes
+            false, // Extract text content from h2, but meta tags always use attributes
       },
     ),
   };
