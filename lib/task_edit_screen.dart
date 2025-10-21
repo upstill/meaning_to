@@ -880,8 +880,15 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           cleanHeadline = processedLink.title ?? 'Link';
           print('TaskEditScreen: Fetched webpage title: "$cleanHeadline"');
 
-          // For Letterboxd URLs, also try to fetch description
-          if (cleanURL.contains('letterboxd.com') ||
+          // Use the description from processedLink if available
+          if (processedLink.description != null &&
+              processedLink.description!.isNotEmpty) {
+            fetchedNotes = processedLink.description;
+            print(
+                'TaskEditScreen: Using description from LinkProcessor: "${fetchedNotes!.length > 100 ? fetchedNotes.substring(0, 100) + '...' : fetchedNotes}"');
+          }
+          // For Letterboxd URLs without description, try the special Letterboxd fetch
+          else if (cleanURL.contains('letterboxd.com') ||
               cleanURL.contains('boxd.it')) {
             fetchedNotes = await _fetchLetterboxdNotes(cleanURL);
             if (fetchedNotes != null) {
@@ -1050,9 +1057,25 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // Update the task cache using CacheManager only when saving
       print('TaskEditScreen: Updating task cache...');
       final cacheManager = CacheManager();
-      if (cacheManager.currentCategory?.id == widget.category.id) {
-        print('TaskEditScreen: Updating task in cache...');
-        await cacheManager.updateTask(updatedTask);
+      
+      // Check if category changed (for existing tasks only)
+      final bool categoryChanged = _localTask != null && 
+          _localTask!.categoryId != widget.category.id;
+      
+      if (categoryChanged) {
+        print('TaskEditScreen: Category changed from ${_localTask!.categoryId} to ${widget.category.id}');
+        // If the cache is on the old category, remove the task from cache
+        if (cacheManager.currentCategory?.id == _localTask!.categoryId) {
+          print('TaskEditScreen: Removing task from old category cache...');
+          await cacheManager.removeTask(updatedTask.id);
+        }
+        // Note: If cache is on the new category, it will be refreshed when user navigates there
+      } else {
+        // Category didn't change, update normally if cache is on this category
+        if (cacheManager.currentCategory?.id == widget.category.id) {
+          print('TaskEditScreen: Updating task in cache...');
+          await cacheManager.updateTask(updatedTask);
+        }
       }
 
       print(
