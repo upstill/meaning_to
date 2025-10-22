@@ -279,20 +279,54 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     );
 
     if (result != null) {
-      // Update the category
-      setState(() {
-        // Note: This is a simplified approach - in a real implementation,
-        // you might want to update the widget.category or handle this differently
-        // For now, we'll just show a message
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result
-              ? '${NamingUtils.tasksName(capitalize: true, plural: false)} moved to "${newCategory.headline}"'
-              : '${NamingUtils.tasksName(capitalize: true, plural: false)} copied to "${newCategory.headline}"'),
-        ),
-      );
+      final shouldMove = result;
+      
+      if (shouldMove) {
+        // MOVE: Navigate to TaskEditScreen with new category, preserving task data
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => TaskEditScreen(
+              category: newCategory,
+              task: _localTask, // Pass the existing task
+              initialLinks: _links.isNotEmpty ? _links : null,
+              initialHeadline: _headlineController.text.isNotEmpty
+                  ? _headlineController.text
+                  : null,
+              initialNotes: _notesController.text.isNotEmpty
+                  ? _notesController.text
+                  : null,
+              showAlternativeOptions: widget.showAlternativeOptions,
+            ),
+          ),
+        );
+      } else {
+        // COPY: Create a new task in the new category while keeping the old one
+        try {
+          final userId = AuthUtils.getCurrentUserId();
+          final data = {
+            'headline': _headlineController.text,
+            'notes': _notesController.text.isEmpty ? null : _notesController.text,
+            'category_id': newCategory.id,
+            'owner_id': userId,
+            'finished': false,
+            'shared': _localTask?.shared ?? !newCategory.tasksArePrivate,
+            'links': _links,
+          };
+          
+          await supabase.from('Tasks').insert(data).select().single();
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  '${NamingUtils.tasksName(capitalize: true, plural: false)} copied to "${newCategory.headline}"'),
+            ),
+          );
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error copying task: $e')),
+          );
+        }
+      }
     }
   }
 
@@ -1057,17 +1091,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // Update the task cache using CacheManager only when saving
       print('TaskEditScreen: Updating task cache...');
       final cacheManager = CacheManager();
-      
+
       // Check if category changed (for existing tasks only)
-      final bool categoryChanged = _localTask != null && 
-          _localTask!.categoryId != widget.category.id;
-      
+      final bool categoryChanged =
+          _localTask != null && _localTask!.categoryId != widget.category.id;
+
       if (categoryChanged) {
-        print('TaskEditScreen: Category changed from ${_localTask!.categoryId} to ${widget.category.id}');
-        // If the cache is on the old category, remove the task from cache
+        print(
+            'TaskEditScreen: Category changed from ${_localTask!.categoryId} to ${widget.category.id}');
+        // If the cache is on the old category, refresh from API to get updated task list
         if (cacheManager.currentCategory?.id == _localTask!.categoryId) {
-          print('TaskEditScreen: Removing task from old category cache...');
-          await cacheManager.removeTask(updatedTask.id);
+          print('TaskEditScreen: Refreshing old category cache from API...');
+          await cacheManager.refreshCurrentCategoryTasks();
         }
         // Note: If cache is on the new category, it will be refreshed when user navigates there
       } else {
