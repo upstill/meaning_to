@@ -89,6 +89,16 @@ class CategoryFormState extends State<CategoryForm> {
   @override
   Widget build(BuildContext context) {
     return Card(
+      elevation: 10,
+      color: Colors.grey[50],
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: Colors.blue.withOpacity(0.2),
+          width: 2,
+        ),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -145,7 +155,7 @@ class CategoryFormState extends State<CategoryForm> {
                   const SizedBox(height: 8),
                   CheckboxListTile(
                     title: Text(
-                        '${NamingUtils.tasksName(plural: true)} start out private'),
+                        '${NamingUtils.tasksName(plural: true)} are private by default'),
                     value: _tasksArePrivate,
                     onChanged: widget.isLoading
                         ? null

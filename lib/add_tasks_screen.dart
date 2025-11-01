@@ -157,7 +157,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           links: result.enrichedTask.links,
           processedLinks: result.enrichedTask.processedLinks,
           finished: result.enrichedTask.finished,
-          shared: !widget.category.tasksArePrivate, // Use category's tasksArePrivate setting
+          shared: !widget.category
+              .tasksArePrivate, // Use category's tasksArePrivate setting
         );
 
         // Check for duplicates and merge information if needed
@@ -183,7 +184,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('File processed: ${summary.join(', ')} tasks from ${file.name}'),
+          content: Text(
+              'File processed: ${summary.join(', ')} tasks from ${file.name}'),
           backgroundColor: Colors.green,
         ),
       );
@@ -192,7 +194,6 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       if (mounted) {
         _navigateToEditCategory();
       }
-
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -433,7 +434,6 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     return null; // No duplicate found
   }
 
-
   /// Extract URL from HTML link string
   String? _extractUrlFromHtmlLink(String htmlLink) {
     print('    _extractUrlFromHtmlLink called with: "$htmlLink"');
@@ -531,9 +531,12 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       final trimmedText = _textInputController.text.trim();
 
       // Handle case where headline is empty but currentTask has links - use link as input
-      if (trimmedText.isEmpty && widget.currentTask != null &&
-          widget.currentTask!.links != null && widget.currentTask!.links!.isNotEmpty) {
-        print('AddTasksScreen: Empty headline but currentTask has links, using first link as input');
+      if (trimmedText.isEmpty &&
+          widget.currentTask != null &&
+          widget.currentTask!.links != null &&
+          widget.currentTask!.links!.isNotEmpty) {
+        print(
+            'AddTasksScreen: Empty headline but currentTask has links, using first link as input');
         final linkToProcess = widget.currentTask!.links!.first;
         print('AddTasksScreen: Processing link: $linkToProcess');
 
@@ -556,10 +559,12 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             links: enrichmentResult.enrichedTask.links,
             processedLinks: enrichmentResult.enrichedTask.processedLinks,
             finished: enrichmentResult.enrichedTask.finished,
-            shared: !widget.category.tasksArePrivate, // Use category's tasksArePrivate setting
+            shared: !widget.category
+                .tasksArePrivate, // Use category's tasksArePrivate setting
           );
 
-          print('AddTasksScreen: Created task from link with headline: "${newTask.headline}"');
+          print(
+              'AddTasksScreen: Created task from link with headline: "${newTask.headline}"');
           print('AddTasksScreen: Task links: ${newTask.links}');
 
           // Check for duplicates and merge information if needed
@@ -608,7 +613,10 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         }
       }
 
-      final lines = trimmedText.split('\n').where((line) => line.trim().isNotEmpty).toList();
+      final lines = trimmedText
+          .split('\n')
+          .where((line) => line.trim().isNotEmpty)
+          .toList();
 
       if (lines.length == 1) {
         // Single line input - use TaskEnricher.processSingleLineInput
@@ -623,19 +631,21 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           // Set shared property based on category setting
           final newTask = Task(
             id: enrichmentResult.enrichedTask.id,
-              categoryId: enrichmentResult.enrichedTask.categoryId,
-              headline: enrichmentResult.enrichedTask.headline,
-              notes: enrichmentResult.enrichedTask.notes,
-              ownerId: enrichmentResult.enrichedTask.ownerId,
-              createdAt: enrichmentResult.enrichedTask.createdAt,
-              suggestibleAt: null, // Set to null to appear at the beginning
-              links: enrichmentResult.enrichedTask.links,
+            categoryId: enrichmentResult.enrichedTask.categoryId,
+            headline: enrichmentResult.enrichedTask.headline,
+            notes: enrichmentResult.enrichedTask.notes,
+            ownerId: enrichmentResult.enrichedTask.ownerId,
+            createdAt: enrichmentResult.enrichedTask.createdAt,
+            suggestibleAt: null, // Set to null to appear at the beginning
+            links: enrichmentResult.enrichedTask.links,
             processedLinks: enrichmentResult.enrichedTask.processedLinks,
             finished: enrichmentResult.enrichedTask.finished,
-            shared: !widget.category.tasksArePrivate, // Use category's tasksArePrivate setting
+            shared: !widget.category
+                .tasksArePrivate, // Use category's tasksArePrivate setting
           );
 
-          print('AddTasksScreen: Created task with headline: "${newTask.headline}"');
+          print(
+              'AddTasksScreen: Created task with headline: "${newTask.headline}"');
           print('AddTasksScreen: Task links: ${newTask.links}');
 
           // Check for duplicates and merge information if needed
@@ -692,7 +702,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       print('AddTasksScreen: Text length: ${inputText.length}');
 
       // Split input into lines and process each line
-      final inputLines = inputText.split('\n')
+      final inputLines = inputText
+          .split('\n')
           .map((line) => line.trim())
           .where((line) => line.isNotEmpty)
           .toList();
@@ -721,11 +732,13 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             links: enrichmentResult.enrichedTask.links,
             processedLinks: enrichmentResult.enrichedTask.processedLinks,
             finished: enrichmentResult.enrichedTask.finished,
-            shared: !widget.category.tasksArePrivate, // Use category's tasksArePrivate setting
+            shared: !widget.category
+                .tasksArePrivate, // Use category's tasksArePrivate setting
           );
 
           tasksToProcess.add(modifiedTask);
-          print('AddTasksScreen: Successfully processed line ${i + 1}: "${modifiedTask.headline}"');
+          print(
+              'AddTasksScreen: Successfully processed line ${i + 1}: "${modifiedTask.headline}"');
         } catch (e) {
           print('AddTasksScreen: Error processing line ${i + 1} ("$line"): $e');
           // Continue processing other lines even if one fails
@@ -827,7 +840,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-            'New ${NamingUtils.tasksName(capitalize: false, plural: false)} to ${widget.category.headline}'),
+            'New ${NamingUtils.tasksName(capitalize: true, plural: true)} to ${widget.category.headline}'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -846,19 +859,19 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Register ${NamingUtils.tasksName(plural: true)}:',
+                      'Register ${NamingUtils.tasksName(plural: true)}, one per line:',
                       style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
+                          fontSize: 20, fontWeight: FontWeight.bold),
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'List one or more tasks, one per line:',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[800],
-                        height: 1.2,
-                      ),
-                    ),
+                    // const SizedBox(height: 12),
+                    // Text(
+                    //   'List ${NamingUtils.tasksName(plural: true)}, one per line:',
+                    //   style: TextStyle(
+                    //     fontSize: 14,
+                    //     color: Colors.grey[800],
+                    //     height: 1.2,
+                    //   ),
+                    // ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -868,7 +881,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                             maxLines: 4,
                             decoration: InputDecoration(
                               hintText:
-                                  '${NamingUtils.tasksName()} 1\n${NamingUtils.tasksName()} 2: A great ${NamingUtils.tasksName(capitalize: false, plural: false)}\n${NamingUtils.tasksName()} 3: https://example.com/${NamingUtils.tasksName(capitalize: false, plural: false)}3',
+                                  '${NamingUtils.tasksName(capitalize: true, plural: false)} 1\n${NamingUtils.tasksName(capitalize: true, plural: false)} 2: A great ${NamingUtils.tasksName(capitalize: false, plural: false)}\n${NamingUtils.tasksName(capitalize: true, plural: false)} 3: https://example.com/${NamingUtils.tasksName(capitalize: false, plural: false)}3',
                               border: const OutlineInputBorder(),
                               labelText:
                                   'Paste ${NamingUtils.tasksName(plural: true)} here',

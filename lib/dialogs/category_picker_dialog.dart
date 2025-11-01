@@ -3,6 +3,7 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/new_category_screen.dart';
 
 /// Dialog for selecting a category with smart defaults and recent category prioritization
@@ -84,9 +85,6 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       });
 
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        throw Exception('User not authenticated');
-      }
 
       print('CategoryPickerDialog: Loading categories for user: $userId');
 
@@ -100,9 +98,8 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       print('CategoryPickerDialog: Query completed successfully');
 
       final categoriesData = response as List<dynamic>;
-      final categories = categoriesData
-          .map((data) => Category.fromJson(data))
-          .toList();
+      final categories =
+          categoriesData.map((data) => Category.fromJson(data)).toList();
 
       // Get recent categories from cache
       final recentCategories = await _getRecentCategories(categories);
@@ -121,7 +118,8 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     }
   }
 
-  Future<List<Category>> _getRecentCategories(List<Category> allCategories) async {
+  Future<List<Category>> _getRecentCategories(
+      List<Category> allCategories) async {
     try {
       // Get recently accessed category IDs from cache
       final recentIds = await CacheManager.getRecentCategoryIds();
@@ -155,8 +153,9 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     // Apply search filter
     if (_searchQuery.isNotEmpty) {
       filtered = filtered
-          .where((category) =>
-              category.headline.toLowerCase().contains(_searchQuery.toLowerCase()))
+          .where((category) => category.headline
+              .toLowerCase()
+              .contains(_searchQuery.toLowerCase()))
           .toList();
     }
 
@@ -197,11 +196,9 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       title: Row(
         children: [
           Expanded(
-            child: Text(
-              widget.taskHeadline != null
+            child: Text(widget.taskHeadline != null
                 ? 'Reassign "${widget.taskHeadline}"'
-                : widget.title
-            ),
+                : widget.title),
           ),
           IconButton(
             icon: const Icon(Icons.close),
@@ -221,7 +218,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(
@@ -249,11 +246,38 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
               const SizedBox(height: 12),
             ],
 
+            // Create new category option (show if enabled)
+            if (widget.showCreateNew && !widget.showMoveAndCopy) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    '...alternatively ',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _createNewCategory,
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.green[100],
+                      foregroundColor: Colors.green[800],
+                    ),
+                    child: Text(
+                        'Create New ${NamingUtils.categoriesName(plural: false)}'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+
             // Search field
             TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search categories...',
+                hintText:
+                    'Search ${NamingUtils.categoriesName(plural: true)}...',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -279,16 +303,6 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
         ),
       ),
       actions: [
-        if (widget.showCreateNew && !widget.showMoveAndCopy)
-          ElevatedButton.icon(
-            onPressed: _createNewCategory,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Create New'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
-          ),
         if (widget.showMoveAndCopy) ...[
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -325,7 +339,8 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
                     ? () {
                         Navigator.of(context).pop();
                         // Pass both the category and the action type
-                        widget.onCategorySelected(_selectedCategory!, shouldMove: _shouldMove);
+                        widget.onCategorySelected(_selectedCategory!,
+                            shouldMove: _shouldMove);
                       }
                     : null,
                 child: Text(_shouldMove ? 'Move' : 'Copy'),
@@ -416,7 +431,8 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
           onTap: () => widget.showMoveAndCopy
               ? _selectCategoryForMoveOrCopy(category)
               : _selectCategory(category),
-          selected: widget.showMoveAndCopy && _selectedCategory?.id == category.id,
+          selected:
+              widget.showMoveAndCopy && _selectedCategory?.id == category.id,
           dense: true,
         );
       },
@@ -442,7 +458,8 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     }
   }
 
-  Widget? _buildCategorySubtitle(Category category, bool isDefault, bool isRecent) {
+  Widget? _buildCategorySubtitle(
+      Category category, bool isDefault, bool isRecent) {
     final labels = <String>[];
 
     if (isDefault) {

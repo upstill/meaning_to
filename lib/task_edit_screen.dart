@@ -280,7 +280,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
     if (result != null) {
       final shouldMove = result;
-      
+
       if (shouldMove) {
         // MOVE: Navigate to TaskEditScreen with new category, preserving task data
         Navigator.of(context).pushReplacement(
@@ -305,16 +305,17 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           final userId = AuthUtils.getCurrentUserId();
           final data = {
             'headline': _headlineController.text,
-            'notes': _notesController.text.isEmpty ? null : _notesController.text,
+            'notes':
+                _notesController.text.isEmpty ? null : _notesController.text,
             'category_id': newCategory.id,
             'owner_id': userId,
             'finished': false,
             'shared': _localTask?.shared ?? !newCategory.tasksArePrivate,
             'links': _links,
           };
-          
+
           await supabase.from('Tasks').insert(data).select().single();
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(

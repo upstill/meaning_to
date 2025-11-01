@@ -17,6 +17,7 @@ import 'dart:async';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/new_category_screen.dart';
+import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/models/category.dart';
@@ -81,9 +82,11 @@ void main() async {
 
     // Initialize Supabase with secure environment variables
     const supabaseUrl = String.fromEnvironment('SUPABASE_URL',
-        defaultValue: 'https://zhpxdayfpysoixxjjqik.supabase.co'); // Fallback for local dev
+        defaultValue:
+            'https://zhpxdayfpysoixxjjqik.supabase.co'); // Fallback for local dev
     const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY',
-        defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpocHhkYXlmcHlzb2l4eGpqcWlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0Mjk4MjAsImV4cCI6MjA2MTAwNTgyMH0.vWogNfl_98kZaTLFFf3sMSyddZBSjBt9D1yxTTiamVQ'); // Fallback for local dev
+        defaultValue:
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpocHhkYXlmcHlzb2l4eGpqcWlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0Mjk4MjAsImV4cCI6MjA2MTAwNTgyMH0.vWogNfl_98kZaTLFFf3sMSyddZBSjBt9D1yxTTiamVQ'); // Fallback for local dev
 
     await Supabase.initialize(
       url: supabaseUrl,
@@ -123,7 +126,8 @@ class MyApp extends StatefulWidget {
       GlobalKey<NavigatorState>();
   static bool isHandlingDeepLink =
       false; // Static flag for other widgets to check
-  static bool isStateRestored = false; // Flag to track if state restoration is complete
+  static bool isStateRestored =
+      false; // Flag to track if state restoration is complete
 
   const MyApp({super.key});
 
@@ -648,10 +652,19 @@ class _MyAppState extends State<MyApp> {
               return MaterialPageRoute(
                 builder: (context) => const NewCategoryScreen(),
               );
-            case '/shop-endeavors':
-              print('Main: Creating ShopEndeavorsScreen route');
+            case '/new-content':
               final args = settings.arguments as Map<String, dynamic>?;
-              print('Main: ShopEndeavorsScreen arguments: $args');
+              return MaterialPageRoute(
+                builder: (context) => NewContentScreen(
+                  selectedCategory: args?['selectedCategory'] as Category?,
+                  initialLinks: args?['initialLinks'] as List<String>?,
+                  initialHeadline: args?['initialHeadline'] as String?,
+                  initialNotes: args?['initialNotes'] as String?,
+                  categoryLocked: args?['categoryLocked'] as bool? ?? false,
+                ),
+              );
+            case '/shop-endeavors':
+              final args = settings.arguments as Map<String, dynamic>?;
               return MaterialPageRoute(
                 builder: (context) => ShopEndeavorsScreen(
                   existingCategory: args?['category'] as Category?,
@@ -667,12 +680,29 @@ class _MyAppState extends State<MyApp> {
               );
             case '/edit-task':
               final args = settings.arguments as Map<String, dynamic>;
-              return MaterialPageRoute(
-                builder: (context) => TaskEditScreen(
-                  category: args['category'] as Category,
-                  task: args['task'] as Task?,
-                ),
-              );
+              final task = args['task'] as Task?;
+              final category = args['category'] as Category;
+
+              if (task == null) {
+                // New task creation - use new content screen in locked mode
+                return MaterialPageRoute(
+                  builder: (context) => NewContentScreen(
+                    selectedCategory: category,
+                    categoryLocked: true,
+                    initialLinks: args['initialLinks'] as List<String>?,
+                    initialHeadline: args['initialHeadline'] as String?,
+                    initialNotes: args['initialNotes'] as String?,
+                  ),
+                );
+              } else {
+                // Existing task editing - continue using TaskEditScreen
+                return MaterialPageRoute(
+                  builder: (context) => TaskEditScreen(
+                    category: category,
+                    task: task,
+                  ),
+                );
+              }
             case '/letterboxd-import':
               final args = settings.arguments as Map<String, dynamic>;
               return MaterialPageRoute(

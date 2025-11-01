@@ -60,6 +60,8 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                 'id': title.id,
                 'objectId': title.objectId,
                 'objectType': title.objectType,
+                'targetType':
+                    title.objectType, // Add targetType field for consistency
                 'content': {
                   'title': title.title,
                   'fullPath': title.fullPath,
@@ -148,16 +150,18 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                 final justWatchLink = '<a href="$fullPath">$title</a>';
 
                 // Extract shortDescription and create formatted notes
-                final shortDescription = content['shortDescription']?.toString() ?? '';
+                final shortDescription =
+                    content['shortDescription']?.toString() ?? '';
                 String? formattedNotes;
                 if (shortDescription.isNotEmpty) {
                   // Truncate to first 100 characters
                   String truncatedDescription = shortDescription.length > 100
                       ? '${shortDescription.substring(0, 100)}...'
                       : shortDescription;
-                  
+
                   // Create formatted notes with description + JustWatch link
-                  formattedNotes = '$truncatedDescription <a href="$fullPath">(more)</a>';
+                  formattedNotes =
+                      '$truncatedDescription <a href="$fullPath">(more)</a>';
                 }
 
                 // Check if this is a TV show and determine if it's finished
@@ -255,15 +259,25 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
         // Import all available tasks
         final tasksToImport = tasks;
 
+        print('Tasks to import: ${tasksToImport.length}');
+        for (var task in tasksToImport) {
+          print('- Task: ${task.headline}, links: ${task.links}');
+        }
+
         if (tasksToImport.isEmpty) {
+          print('ERROR: No tasks to import after processing');
+          final targetType =
+              widget.category.originalId == 1 ? 'movies' : 'TV shows';
           setState(() {
-            _error = 'No matching items found to import';
+            _error =
+                'No $targetType found to import. ${_redundantTitlesCount > 0 ? 'All $_redundantTitlesCount titles in your JustWatch library are already in this category.' : 'Make sure you have $targetType in your JustWatch library.'}';
             _isLoading = false;
           });
           return;
         }
 
         // Import tasks to database
+        print('Starting database import...');
         await _importTasksToDatabase(tasksToImport);
       } else {
         setState(() {
@@ -283,6 +297,8 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
   Future<void> _importTasksToDatabase(List<Task> tasks) async {
     try {
       final userId = AuthUtils.getCurrentUserId();
+      print(
+          'Importing ${tasks.length} tasks for user: $userId, category: ${widget.category.id}');
 
       for (var task in tasks) {
         final taskData = {
@@ -298,26 +314,41 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
           'finished': task.finished,
         };
 
-        await supabase.from('Tasks').insert(taskData).select().single();
+        print('Inserting task: ${task.headline}');
+        print('Task data: $taskData');
+
+        try {
+          final result =
+              await supabase.from('Tasks').insert(taskData).select().single();
+          print('Successfully inserted task with ID: ${result['id']}');
+        } catch (insertError) {
+          print('ERROR inserting task ${task.headline}: $insertError');
+          rethrow; // Re-throw to be caught by outer try-catch
+        }
       }
+
+      print('All tasks inserted successfully!');
 
       // Refresh the cache
       try {
         EditCategoryScreen.onImportComplete = () {
-          // print('JustWatchImportScreen: Import complete callback triggered');
+          print('JustWatchImportScreen: Import complete callback triggered');
         };
 
         final cacheManager = CacheManager();
         await cacheManager.refreshCurrentCategoryTasks();
+        print('Cache refreshed successfully');
       } catch (e) {
-        // print('Error refreshing cache: $e');
+        print('Error refreshing cache: $e');
       }
 
       // Return to EditCategoryScreen
       if (mounted) {
+        print('Navigating back with category: ${widget.category.headline}');
         Navigator.pop(context, widget.category);
       }
     } catch (e) {
+      print('ERROR in _importTasksToDatabase: $e');
       setState(() {
         _error = 'Error importing tasks: $e';
         _isLoading = false;
@@ -341,21 +372,23 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
   /// Generate the final status message with redundancy info
   String _getFinalStatusMessage() {
     final movieType = widget.category.originalId == 1 ? 'movie' : 'show';
-    final movieTypePlural = widget.category.originalId == 1 ? 'movies' : 'shows';
-    
+    final movieTypePlural =
+        widget.category.originalId == 1 ? 'movies' : 'shows';
+
     // If everything is redundant
     if (_filteredTitles.isEmpty && _redundantTitlesCount > 0) {
       return "Looks like everything's already here.";
     }
-    
+
     // Build the main message
     String mainMessage;
     if (_filteredTitles.length == 1) {
       mainMessage = 'Found 1 $movieType ready to import';
     } else {
-      mainMessage = 'Found ${_filteredTitles.length} $movieTypePlural ready to import';
+      mainMessage =
+          'Found ${_filteredTitles.length} $movieTypePlural ready to import';
     }
-    
+
     return mainMessage;
   }
 
@@ -364,7 +397,7 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
     if (_redundantTitlesCount == 0) {
       return null;
     }
-    
+
     if (_redundantTitlesCount == 1) {
       return '1 title is already here.';
     } else {
@@ -375,58 +408,59 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
   /// Convert technical error messages to user-friendly messages
   String _getFriendlyLoginErrorMessage(String errorMessage) {
     final lowerError = errorMessage.toLowerCase();
-    
+
     // Check for common authentication error patterns
-    if (lowerError.contains('invalid_password') || 
+    if (lowerError.contains('invalid_password') ||
         lowerError.contains('wrong password') ||
         lowerError.contains('password is invalid')) {
       return 'The password you entered is incorrect. Please check your password and try again.';
     }
-    
-    if (lowerError.contains('email_not_found') || 
+
+    if (lowerError.contains('email_not_found') ||
         lowerError.contains('user not found') ||
         lowerError.contains('email address is not registered')) {
       return 'No account found with this email address. Please check your email or sign up for a new account.';
     }
-    
-    if (lowerError.contains('user_disabled') || 
+
+    if (lowerError.contains('user_disabled') ||
         lowerError.contains('account has been disabled')) {
       return 'This account has been disabled. Please contact JustWatch support for assistance.';
     }
-    
-    if (lowerError.contains('too_many_attempts') || 
+
+    if (lowerError.contains('too_many_attempts') ||
         lowerError.contains('too many failed attempts') ||
         lowerError.contains('temporarily disabled')) {
       return 'Too many failed login attempts. Please wait a while before trying again.';
     }
-    
-    if (lowerError.contains('invalid_email') || 
+
+    if (lowerError.contains('invalid_email') ||
         lowerError.contains('email address is badly formatted')) {
       return 'Please enter a valid email address.';
     }
-    
-    if (lowerError.contains('network') || 
+
+    if (lowerError.contains('network') ||
         lowerError.contains('connection') ||
         lowerError.contains('timeout')) {
       return 'Network error. Please check your internet connection and try again.';
     }
-    
+
     if (lowerError.contains('400') && lowerError.contains('bad request')) {
       return 'Invalid login credentials. Please check your email and password.';
     }
-    
+
     if (lowerError.contains('401') && lowerError.contains('unauthorized')) {
       return 'Login failed. Please check your email and password and try again.';
     }
-    
+
     if (lowerError.contains('403') && lowerError.contains('forbidden')) {
       return 'Access denied. Your account may not have permission to access JustWatch.';
     }
-    
-    if (lowerError.contains('429') && lowerError.contains('too many requests')) {
+
+    if (lowerError.contains('429') &&
+        lowerError.contains('too many requests')) {
       return 'Too many login attempts. Please wait a few minutes before trying again.';
     }
-    
+
     // If no specific pattern matches, provide a generic but helpful message
     return 'Login failed. Please check your JustWatch email and password and try again. If the problem persists, verify your credentials on the JustWatch website.';
   }
@@ -442,7 +476,7 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
           .eq('owner_id', userId);
 
       final paths = <String>{};
-      
+
       for (final taskData in response) {
         final links = taskData['links'] as List<dynamic>?;
         if (links != null) {
@@ -463,12 +497,13 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
           }
         }
       }
-      
+
       setState(() {
         _existingJustWatchPaths = paths;
       });
-      
-      print('JustWatch paths cache built: ${paths.length} existing paths found for fast duplicate detection');
+
+      print(
+          'JustWatch paths cache built: ${paths.length} existing paths found for fast duplicate detection');
     } catch (e) {
       print('Error building JustWatch paths cache: $e');
       // Continue without cache - fallback to existing behavior
@@ -525,15 +560,15 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
     try {
       // Build cache of existing JustWatch paths before processing
       await _buildJustWatchPathsCache();
-      
+
       final titles = await _justWatchClient.getTitleList();
-      
+
       // Update UI to show titles found and continue processing
       setState(() {
         _titlesFoundMessage = _getTitlesFoundMessage(titles.length);
         _totalTitlesFound = titles.length;
       });
-      
+
       final filteredTitles = await _filterTitlesAndRemoveDuplicates(titles);
       setState(() {
         _filteredTitles = filteredTitles;
@@ -550,22 +585,34 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
   Future<List<JustWatchTitle>> _filterTitlesAndRemoveDuplicates(
       List<JustWatchTitle> titles) async {
     final targetType = widget.category.originalId == 1 ? 'MOVIE' : 'SHOW';
+    print(
+        'Filtering titles for category: ${widget.category.headline} (ID: ${widget.category.id})');
+    print(
+        'Target type: $targetType (originalId: ${widget.category.originalId})');
+    print('Total titles from JustWatch: ${titles.length}');
+
     final filteredTitles = titles
         .where((title) => title.objectType.toUpperCase() == targetType)
         .toList();
 
+    print('Titles matching type $targetType: ${filteredTitles.length}');
+
     // Remove duplicates by checking existing JustWatch paths cache
     final List<JustWatchTitle> nonDuplicateTitles = [];
     int redundantCount = 0;
+
+    print(
+        'Checking for duplicates against ${_existingJustWatchPaths.length} existing paths');
 
     for (final title in filteredTitles) {
       // Quick check using the paths cache
       final isDuplicate = _existingJustWatchPaths.contains(title.fullPath);
       if (!isDuplicate) {
         nonDuplicateTitles.add(title);
+        print('✓ Will import: ${title.title}');
       } else {
         redundantCount++;
-        print('Fast duplicate detected: ${title.title} (path: ${title.fullPath})');
+        print('✗ Skipping duplicate: ${title.title} (path: ${title.fullPath})');
       }
     }
 
@@ -574,9 +621,10 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
       _redundantTitlesCount = redundantCount;
     });
 
+    print(
+        'Final count: ${nonDuplicateTitles.length} new titles, $redundantCount duplicates');
     return nonDuplicateTitles;
   }
-
 
   Future<void> _processTitles() async {
     setState(() {
@@ -838,15 +886,19 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                       // Import/processing state - highest priority
                       Text(
                         'Processing ${_filteredTitles.length} ${_filteredTitles.length == 1 ? (widget.category.originalId == 1 ? 'movie' : 'show') : (widget.category.originalId == 1 ? 'movies' : 'shows')}...',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 16),
                       const CircularProgressIndicator(),
-                    ] else if (_isLoading && _filteredTitles.isEmpty && _titlesFoundMessage == null) ...[
+                    ] else if (_isLoading &&
+                        _filteredTitles.isEmpty &&
+                        _titlesFoundMessage == null) ...[
                       // Initial loading after login - fetching titles
                       const Text(
                         'Fetching your JustWatch library...',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 16),
                       const CircularProgressIndicator(),
@@ -854,7 +906,8 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                       // Processing titles after fetching
                       Text(
                         _titlesFoundMessage!,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 16),
                       const CircularProgressIndicator(),
@@ -867,14 +920,18 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                           if (_getRedundancyMessage() != null) ...[
                             Text(
                               _getRedundancyMessage()!,
-                              style: const TextStyle(fontSize: 14, color: Colors.orange, fontWeight: FontWeight.w500),
+                              style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.w500),
                             ),
                             const SizedBox(height: 8),
                           ],
                           // Main status message
                           Text(
                             _getFinalStatusMessage(),
-                            style: const TextStyle(fontSize: 14, color: Colors.grey),
+                            style: const TextStyle(
+                                fontSize: 14, color: Colors.grey),
                           ),
                           const SizedBox(height: 16),
                           // Only show button if there are titles to import
@@ -922,31 +979,33 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                             )
                           else
                             const Icon(Icons.movie),
-                          Positioned( // All titles will be processed
-                              top: 0,
-                              right: 0,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Text(
-                                  '3',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                          Positioned(
+                            // All titles will be processed
+                            top: 0,
+                            right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                '3',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
+                          ),
                         ],
                       ),
                       title: Text(
                         title.title,
                         style: const TextStyle(
-                          fontWeight: FontWeight.bold, // All titles will be processed
+                          fontWeight:
+                              FontWeight.bold, // All titles will be processed
                         ),
                       ),
                       subtitle: Column(
