@@ -45,15 +45,15 @@ class LinkActionDialog extends StatelessWidget {
     final duplicate = result.duplicates.first;
 
     return AlertDialog(
-      title: Row(
+      title: const Row(
         children: [
           Icon(
             Icons.warning_amber_rounded,
             color: Colors.orange,
             size: 28,
           ),
-          const SizedBox(width: 8),
-          const Text('Link Already Exists'),
+          SizedBox(width: 8),
+          Text('Link Already Exists'),
         ],
       ),
       content: Column(
@@ -65,7 +65,7 @@ class LinkActionDialog extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
@@ -149,7 +149,7 @@ class LinkActionDialog extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
@@ -176,15 +176,15 @@ class LinkActionDialog extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                 ] else ...[
-                  Row(
+                  const Row(
                     children: [
                       Icon(
                         Icons.warning_amber_rounded,
                         size: 16,
                         color: Colors.orange,
                       ),
-                      const SizedBox(width: 4),
-                      const Text(
+                      SizedBox(width: 4),
+                      Text(
                         'Could not extract title',
                         style: TextStyle(color: Colors.orange),
                       ),

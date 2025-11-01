@@ -837,18 +837,45 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
       ),
     );
 
-    if (result == true) {
-      // Tasks were added, trigger UI rebuild to reflect cache changes
-      if (mounted) {
+    if (result != null && mounted) {
+      // Check if result is 'home' (go to home screen) or true (multiple tasks)
+      if (result == 'home') {
+        // User chose to go to home screen
+        // Trigger UI rebuild to reflect cache changes
         setState(() {});
-      }
 
-      // Call the edit complete callback to notify Home screen to refresh
-      if (EditCategoryScreen.onEditComplete != null) {
-        try {
-          EditCategoryScreen.onEditComplete!();
-        } catch (e) {}
-      } else {}
+        // Call the edit complete callback to notify Home screen to refresh
+        if (EditCategoryScreen.onEditComplete != null) {
+          try {
+            EditCategoryScreen.onEditComplete!();
+          } catch (e) {}
+        }
+
+        // Navigate to home screen
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      } else if (result == true) {
+        // Multiple tasks were added
+        // Tasks were added, trigger UI rebuild to reflect cache changes
+        setState(() {});
+
+        // Call the edit complete callback to notify Home screen to refresh
+        if (EditCategoryScreen.onEditComplete != null) {
+          try {
+            EditCategoryScreen.onEditComplete!();
+          } catch (e) {}
+        }
+      }
+      // If result is null, just refresh the UI (user chose to add more)
+      else {
+        setState(() {});
+
+        // Call the edit complete callback
+        if (EditCategoryScreen.onEditComplete != null) {
+          try {
+            EditCategoryScreen.onEditComplete!();
+          } catch (e) {}
+        }
+      }
     }
   }
 
@@ -1410,7 +1437,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                         padding: const EdgeInsets.only(left: 16.0),
                         child: CheckboxListTile(
                           title: Text(
-                              '${NamingUtils.tasksName(plural: true)} start out private'),
+                              '${NamingUtils.tasksName(plural: true)} are private by default'),
                           value: _tasksArePrivate,
                           onChanged: (value) {
                             setState(() {
@@ -1515,7 +1542,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                                         size: 16, color: Colors.grey[600]),
                                     const SizedBox(width: 4),
                                     Text(
-                                      '${NamingUtils.tasksName(plural: true)} start out private',
+                                      '${NamingUtils.tasksName(plural: true)} are private by default',
                                       style: TextStyle(
                                         fontSize: 14,
                                         color: Colors.grey[600],

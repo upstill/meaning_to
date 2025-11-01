@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/utils/auth.dart';
-import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/utils/naming.dart';
 
@@ -18,27 +16,8 @@ class AddTaskManuallyButton extends StatelessWidget {
   });
 
   Future<void> _createTask(BuildContext context) async {
-    final result = await Navigator.pushNamed(
-      context,
-      '/edit-task',
-      arguments: {'category': category, 'task': null},
-    );
-
-    if (result == true) {
-      // Refresh the cache to get the new task
-      try {
-        final userId = AuthUtils.getCurrentUserId();
-        await CacheManager().refreshFromApi();
-        print('AddTaskManuallyButton: Cache refreshed after task creation');
-      } catch (e) {
-        print('AddTaskManuallyButton: Error refreshing cache: $e');
-      }
-
-      // Call the callback if provided
-      if (onTaskAdded != null) {
-        onTaskAdded!();
-      }
-    }
+    // Pop back to the New Content screen
+    Navigator.pop(context);
   }
 
   @override
@@ -47,7 +26,7 @@ class AddTaskManuallyButton extends StatelessWidget {
       onPressed: isLoading ? null : () => _createTask(context),
       icon: const Icon(Icons.add),
       label: Text(
-          'Add ${NamingUtils.tasksName(plural: false, withArticle: true)} Manually'),
+          'Add ${NamingUtils.tasksName(capitalize: true, plural: false, withArticle: true)} manually'),
       style: AppButtons.goForth(),
     );
   }

@@ -1202,9 +1202,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           context: context,
                           builder: (context) => AlertDialog(
                             title:
-                                Text('Delete ${NamingUtils.categoriesName()}?'),
+                                Text('Delete ${NamingUtils.categoriesName(plural: false)}?'),
                             content: Text(
-                              'This will also delete all ${NamingUtils.tasksName(plural: true)} in this category. This action cannot be undone.',
+                              'This will also delete all ${NamingUtils.tasksName(plural: true)} in this category, if any. This action cannot be undone.',
                             ),
                             actions: [
                               TextButton(
@@ -1322,7 +1322,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                         padding: const EdgeInsets.only(left: 16.0),
                         child: CheckboxListTile(
                           title: Text(
-                              '${NamingUtils.tasksName(plural: true)} start out private'),
+                              '${NamingUtils.tasksName(plural: true)} are private by default'),
                           value: _tasksArePrivate,
                           onChanged: (value) {
                             setState(() {

@@ -69,9 +69,6 @@ class _TaskPickerDialogState extends State<TaskPickerDialog> {
       });
 
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        throw Exception('User not authenticated');
-      }
 
       // Load all categories
       final response = await supabase
@@ -81,9 +78,8 @@ class _TaskPickerDialogState extends State<TaskPickerDialog> {
           .order('headline');
 
       final categoriesData = response as List<dynamic>;
-      final categories = categoriesData
-          .map((data) => Category.fromJson(data))
-          .toList();
+      final categories =
+          categoriesData.map((data) => Category.fromJson(data)).toList();
 
       setState(() {
         _categories = categories;
@@ -110,9 +106,6 @@ class _TaskPickerDialogState extends State<TaskPickerDialog> {
       });
 
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        throw Exception('User not authenticated');
-      }
 
       // Load tasks for the selected category
       final response = await supabase
@@ -124,9 +117,7 @@ class _TaskPickerDialogState extends State<TaskPickerDialog> {
           .order('headline');
 
       final tasksData = response as List<dynamic>;
-      final tasks = tasksData
-          .map((data) => Task.fromJson(data))
-          .toList();
+      final tasks = tasksData.map((data) => Task.fromJson(data)).toList();
 
       setState(() {
         _tasks = tasks;
@@ -148,7 +139,8 @@ class _TaskPickerDialogState extends State<TaskPickerDialog> {
     return _tasks
         .where((task) =>
             task.headline.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-            (task.notes?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false))
+            (task.notes?.toLowerCase().contains(_searchQuery.toLowerCase()) ??
+                false))
         .toList();
   }
 
@@ -209,7 +201,7 @@ class _TaskPickerDialogState extends State<TaskPickerDialog> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(

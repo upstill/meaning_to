@@ -8,7 +8,10 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
+import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/performance_monitor_screen.dart';
+import 'package:meaning_to/dialogs/task_created_dialog.dart';
+import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'dart:async';
 
 import 'package:meaning_to/utils/naming.dart';
@@ -467,6 +470,166 @@ class HomeScreenState extends State<HomeScreen> {
         _loadCategories();
       }
     });
+  }
+
+  void _navigateToNewContent() async {
+    print('HomeScreen: Starting navigation to new content screen...');
+
+    if (!mounted) {
+      print('HomeScreen: Not mounted before navigation');
+      return;
+    }
+
+    // If no category is selected, show category picker first
+    if (_selectedCategory == null) {
+      Category? pickedCategory;
+
+      await CategoryPickerDialog.show(
+        context,
+        title: 'Select Pursuit for new ${NamingUtils.tasksName(plural: false)}',
+        onCategorySelected: (Category selectedCategory, {bool? shouldMove}) {
+          pickedCategory = selectedCategory;
+        },
+        showCreateNew: true,
+      );
+
+      // If no category was selected, return to home screen
+      if (pickedCategory == null) {
+        print('HomeScreen: No category selected, staying on home screen');
+        return;
+      }
+
+      // Use the picked category for navigation
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => NewContentScreen(
+            selectedCategory: pickedCategory,
+          ),
+        ),
+      ).then((result) async {
+        if (result != null) {
+          if (result is Map<String, dynamic>) {
+            final count = result['count'] ?? 1;
+            if (count == 1) {
+              // Single task created - show popup
+              await _handleSingleTaskCreated(result);
+            } else {
+              // Multiple tasks created - go to Edit Category
+              await _handleMultipleTasksCreated(result);
+            }
+          } else if (result == true) {
+            // Category created or bulk import without specific data - reload data
+            print('HomeScreen: Content was created, reloading data');
+            _loadCategories();
+            if (_selectedCategory != null) {
+              _loadRandomTask(_selectedCategory!);
+            }
+          }
+        }
+      });
+    } else {
+      // Navigate with the existing selected category
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => NewContentScreen(
+            selectedCategory: _selectedCategory,
+          ),
+        ),
+      ).then((result) async {
+        if (result != null) {
+          if (result is Map<String, dynamic>) {
+            final count = result['count'] ?? 1;
+            if (count == 1) {
+              // Single task created - show popup
+              await _handleSingleTaskCreated(result);
+            } else {
+              // Multiple tasks created - go to Edit Category
+              await _handleMultipleTasksCreated(result);
+            }
+          } else if (result == true) {
+            // Category created or bulk import without specific data - reload data
+            print('HomeScreen: Content was created, reloading data');
+            _loadCategories();
+            if (_selectedCategory != null) {
+              _loadRandomTask(_selectedCategory!);
+            }
+          }
+        }
+      });
+    }
+  }
+
+  Future<void> _handleSingleTaskCreated(Map<String, dynamic> result) async {
+    final taskData = result['task'];
+    final categoryData = result['category'];
+    final category = Category.fromJson(categoryData);
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return TaskCreatedDialog(
+          taskData: taskData,
+          category: category,
+        );
+      },
+    );
+
+    if (action == 'edit' && mounted) {
+      // Create Task object from the data for editing
+      final task = Task.fromJson(taskData);
+
+      // Navigate to edit screen
+      final editResult = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TaskEditScreen(
+            task: task,
+            category: category,
+          ),
+        ),
+      );
+
+      // Reload data if task was modified
+      if (editResult == true && mounted) {
+        _loadCategories();
+        if (_selectedCategory != null) {
+          _loadRandomTask(_selectedCategory!);
+        }
+      }
+    } else {
+      // User accepted or dismissed - reload data
+      _loadCategories();
+      if (_selectedCategory != null) {
+        _loadRandomTask(_selectedCategory!);
+      }
+    }
+  }
+
+  Future<void> _handleMultipleTasksCreated(Map<String, dynamic> result) async {
+    final categoryData = result['category'];
+    final category = Category.fromJson(categoryData);
+
+    // Navigate directly to Edit Category screen showing the new tasks
+    if (mounted) {
+      final editResult = await Navigator.pushNamed(
+        context,
+        '/edit-category',
+        arguments: {
+          'category': category,
+          'tasksOnly': false,
+        },
+      );
+
+      // Reload data when returning from Edit Category
+      if (mounted) {
+        _loadCategories();
+        if (_selectedCategory != null) {
+          _loadRandomTask(_selectedCategory!);
+        }
+      }
+    }
   }
 
   void _showCategoryInfo(Category category) {
@@ -933,7 +1096,7 @@ class HomeScreenState extends State<HomeScreen> {
           builder: (BuildContext context) {
             return AlertDialog(
               title: const Text(
-                'Welcome to I\'ve Been Meaning To...r!',
+                'Welcome to I\'ve Been Meaning To...!',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -1478,7 +1641,7 @@ class HomeScreenState extends State<HomeScreen> {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<Category>(
-                          value: _selectedCategory,
+                          initialValue: _selectedCategory,
                           // Must be >= kMinInteractiveDimension (48)
                           itemHeight: 48.0,
                           isExpanded: true,
@@ -1873,25 +2036,6 @@ class HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 20),
-                                // Edit button with descriptive text
-                                if (!AuthUtils.isGuestUser()) ...[
-                                  ElevatedButton.icon(
-                                    onPressed: () => _navigateToEditTasks(),
-                                    icon: const Icon(Icons.edit, size: 18),
-                                    label: Text(
-                                      'Manage ${NamingUtils.categoriesName(plural: false)} / Edit ${NamingUtils.categoriesName(plural: false)}',
-                                      style: TextStyle(fontSize: 14),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.blue[600],
-                                      foregroundColor: Colors.white,
-                                      minimumSize: const Size(0, 38),
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16, vertical: 8),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 20),
-                                ],
                               ],
                             ),
                           ),
@@ -1915,12 +2059,11 @@ class HomeScreenState extends State<HomeScreen> {
                               style: TextStyle(fontSize: 16),
                             ),
                             const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: _navigateToEditTasks,
-                              icon: const Icon(Icons.edit),
-                              label: Text(
-                                  'Manage Choices/Edit ${NamingUtils.categoriesName(plural: false)}'),
-                              style: AppButtons.goForth(),
+                            Text(
+                              'Tap the + button to add more ${NamingUtils.tasksName()} or explore ${NamingUtils.categoriesName()}.',
+                              style: const TextStyle(
+                                  fontSize: 14, color: Colors.grey),
+                              textAlign: TextAlign.center,
                             ),
                           ],
                         ),
@@ -1995,35 +2138,49 @@ class HomeScreenState extends State<HomeScreen> {
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           if (_selectedCategory != null) ...[
-            FloatingActionButton(
-              onPressed: () => _showCategoryInfo(_selectedCategory!),
-              tooltip: 'Show category information',
-              backgroundColor: Colors.orange[600],
-              foregroundColor: Colors.white,
-              child: const Icon(Icons.info_outline),
-            ),
-            const SizedBox(width: 16),
-            FloatingActionButton(
-              onPressed: () => _shareCategory(_selectedCategory!),
-              tooltip: 'Share category',
-              backgroundColor: Colors.green[600],
-              foregroundColor: Colors.white,
-              child: const Icon(Icons.share),
-            ),
-            const SizedBox(width: 16),
+            // Info and Share buttons commented out for simplified interface
+            // FloatingActionButton(
+            //   onPressed: () => _showCategoryInfo(_selectedCategory!),
+            //   tooltip: 'Show category information',
+            //   backgroundColor: Colors.orange[600],
+            //   foregroundColor: Colors.white,
+            //   child: const Icon(Icons.info_outline),
+            // ),
+            // const SizedBox(width: 16),
+            // FloatingActionButton(
+            //   onPressed: () => _shareCategory(_selectedCategory!),
+            //   tooltip: 'Share category',
+            //   backgroundColor: Colors.green[600],
+            //   foregroundColor: Colors.white,
+            //   child: const Icon(Icons.share),
+            // ),
+            // const SizedBox(width: 16),
+            // Edit category button
+            if (!AuthUtils.isGuestUser()) ...[
+              FloatingActionButton(
+                heroTag: 'editCategoryButton',
+                onPressed: () => _navigateToEditCategory(_selectedCategory),
+                tooltip:
+                    'Edit ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+                backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+                child: const Icon(Icons.edit),
+              ),
+              const SizedBox(width: 16),
+            ],
           ],
           FloatingActionButton(
+            heroTag: 'addContentButton',
             onPressed: () {
               if (AuthUtils.isGuestUser()) {
                 _showGuestSignupDialog(
                     content:
-                        'Here\'s where you can add a new ${NamingUtils.categoriesName(plural: false)} once you\'re logged in. Sign up to add your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!');
+                        'Here\'s where you can add new ${NamingUtils.tasksName()} and ${NamingUtils.categoriesName()} once you\'re logged in. Sign up to add your own content!');
               } else {
-                _navigateToNewCategory();
+                _navigateToNewContent();
               }
             },
-            tooltip:
-                'Define a New ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+            tooltip: 'Add New Content',
             backgroundColor: AppButtons.goForthBg,
             foregroundColor: AppButtons.goForthFg,
             child: const Icon(Icons.add),

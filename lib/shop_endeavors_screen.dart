@@ -7,6 +7,7 @@ import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 
 class ShopEndeavorsScreen extends StatefulWidget {
@@ -288,6 +289,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
               categoryIds: categoryIds,
               isSelected: false,
               isExpanded: false,
+              tasksLoaded:
+                  true, // Tasks are loaded on-demand when expanded, not preloaded
             ));
           }
         }
@@ -741,9 +744,13 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       if (item.tasks.isNotEmpty) {
         return false; // Found tasks, don't show alert
       }
+      // Don't show alert if tasks haven't been loaded yet
+      if (!item.tasksLoaded) {
+        return false; // Still loading tasks, don't show alert yet
+      }
     }
 
-    return true; // No tasks found, show alert
+    return true; // No tasks found and all tasks loaded, show alert
   }
 
   /// Get filtered tasks for a given original_id and owner_id
@@ -928,27 +935,108 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       print(
           'ShopEndeavorsScreen: Added $importedTasks tasks to cache and database (skipped $skippedTasks duplicates)');
 
-      // Show success message
+      // Navigate back with appropriate result based on number of tasks added
       if (mounted) {
-        String message;
-        if (skippedTasks > 0) {
-          message =
-              'Added $importedTasks tasks to ${widget.existingCategory!.headline}! (Skipped $skippedTasks duplicates, copied links)';
+        if (importedTasks == 1) {
+          // Single task - show dialog here
+          final currentTasks = cacheManager.currentTasks ?? [];
+
+          // Find the most recently added task(s) by created time
+          final sortedTasks = currentTasks.toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+          if (sortedTasks.isNotEmpty) {
+            final latestTask = sortedTasks.first;
+
+            // Show popup dialog
+            final shouldGoHome = await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (BuildContext dialogContext) {
+                return AlertDialog(
+                  title: Text(
+                    '${NamingUtils.tasksName(capitalize: true, plural: false)} Added!',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Successfully added:',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        latestTask.headline,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'What would you like to do?',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      style: AppButtons.goForthOutlined(),
+                      child: Text(
+                          'Add More ${NamingUtils.tasksName(capitalize: true)}'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      style: AppButtons.finalize(),
+                      child: const Text('Go to Home Screen'),
+                    ),
+                  ],
+                );
+              },
+            );
+
+            // Navigate based on user choice
+            if (shouldGoHome == true && mounted) {
+              // Pop all the way back to home screen (first route)
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            } else if (mounted) {
+              // Just pop this screen to go back to New Content screen
+              Navigator.pop(context);
+            }
+          } else {
+            Navigator.pop(context, true);
+          }
         } else {
-          message =
-              'Successfully added $importedTasks tasks to ${widget.existingCategory!.headline}!';
+          // Multiple tasks - show SnackBar with success message
+          String message;
+          if (skippedTasks > 0) {
+            message =
+                'Added $importedTasks tasks to ${widget.existingCategory!.headline}! (Skipped $skippedTasks duplicates, copied links)';
+          } else {
+            message =
+                'Successfully added $importedTasks tasks to ${widget.existingCategory!.headline}!';
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+
+          // Return simple true for multiple tasks
+          Navigator.pop(context, true);
         }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-
-        // Navigate back with result indicating tasks were added
-        Navigator.pop(context, true);
       }
     } catch (e) {
       print('Error adding tasks to category: $e');
@@ -1014,11 +1102,20 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
             .toList();
 
         if (selectedTaskIds.isNotEmpty) {
-          // Get all tasks and filter to the selected ones
-          final allTasks = await ApiClient.getTasks();
-          final originalTasks = allTasks
-              .where((task) => selectedTaskIds.contains(task.id.toString()))
-              .toList();
+          // Get the specific tasks by ID (they belong to other users, so can't use getTasks())
+          final originalTasks = <Task>[];
+          for (final taskId in selectedTaskIds) {
+            try {
+              final task = await ApiClient.getTask(taskId);
+              if (task != null) {
+                originalTasks.add(task);
+              } else {
+                print('ShopEndeavorsScreen: Task $taskId not found');
+              }
+            } catch (e) {
+              print('ShopEndeavorsScreen: Error fetching task $taskId: $e');
+            }
+          }
 
           // Track original_ids to prevent duplicates within this import
           final importedOriginalIds = <int>{};
@@ -1228,292 +1325,318 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                             ],
                           ),
                         )
-                      : _shouldShowNoSuggestionsAlert()
-                          ? Center(
+                      : _shopItems.any((item) => !item.tasksLoaded)
+                          ? const Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(
-                                    Icons.search_off,
-                                    size: 64,
-                                    color: Colors.grey,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  const Text(
-                                    'Nothing Found!',
-                                    style: TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  const Text(
-                                    'You\'ve already taken on all the suggestions there are.',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 24),
-                                  ElevatedButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.blue,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 24,
-                                        vertical: 12,
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Return',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
+                                  CircularProgressIndicator(),
+                                  SizedBox(height: 16),
+                                  Text('Loading available tasks...'),
                                 ],
                               ),
                             )
-                          : ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(
-                                  16.0, 16.0, 16.0, 80.0),
-                              itemCount: _shopItems.length,
-                              itemBuilder: (context, index) {
-                                final item = _shopItems[index];
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 8.0),
+                          : _shouldShowNoSuggestionsAlert()
+                              ? Center(
                                   child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      ListTile(
-                                        title: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            // Headline row with checkbox and expand functionality
-                                            widget.existingCategory != null
-                                                ? Row(
-                                                    children: [
-                                                      Expanded(
-                                                        child: Text(
-                                                          item.headline,
-                                                          style:
-                                                              const TextStyle(
-                                                            fontSize: 20,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            color: Colors.black,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      if (item.hasTasksAvailable ==
-                                                              null ||
-                                                          item.hasTasksAvailable ==
-                                                              true)
-                                                        GestureDetector(
-                                                          onTap: () =>
-                                                              _toggleExpansion(
-                                                                  index),
-                                                          child: Icon(
-                                                            item.isExpanded
-                                                                ? Icons
-                                                                    .expand_less
-                                                                : Icons
-                                                                    .expand_more,
-                                                            color: Colors.grey,
-                                                          ),
-                                                        ),
-                                                    ],
-                                                  )
-                                                : Row(
-                                                    children: [
-                                                      Checkbox(
-                                                        value: item.isSelected,
-                                                        onChanged: (_) =>
-                                                            _toggleSelection(
-                                                                index),
-                                                        materialTapTargetSize:
-                                                            MaterialTapTargetSize
-                                                                .shrinkWrap,
-                                                        visualDensity:
-                                                            VisualDensity
-                                                                .compact,
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      Expanded(
-                                                        child: Text(
-                                                          item.headline,
-                                                          style:
-                                                              const TextStyle(
-                                                            fontSize: 20,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            color: Colors.black,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      if (item.hasTasksAvailable ==
-                                                              null ||
-                                                          item.hasTasksAvailable ==
-                                                              true)
-                                                        GestureDetector(
-                                                          onTap: () =>
-                                                              _toggleExpansion(
-                                                                  index),
-                                                          child: Icon(
-                                                            item.isExpanded
-                                                                ? Icons
-                                                                    .expand_less
-                                                                : Icons
-                                                                    .expand_more,
-                                                            color: Colors.grey,
-                                                          ),
-                                                        ),
-                                                    ],
-                                                  ),
-                                            // Add invitation below headline
-                                            if (_buildInvitationWidget(item) !=
-                                                null)
-                                              _buildInvitationWidget(item)!,
-                                            // Show "No suggestions" text immediately if no tasks available
-                                            if (item.hasTasksAvailable == false)
-                                              Padding(
-                                                padding: EdgeInsets.fromLTRB(
-                                                    16.0, 8.0, 16.0, 0.0),
-                                                child: Text(
-                                                  '(Your ${NamingUtils.tasksName()} here)',
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    color: Colors.grey,
-                                                    fontStyle: FontStyle.italic,
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
+                                      const Icon(
+                                        Icons.search_off,
+                                        size: 64,
+                                        color: Colors.grey,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        'Nothing Found!',
+                                        style: TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                      if (widget.existingCategory != null ||
-                                          item.isExpanded) ...[
-                                        if (item.tasks.isNotEmpty) ...[
-                                          Padding(
-                                            padding: const EdgeInsets.fromLTRB(
-                                                16.0, 0.0, 16.0, 16.0),
-                                            child: Column(
+                                      const SizedBox(height: 8),
+                                      const Text(
+                                        'You\'ve already taken on all the suggestions there are.',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.grey,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 24),
+                                      ElevatedButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.blue,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 24,
+                                            vertical: 12,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'Return',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      16.0, 16.0, 16.0, 80.0),
+                                  itemCount: _shopItems.length,
+                                  itemBuilder: (context, index) {
+                                    final item = _shopItems[index];
+                                    return Card(
+                                      margin:
+                                          const EdgeInsets.only(bottom: 8.0),
+                                      child: Column(
+                                        children: [
+                                          ListTile(
+                                            title: Column(
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               children: [
-                                                widget.existingCategory == null
-                                                    ? Padding(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                                horizontal:
-                                                                    20.0),
-                                                        child: Row(
-                                                          mainAxisAlignment:
-                                                              MainAxisAlignment
-                                                                  .spaceBetween,
-                                                          children: [
-                                                            Text(
-                                                              'Suggestions:',
-                                                              style: Theme.of(
-                                                                      context)
-                                                                  .textTheme
-                                                                  .bodySmall
-                                                                  ?.copyWith(
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .bold,
-                                                                    fontStyle:
-                                                                        FontStyle
-                                                                            .italic,
-                                                                    color: Colors
-                                                                            .grey[
-                                                                        700],
-                                                                    fontSize:
-                                                                        (Theme.of(context).textTheme.bodySmall?.fontSize ??
-                                                                                12) +
-                                                                            4,
-                                                                  ),
+                                                // Headline row with checkbox and expand functionality
+                                                widget.existingCategory != null
+                                                    ? Row(
+                                                        children: [
+                                                          Expanded(
+                                                            child: Text(
+                                                              item.headline,
+                                                              style:
+                                                                  const TextStyle(
+                                                                fontSize: 20,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                color: Colors
+                                                                    .black,
+                                                              ),
                                                             ),
-                                                            Checkbox(
-                                                              value: _areAllTasksSelected(
-                                                                      index)
-                                                                  ? true
-                                                                  : _areSomeTasksSelected(
-                                                                          index)
-                                                                      ? null
-                                                                      : false,
-                                                              tristate: true,
-                                                              onChanged: (_) =>
-                                                                  _toggleSelectAllTasks(
+                                                          ),
+                                                          if (item.hasTasksAvailable ==
+                                                                  null ||
+                                                              item.hasTasksAvailable ==
+                                                                  true)
+                                                            GestureDetector(
+                                                              onTap: () =>
+                                                                  _toggleExpansion(
                                                                       index),
-                                                              materialTapTargetSize:
-                                                                  MaterialTapTargetSize
-                                                                      .shrinkWrap,
-                                                              visualDensity:
-                                                                  VisualDensity
-                                                                      .compact,
+                                                              child: Icon(
+                                                                item.isExpanded
+                                                                    ? Icons
+                                                                        .expand_less
+                                                                    : Icons
+                                                                        .expand_more,
+                                                                color:
+                                                                    Colors.grey,
+                                                              ),
                                                             ),
-                                                          ],
-                                                        ),
+                                                        ],
                                                       )
-                                                    : Padding(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                                horizontal:
-                                                                    20.0),
-                                                        child: Row(
-                                                          mainAxisAlignment:
-                                                              MainAxisAlignment
-                                                                  .end,
-                                                          children: [
-                                                            Checkbox(
-                                                              value: _areAllTasksSelected(
-                                                                      index)
-                                                                  ? true
-                                                                  : _areSomeTasksSelected(
-                                                                          index)
-                                                                      ? null
-                                                                      : false,
-                                                              tristate: true,
-                                                              onChanged: (_) =>
-                                                                  _toggleSelectAllTasks(
-                                                                      index),
-                                                              materialTapTargetSize:
-                                                                  MaterialTapTargetSize
-                                                                      .shrinkWrap,
-                                                              visualDensity:
-                                                                  VisualDensity
-                                                                      .compact,
+                                                    : Row(
+                                                        children: [
+                                                          Checkbox(
+                                                            value:
+                                                                item.isSelected,
+                                                            onChanged: (_) =>
+                                                                _toggleSelection(
+                                                                    index),
+                                                            materialTapTargetSize:
+                                                                MaterialTapTargetSize
+                                                                    .shrinkWrap,
+                                                            visualDensity:
+                                                                VisualDensity
+                                                                    .compact,
+                                                          ),
+                                                          const SizedBox(
+                                                              width: 8),
+                                                          Expanded(
+                                                            child: Text(
+                                                              item.headline,
+                                                              style:
+                                                                  const TextStyle(
+                                                                fontSize: 20,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                color: Colors
+                                                                    .black,
+                                                              ),
                                                             ),
-                                                          ],
-                                                        ),
+                                                          ),
+                                                          if (item.hasTasksAvailable ==
+                                                                  null ||
+                                                              item.hasTasksAvailable ==
+                                                                  true)
+                                                            GestureDetector(
+                                                              onTap: () =>
+                                                                  _toggleExpansion(
+                                                                      index),
+                                                              child: Icon(
+                                                                item.isExpanded
+                                                                    ? Icons
+                                                                        .expand_less
+                                                                    : Icons
+                                                                        .expand_more,
+                                                                color:
+                                                                    Colors.grey,
+                                                              ),
+                                                            ),
+                                                        ],
                                                       ),
-                                                const SizedBox(height: 8),
-                                                ...item.tasks
-                                                    .map((task) =>
-                                                        _buildTaskCard(task))
-                                                    .toList(),
+                                                // Add invitation below headline
+                                                if (_buildInvitationWidget(
+                                                        item) !=
+                                                    null)
+                                                  _buildInvitationWidget(item)!,
+                                                // Show "No suggestions" text immediately if no tasks available
+                                                if (item.hasTasksAvailable ==
+                                                    false)
+                                                  Padding(
+                                                    padding: const EdgeInsets
+                                                        .fromLTRB(
+                                                        16.0, 8.0, 16.0, 0.0),
+                                                    child: Text(
+                                                      '(Your ${NamingUtils.tasksName()} here)',
+                                                      style: const TextStyle(
+                                                        fontSize: 14,
+                                                        color: Colors.grey,
+                                                        fontStyle:
+                                                            FontStyle.italic,
+                                                      ),
+                                                    ),
+                                                  ),
                                               ],
                                             ),
                                           ),
+                                          if (widget.existingCategory != null ||
+                                              item.isExpanded) ...[
+                                            if (item.tasks.isNotEmpty) ...[
+                                              Padding(
+                                                padding:
+                                                    const EdgeInsets.fromLTRB(
+                                                        16.0, 0.0, 16.0, 16.0),
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    widget.existingCategory ==
+                                                            null
+                                                        ? Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .symmetric(
+                                                                    horizontal:
+                                                                        20.0),
+                                                            child: Row(
+                                                              mainAxisAlignment:
+                                                                  MainAxisAlignment
+                                                                      .spaceBetween,
+                                                              children: [
+                                                                Text(
+                                                                  'Suggestions:',
+                                                                  style: Theme.of(
+                                                                          context)
+                                                                      .textTheme
+                                                                      .bodySmall
+                                                                      ?.copyWith(
+                                                                        fontWeight:
+                                                                            FontWeight.bold,
+                                                                        fontStyle:
+                                                                            FontStyle.italic,
+                                                                        color: Colors
+                                                                            .grey[700],
+                                                                        fontSize:
+                                                                            (Theme.of(context).textTheme.bodySmall?.fontSize ?? 12) +
+                                                                                4,
+                                                                      ),
+                                                                ),
+                                                                Checkbox(
+                                                                  value: _areAllTasksSelected(
+                                                                          index)
+                                                                      ? true
+                                                                      : _areSomeTasksSelected(
+                                                                              index)
+                                                                          ? null
+                                                                          : false,
+                                                                  tristate:
+                                                                      true,
+                                                                  onChanged: (_) =>
+                                                                      _toggleSelectAllTasks(
+                                                                          index),
+                                                                  materialTapTargetSize:
+                                                                      MaterialTapTargetSize
+                                                                          .shrinkWrap,
+                                                                  visualDensity:
+                                                                      VisualDensity
+                                                                          .compact,
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          )
+                                                        : Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .symmetric(
+                                                                    horizontal:
+                                                                        20.0),
+                                                            child: Row(
+                                                              mainAxisAlignment:
+                                                                  MainAxisAlignment
+                                                                      .end,
+                                                              children: [
+                                                                Checkbox(
+                                                                  value: _areAllTasksSelected(
+                                                                          index)
+                                                                      ? true
+                                                                      : _areSomeTasksSelected(
+                                                                              index)
+                                                                          ? null
+                                                                          : false,
+                                                                  tristate:
+                                                                      true,
+                                                                  onChanged: (_) =>
+                                                                      _toggleSelectAllTasks(
+                                                                          index),
+                                                                  materialTapTargetSize:
+                                                                      MaterialTapTargetSize
+                                                                          .shrinkWrap,
+                                                                  visualDensity:
+                                                                      VisualDensity
+                                                                          .compact,
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                    const SizedBox(height: 8),
+                                                    ...item.tasks
+                                                        .map((task) =>
+                                                            _buildTaskCard(
+                                                                task))
+                                                        .toList(),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ],
-                                      ],
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
+                                      ),
+                                    );
+                                  },
+                                ),
       floatingActionButton: _shopItems.isNotEmpty &&
               !_shouldShowNoSuggestionsAlert() &&
               _shopItems.any((item) => item.isSelected)
           ? SizedBox(
               height: 40, // Reduced from default 56 to 44 (12 points shorter)
               child: FloatingActionButton.extended(
+                heroTag: 'importButton',
                 onPressed: _isLoading
                     ? null
                     : (widget.existingCategory != null
