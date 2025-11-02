@@ -9,6 +9,7 @@ import 'package:meaning_to/new_category_screen.dart';
 /// Dialog for selecting a category with smart defaults and recent category prioritization
 class CategoryPickerDialog extends StatefulWidget {
   final String title;
+  final String? subtitle; // Optional guidance text shown at the top
   final Category? defaultCategory;
   final Function(Category, {bool? shouldMove}) onCategorySelected;
   final bool showCreateNew;
@@ -19,6 +20,7 @@ class CategoryPickerDialog extends StatefulWidget {
   const CategoryPickerDialog({
     super.key,
     required this.title,
+    this.subtitle,
     this.defaultCategory,
     required this.onCategorySelected,
     this.showCreateNew = true,
@@ -30,6 +32,7 @@ class CategoryPickerDialog extends StatefulWidget {
   static Future<void> show(
     BuildContext context, {
     required String title,
+    String? subtitle,
     Category? defaultCategory,
     required Function(Category, {bool? shouldMove}) onCategorySelected,
     bool showCreateNew = true,
@@ -41,6 +44,7 @@ class CategoryPickerDialog extends StatefulWidget {
       context: context,
       builder: (context) => CategoryPickerDialog(
         title: title,
+        subtitle: subtitle,
         defaultCategory: defaultCategory,
         onCategorySelected: onCategorySelected,
         showCreateNew: showCreateNew,
@@ -196,9 +200,12 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       title: Row(
         children: [
           Expanded(
-            child: Text(widget.taskHeadline != null
-                ? 'Reassign "${widget.taskHeadline}"'
-                : widget.title),
+            child: Text(
+              widget.taskHeadline != null
+                  ? 'Reassign "${widget.taskHeadline}"'
+                  : widget.title,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.close),
@@ -212,6 +219,22 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
         height: 400,
         child: Column(
           children: [
+            // Guidance text (if provided)
+            if (widget.subtitle != null) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  widget.subtitle!,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+
             // Current category display (if excluding one)
             if (widget.excludeCategory != null) ...[
               Container(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/utils/naming.dart';
+import 'package:meaning_to/new_content_screen.dart';
 
 class AddTaskManuallyButton extends StatelessWidget {
   final Category category;
@@ -16,8 +17,20 @@ class AddTaskManuallyButton extends StatelessWidget {
   });
 
   Future<void> _createTask(BuildContext context) async {
-    // Pop back to the New Content screen
-    Navigator.pop(context);
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NewContentScreen(
+          selectedCategory: category,
+          categoryLocked: true,
+        ),
+      ),
+    );
+
+    // If a task was created, call the callback
+    if (result != null && onTaskAdded != null) {
+      onTaskAdded!();
+    }
   }
 
   @override

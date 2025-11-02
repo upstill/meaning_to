@@ -102,13 +102,14 @@ class TaskEnricher {
       }
 
       // 1a. Check if headline is a URL and extract it
-      final urlExtractionResult = await _extractUrlFromHeadline(newHeadline ?? task.headline);
+      final urlExtractionResult =
+          await _extractUrlFromHeadline(newHeadline ?? task.headline);
       if (urlExtractionResult != null) {
         newHeadline = urlExtractionResult.title;
         if (newLinks == null) {
           newLinks = [urlExtractionResult.htmlLink];
         } else {
-          newLinks = [...newLinks!, urlExtractionResult.htmlLink];
+          newLinks = [...newLinks, urlExtractionResult.htmlLink];
         }
         enrichedFields.addAll(['headline', 'links']);
         hasChanges = true;
@@ -116,9 +117,11 @@ class TaskEnricher {
 
       // 2. Extract headline from links if task has no headline
       bool headlineExtractedFromHtmlLink = false;
-      if ((newHeadline == null || newHeadline.trim().isEmpty) &&
-          task.links != null && task.links!.isNotEmpty) {
-        final extractionResult = await _extractHeadlineFromLinksWithDetails(task.links!);
+      if ((newHeadline.trim().isEmpty) &&
+          task.links != null &&
+          task.links!.isNotEmpty) {
+        final extractionResult =
+            await _extractHeadlineFromLinksWithDetails(task.links!);
         if (extractionResult != null && extractionResult.headline.isNotEmpty) {
           newHeadline = extractionResult.headline;
           enrichedFields.add('headline');
@@ -128,7 +131,10 @@ class TaskEnricher {
       }
 
       // 3. Enrich links if requested (but skip if we already used HTML link for headline)
-      if (spec.enrichLinks && task.links != null && task.links!.isNotEmpty && !headlineExtractedFromHtmlLink) {
+      if (spec.enrichLinks &&
+          task.links != null &&
+          task.links!.isNotEmpty &&
+          !headlineExtractedFromHtmlLink) {
         final linkResults = await _enrichLinks(task.links!);
         if (linkResults.hasChanges) {
           newLinks = linkResults.enrichedLinks;
@@ -140,7 +146,9 @@ class TaskEnricher {
       }
 
       // 4. Ensure processed links exist if requested
-      if (spec.ensureProcessedLinks && newProcessedLinks == null && newLinks != null) {
+      if (spec.ensureProcessedLinks &&
+          newProcessedLinks == null &&
+          newLinks != null) {
         try {
           newProcessedLinks = await _generateProcessedLinks(newLinks);
           enrichedFields.add('processedLinks');
@@ -152,7 +160,8 @@ class TaskEnricher {
 
       // 5. Generate description from links if requested
       if (spec.generateDescription && (newNotes == null || newNotes.isEmpty)) {
-        final description = await _generateDescriptionFromLinks(newProcessedLinks ?? task.processedLinks);
+        final description = await _generateDescriptionFromLinks(
+            newProcessedLinks ?? task.processedLinks);
         if (description != null) {
           newNotes = description;
           enrichedFields.add('notes');
@@ -174,7 +183,7 @@ class TaskEnricher {
       final enrichedTask = Task(
         id: task.id,
         categoryId: task.categoryId,
-        headline: newHeadline!,
+        headline: newHeadline,
         notes: newNotes,
         ownerId: task.ownerId,
         createdAt: task.createdAt,
@@ -195,7 +204,6 @@ class TaskEnricher {
         errors: errors,
         hasChanges: hasChanges,
       );
-
     } catch (e) {
       errors.add('Enrichment failed: $e');
       return TaskEnrichmentResult(
@@ -240,10 +248,11 @@ class TaskEnricher {
         // If it doesn't end with </a> but starts like an HTML link, try to fix it
         if (trimmedLine.contains('<a>')) {
           htmlToProcess = trimmedLine.replaceAll('<a>', '</a>');
-          print('TaskEnricher: Fixed malformed HTML link - changed <a> to </a>');
+          print(
+              'TaskEnricher: Fixed malformed HTML link - changed <a> to </a>');
         } else {
           // Add missing closing tag if it seems to be a complete link
-          htmlToProcess = trimmedLine + '</a>';
+          htmlToProcess = '$trimmedLine</a>';
           print('TaskEnricher: Added missing closing tag </a>');
         }
       }
@@ -262,14 +271,18 @@ class TaskEnricher {
         return await createAndEnrichTask(
           id: DateTime.now().millisecondsSinceEpoch,
           categoryId: categoryId,
-          headline: title ?? processedLink.title ?? 'Link Task', // Prefer HTML title, fall back to fetched title
+          headline: title ??
+              processedLink.title ??
+              'Link Task', // Prefer HTML title, fall back to fetched title
           notes: processedLink.description, // Use description from webpage
           ownerId: ownerId,
           links: [htmlToProcess], // Use the corrected HTML link
           spec: const TaskEnrichmentSpec(
             enrichLinks: false, // Don't re-enrich since we already processed
-            generateDescription: false, // Don't generate since we already have it
-            ensureProcessedLinks: true, // Still create ProcessedLinks for display
+            generateDescription:
+                false, // Don't generate since we already have it
+            ensureProcessedLinks:
+                true, // Still create ProcessedLinks for display
             cleanHeadline: true, // Clean the headline as usual
           ),
         );
@@ -307,13 +320,17 @@ class TaskEnricher {
           id: DateTime.now().millisecondsSinceEpoch,
           categoryId: categoryId,
           headline: processedLink.title ?? 'Link Task',
-          notes: processedLink.description, // Use the description from ProcessedLink
+          notes: processedLink
+              .description, // Use the description from ProcessedLink
           ownerId: ownerId,
           links: [processedLink.originalLink],
           spec: const TaskEnrichmentSpec(
-            enrichLinks: false, // Don't re-enrich the links since we already processed them
-            generateDescription: false, // Don't generate description since we already have it
-            ensureProcessedLinks: true, // Still create ProcessedLinks for display
+            enrichLinks:
+                false, // Don't re-enrich the links since we already processed them
+            generateDescription:
+                false, // Don't generate description since we already have it
+            ensureProcessedLinks:
+                true, // Still create ProcessedLinks for display
             cleanHeadline: true, // Still clean the headline
           ),
         );
@@ -377,7 +394,8 @@ class TaskEnricher {
     try {
       switch (format) {
         case _InputFormat.json:
-          final jsonTasks = await _BulkInputParsing._parseJsonInput(inputText, originSiteHint);
+          final jsonTasks = await _BulkInputParsing._parseJsonInput(
+              inputText, originSiteHint);
           for (final taskData in jsonTasks) {
             final result = await createAndEnrichTask(
               id: DateTime.now().millisecondsSinceEpoch + results.length,
@@ -393,7 +411,8 @@ class TaskEnricher {
           break;
 
         case _InputFormat.csv:
-          final csvTasks = await _BulkInputParsing._parseCsvInput(inputText, originSiteHint);
+          final csvTasks =
+              await _BulkInputParsing._parseCsvInput(inputText, originSiteHint);
           for (final taskData in csvTasks) {
             final result = await createAndEnrichTask(
               id: DateTime.now().millisecondsSinceEpoch + results.length,
@@ -409,7 +428,8 @@ class TaskEnricher {
           break;
 
         case _InputFormat.plainText:
-          final lines = inputText.split('\n')
+          final lines = inputText
+              .split('\n')
               .map((line) => line.trim())
               .where((line) => line.isNotEmpty)
               .toList();
@@ -427,7 +447,8 @@ class TaskEnricher {
       }
     } catch (e) {
       // If parsing fails, fall back to plain text processing
-      final lines = inputText.split('\n')
+      final lines = inputText
+          .split('\n')
           .map((line) => line.trim())
           .where((line) => line.isNotEmpty)
           .toList();
@@ -540,7 +561,8 @@ class TaskEnricher {
     );
   }
 
-  static Future<List<ProcessedLink>> _generateProcessedLinks(List<String> links) async {
+  static Future<List<ProcessedLink>> _generateProcessedLinks(
+      List<String> links) async {
     final processedLinks = <ProcessedLink>[];
 
     for (final link in links) {
@@ -564,7 +586,8 @@ class TaskEnricher {
     return processedLinks;
   }
 
-  static Future<String?> _generateDescriptionFromLinks(List<ProcessedLink>? processedLinks) async {
+  static Future<String?> _generateDescriptionFromLinks(
+      List<ProcessedLink>? processedLinks) async {
     if (processedLinks == null || processedLinks.isEmpty) return null;
 
     // Look for links with descriptions (JustWatch, Letterboxd, etc.)
@@ -593,14 +616,17 @@ class TaskEnricher {
     return result?.headline;
   }
 
-  static Future<_HeadlineExtractionResult?> _extractHeadlineFromLinksWithDetails(List<String> links) async {
+  static Future<_HeadlineExtractionResult?>
+      _extractHeadlineFromLinksWithDetails(List<String> links) async {
     if (links.isEmpty) return null;
 
     // Process the first link to extract a title
     final firstLink = links.first;
 
     // Check if it's an HTML link first
-    if (firstLink.startsWith('<a href="') && firstLink.contains('">') && firstLink.endsWith('</a>')) {
+    if (firstLink.startsWith('<a href="') &&
+        firstLink.contains('">') &&
+        firstLink.endsWith('</a>')) {
       final (url, title) = LinkProcessor.parseHtmlLink(firstLink);
       if (title != null && title.isNotEmpty) {
         return _HeadlineExtractionResult(headline: title, fromHtmlLink: true);
@@ -610,21 +636,25 @@ class TaskEnricher {
     // Check if it's a plain URL
     if (LinkProcessor.isValidUrl(firstLink)) {
       try {
-        final processedLink = await LinkProcessor.validateAndProcessLink(firstLink);
+        final processedLink =
+            await LinkProcessor.validateAndProcessLink(firstLink);
         if (processedLink.title != null && processedLink.title!.isNotEmpty) {
-          return _HeadlineExtractionResult(headline: processedLink.title!, fromHtmlLink: false);
+          return _HeadlineExtractionResult(
+              headline: processedLink.title!, fromHtmlLink: false);
         }
       } catch (e) {
         // If processing fails, try to create a fallback title from URL
         final fallbackTitle = _createFallbackTitleFromUrl(firstLink);
-        return _HeadlineExtractionResult(headline: fallbackTitle, fromHtmlLink: false);
+        return _HeadlineExtractionResult(
+            headline: fallbackTitle, fromHtmlLink: false);
       }
     }
 
     return null;
   }
 
-  static Future<_UrlExtractionResult?> _extractUrlFromHeadline(String headline) async {
+  static Future<_UrlExtractionResult?> _extractUrlFromHeadline(
+      String headline) async {
     // Check if headline looks like a URL
     final urlPattern = RegExp(r'^https?://[^\s]+$');
     if (!urlPattern.hasMatch(headline.trim())) {
@@ -665,7 +695,8 @@ class TaskEnricher {
         // Convert kebab-case to Title Case
         return titleSegment
             .split('-')
-            .map((word) => word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1))
+            .map((word) =>
+                word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1))
             .join(' ');
       }
 
@@ -778,7 +809,8 @@ extension _BulkInputParsing on TaskEnricher {
     return _InputFormat.plainText;
   }
 
-  static Future<List<_ParsedTaskData>> _parseJsonInput(String input, String? originSiteHint) async {
+  static Future<List<_ParsedTaskData>> _parseJsonInput(
+      String input, String? originSiteHint) async {
     final tasks = <_ParsedTaskData>[];
 
     try {
@@ -808,7 +840,8 @@ extension _BulkInputParsing on TaskEnricher {
     return tasks;
   }
 
-  static _ParsedTaskData? _parseJsonObject(Map<String, dynamic> obj, String? originSiteHint) {
+  static _ParsedTaskData? _parseJsonObject(
+      Map<String, dynamic> obj, String? originSiteHint) {
     String? headline;
     String? notes;
     List<String>? links;
@@ -816,7 +849,13 @@ extension _BulkInputParsing on TaskEnricher {
     // Map common field names to task properties
     // Try multiple possible field names for each property
     final titleFields = ['title', 'headline', 'name', 'task', 'item'];
-    final notesFields = ['notes', 'description', 'summary', 'synopsis', 'details'];
+    final notesFields = [
+      'notes',
+      'description',
+      'summary',
+      'synopsis',
+      'details'
+    ];
     final linkFields = ['url', 'link', 'href', 'uri', 'website'];
 
     // Find headline
@@ -854,12 +893,15 @@ extension _BulkInputParsing on TaskEnricher {
         // Handle both flat structure and nested structure
         headline ??= obj['movie_title'] ?? obj['show_title'];
         notes ??= obj['synopsis'] ?? obj['plot'];
-        links ??= obj['justwatch_url'] != null ? [obj['justwatch_url'].toString()] : null;
+        links ??= obj['justwatch_url'] != null
+            ? [obj['justwatch_url'].toString()]
+            : null;
 
         // Handle nested JustWatch API structure
         if (obj.containsKey('node') && obj['node'] is Map<String, dynamic>) {
           final node = obj['node'] as Map<String, dynamic>;
-          if (node.containsKey('content') && node['content'] is Map<String, dynamic>) {
+          if (node.containsKey('content') &&
+              node['content'] is Map<String, dynamic>) {
             final content = node['content'] as Map<String, dynamic>;
             headline ??= content['title']?.toString();
             notes ??= content['shortDescription']?.toString();
@@ -873,7 +915,9 @@ extension _BulkInputParsing on TaskEnricher {
       } else if (originSiteHint.contains('letterboxd')) {
         headline ??= obj['film_title'] ?? obj['movie'];
         notes ??= obj['review'] ?? obj['rating'];
-        links ??= obj['letterboxd_url'] != null ? [obj['letterboxd_url'].toString()] : null;
+        links ??= obj['letterboxd_url'] != null
+            ? [obj['letterboxd_url'].toString()]
+            : null;
       }
     }
 
@@ -888,14 +932,16 @@ extension _BulkInputParsing on TaskEnricher {
     return null;
   }
 
-  static Future<List<_ParsedTaskData>> _parseCsvInput(String input, String? originSiteHint) async {
+  static Future<List<_ParsedTaskData>> _parseCsvInput(
+      String input, String? originSiteHint) async {
     final tasks = <_ParsedTaskData>[];
     final lines = input.trim().split('\n');
 
     if (lines.isEmpty) return tasks;
 
     // Parse header row
-    final headers = lines[0].split(',').map((h) => h.trim().toLowerCase()).toList();
+    final headers =
+        lines[0].split(',').map((h) => h.trim().toLowerCase()).toList();
 
     // Find column indices for task properties
     int? titleIndex;
@@ -906,14 +952,24 @@ extension _BulkInputParsing on TaskEnricher {
       final header = headers[i];
 
       // Map headers to task properties
-      if (titleIndex == null && (header.contains('title') || header.contains('headline') ||
-          header.contains('name') || header.contains('task') || header.contains('item'))) {
+      if (titleIndex == null &&
+          (header.contains('title') ||
+              header.contains('headline') ||
+              header.contains('name') ||
+              header.contains('task') ||
+              header.contains('item'))) {
         titleIndex = i;
-      } else if (notesIndex == null && (header.contains('notes') || header.contains('description') ||
-          header.contains('summary') || header.contains('synopsis'))) {
+      } else if (notesIndex == null &&
+          (header.contains('notes') ||
+              header.contains('description') ||
+              header.contains('summary') ||
+              header.contains('synopsis'))) {
         notesIndex = i;
-      } else if (linkIndex == null && (header.contains('url') || header.contains('link') ||
-          header.contains('href') || header.contains('website'))) {
+      } else if (linkIndex == null &&
+          (header.contains('url') ||
+              header.contains('link') ||
+              header.contains('href') ||
+              header.contains('website'))) {
         linkIndex = i;
       }
     }
@@ -923,7 +979,8 @@ extension _BulkInputParsing on TaskEnricher {
       if (originSiteHint.contains('justwatch')) {
         for (int i = 0; i < headers.length; i++) {
           final header = headers[i];
-          if (titleIndex == null && (header.contains('movie') || header.contains('show'))) {
+          if (titleIndex == null &&
+              (header.contains('movie') || header.contains('show'))) {
             titleIndex = i;
           } else if (linkIndex == null && header.contains('justwatch')) {
             linkIndex = i;
@@ -932,11 +989,15 @@ extension _BulkInputParsing on TaskEnricher {
       } else if (originSiteHint.contains('letterboxd')) {
         for (int i = 0; i < headers.length; i++) {
           final header = headers[i];
-          if (titleIndex == null && (header.contains('name') || header.contains('film') || header.contains('movie'))) {
+          if (titleIndex == null &&
+              (header.contains('name') ||
+                  header.contains('film') ||
+                  header.contains('movie'))) {
             titleIndex = i;
           } else if (notesIndex == null && header.contains('review')) {
             notesIndex = i;
-          } else if (linkIndex == null && (header.contains('letterboxd') || header.contains('uri'))) {
+          } else if (linkIndex == null &&
+              (header.contains('letterboxd') || header.contains('uri'))) {
             linkIndex = i;
           }
         }
