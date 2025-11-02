@@ -486,7 +486,9 @@ class HomeScreenState extends State<HomeScreen> {
 
       await CategoryPickerDialog.show(
         context,
-        title: 'Select Pursuit for new ${NamingUtils.tasksName(plural: false)}',
+        title: 'Select Pursuit',
+        subtitle:
+            'This will be a new ${NamingUtils.tasksName(plural: false, capitalize: true)} for what ${NamingUtils.categoriesName(plural: false, capitalize: true)}?',
         onCategorySelected: (Category selectedCategory, {bool? shouldMove}) {
           pickedCategory = selectedCategory;
         },
@@ -1305,6 +1307,14 @@ class HomeScreenState extends State<HomeScreen> {
         // Check if it's a JustWatch or Letterboxd URL
         if (url.contains('justwatch.com')) {
           description = await _fetchJustWatchDescription(url);
+
+          // Fallback: If fetch failed or returned error, try to find another task with same link
+          if (description == null ||
+              description.startsWith('Synopsis not available') ||
+              description.startsWith('Description not available') ||
+              description.contains('content protection')) {
+            description = await _findNotesFromOtherTaskWithLink(url);
+          }
         } else if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
           description = await _fetchLetterboxdDescription(url);
         }
@@ -1450,6 +1460,45 @@ class HomeScreenState extends State<HomeScreen> {
   Future<String?> _fetchLetterboxdDescription(String url) async {
     // Placeholder for Letterboxd description fetching
     return null;
+  }
+
+  /// Find notes from another task that has the same link
+  Future<String?> _findNotesFromOtherTaskWithLink(String url) async {
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+
+      // Search for tasks that contain this URL in their links and have notes
+      final response = await supabase
+          .from('Tasks')
+          .select()
+          .eq('owner_id', userId)
+          .not('notes', 'is', null);
+
+      final tasksData = response as List<dynamic>;
+
+      for (final taskData in tasksData) {
+        final task = Task.fromJson(taskData);
+
+        // Check if this task has the URL in its links
+        if (task.links != null) {
+          for (final link in task.links!) {
+            final taskUrl = _extractUrlFromHtmlLink(link);
+            if (taskUrl == url &&
+                task.notes != null &&
+                task.notes!.isNotEmpty) {
+              print(
+                  'HomeScreen: Found notes from task #${task.id}: ${task.headline}');
+              return task.notes;
+            }
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print('HomeScreen: Error finding notes from other task: $e');
+      return null;
+    }
   }
 
   /// Update task with fetched notes and save to database

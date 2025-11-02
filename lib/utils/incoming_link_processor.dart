@@ -6,6 +6,7 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
+import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/utils/naming.dart';
 
@@ -328,16 +329,15 @@ class IncomingLinkProcessor {
         }
       }
 
-      // Navigate to TaskEditScreen with initial data
+      // Navigate to NewContentScreen with initial data
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => TaskEditScreen(
-            category: category,
+          builder: (context) => NewContentScreen(
+            selectedCategory: category,
+            categoryLocked: true,
             initialLinks: [htmlLink],
             initialHeadline: result.title,
             initialNotes: formattedNotes,
-            showAlternativeOptions:
-                false, // Hide bulk import options for single task
           ),
         ),
       );
@@ -607,11 +607,12 @@ class IncomingLinkProcessor {
     }
 
     // Create HTML link with proper title
-    // Navigate to TaskEditScreen to create new task
+    // Navigate to NewContentScreen to create new task
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => TaskEditScreen(
-          category: category,
+        builder: (context) => NewContentScreen(
+          selectedCategory: category,
+          categoryLocked: true,
         ),
       ),
     );
@@ -855,11 +856,12 @@ class IncomingLinkProcessor {
     try {
       print('IncomingLinkProcessor: Creating new task despite duplicate');
 
-      // Navigate to TaskEditScreen to create a new task
+      // Navigate to NewContentScreen to create a new task
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => TaskEditScreen(
-            category: duplicate.category,
+          builder: (context) => NewContentScreen(
+            selectedCategory: duplicate.category,
+            categoryLocked: true,
           ),
         ),
       );

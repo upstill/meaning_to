@@ -6,6 +6,7 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
@@ -130,6 +131,16 @@ class _TaskDisplayState extends State<TaskDisplay> {
           print(
               'TaskDisplay: Detected JustWatch URL, calling _fetchJustWatchDescription');
           description = await _fetchJustWatchDescription(url);
+
+          // Fallback: If fetch failed or returned error, try to find another task with same link
+          if (description == null ||
+              description.startsWith('Synopsis not available') ||
+              description.startsWith('Description not available') ||
+              description.contains('content protection')) {
+            print(
+                'TaskDisplay: Trying fallback - searching for other tasks with same link');
+            description = await _findNotesFromOtherTaskWithLink(url);
+          }
         } else if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
           description = await _fetchLetterboxdDescription(url);
         } else if (url.contains('ted.com')) {
@@ -473,6 +484,50 @@ class _TaskDisplayState extends State<TaskDisplay> {
       return null;
     } catch (e) {
       print('TaskDisplay: Error fetching generic description: $e');
+      return null;
+    }
+  }
+
+  /// Find notes from another task that has the same link
+  Future<String?> _findNotesFromOtherTaskWithLink(String url) async {
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+
+      // Search for tasks that contain this URL in their links and have notes
+      final response = await supabase
+          .from('Tasks')
+          .select()
+          .eq('owner_id', userId)
+          .not('notes', 'is', null);
+
+      final tasksData = response as List<dynamic>;
+
+      for (final taskData in tasksData) {
+        final task = Task.fromJson(taskData);
+
+        // Skip the current task
+        if (task.id == widget.task.id) {
+          continue;
+        }
+
+        // Check if this task has the URL in its links
+        if (task.links != null) {
+          for (final link in task.links!) {
+            final taskUrl = _extractUrlFromHtmlLink(link);
+            if (taskUrl == url &&
+                task.notes != null &&
+                task.notes!.isNotEmpty) {
+              print(
+                  'TaskDisplay: Found notes from task #${task.id}: ${task.headline}');
+              return task.notes;
+            }
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print('TaskDisplay: Error finding notes from other task: $e');
       return null;
     }
   }
