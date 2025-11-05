@@ -87,6 +87,7 @@ class TaskEditScreen extends StatefulWidget {
   final String? initialHeadline; // Headline to pre-populate for new tasks
   final String? initialNotes; // Notes to pre-populate for new tasks
   final bool showAlternativeOptions; // Whether to show bulk import options
+  final String? infoMessage; // Optional informational message to display at top
 
   const TaskEditScreen({
     super.key,
@@ -96,6 +97,7 @@ class TaskEditScreen extends StatefulWidget {
     this.initialHeadline,
     this.initialNotes,
     this.showAlternativeOptions = true,
+    this.infoMessage,
   });
 
   @override
@@ -920,7 +922,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               processedLink.description!.isNotEmpty) {
             fetchedNotes = processedLink.description;
             print(
-                'TaskEditScreen: Using description from LinkProcessor: "${fetchedNotes!.length > 100 ? fetchedNotes.substring(0, 100) + '...' : fetchedNotes}"');
+                'TaskEditScreen: Using description from LinkProcessor: "${fetchedNotes!.length > 100 ? '${fetchedNotes.substring(0, 100)}...' : fetchedNotes}"');
           }
           // For Letterboxd URLs without description, try the special Letterboxd fetch
           else if (cleanURL.contains('letterboxd.com') ||
@@ -1048,6 +1050,72 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         data['suggestible_at'] = null;
         print(
             'TaskEditScreen: Explicitly setting suggestible_at to null for new task to ensure it appears at top of list');
+
+        // Check if any link in this task already exists in another task (for original_id linking)
+        if (allLinks.isNotEmpty) {
+          print(
+              'TaskEditScreen: Checking for original_id from existing tasks with same links...');
+          try {
+            // Import the IncomingLinkProcessor to use its findOriginalIdForLink method
+            final firstLinkUrl = _extractUrlFromHtmlLink(allLinks.first);
+            if (firstLinkUrl != null) {
+              print(
+                  'TaskEditScreen: Searching for original_id for URL: $firstLinkUrl');
+              // We need to import IncomingLinkProcessor to use this method
+              // For now, let's implement the logic inline
+              final tasksResponse = await supabase
+                  .from('Tasks')
+                  .select()
+                  .order('created_at', ascending: true); // Oldest first
+
+              final tasksData = tasksResponse as List<dynamic>;
+              print(
+                  'TaskEditScreen: Checking ${tasksData.length} tasks for original_id');
+
+              for (final taskData in tasksData) {
+                try {
+                  final task = Task.fromJson(taskData);
+
+                  // Check each link in the task
+                  for (final linkText in task.links ?? []) {
+                    final linkUrl = _extractUrlFromHtmlLink(linkText);
+                    if (linkUrl != null && linkUrl == firstLinkUrl) {
+                      // Found a task with this link
+                      final originalId = task.originalId ?? task.id;
+                      print(
+                          'TaskEditScreen: Found original_id: $originalId (from task: "${task.headline}", id: ${task.id}, owner: ${task.ownerId}, created: ${task.createdAt})');
+                      data['original_id'] = originalId;
+
+                      // Also copy the synopsis if the existing task has one
+                      if (task.synopsis != null && task.synopsis!.isNotEmpty) {
+                        data['synopsis'] = task.synopsis;
+                        print(
+                            'TaskEditScreen: Copying synopsis from existing task: "${task.synopsis!.substring(0, task.synopsis!.length > 100 ? 100 : task.synopsis!.length)}..."');
+                      } else {
+                        print(
+                            'TaskEditScreen: Existing task has no synopsis to copy');
+                      }
+                      break;
+                    }
+                  }
+
+                  if (data.containsKey('original_id')) break;
+                } catch (e) {
+                  print(
+                      'TaskEditScreen: Error processing task for original_id: $e');
+                  continue;
+                }
+              }
+
+              if (!data.containsKey('original_id')) {
+                print(
+                    'TaskEditScreen: No existing task found with this link, this will be the original');
+              }
+            }
+          } catch (e) {
+            print('TaskEditScreen: Error finding original_id: $e');
+          }
+        }
       }
 
       Task? updatedTask;
@@ -1310,8 +1378,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           ),
           title: Text(
             _localTask == null
-                ? 'New ${NamingUtils.tasksName(capitalize: true, plural: false)} to ...'
-                : 'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)} to ...',
+                ? 'New ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}'
+                : 'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}',
           ),
           actions: [
             // Only show delete button for authenticated users
@@ -1329,37 +1397,79 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
-              // Category selector
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
+              // Info message banner (if provided)
+              if (widget.infoMessage != null) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.blue[200]!,
+                      width: 1,
+                    ),
+                  ),
                   child: Row(
                     children: [
-                      const Text(
-                        '...',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                      Icon(
+                        Icons.info_outline,
+                        color: Colors.blue[700],
+                        size: 20,
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        widget.category.headline,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          widget.infoMessage!,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.blue[900],
+                            height: 1.4,
+                          ),
                         ),
                       ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: _showCategorySelectionDialog,
-                        tooltip:
-                            'Change ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
-                      ),
                     ],
+                  ),
+                ),
+              ],
+              // Category move button
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _showCategorySelectionDialog,
+                  icon: const Icon(Icons.folder_open),
+                  label: Text(
+                    'Move to a different ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.green[800],
+                    backgroundColor: Colors.green[50],
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 16),
               Card(
+                elevation: 10,
+                color: Colors.grey[50],
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: Colors.blue.withOpacity(0.2),
+                    width: 2,
+                  ),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(

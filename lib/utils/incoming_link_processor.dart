@@ -6,7 +6,6 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
-import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/utils/naming.dart';
 
@@ -92,40 +91,38 @@ class IncomingLinkProcessor {
     );
   }
 
-  /// Find all duplicate links across ALL user tasks
+  /// Find all duplicate links across ALL tasks (not just user's tasks)
   static Future<List<DuplicateMatch>> findAllDuplicates(String url) async {
     final duplicates = <DuplicateMatch>[];
 
     try {
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        print(
-            'IncomingLinkProcessor: No user ID available for duplicate check');
-        return duplicates;
-      }
 
       print(
-          'IncomingLinkProcessor: Checking for duplicates across all user tasks');
+          'IncomingLinkProcessor: Checking for duplicates across ALL tasks in database');
 
-      // Extract the domain from the URL for efficient database filtering
+      // Validate URL can be parsed
       final uri = Uri.tryParse(url);
       if (uri == null) {
         print('IncomingLinkProcessor: Could not parse URL: $url');
         return [];
       }
 
-      final domain = uri.host;
-
-      // Fetch all tasks for the user to check for duplicates
-      // Note: This is less efficient but more reliable than complex JSON queries
+      // Fetch ALL tasks in the database to check for duplicates
+      // This allows us to find tasks with the same link across all users
+      // so we can properly set original_id for content linking
       final response = await supabase
           .from('Tasks')
-          .select('*, Categories!Tasks_category_id_fkey(*)')
-          .eq('owner_id', userId);
+          .select('*, Categories!Tasks_category_id_fkey(*)');
+      // Note: No owner_id filter - we want to check ALL tasks
 
       final tasksData = response as List<dynamic>;
       print(
-          'IncomingLinkProcessor: Found ${tasksData.length} tasks with potentially matching links');
+          'IncomingLinkProcessor: Found ${tasksData.length} total tasks in database');
+
+      int matchingTasks = 0;
+      int userDuplicates = 0;
+      int otherUserTasks = 0;
 
       for (final taskData in tasksData) {
         try {
@@ -144,14 +141,24 @@ class IncomingLinkProcessor {
           for (final linkText in task.links ?? []) {
             final linkUrl = _extractUrlFromHtmlLink(linkText);
             if (linkUrl != null && _urlsMatch(url, linkUrl)) {
-              print(
-                  'IncomingLinkProcessor: Found duplicate in task "${task.headline}" in category "${category.headline}"');
-              duplicates.add(DuplicateMatch(
-                task: task,
-                category: category,
-                matchingUrl: linkUrl,
-                originalLinkText: linkText,
-              ));
+              matchingTasks++;
+
+              // Only add to duplicates list if it's the current user's task
+              if (task.ownerId == userId) {
+                userDuplicates++;
+                print(
+                    'IncomingLinkProcessor: Found duplicate in user task "${task.headline}" in category "${category.headline}"');
+                duplicates.add(DuplicateMatch(
+                  task: task,
+                  category: category,
+                  matchingUrl: linkUrl,
+                  originalLinkText: linkText,
+                ));
+              } else {
+                otherUserTasks++;
+                print(
+                    'IncomingLinkProcessor: Found matching task from other user: "${task.headline}" (ID: ${task.id}, original_id: ${task.originalId})');
+              }
             }
           }
         } catch (e) {
@@ -159,11 +166,62 @@ class IncomingLinkProcessor {
           continue;
         }
       }
+
+      print('IncomingLinkProcessor: Summary:');
+      print('  - Total matching tasks: $matchingTasks');
+      print('  - User duplicates: $userDuplicates');
+      print('  - Other user tasks: $otherUserTasks');
     } catch (e) {
       print('IncomingLinkProcessor: Error during duplicate check: $e');
     }
 
     return duplicates;
+  }
+
+  /// Find the original_id for a link by checking all tasks in the database
+  static Future<int?> findOriginalIdForLink(String url) async {
+    try {
+      print('IncomingLinkProcessor: Finding original_id for URL: $url');
+
+      // Fetch ALL tasks in the database to find the original
+      final response = await supabase
+          .from('Tasks')
+          .select()
+          .order('created_at', ascending: true); // Oldest first
+
+      final tasksData = response as List<dynamic>;
+      print(
+          'IncomingLinkProcessor: Checking ${tasksData.length} tasks for original_id');
+
+      for (final taskData in tasksData) {
+        try {
+          final task = Task.fromJson(taskData);
+
+          // Check each link in the task
+          for (final linkText in task.links ?? []) {
+            final linkUrl = _extractUrlFromHtmlLink(linkText);
+            if (linkUrl != null && _urlsMatch(url, linkUrl)) {
+              // Found a task with this link
+              // If it has an original_id, use that; otherwise use its own id
+              final originalId = task.originalId ?? task.id;
+              print(
+                  'IncomingLinkProcessor: Found original_id: $originalId (from task: "${task.headline}", created: ${task.createdAt})');
+              return originalId;
+            }
+          }
+        } catch (e) {
+          print(
+              'IncomingLinkProcessor: Error processing task for original_id: $e');
+          continue;
+        }
+      }
+
+      print('IncomingLinkProcessor: No existing task found with this link');
+      return null;
+    } catch (e) {
+      print('IncomingLinkProcessor: Error finding original_id: $e');
+      return null;
+    }
   }
 
   /// Show the main link action dialog to the user
@@ -200,16 +258,6 @@ class IncomingLinkProcessor {
       print(
           'IncomingLinkProcessor: Navigating to edit existing task: ${duplicate.task.headline}');
 
-      // Show informative popup first
-      final shouldEdit = await _showDuplicateInfoDialog(context, duplicate);
-
-      if (!context.mounted) return;
-
-      // If user chose not to edit, just return without navigating
-      if (shouldEdit != true) {
-        return;
-      }
-
       // We need to fetch the category for the task
       final categoryResponse = await supabase
           .from('Categories')
@@ -219,12 +267,14 @@ class IncomingLinkProcessor {
 
       final category = Category.fromJson(categoryResponse);
 
-      // Navigate to TaskEditScreen with the existing task
+      // Navigate directly to TaskEditScreen with an info message
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => TaskEditScreen(
             category: category,
             task: duplicate.task,
+            infoMessage:
+                'This ${NamingUtils.tasksName(capitalize: false, plural: false)} already exists in your ${duplicate.category.headline} ${NamingUtils.categoriesName(capitalize: false, plural: false)}. You can edit it as needed, or move it to a different ${NamingUtils.categoriesName(capitalize: false, plural: false)}.',
           ),
         ),
       );
@@ -232,43 +282,6 @@ class IncomingLinkProcessor {
       print(
           'IncomingLinkProcessor: Error navigating to edit existing task: $e');
     }
-  }
-
-  /// Show informative dialog about duplicate task
-  static Future<bool?> _showDuplicateInfoDialog(
-    BuildContext context,
-    DuplicateMatch duplicate,
-  ) async {
-    if (!context.mounted) return false;
-
-    return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-            '${NamingUtils.tasksName(capitalize: true, plural: false)} Already Exists'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '"${duplicate.task.headline}" is already ${NamingUtils.tasksName(capitalize: false, plural: false, withArticle: true)} for when you want to ${duplicate.category.headline}. You can leave it as is, or edit it to suit--including moving it to another ${NamingUtils.categoriesName(capitalize: false, plural: false)}.',
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            icon: const Icon(Icons.check),
-            tooltip: 'That\'s Fine',
-          ),
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            icon: const Icon(Icons.edit),
-            tooltip: 'Edit',
-          ),
-        ],
-      ),
-    );
   }
 
   /// Navigate to TaskEditScreen with the processed link data
@@ -287,7 +300,8 @@ class IncomingLinkProcessor {
         // Show category picker first
         await CategoryPickerDialog.show(
           context,
-          title: 'Select Category for New Task',
+          title:
+              'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
           onCategorySelected: (Category selectedCategory,
               {bool? shouldMove}) async {
             await Future.delayed(const Duration(milliseconds: 100));
@@ -312,35 +326,53 @@ class IncomingLinkProcessor {
     try {
       print(
           'IncomingLinkProcessor: Opening TaskEditScreen with category: ${category.headline}');
+      print('IncomingLinkProcessor: URL: ${result.url}');
+      print('IncomingLinkProcessor: Title: ${result.title}');
 
       // Create HTML link from the result
-      final htmlLink = result.hasValidMetadata
+      final htmlLink = result.hasValidMetadata && result.title != null
           ? '<a href="${result.url}">${result.title}</a>'
           : '<a href="${result.url}">${result.url}</a>';
 
-      // Format description with truncation and (more) link if needed
-      String? formattedNotes;
-      if (result.description != null && result.description!.isNotEmpty) {
-        if (result.description!.length > 200) {
-          formattedNotes =
-              '${result.description!.substring(0, 200)}... <a href="${result.url}">(more)</a>';
-        } else {
-          formattedNotes = result.description;
-        }
-      }
+      // Note: Synopsis will be auto-fetched by SynopsisFetcher when the task is viewed
+      // We don't pre-populate it here to keep the initial task creation simple
 
-      // Navigate to NewContentScreen with initial data
-      Navigator.of(context).push(
+      // Navigate to TaskEditScreen with initial data and await the result
+      final taskSaved = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
-          builder: (context) => NewContentScreen(
-            selectedCategory: category,
-            categoryLocked: true,
+          builder: (context) => TaskEditScreen(
+            category: category,
             initialLinks: [htmlLink],
             initialHeadline: result.title,
-            initialNotes: formattedNotes,
+            initialNotes: null, // Notes are user-entered, not auto-filled
+            showAlternativeOptions:
+                false, // Hide bulk import options for single task
           ),
         ),
       );
+
+      // If task was saved successfully, refresh the cache for the current category
+      // This ensures that if we're on the HomeScreen showing this category,
+      // it will display the newly added task
+      if (taskSaved == true) {
+        print(
+            'IncomingLinkProcessor: Task saved successfully, checking if HomeScreen needs refresh...');
+        final cacheManager = CacheManager();
+
+        // Check if the saved task's category matches the current category on HomeScreen
+        if (cacheManager.currentCategory?.id == category.id) {
+          print(
+              'IncomingLinkProcessor: Saved task is in current category (${category.headline}), refreshing HomeScreen...');
+          await cacheManager.refreshCurrentCategoryTasks();
+          print('IncomingLinkProcessor: HomeScreen cache refreshed');
+        } else {
+          print(
+              'IncomingLinkProcessor: Saved task category (${category.headline}) does not match current category (${cacheManager.currentCategory?.headline}), no refresh needed');
+        }
+      } else {
+        print(
+            'IncomingLinkProcessor: Task not saved (user cancelled or error occurred)');
+      }
     } catch (e) {
       print('IncomingLinkProcessor: Error opening TaskEditScreen: $e');
     }
@@ -368,12 +400,12 @@ class IncomingLinkProcessor {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('This link already exists in:'),
+            const Text('This link already exists in:'),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
@@ -520,7 +552,8 @@ class IncomingLinkProcessor {
 
     await CategoryPickerDialog.show(
       context,
-      title: 'Select Category for New Task',
+      title:
+          'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
       defaultCategory: defaultCategory,
       onCategorySelected: (Category category, {bool? shouldMove}) async {
         // Use the stored root context instead of the dialog context
@@ -540,19 +573,48 @@ class IncomingLinkProcessor {
   ) async {
     print(
         'IncomingLinkProcessor: Creating task directly for category: ${category.headline}');
+    print('IncomingLinkProcessor: URL: ${result.url}');
+    print('IncomingLinkProcessor: Title: ${result.title}');
 
     try {
+      // Validate that we have a URL
+      if (result.url.isEmpty) {
+        throw ArgumentError('Cannot create task with empty URL');
+      }
+
       // Create HTML link with proper title
-      final htmlLink = result.hasValidMetadata
+      final htmlLink = result.hasValidMetadata && result.title != null
           ? '<a href="${result.url}">${result.title}</a>'
           : '<a href="${result.url}">${result.url}</a>';
+
+      print('IncomingLinkProcessor: Created HTML link: $htmlLink');
+
+      // Find the original_id by checking if any other task has this same link
+      print('IncomingLinkProcessor: Looking for original_id...');
+      final originalId = await findOriginalIdForLink(result.url);
+
+      // Format description for synopsis if available
+      String? synopsis;
+      if (result.description != null && result.description!.isNotEmpty) {
+        if (result.description!.length > 200) {
+          synopsis =
+              '${result.description!.substring(0, 200)}... <a href="${result.url}">(more)</a>';
+        } else {
+          synopsis =
+              '${result.description!} <a href="${result.url}">(reference)</a>';
+        }
+      }
 
       // Create the task data
       final taskData = {
         'category_id': category.id,
         'headline': result.title ?? 'New Task',
-        'links': [htmlLink],
-        'notes': null,
+        'links': [
+          htmlLink
+        ], // Ensure this is always an array with at least one element
+        'notes': null, // User-entered notes (none yet)
+        'synopsis': synopsis, // Auto-fetched description
+        'original_id': originalId, // Link to original task if it exists
         'owner_id': AuthUtils.getCurrentUserId(),
         'suggestible_at': null,
         'triggers_at': null,
@@ -560,6 +622,12 @@ class IncomingLinkProcessor {
         'finished': false,
         'shared': true,
       };
+
+      print(
+          'IncomingLinkProcessor: Task data prepared: ${taskData['headline']}');
+      print(
+          'IncomingLinkProcessor: Links array length: ${(taskData['links'] as List).length}');
+      print('IncomingLinkProcessor: original_id: $originalId');
 
       // Save to database
       final response = await supabase.from('Tasks').insert(taskData).select();
@@ -607,12 +675,11 @@ class IncomingLinkProcessor {
     }
 
     // Create HTML link with proper title
-    // Navigate to NewContentScreen to create new task
+    // Navigate to TaskEditScreen to create new task
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => NewContentScreen(
-          selectedCategory: category,
-          categoryLocked: true,
+        builder: (context) => TaskEditScreen(
+          category: category,
         ),
       ),
     );
@@ -660,7 +727,7 @@ class IncomingLinkProcessor {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
@@ -856,12 +923,11 @@ class IncomingLinkProcessor {
     try {
       print('IncomingLinkProcessor: Creating new task despite duplicate');
 
-      // Navigate to NewContentScreen to create a new task
+      // Navigate to TaskEditScreen to create a new task
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => NewContentScreen(
-            selectedCategory: duplicate.category,
-            categoryLocked: true,
+          builder: (context) => TaskEditScreen(
+            category: duplicate.category,
           ),
         ),
       );

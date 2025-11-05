@@ -17,6 +17,7 @@ class NewContentScreen extends StatefulWidget {
   final List<String>? initialLinks;
   final String? initialHeadline;
   final String? initialNotes;
+  final String? originalId; // ID of the original task to link to
   final bool
       categoryLocked; // If true, only show New Task mode with fixed category
 
@@ -26,6 +27,7 @@ class NewContentScreen extends StatefulWidget {
     this.initialLinks,
     this.initialHeadline,
     this.initialNotes,
+    this.originalId,
     this.categoryLocked = false,
   });
 
@@ -98,10 +100,10 @@ class _NewContentScreenState extends State<NewContentScreen> {
         'suggestible_at': null,
         'triggers_at': null,
         'deferral': null,
-        'links': links.isEmpty ? null : links,
+        'links': links,
         'finished': false,
         'shared': isShared,
-        'original_id': null,
+        'original_id': widget.originalId,
       };
 
       final response =

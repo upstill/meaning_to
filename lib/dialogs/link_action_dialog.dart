@@ -266,7 +266,8 @@ class LinkActionDialog extends StatelessWidget {
     // Show category selection dialog
     CategoryPickerDialog.show(
       context,
-      title: 'Select Category for New Task',
+      title:
+          'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
       defaultCategory: defaultCategory,
       onCategorySelected: (category, {bool? shouldMove}) {
         _createTaskInCategory(context, category);

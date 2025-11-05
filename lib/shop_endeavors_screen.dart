@@ -860,6 +860,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
       int importedTasks = 0;
       int skippedTasks = 0;
+      Task? lastAddedTask; // Track the last task we actually added
 
       // Initialize cache manager for the current category only if not already loaded
       final cacheManager = CacheManager();
@@ -923,6 +924,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
               task.originalId, // Copy the original_id from the source task
         );
 
+        // Store the task we're about to add
+        lastAddedTask = newTask;
+        
         // Use CacheManager to add the task (saves to database and updates cache)
         await cacheManager.addTask(newTask);
         importedTasks++;
@@ -937,83 +941,74 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
       // Navigate back with appropriate result based on number of tasks added
       if (mounted) {
-        if (importedTasks == 1) {
-          // Single task - show dialog here
-          final currentTasks = cacheManager.currentTasks ?? [];
+        if (importedTasks == 1 && lastAddedTask != null) {
+          // Single task - show dialog with the task we just added
+          print(
+              'ShopEndeavorsScreen: Showing dialog for added task: "${lastAddedTask!.headline}"');
 
-          // Find the most recently added task(s) by created time
-          final sortedTasks = currentTasks.toList()
-            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-          if (sortedTasks.isNotEmpty) {
-            final latestTask = sortedTasks.first;
-
-            // Show popup dialog
-            final shouldGoHome = await showDialog<bool>(
-              context: context,
-              barrierDismissible: false,
-              builder: (BuildContext dialogContext) {
-                return AlertDialog(
-                  title: Text(
-                    '${NamingUtils.tasksName(capitalize: true, plural: false)} Added!',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Successfully added:',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
+          // Show popup dialog
+          final shouldGoHome = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (BuildContext dialogContext) {
+              return AlertDialog(
+                title: Text(
+                  '${NamingUtils.tasksName(capitalize: true, plural: false)} Added!',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Successfully added:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        latestTask.headline,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'What would you like to do?',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                  actions: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(false),
-                      style: AppButtons.goForthOutlined(),
-                      child: Text(
-                          'Add More ${NamingUtils.tasksName(capitalize: true)}'),
                     ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(true),
-                      style: AppButtons.finalize(),
-                      child: const Text('Go to Home Screen'),
+                    const SizedBox(height: 8),
+                    Text(
+                      lastAddedTask!.headline,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'What would you like to do?',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
                     ),
                   ],
-                );
-              },
-            );
+                ),
+                actions: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    style: AppButtons.goForthOutlined(),
+                    child: Text(
+                        'Add More ${NamingUtils.tasksName(capitalize: true)}'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    style: AppButtons.finalize(),
+                    child: const Text('Go to Home Screen'),
+                  ),
+                ],
+              );
+            },
+          );
 
-            // Navigate based on user choice
-            if (shouldGoHome == true && mounted) {
-              // Pop all the way back to home screen (first route)
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            } else if (mounted) {
-              // Just pop this screen to go back to New Content screen
-              Navigator.pop(context);
-            }
-          } else {
-            Navigator.pop(context, true);
+          // Navigate based on user choice
+          if (shouldGoHome == true && mounted) {
+            // Pop all the way back to home screen (first route)
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          } else if (mounted) {
+            // Just pop this screen to go back to New Content screen
+            Navigator.pop(context);
           }
         } else {
           // Multiple tasks - show SnackBar with success message

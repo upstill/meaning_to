@@ -171,7 +171,7 @@ class ApiClient {
       final response = await _supabase
           .from('Tasks')
           .select(
-              'id,headline,notes,category_id,owner_id,finished,shared,links,original_id,suggestible_at,created_at')
+              'id,headline,notes,synopsis,category_id,owner_id,finished,shared,links,original_id,suggestible_at,created_at')
           .eq('category_id', categoryId)
           .eq('owner_id', userId)
           .order('suggestible_at', ascending: true)
@@ -201,7 +201,7 @@ class ApiClient {
         'finished': false,
       }).eq('owner_id', guestUserId);
 
-      print('updateGuestTasks: Successfully reset ${guestUserId} tasks');
+      print('updateGuestTasks: Successfully reset $guestUserId tasks');
     } catch (e) {
       print('Error updating guest tasks in Supabase: $e');
       rethrow;
