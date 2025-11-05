@@ -11,6 +11,8 @@ class Task {
   final int categoryId;
   final String headline;
   final String? notes;
+  final String?
+      synopsis; // Auto-fetched description from links (JustWatch, etc.)
   final String ownerId;
   final DateTime createdAt;
   final DateTime? suggestibleAt;
@@ -43,6 +45,7 @@ class Task {
     required this.categoryId,
     required this.headline,
     this.notes,
+    this.synopsis,
     required this.ownerId,
     required this.createdAt,
     this.suggestibleAt,
@@ -63,6 +66,7 @@ class Task {
       categoryId: categoryId,
       headline: headline,
       notes: notes,
+      synopsis: synopsis,
       ownerId: ownerId,
       createdAt: createdAt,
       suggestibleAt: suggestibleAt,
@@ -84,6 +88,7 @@ class Task {
       categoryId: categoryId,
       headline: headline,
       notes: notes,
+      synopsis: synopsis,
       ownerId: ownerId,
       createdAt: createdAt,
       suggestibleAt: suggestibleAt,
@@ -172,6 +177,7 @@ class Task {
       categoryId: json['category_id'] as int,
       headline: json['headline'] as String? ?? 'Untitled Task',
       notes: json['notes'] as String?,
+      synopsis: json['synopsis'] as String?,
       ownerId: json['owner_id'] as String? ?? '',
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
@@ -205,6 +211,7 @@ class Task {
       'category_id': categoryId,
       'headline': headline,
       'notes': notes,
+      'synopsis': synopsis,
       'owner_id': ownerId,
       'created_at': createdAt.toIso8601String(),
       'suggestible_at': suggestibleAt?.toIso8601String(),
@@ -377,6 +384,7 @@ class Task {
         categoryId: currentTask.categoryId,
         headline: currentTask.headline,
         notes: currentTask.notes,
+        synopsis: currentTask.synopsis,
         ownerId: currentTask.ownerId,
         createdAt: currentTask.createdAt,
         suggestibleAt: currentTask.suggestibleAt,
@@ -440,6 +448,7 @@ class Task {
         categoryId: currentTask.categoryId,
         headline: currentTask.headline,
         notes: currentTask.notes,
+        synopsis: currentTask.synopsis,
         ownerId: currentTask.ownerId,
         createdAt: currentTask.createdAt,
         suggestibleAt: newSuggestibleAt,
@@ -748,6 +757,7 @@ class Task {
         categoryId: task.categoryId,
         headline: task.headline,
         notes: task.notes,
+        synopsis: task.synopsis,
         ownerId: task.ownerId,
         createdAt: task.createdAt,
         suggestibleAt: now, // Set to current time

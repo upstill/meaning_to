@@ -4,12 +4,8 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/utils/api_client.dart';
-import 'package:meaning_to/utils/link_processor.dart';
-import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/synopsis_fetcher.dart';
 import 'package:flutter_html/flutter_html.dart';
-import 'package:http/http.dart' as http;
-import 'package:html/parser.dart' as html_parser;
 
 class TaskDisplay extends StatefulWidget {
   final Task task;
@@ -69,8 +65,8 @@ class TaskDisplay extends StatefulWidget {
 
 class _TaskDisplayState extends State<TaskDisplay> {
   bool _isExpanded = false;
-  bool _isFetchingNotes = false;
-  String? _fetchedNotes;
+  bool _isFetchingSynopsis = false;
+  String? _fetchedSynopsis;
   String? _resolvedMoreUrl; // Store resolved URL for (more) link
 
   /// Simple method to extract URL from first link (no complex resolution)
@@ -80,11 +76,20 @@ class _TaskDisplayState extends State<TaskDisplay> {
     }
 
     for (final link in widget.task.links!) {
-      final url = _extractUrlFromHtmlLink(link);
+      // Extract URL from HTML link or return plain URL
+      String? url;
+      if (link.startsWith('http://') || link.startsWith('https://')) {
+        url = link;
+      } else {
+        final regex = RegExp(r'href=["\x27]([^"\x27]+)["\x27]');
+        final match = regex.firstMatch(link);
+        url = match?.group(1);
+      }
+
       if (url != null) {
         if (mounted) {
           setState(() {
-            _resolvedMoreUrl = url; // Use original URL, no resolution
+            _resolvedMoreUrl = url!; // Use original URL, no resolution
           });
         }
         break;
@@ -97,447 +102,47 @@ class _TaskDisplayState extends State<TaskDisplay> {
     super.initState();
   }
 
-  /// Fetch description from JustWatch or Letterboxd URLs if notes are null
-  Future<void> _fetchNotesFromLinks() async {
+  /// Fetch synopsis from task links using the SynopsisFetcher utility
+  Future<void> _fetchSynopsisFromLinks() async {
     print(
-        'TaskDisplay: _fetchNotesFromLinks called for task: ${widget.task.headline}');
-    // Skip if already fetching or no links
-    if (_isFetchingNotes || widget.task.links == null) {
-      print(
-          'TaskDisplay: Skipping fetch - already fetching: $_isFetchingNotes, no links: ${widget.task.links == null}');
+        'TaskDisplay: _fetchSynopsisFromLinks called for task: ${widget.task.headline}');
+
+    // Skip if already fetching
+    if (_isFetchingSynopsis) {
+      print('TaskDisplay: Skipping fetch - already fetching');
       return;
     }
+
     setState(() {
-      _isFetchingNotes = true;
+      _isFetchingSynopsis = true;
     });
-    print('TaskDisplay: Starting notes fetch from links: ${widget.task.links}');
 
     try {
-      for (final link in widget.task.links!) {
-        // Extract URL from HTML link
-        final url = _extractUrlFromHtmlLink(link);
-        print('TaskDisplay: Processing link: $link');
-        print('TaskDisplay: Extracted URL: $url');
+      final result = await SynopsisFetcher.fetchSynopsisForTask(widget.task);
 
-        if (url == null || url.isEmpty) {
-          print('TaskDisplay: Skipping empty URL');
-          continue;
-        }
-
-        String? description;
-
-        // Check if it's a JustWatch, Letterboxd, or TED URL
-        if (url.contains('justwatch.com')) {
-          print(
-              'TaskDisplay: Detected JustWatch URL, calling _fetchJustWatchDescription');
-          description = await _fetchJustWatchDescription(url);
-
-          // Fallback: If fetch failed or returned error, try to find another task with same link
-          if (description == null ||
-              description.startsWith('Synopsis not available') ||
-              description.startsWith('Description not available') ||
-              description.contains('content protection')) {
-            print(
-                'TaskDisplay: Trying fallback - searching for other tasks with same link');
-            description = await _findNotesFromOtherTaskWithLink(url);
-          }
-        } else if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
-          description = await _fetchLetterboxdDescription(url);
-        } else if (url.contains('ted.com')) {
-          print('TaskDisplay: Detected TED URL, fetching description');
-          description = await _fetchGenericDescription(url);
-        }
-
-        if (description != null && description.isNotEmpty) {
-          // Check if this is a fallback error message that shouldn't be saved
-          final isErrorMessage =
-              description.startsWith('Synopsis not available') ||
-                  description.startsWith('Description not available') ||
-                  description.contains('content protection');
-
-          // Format the description with a link only if truncated (and not an error message)
-          final formattedNotes = !isErrorMessage && description.length > 200
-              ? '${description.substring(0, 200)}... <a href="$url">(more)</a>'
-              : description;
-
-          setState(() {
-            _fetchedNotes = formattedNotes;
-          });
-
-          // Only save to database if it's not an error message
-          if (!isErrorMessage) {
-            await _updateTaskWithNotes(formattedNotes);
-          } else {
-            print(
-                'TaskDisplay: Not saving error message to database: $description');
-          }
-          break; // Stop after finding the first description
-        }
+      if (result != null && mounted) {
+        setState(() {
+          _fetchedSynopsis = result.synopsis;
+        });
+        print('TaskDisplay: Synopsis fetched from ${result.source.name}');
       }
     } catch (e) {
-      // Error handling without verbose logging
+      print('TaskDisplay: Error fetching synopsis: $e');
     } finally {
       if (mounted) {
         setState(() {
-          _isFetchingNotes = false;
+          _isFetchingSynopsis = false;
         });
       }
     }
   }
 
-  /// Extract URL from HTML link like "<a href=\"URL\">text</a>" or return plain URL
-  String? _extractUrlFromHtmlLink(String linkText) {
-    print('TaskDisplay: _extractUrlFromHtmlLink called with: "$linkText"');
-    print('TaskDisplay: linkText type: ${linkText.runtimeType}');
-    print('TaskDisplay: linkText length: ${linkText.length}');
-    print(
-        'TaskDisplay: linkText starts with http: ${linkText.startsWith('http')}');
-
-    // If it's already a plain URL, return it as-is
-    if (linkText.startsWith('http://') || linkText.startsWith('https://')) {
-      print('TaskDisplay: Plain URL detected: $linkText');
-      return linkText;
-    }
-
-    // Otherwise, try to extract from HTML format
-    final regex = RegExp(r'href=["\x27]([^"\x27]+)["\x27]');
-    final match = regex.firstMatch(linkText);
-    final extractedUrl = match?.group(1);
-    print('TaskDisplay: HTML link extraction result: $extractedUrl');
-    return extractedUrl;
-  }
-
-  /// Update task with fetched notes and save to database
-  Future<void> _updateTaskWithNotes(String notes) async {
-    try {
-      // Only save if the task doesn't already have notes to avoid overwriting user content
-      if (widget.task.notes == null || widget.task.notes!.trim().isEmpty) {
-        print(
-            'TaskDisplay: Saving generated description to task notes for task: ${widget.task.headline}');
-
-        // Update the task directly in the API without triggering cache notifications
-        // This avoids rebuilding the entire task list for a simple notes update
-        await _saveNotesToDatabase(notes);
-
-        print(
-            'TaskDisplay: Successfully saved generated description to database');
-      } else {
-        print(
-            'TaskDisplay: Task already has notes, not overwriting with generated description');
-      }
-    } catch (e) {
-      print('TaskDisplay: Error saving generated description: $e');
-    }
-  }
-
-  /// Save notes directly to database without triggering cache rebuild
-  Future<void> _saveNotesToDatabase(String notes) async {
-    try {
-      print(
-          'TaskDisplay: Saving notes for task ID ${widget.task.id}: ${widget.task.headline}');
-
-      // Import ApiClient for direct database update
-      final taskData = {
-        'notes': notes,
-      };
-
-      // Save to database only - don't manipulate the cache directly
-      // This avoids race conditions when multiple tasks are fetching descriptions simultaneously
-      await ApiClient.updateTask(widget.task.id.toString(), taskData);
-
-      print(
-          'TaskDisplay: Successfully saved notes for task ID ${widget.task.id}');
-    } catch (e) {
-      print(
-          'TaskDisplay: Error in direct database save for task ID ${widget.task.id}: $e');
-      rethrow;
-    }
-  }
-
-  /// Fetch description from JustWatch URL
-  Future<String?> _fetchJustWatchDescription(String url) async {
-    try {
-      print('JustWatch: _fetchJustWatchDescription called with URL: $url');
-      late http.Response response;
-
-      if (kIsWeb) {
-        // Try multiple proxy services for better reliability
-        final proxyUrls = [
-          'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}',
-          'https://cors-anywhere.herokuapp.com/$url',
-          'https://api.codetabs.com/v1/proxy?quest=$url',
-        ];
-
-        String? workingProxy;
-        for (final proxyUrl in proxyUrls) {
-          try {
-            print('JustWatch: Trying proxy: $proxyUrl');
-            response = await http.get(
-              Uri.parse(proxyUrl),
-              headers: {
-                'User-Agent':
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept':
-                    'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-              },
-            );
-
-            // Check if this proxy worked
-            if (response.statusCode == 200 &&
-                response.body.length > 5000 &&
-                !response.body.contains('<title>Meaning To</title>') &&
-                !response.body.contains('Meaning To') &&
-                response.body.contains('justwatch')) {
-              workingProxy = proxyUrl;
-              print('JustWatch: Successfully got content via proxy: $proxyUrl');
-              break;
-            } else {
-              print(
-                  'JustWatch: Proxy $proxyUrl failed or returned blocked content');
-            }
-          } catch (e) {
-            print('JustWatch: Proxy $proxyUrl error: $e');
-            continue;
-          }
-        }
-
-        if (workingProxy == null) {
-          print(
-              'JustWatch: All proxies failed, descriptions not available on web');
-          // Return a helpful message instead of null to inform the user
-          return 'Synopsis not available via web browser due to content protection. Try viewing on the mobile app for full descriptions.';
-        }
-      } else {
-        // Direct fetch for mobile
-        response = await http.get(
-          Uri.parse(url),
-          headers: {
-            'User-Agent':
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          },
-        );
-      }
-
-      if (response.statusCode != 200) {
-        return null;
-      }
-
-      final document = html_parser.parse(response.body);
-
-      // Extract title using CSS selector h1.title-detail-hero__details__title
-      String? title;
-      final titleElement =
-          document.querySelector('h1.title-detail-hero__details__title');
-      if (titleElement != null) {
-        title = titleElement.text.trim();
-        if (title.isNotEmpty) {
-          print('JustWatch: Found title via CSS selector: $title');
-        }
-      }
-
-      // PRIORITY 1: Try CSS selector for synopsis div > p tag (preferred method)
-      final synopsisDiv = document.querySelector('div#synopsis');
-      if (synopsisDiv != null) {
-        print(
-            'JustWatch: Found synopsis div, innerHTML: ${synopsisDiv.innerHtml}');
-        final synopsisParagraph = synopsisDiv.querySelector('p');
-        if (synopsisParagraph != null) {
-          final synopsisText = synopsisParagraph.text.trim();
-          print(
-              'JustWatch: Raw synopsis text from CSS selector: "$synopsisText"');
-          if (synopsisText.isNotEmpty) {
-            print(
-                'JustWatch: Found synopsis via CSS selector: ${synopsisText.substring(0, synopsisText.length > 50 ? 50 : synopsisText.length)}...');
-            // Return just the synopsis - title is already used as task headline
-            return synopsisText;
-          }
-        } else {
-          print('JustWatch: No <p> tag found within synopsis div');
-        }
-      } else {
-        print('JustWatch: No div#synopsis found');
-      }
-
-      // PRIORITY 2: Try meta description (fallback)
-      String? description = document
-          .querySelector('meta[name="description"]')
-          ?.attributes['content']
-          ?.trim();
-
-      if (description != null && description.isNotEmpty) {
-        print('JustWatch: Found description via meta description tag');
-        // Return just the description - title is already used as task headline
-        return description;
-      }
-
-      // PRIORITY 3: Try og:description (fallback)
-      description = document
-          .querySelector('meta[property="og:description"]')
-          ?.attributes['content']
-          ?.trim();
-
-      if (description != null && description.isNotEmpty) {
-        print('JustWatch: Found description via og:description tag');
-        // Return just the description - title is already used as task headline
-        return description;
-      }
-
-      // If we only have title, don't return it since it's already the task headline
-      if (title != null && title.isNotEmpty) {
-        print(
-            'JustWatch: Found only title, but not returning since it\'s already the task headline');
-        return null;
-      }
-
-      print('JustWatch: No title or description found for URL: $url');
-      return null;
-    } catch (e) {
-      print('JustWatch: Error fetching description: $e');
-      return null;
-    }
-  }
-
-  /// Fetch description from Letterboxd URL
-  Future<String?> _fetchLetterboxdDescription(String url) async {
-    try {
-      // Handle boxd.it redirects
-      String finalUrl = url;
-      if (url.contains('boxd.it')) {
-        try {
-          final redirectResponse = await http.head(Uri.parse(url));
-          if (redirectResponse.headers.containsKey('location')) {
-            finalUrl = redirectResponse.headers['location']!;
-          }
-        } catch (e) {}
-      }
-
-      http.Response response;
-      if (kIsWeb) {
-        // Use allorigins.win proxy for web to bypass CORS
-        final proxyUrl =
-            'https://api.allorigins.win/raw?url=${Uri.encodeComponent(finalUrl)}';
-        print('Letterboxd: Using proxy for web: $proxyUrl');
-        response = await http.get(Uri.parse(proxyUrl));
-      } else {
-        // Direct fetch for mobile
-        response = await http.get(
-          Uri.parse(finalUrl),
-          headers: {
-            'User-Agent':
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          },
-        );
-      }
-
-      if (response.statusCode != 200) {
-        return null;
-      }
-
-      final document = html_parser.parse(response.body);
-
-      // Try meta description first
-      String? description = document
-          .querySelector('meta[name="description"]')
-          ?.attributes['content']
-          ?.trim();
-
-      if (description != null && description.isNotEmpty) {
-        return description;
-      }
-
-      // Try og:description
-      description = document
-          .querySelector('meta[property="og:description"]')
-          ?.attributes['content']
-          ?.trim();
-
-      if (description != null && description.isNotEmpty) {
-        return description;
-      }
-
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /// Fetch description from any site using the site configuration system
-  Future<String?> _fetchGenericDescription(String url) async {
-    try {
-      print('TaskDisplay: _fetchGenericDescription called with URL: $url');
-
-      // Use LinkProcessor to fetch webpage content
-      final content = await LinkProcessor.fetchWebpageContent(url);
-
-      if (content?.description != null && content!.description!.isNotEmpty) {
-        print(
-            'TaskDisplay: Successfully fetched description: ${content.description}');
-        return content.description;
-      }
-
-      print('TaskDisplay: No description found in webpage content');
-      return null;
-    } catch (e) {
-      print('TaskDisplay: Error fetching generic description: $e');
-      return null;
-    }
-  }
-
-  /// Find notes from another task that has the same link
-  Future<String?> _findNotesFromOtherTaskWithLink(String url) async {
-    try {
-      final userId = AuthUtils.getCurrentUserId();
-
-      // Search for tasks that contain this URL in their links and have notes
-      final response = await supabase
-          .from('Tasks')
-          .select()
-          .eq('owner_id', userId)
-          .not('notes', 'is', null);
-
-      final tasksData = response as List<dynamic>;
-
-      for (final taskData in tasksData) {
-        final task = Task.fromJson(taskData);
-
-        // Skip the current task
-        if (task.id == widget.task.id) {
-          continue;
-        }
-
-        // Check if this task has the URL in its links
-        if (task.links != null) {
-          for (final link in task.links!) {
-            final taskUrl = _extractUrlFromHtmlLink(link);
-            if (taskUrl == url &&
-                task.notes != null &&
-                task.notes!.isNotEmpty) {
-              print(
-                  'TaskDisplay: Found notes from task #${task.id}: ${task.headline}');
-              return task.notes;
-            }
-          }
-        }
-      }
-
-      return null;
-    } catch (e) {
-      print('TaskDisplay: Error finding notes from other task: $e');
-      return null;
-    }
-  }
-
-  /// Check if we should fetch notes (notes are null, empty, or just contain fallback URLs)
+  /// Check if we should fetch synopsis (synopsis is null or empty)
   bool _shouldFetchNotes() {
-    final notes = widget.task.notes;
+    final synopsis = widget.task.synopsis;
 
-    // Only fetch notes if they are null or empty
-    if (notes == null || notes.trim().isEmpty) {
+    // Only fetch synopsis if it is null or empty
+    if (synopsis == null || synopsis.trim().isEmpty) {
       return true;
     }
 
@@ -574,7 +179,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
 
         // On non-web platforms, trigger fetching after clearing
         if (!kIsWeb) {
-          _fetchNotesFromLinks();
+          _fetchSynopsisFromLinks();
         }
       }
     } catch (e) {}
@@ -594,8 +199,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
     // If expanding and notes are null/empty/fallback, try to fetch them from links
     if (_isExpanded) {
       final shouldFetch = _shouldFetchNotes();
-      if (shouldFetch && _fetchedNotes == null && !_isFetchingNotes) {
-        _fetchNotesFromLinks();
+      if (shouldFetch && _fetchedSynopsis == null && !_isFetchingSynopsis) {
+        _fetchSynopsisFromLinks();
       }
     }
   }
@@ -691,6 +296,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
                             if (hasLinks ||
                                 (widget.task.notes != null &&
                                     widget.task.notes!.isNotEmpty) ||
+                                (widget.task.synopsis != null &&
+                                    widget.task.synopsis!.isNotEmpty) ||
                                 _shouldFetchNotes())
                               Padding(
                                 padding: const EdgeInsets.only(left: 4.0),
@@ -841,52 +448,10 @@ class _TaskDisplayState extends State<TaskDisplay> {
                     ),
                   ],
                 ),
-                // Show suggestible time for deferred tasks
-                if (widget.task.isDeferred &&
-                    widget.task.suggestibleAt != null &&
-                    widget.task.suggestibleAt!.isAfter(DateTime.now())) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Icon(Icons.schedule, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Available again in ${_formatSuggestibleTime(widget.task.suggestibleAt!.toLocal())}  ',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                      if (widget.onUpdateSuggestibleAt != null) ...[
-                        ElevatedButton(
-                          onPressed: () {
-                            widget.onUpdateSuggestibleAt!(DateTime.now());
-                          },
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            minimumSize: const Size(0, 28),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            textStyle: theme.textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          child: const Text('Make Available Now'),
-                        ),
-                      ],
-                    ],
-                  ),
-                ] else ...[
-                  // No debug logging needed
-                  const SizedBox.shrink(),
-                ],
                 // Show notes if expanded and present (either existing or fetched)
                 if (_isExpanded) ...[
                   // Show loading indicator if fetching notes
-                  if (_isFetchingNotes) ...[
+                  if (_isFetchingSynopsis) ...[
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -911,14 +476,48 @@ class _TaskDisplayState extends State<TaskDisplay> {
                       ],
                     ),
                   ]
-                  // Show notes if available (either original or fetched)
-                  else if ((widget.task.notes != null &&
-                          widget.task.notes!.isNotEmpty) ||
-                      (_fetchedNotes != null && _fetchedNotes!.isNotEmpty)) ...[
+                  // Show notes if available (user-entered content)
+                  else if (widget.task.notes != null &&
+                      widget.task.notes!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Html(
+                      data: widget.task.notes!,
+                      style: {
+                        "body": Style(
+                          fontSize: FontSize(
+                            theme.textTheme.bodyMedium?.fontSize ?? 14,
+                          ),
+                          color: theme.textTheme.bodySmall?.color,
+                          margin: Margins.zero,
+                          padding: HtmlPaddings.zero,
+                        ),
+                        "a": Style(
+                          color: theme.colorScheme.primary,
+                          textDecoration: TextDecoration.underline,
+                        ),
+                      },
+                      onLinkTap: (url, htmlContext, attributes) async {
+                        if (url != null) {
+                          try {
+                            await LinkDisplay.handleUrl(url, context);
+                          } catch (e) {
+                            // Error handling without verbose logging
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                  // Show synopsis if available (auto-fetched or stored)
+                  if (_isExpanded &&
+                      ((_fetchedSynopsis != null &&
+                              _fetchedSynopsis!.isNotEmpty) ||
+                          (widget.task.synopsis != null &&
+                              widget.task.synopsis!.isNotEmpty))) ...[
                     const SizedBox(height: 8),
                     Builder(
                       builder: (context) {
-                        final htmlData = _fetchedNotes ?? widget.task.notes!;
+                        final htmlData =
+                            _fetchedSynopsis ?? widget.task.synopsis ?? '';
 
                         // Check if this is a Letterboxd or JustWatch task with a (more) link
                         final isLetterboxdTask = htmlData.contains('boxd.it') ||
@@ -1003,6 +602,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                             "a": Style(
                               color: theme.colorScheme.primary,
                               textDecoration: TextDecoration.underline,
+                              fontStyle: FontStyle.italic,
                             ),
                           },
                           onLinkTap: (url, htmlContext, attributes) async {
@@ -1022,48 +622,41 @@ class _TaskDisplayState extends State<TaskDisplay> {
                         );
                       },
                     ),
-                  ]
-                  // Show message if no notes could be found/fetched
-                  else if (_shouldFetchNotes() &&
-                      (_fetchedNotes == null ||
-                          _fetchedNotes!.trim().isEmpty) &&
-                      !_isFetchingNotes) ...[
+                  ],
+                  // Show suggestible time for deferred tasks (after synopsis)
+                  if (widget.task.isDeferred &&
+                      widget.task.suggestibleAt != null &&
+                      widget.task.suggestibleAt!.isAfter(DateTime.now())) ...[
                     const SizedBox(height: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        Icon(Icons.schedule, size: 14, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
                         Text(
-                          'No description found',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontStyle: FontStyle.italic,
+                          'Available again in ${_formatSuggestibleTime(widget.task.suggestibleAt!.toLocal())}  ',
+                          style: theme.textTheme.bodyMedium?.copyWith(
                             color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
                           ),
                         ),
-                        if (kIsWeb) ...[
-                          const SizedBox(height: 4),
-                          GestureDetector(
-                            onTap: () => _clearFallbackNotes(),
-                            child: Text(
-                              'Clear placeholder notes',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.primary,
-                                decoration: TextDecoration.underline,
-                                fontSize: 12,
+                        if (widget.onUpdateSuggestibleAt != null) ...[
+                          ElevatedButton(
+                            onPressed: () {
+                              widget.onUpdateSuggestibleAt!(DateTime.now());
+                            },
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              minimumSize: const Size(0, 28),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              textStyle: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
-                          ),
-                        ] else ...[
-                          const SizedBox(height: 4),
-                          GestureDetector(
-                            onTap: () => _clearFallbackNotes(),
-                            child: Text(
-                              'Clear old notes & fetch description',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.primary,
-                                decoration: TextDecoration.underline,
-                                fontSize: 12,
-                              ),
-                            ),
+                            child: const Text('Make Available Now'),
                           ),
                         ],
                       ],

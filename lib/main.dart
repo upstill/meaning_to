@@ -660,6 +660,7 @@ class _MyAppState extends State<MyApp> {
                   initialLinks: args?['initialLinks'] as List<String>?,
                   initialHeadline: args?['initialHeadline'] as String?,
                   initialNotes: args?['initialNotes'] as String?,
+                  originalId: args?['originalId'] as String?,
                   categoryLocked: args?['categoryLocked'] as bool? ?? false,
                 ),
               );
@@ -692,6 +693,7 @@ class _MyAppState extends State<MyApp> {
                     initialLinks: args['initialLinks'] as List<String>?,
                     initialHeadline: args['initialHeadline'] as String?,
                     initialNotes: args['initialNotes'] as String?,
+                    originalId: args['originalId'] as String?,
                   ),
                 );
               } else {
