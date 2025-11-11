@@ -1030,6 +1030,12 @@ class LinkProcessor {
       }
     }
 
+    // Clean up IMDb titles by removing year and site suffixes
+    if (finalTitle != null && url.contains('imdb.com')) {
+      finalTitle = cleanImdbTitle(finalTitle);
+      print('LinkProcessor.processLinkForDisplay: Cleaned IMDb title: "$finalTitle"');
+    }
+
     // Create the final HTML link with the title
     final finalLink = '<a href="$url">${finalTitle ?? url}</a>';
 
@@ -1078,6 +1084,24 @@ class LinkProcessor {
     }
 
     return null;
+  }
+
+  /// Clean up IMDb title by removing year and IMDb-specific suffixes
+  /// This is used by both UI display and task creation to ensure consistent title formatting
+  static String cleanImdbTitle(String title) {
+    // Remove IMDb page suffixes like "- IMDb", "- Reference view", etc.
+    String cleaned = title.replaceAll(RegExp(r'\s*-\s*(IMDb|Reference view)\s*$'), '');
+
+    // Remove year in parentheses like " (1994)"
+    cleaned = cleaned.replaceAll(RegExp(r'\s*\(\d{4}\)\s*$'), '');
+
+    // Remove TV Series indicator like " (TV Series 2008–2013)"
+    cleaned = cleaned.replaceAll(RegExp(r'\s*\(TV Series [^)]+\)\s*$'), '');
+
+    // Remove TV Mini Series indicator like " (TV Mini Series 2019)"
+    cleaned = cleaned.replaceAll(RegExp(r'\s*\(TV Mini Series [^)]+\)\s*$'), '');
+
+    return cleaned.trim();
   }
 
   static Future<List<ProcessedLink>> processLinksForDisplay(

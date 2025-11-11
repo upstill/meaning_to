@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
@@ -45,6 +46,8 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
       _duplicateTaskName; // Store the name of the task that has the duplicate link
   DuplicateCheckResult?
       _lastDuplicateResult; // Store the last duplicate check result
+  String? _lastAutoVerifiedUrl; // Track which URL we last auto-verified
+  bool _isAutoVerifying = false; // Track if we're currently auto-verifying
 
   @override
   void initState() {
@@ -98,6 +101,7 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
     // Check if input looks like an HTML link
     if (hasText && inputText.startsWith('<a href="') && inputText.contains('">')) {
       _parseHtmlLinkInput(inputText);
+      return; // HTML link parsing handles verification
     }
 
     if (hasText != _hasUrlText) {
@@ -109,6 +113,16 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
         _lastDuplicateResult = null;
         _error = null;
       });
+    }
+
+    // Auto-verify if we have a valid URL that we haven't verified yet
+    if (hasText &&
+        LinkProcessor.isValidUrl(inputText) &&
+        inputText != _lastAutoVerifiedUrl &&
+        !_isLoading &&
+        !_isAutoVerifying) {
+      print('LinkEditScreen: Auto-verifying URL: $inputText');
+      _autoVerifyLink(inputText);
     }
   }
 
@@ -153,6 +167,65 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
     }
   }
 
+  /// Automatically verify a link when it's pasted into the URL field
+  Future<void> _autoVerifyLink(String url) async {
+    setState(() {
+      _isAutoVerifying = true;
+      _isLoading = true;
+      _error = null;
+      _testedUrl = null;
+      _testedIcon = null;
+    });
+
+    try {
+      print('LinkEditScreen: Auto-verifying URL: $url');
+
+      // Normalize the URL first (remove query parameters, etc.)
+      final normalizedUrl = LinkToTaskConverter.normalizeUrl(url);
+      print('LinkEditScreen: Normalized URL: $normalizedUrl');
+
+      // Update the URL field with the normalized URL (without triggering listener)
+      _urlController.removeListener(_updateUrlTextState);
+      _urlController.text = normalizedUrl;
+      _urlController.addListener(_updateUrlTextState);
+
+      // Use LinkToTaskConverter to properly extract metadata with OMDb API for IMDb links
+      final userId = AuthUtils.getCurrentUserId();
+      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+        normalizedUrl,
+        userId,
+        currentCategory: widget.currentCategory,
+      );
+
+      // Also get the processed link for favicon display
+      final processedLink = await LinkProcessor.processLinkForDisplay(
+          '<a href="$normalizedUrl">${proposedTask.headline}</a>');
+
+      // Update the Link Text field with the properly cleaned title
+      if (_textController.text.trim().isEmpty && proposedTask.headline.isNotEmpty) {
+        _textController.text = proposedTask.headline;
+      }
+
+      setState(() {
+        _testedUrl = processedLink.url;
+        _testedIcon = processedLink.favicon;
+        _lastAutoVerifiedUrl = normalizedUrl; // Use normalized URL
+        _isAutoVerifying = false;
+        _isLoading = false;
+      });
+
+      print('LinkEditScreen: Auto-verification complete for: $normalizedUrl');
+    } catch (e) {
+      print('LinkEditScreen: Error during auto-verification: $e');
+      setState(() {
+        _error = 'Failed to verify URL: ${e.toString()}';
+        _lastAutoVerifiedUrl = url; // Mark as attempted to avoid retry loops
+        _isAutoVerifying = false;
+        _isLoading = false;
+      });
+    }
+  }
+
   Future<void> _testLink() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -173,14 +246,30 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
         return;
       }
 
-      // Test the link by processing it
-      final processedLink = await LinkProcessor.processLinkForDisplay(
-          '<a href="$url">${_textController.text.trim()}</a>');
+      // Normalize the URL first (remove query parameters, etc.)
+      final normalizedUrl = LinkToTaskConverter.normalizeUrl(url);
+      print('LinkEditScreen: Test Link - Normalized URL: $normalizedUrl');
 
-      // If we got a title from the webpage and the text field was empty,
-      // update the text field with the fetched title
-      if (_textController.text.trim().isEmpty && processedLink.title != null) {
-        _textController.text = processedLink.title!;
+      // Update the URL field with the normalized URL (without triggering listener)
+      _urlController.removeListener(_updateUrlTextState);
+      _urlController.text = normalizedUrl;
+      _urlController.addListener(_updateUrlTextState);
+
+      // Use LinkToTaskConverter to properly extract metadata with OMDb API for IMDb links
+      final userId = AuthUtils.getCurrentUserId();
+      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+        normalizedUrl,
+        userId,
+        currentCategory: widget.currentCategory,
+      );
+
+      // Also get the processed link for favicon display
+      final processedLink = await LinkProcessor.processLinkForDisplay(
+          '<a href="$normalizedUrl">${proposedTask.headline}</a>');
+
+      // If the text field was empty, update it with the properly cleaned title from OMDb/metadata
+      if (_textController.text.trim().isEmpty && proposedTask.headline.isNotEmpty) {
+        _textController.text = proposedTask.headline;
       }
 
       setState(() {
@@ -213,19 +302,26 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
 
     try {
       final url = _urlController.text.trim();
-      final processedLink = await LinkProcessor.validateAndProcessLink(
-        url,
-        linkText: _textController.text.trim(),
+
+      // Normalize the URL (remove query parameters, etc.)
+      final normalizedUrl = LinkToTaskConverter.normalizeUrl(url);
+      print('LinkEditScreen: Save Link - Normalized URL: $normalizedUrl');
+
+      // Use LinkToTaskConverter to get properly cleaned metadata (including OMDb for IMDb)
+      final userId = AuthUtils.getCurrentUserId();
+      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+        normalizedUrl,
+        userId,
+        currentCategory: widget.currentCategory,
       );
 
-      // If we got a title from the webpage and the text field was empty,
-      // update the text field with the fetched title
-      if (_textController.text.trim().isEmpty) {
-        _textController.text = processedLink.title!;
-      }
+      // If the text field was empty, populate it with the properly cleaned title
+      final linkText = _textController.text.trim().isEmpty
+          ? proposedTask.headline
+          : _textController.text.trim();
 
-      // Create HTML link
-      final htmlLink = '<a href="$url">${_textController.text.trim()}</a>';
+      // Create HTML link with normalized URL
+      final htmlLink = '<a href="$normalizedUrl">$linkText</a>';
 
       // Two-tier duplicate checking
       final duplicateCheckResult = await _checkForDuplicates(htmlLink);
@@ -249,9 +345,9 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
         return;
       }
 
-      // No duplicates found
+      // No duplicates found - return ProposedTask with metadata
       if (mounted) {
-        Navigator.pop(context, htmlLink);
+        Navigator.pop(context, proposedTask);
       }
     } catch (e) {
       print('Error validating link: $e');
@@ -278,21 +374,22 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
 
     try {
       final url = _urlController.text.trim();
-      final processedLink = await LinkProcessor.validateAndProcessLink(
-        url,
-        linkText: _textController.text.trim(),
+
+      // Normalize the URL (remove query parameters, etc.)
+      final normalizedUrl = LinkToTaskConverter.normalizeUrl(url);
+      print('LinkEditScreen: Save Link Anyway - Normalized URL: $normalizedUrl');
+
+      // Use LinkToTaskConverter to get properly cleaned metadata (including OMDb for IMDb)
+      // bypassing duplicate checks
+      final userId = AuthUtils.getCurrentUserId();
+      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+        normalizedUrl,
+        userId,
+        currentCategory: widget.currentCategory,
       );
 
-      // If we got a title from the webpage and the text field was empty,
-      // update the text field with the fetched title
-      if (_textController.text.trim().isEmpty) {
-        _textController.text = processedLink.title!;
-      }
-
-      // Create HTML link and return (bypassing duplicate checks)
-      final htmlLink = '<a href="$url">${_textController.text.trim()}</a>';
       if (mounted) {
-        Navigator.pop(context, htmlLink);
+        Navigator.pop(context, proposedTask);
       }
     } catch (e) {
       print('Error saving link anyway: $e');

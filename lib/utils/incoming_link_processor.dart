@@ -8,6 +8,7 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/utils/naming.dart';
+import 'package:meaning_to/utils/streaming_media_constants.dart';
 
 /// Result of processing an incoming link
 class LinkProcessingResult {
@@ -237,14 +238,86 @@ class IncomingLinkProcessor {
 
     if (!context.mounted) return;
 
-    // Check for duplicates and navigate accordingly
+    // Check for URL duplicates first
     if (result.duplicates.isNotEmpty) {
       // Link exists - go to Edit Task
       await _navigateToEditExistingTask(context, result.duplicates.first);
-    } else {
-      // Link is new - go to New Task
-      await _navigateToTaskEditScreen(context, result, defaultCategory);
+      return;
     }
+
+    // No URL duplicates - check if this is a Tidal link with artist matching
+    if (isStreamingMediaUrl(result.url) && result.title != null) {
+      final artistWorkInfo = extractArtistAndWorkFromTidal(result.title!);
+
+      if (artistWorkInfo != null) {
+        print(
+            'IncomingLinkProcessor: Detected Tidal link - Artist: "${artistWorkInfo.artist}", Work: "${artistWorkInfo.work}"');
+
+        // Search for existing task with this artist
+        final userId = AuthUtils.getCurrentUserId();
+        final existingTask = await findTaskByArtistInStreamingCategories(
+            artistWorkInfo.artist, userId);
+
+        if (existingTask != null && context.mounted) {
+          // Found exactly one matching artist task
+          // Get the category for the existing task
+          final categoryResponse = await supabase
+              .from('Categories')
+              .select()
+              .eq('id', existingTask.categoryId)
+              .single();
+
+          final category = Category.fromJson(categoryResponse);
+
+          // Show dialog asking if user wants to add to existing or create new
+          final userChoice = await _showArtistMatchDialog(
+            context,
+            existingTask,
+            category,
+            artistWorkInfo.work,
+          );
+
+          if (!context.mounted) return;
+
+          if (userChoice == 'add') {
+            // User wants to add to existing task
+            await _navigateToAddWorkToExistingTask(
+              context,
+              existingTask,
+              category,
+              artistWorkInfo.work,
+              result.url,
+              result.title!,
+            );
+            return;
+          } else if (userChoice == 'new') {
+            // User wants to create new task - continue with normal flow
+            // but use artist as headline and work as notes
+            await _navigateToTaskEditScreenWithArtistWork(
+              context,
+              result,
+              defaultCategory,
+              artistWorkInfo,
+            );
+            return;
+          }
+          // If userChoice is null, user dismissed dialog - do nothing
+          return;
+        }
+
+        // No matching artist found or multiple matches - create new task with artist/work
+        await _navigateToTaskEditScreenWithArtistWork(
+          context,
+          result,
+          defaultCategory,
+          artistWorkInfo,
+        );
+        return;
+      }
+    }
+
+    // Not a Tidal link or couldn't parse artist/work - use normal flow
+    await _navigateToTaskEditScreen(context, result, defaultCategory);
   }
 
   /// Navigate to Edit Task screen for existing duplicate task
@@ -258,29 +331,246 @@ class IncomingLinkProcessor {
       print(
           'IncomingLinkProcessor: Navigating to edit existing task: ${duplicate.task.headline}');
 
-      // We need to fetch the category for the task
-      final categoryResponse = await supabase
-          .from('Categories')
-          .select()
-          .eq('id', duplicate.task.categoryId)
-          .single();
+      // Show dialog with three options
+      final userChoice = await _showDuplicateOptionsDialog(context, duplicate);
 
-      final category = Category.fromJson(categoryResponse);
+      if (!context.mounted) return;
 
-      // Navigate directly to TaskEditScreen with an info message
+      if (userChoice == 'edit') {
+        // User chose to edit the existing task
+        final categoryResponse = await supabase
+            .from('Categories')
+            .select()
+            .eq('id', duplicate.task.categoryId)
+            .single();
+
+        final category = Category.fromJson(categoryResponse);
+
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => TaskEditScreen(
+              category: category,
+              task: duplicate.task,
+            ),
+          ),
+        );
+      } else if (userChoice == 'new') {
+        // User chose to create a new task anyway
+        print(
+            'IncomingLinkProcessor: User chose to create new task despite duplicate');
+        // Get the URL from the duplicate to use for the new task
+        final url = duplicate.matchingUrl;
+
+        // Process the link and navigate to create new task
+        final result = await processIncomingLink(url);
+
+        if (!context.mounted) return;
+
+        // Navigate to new task screen
+        await _navigateToTaskEditScreen(context, result, null);
+      }
+      // If userChoice is null or 'done', do nothing (user chose "All Done")
+    } catch (e) {
+      print(
+          'IncomingLinkProcessor: Error navigating to edit existing task: $e');
+    }
+  }
+
+  /// Show dialog with options for handling duplicate task
+  static Future<String?> _showDuplicateOptionsDialog(
+    BuildContext context,
+    DuplicateMatch duplicate,
+  ) async {
+    if (!context.mounted) return null;
+
+    return await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Similar ${NamingUtils.tasksName(capitalize: true, plural: false)} Found',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'There\'s a similar task already on file. Do you really want to create a new one, just edit the old one, or stand pat?',
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    duplicate.task.headline,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'in ${duplicate.category.headline}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('done'),
+            child: const Text('All Done'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('new'),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.green[700],
+            ),
+            child: const Text('Make New'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop('edit'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue[700],
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Edit Old'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Navigate to edit existing task and add new work to it
+  static Future<void> _navigateToAddWorkToExistingTask(
+    BuildContext context,
+    Task existingTask,
+    Category category,
+    String workTitle,
+    String url,
+    String linkTitle,
+  ) async {
+    if (!context.mounted) return;
+
+    try {
+      print(
+          'IncomingLinkProcessor: Adding work "$workTitle" to existing task "${existingTask.headline}"');
+
+      // Prepare the new notes: append work title to existing notes
+      final existingNotes = existingTask.notes ?? '';
+      final newNotes = existingNotes.isEmpty
+          ? workTitle
+          : '$existingNotes\n$workTitle';
+
+      // Prepare the new link to add to links array
+      final newLink = '<a href="$url">$linkTitle</a>';
+
+      // Navigate to TaskEditScreen with pre-filled data
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => TaskEditScreen(
             category: category,
-            task: duplicate.task,
-            infoMessage:
-                'This ${NamingUtils.tasksName(capitalize: false, plural: false)} already exists in your ${duplicate.category.headline} ${NamingUtils.categoriesName(capitalize: false, plural: false)}. You can edit it as needed, or move it to a different ${NamingUtils.categoriesName(capitalize: false, plural: false)}.',
+            task: existingTask,
+            initialNotes: newNotes,
+            initialLinks: [
+              ...existingTask.links ?? [],
+              newLink,
+            ],
           ),
         ),
       );
     } catch (e) {
       print(
-          'IncomingLinkProcessor: Error navigating to edit existing task: $e');
+          'IncomingLinkProcessor: Error navigating to add work to existing task: $e');
+    }
+  }
+
+  /// Navigate to TaskEditScreen with artist/work pre-filled for new task
+  static Future<void> _navigateToTaskEditScreenWithArtistWork(
+    BuildContext context,
+    LinkProcessingResult result,
+    Category? defaultCategory,
+    ArtistWorkInfo artistWorkInfo,
+  ) async {
+    if (!context.mounted) return;
+
+    try {
+      // If we have a default category, use it; otherwise show category picker
+      Category? category = defaultCategory;
+
+      if (category == null) {
+        // Show category picker first - suggest streaming media categories
+        await CategoryPickerDialog.show(
+          context,
+          title:
+              'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
+          onCategorySelected: (Category selectedCategory,
+              {bool? shouldMove}) async {
+            await Future.delayed(const Duration(milliseconds: 100));
+            await _openTaskEditScreenWithArtistWork(
+                context, result, selectedCategory, artistWorkInfo);
+          },
+        );
+        return;
+      }
+
+      await _openTaskEditScreenWithArtistWork(
+          context, result, category, artistWorkInfo);
+    } catch (e) {
+      print(
+          'IncomingLinkProcessor: Error navigating to task edit screen with artist/work: $e');
+    }
+  }
+
+  /// Open TaskEditScreen with artist as headline and work in notes
+  static Future<void> _openTaskEditScreenWithArtistWork(
+    BuildContext context,
+    LinkProcessingResult result,
+    Category category,
+    ArtistWorkInfo artistWorkInfo,
+  ) async {
+    try {
+      print(
+          'IncomingLinkProcessor: Opening TaskEditScreen with artist: ${artistWorkInfo.artist}, work: ${artistWorkInfo.work}');
+
+      // Create HTML link from the result
+      final htmlLink = '<a href="${result.url}">${result.title}</a>';
+
+      // Navigate to TaskEditScreen with artist as headline and work as notes
+      final taskSaved = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (context) => TaskEditScreen(
+            category: category,
+            initialLinks: [htmlLink],
+            initialHeadline: artistWorkInfo.artist, // Artist as headline
+            initialNotes: artistWorkInfo.work, // Work as notes
+            showAlternativeOptions: false,
+          ),
+        ),
+      );
+
+      // Refresh cache if task was saved
+      if (taskSaved == true) {
+        final cacheManager = CacheManager();
+        if (cacheManager.currentCategory?.id == category.id) {
+          await cacheManager.refreshCurrentCategoryTasks();
+        }
+      }
+    } catch (e) {
+      print(
+          'IncomingLinkProcessor: Error opening TaskEditScreen with artist/work: $e');
     }
   }
 
@@ -379,76 +669,6 @@ class IncomingLinkProcessor {
   }
 
   /// Show dialog when duplicates are found
-  static Future<void> _showDuplicateFoundDialog(
-    BuildContext context,
-    LinkProcessingResult result,
-  ) async {
-    // Check if context is still mounted
-    if (!context.mounted) {
-      print(
-          'IncomingLinkProcessor: Context no longer mounted, cannot show duplicate dialog');
-      return;
-    }
-
-    final duplicate = result.duplicates.first; // Show first duplicate
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Link Already Exists'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('This link already exists in:'),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Task: ${duplicate.task.headline}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Text('Category: ${duplicate.category.headline}'),
-                ],
-              ),
-            ),
-            if (result.duplicates.length > 1) ...[
-              const SizedBox(height: 8),
-              Text('...and ${result.duplicates.length - 1} other location(s)'),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _navigateToExistingTask(context, duplicate);
-            },
-            child: const Text('View Task'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _showNewLinkDialog(context, result, ignoreWarnings: true);
-            },
-            child: const Text('Add Anyway'),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// Show dialog for new (non-duplicate) links
   static Future<void> _showNewLinkDialog(
     BuildContext context,
@@ -1012,5 +1232,165 @@ class IncomingLinkProcessor {
   static Category? getCurrentCategory() {
     // TODO: Implement cache-aware category detection
     return null;
+  }
+
+  /// Search for a task by artist name in streaming media categories
+  /// Returns exactly one task if found, otherwise null
+  static Future<Task?> findTaskByArtistInStreamingCategories(
+    String artist,
+    String userId,
+  ) async {
+    try {
+      print(
+          'IncomingLinkProcessor: Searching for artist "$artist" in streaming media categories');
+
+      // Get all user's categories to filter for streaming media ones
+      final categoriesResponse = await supabase
+          .from('Categories')
+          .select()
+          .eq('owner_id', userId);
+
+      final categoriesData = categoriesResponse as List<dynamic>;
+
+      // Filter to only streaming media category IDs
+      final streamingCategoryIds = categoriesData
+          .where((catData) {
+            final originalId = catData['original_id'] as int?;
+            return originalId != null &&
+                STREAMING_MEDIA_CATEGORY_IDS.contains(originalId);
+          })
+          .map((catData) => catData['id'] as int)
+          .toList();
+
+      if (streamingCategoryIds.isEmpty) {
+        print(
+            'IncomingLinkProcessor: User has no streaming media categories');
+        return null;
+      }
+
+      print(
+          'IncomingLinkProcessor: Searching in category IDs: $streamingCategoryIds');
+
+      // Search for tasks with matching artist name (case-insensitive)
+      final tasksResponse = await supabase
+          .from('Tasks')
+          .select()
+          .eq('owner_id', userId)
+          .inFilter('category_id', streamingCategoryIds)
+          .ilike('headline', artist); // Exact match, case-insensitive
+
+      final tasksData = tasksResponse as List<dynamic>;
+
+      print(
+          'IncomingLinkProcessor: Found ${tasksData.length} tasks matching artist "$artist"');
+
+      // Return exactly one match, or null if not exactly one
+      if (tasksData.length == 1) {
+        final task = Task.fromJson(tasksData[0]);
+        print(
+            'IncomingLinkProcessor: Found exactly one matching task: "${task.headline}"');
+        return task;
+      } else if (tasksData.length > 1) {
+        print(
+            'IncomingLinkProcessor: Found multiple tasks (${tasksData.length}), not showing match dialog');
+        return null;
+      } else {
+        print('IncomingLinkProcessor: No tasks found for this artist');
+        return null;
+      }
+    } catch (e) {
+      print('IncomingLinkProcessor: Error searching for artist: $e');
+      return null;
+    }
+  }
+
+  /// Show dialog asking if user wants to add to existing artist task or create new
+  static Future<String?> _showArtistMatchDialog(
+    BuildContext context,
+    Task existingTask,
+    Category category,
+    String workTitle,
+  ) async {
+    if (!context.mounted) return null;
+
+    return await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Found Existing Artist',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You already have a ${NamingUtils.tasksName(capitalize: false, plural: false)} for this artist:',
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    existingTask.headline,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'in ${category.headline}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  if (existingTask.notes != null &&
+                      existingTask.notes!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      existingTask.notes!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[700],
+                      ),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Would you like to add "$workTitle" to this ${NamingUtils.tasksName(capitalize: false, plural: false)}?',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('new'),
+            child: const Text('Create New'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop('add'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue[700],
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Add to Existing'),
+          ),
+        ],
+      ),
+    );
   }
 }

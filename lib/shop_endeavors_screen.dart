@@ -926,7 +926,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
         // Store the task we're about to add
         lastAddedTask = newTask;
-        
+
         // Use CacheManager to add the task (saves to database and updates cache)
         await cacheManager.addTask(newTask);
         importedTasks++;
