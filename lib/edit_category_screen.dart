@@ -152,7 +152,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
             }
             // Then, sort by suggestibleAt (earlier first, null first)
             if (a.suggestibleAt == null && b.suggestibleAt == null) {
-              return 0;
+              // Both have null suggestibleAt - sort by creation date (newest first)
+              return b.createdAt.compareTo(a.createdAt);
             }
             if (a.suggestibleAt == null) {
               return -1;
@@ -175,6 +176,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   void _clearTaskCache() {
     _cachedSortedTasks = null;
     _lastCachedTasks = null;
+    _displayedTaskCount = 0; // Reset display count so it will be recalculated
   }
 
   /// Start progressive loading of tasks
@@ -383,9 +385,11 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         arguments: {'category': currentCategory, 'task': null},
       );
 
-      if (result == true) {
+      // Handle both map result (from NewContentScreen) and boolean result (from TaskEditScreen)
+      if (result == true || (result is Map && result.containsKey('task'))) {
         // Tasks were added, trigger UI rebuild to reflect cache changes
         if (mounted) {
+          _clearTaskCache(); // Force cache refresh
           setState(() {});
         }
       }

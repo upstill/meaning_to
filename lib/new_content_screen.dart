@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/widgets/task_form.dart';
 import 'package:meaning_to/widgets/category_form.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
@@ -71,8 +72,8 @@ class _NewContentScreenState extends State<NewContentScreen> {
     }
   }
 
-  Future<void> _createTask(
-      String headline, String notes, List<String> links, bool isShared) async {
+  Future<void> _createTask(String headline, String notes, List<String> links,
+      bool isShared, String? synopsis) async {
     if (_selectedCategoryForTask == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -91,10 +92,14 @@ class _NewContentScreenState extends State<NewContentScreen> {
       final userId = AuthUtils.getCurrentUserId();
       final now = DateTime.now().toUtc();
 
+      print(
+          'NewContentScreen: Creating task with synopsis: ${synopsis != null ? "${synopsis.length} chars" : "null"}');
+
       final taskData = {
         'category_id': _selectedCategoryForTask!.id,
         'headline': headline,
         'notes': notes.isEmpty ? null : notes,
+        'synopsis': synopsis, // Include synopsis from OMDb/link processing
         'owner_id': userId,
         'created_at': now.toIso8601String(),
         'suggestible_at': null,
@@ -108,6 +113,18 @@ class _NewContentScreenState extends State<NewContentScreen> {
 
       final response =
           await supabase.from('Tasks').insert(taskData).select().single();
+
+      // Wait for database transaction to commit
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Update the task cache using CacheManager
+      final cacheManager = CacheManager();
+
+      // Only update cache if it's on the same category
+      if (cacheManager.currentCategory?.id == _selectedCategoryForTask!.id) {
+        final createdTaskObj = Task.fromJson(response);
+        await cacheManager.updateTask(createdTaskObj);
+      }
 
       if (mounted) {
         // Create task object from response

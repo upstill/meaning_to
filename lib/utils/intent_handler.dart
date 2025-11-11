@@ -11,6 +11,7 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/main.dart';
+import 'package:meaning_to/utils/streaming_media_constants.dart';
 
 /// Comprehensive intent handler for all incoming content and deep links
 /// Handles: Deep links, Share intents, OAuth callbacks, Manual links, Browser redirects
@@ -246,6 +247,13 @@ class IntentHandler {
 
     print('IntentHandler: Processing link intent for URL: $url');
 
+    // Analyze URL and determine suggested categories
+    final suggestedCategoryIds = _analyzeLinkForCategorySuggestions(url);
+    if (suggestedCategoryIds.isNotEmpty) {
+      print('IntentHandler: URL suggests category IDs: $suggestedCategoryIds');
+      intent.data['suggestedCategoryIds'] = suggestedCategoryIds;
+    }
+
     // First, check for existing tasks with this link
     await _checkForDuplicateLinkAndHandle(url, intent, context);
   }
@@ -472,7 +480,9 @@ class IntentHandler {
       String url, ProcessedIntent intent, BuildContext context) async {
     if (_navigatorKey == null) return;
 
-    final defaultCategory = _getCurrentCategory();
+    // Try to get intelligently suggested category first
+    final suggestedCategory = await _getOrCreateSuggestedCategory(intent, context);
+    final defaultCategory = suggestedCategory ?? _getCurrentCategory();
 
     _navigatorKey!.currentState?.pushNamed(
       '/new-content',
@@ -514,7 +524,9 @@ class IntentHandler {
       String url, ProcessedIntent intent, BuildContext context, DuplicateMatch duplicate) async {
     if (_navigatorKey == null) return;
 
-    final defaultCategory = _getCurrentCategory();
+    // Try to get intelligently suggested category first
+    final suggestedCategory = await _getOrCreateSuggestedCategory(intent, context);
+    final defaultCategory = suggestedCategory ?? _getCurrentCategory();
 
     // Determine the original_id to use (preserve the chain)
     final originalId = duplicate.task.originalId ?? duplicate.task.id;
@@ -546,6 +558,312 @@ class IntentHandler {
     // If no original tasks, return the first duplicate
     // (its original_id will be used to continue the chain)
     return duplicates.first;
+  }
+
+  /// Analyze URL to suggest appropriate categories based on domain and path
+  List<String> _analyzeLinkForCategorySuggestions(String url) {
+    try {
+      final uri = Uri.parse(url.toLowerCase());
+      final domain = uri.host;
+      final path = uri.path;
+
+      print('IntentHandler: Analyzing URL - domain: $domain, path: $path');
+
+      // IMDb links -> can be either movies or TV shows
+      if (domain.contains('imdb.com')) {
+        print('IntentHandler: IMDb link detected, suggesting both movie and TV categories');
+        // Check if we can determine the type from the path
+        if (path.contains('/tv/') || path.contains('tvseries')) {
+          print('IntentHandler: IMDb TV content detected, prioritizing TV category');
+          return ['2', '1']; // TV first, then movie
+        } else if (path.contains('/title/')) {
+          print('IntentHandler: IMDb title detected, could be either type');
+          return ['1', '2']; // Movie first, then TV (more common)
+        } else {
+          print('IntentHandler: IMDb general link, suggesting both options');
+          return ['1', '2']; // Movie first, then TV
+        }
+      }
+
+      // Letterboxd links -> primarily movies but occasionally has TV series
+      if (domain.contains('letterboxd.com')) {
+        print('IntentHandler: Letterboxd link detected, suggesting movie category with TV option');
+        return ['1', '2']; // Movie first (primary), TV second (occasional)
+      }
+
+      // JustWatch links -> depends on path
+      if (domain.contains('justwatch.com')) {
+        print('IntentHandler: JustWatch link detected, analyzing path...');
+        if (path.contains('/movie/')) {
+          print('IntentHandler: JustWatch movie link, suggesting movie category');
+          return ['1']; // Just movie
+        } else if (path.contains('/tv-show/')) {
+          print('IntentHandler: JustWatch TV show link, suggesting TV category');
+          return ['2']; // Just TV
+        } else {
+          print('IntentHandler: JustWatch link without specific type, suggesting both');
+          return ['1', '2']; // Both options
+        }
+      }
+
+      // Tidal links -> streaming media categories
+      if (domain.contains('tidal.com')) {
+        print('IntentHandler: Tidal link detected, suggesting streaming media categories');
+        // Return streaming media category IDs as strings
+        return STREAMING_MEDIA_CATEGORY_IDS.map((id) => id.toString()).toList();
+      }
+
+      // Future streaming services can be added here:
+      // Spotify, Apple Music, YouTube Music, etc.
+      // if (domain.contains('spotify.com') || domain.contains('music.apple.com')) {
+      //   print('IntentHandler: Streaming media link detected');
+      //   return STREAMING_MEDIA_CATEGORY_IDS.map((id) => id.toString()).toList();
+      // }
+
+      print('IntentHandler: No category suggestion for domain: $domain');
+      return [];
+
+    } catch (e) {
+      print('IntentHandler: Error analyzing URL for category suggestions: $e');
+      return [];
+    }
+  }
+
+  /// Get or create the suggested category for the user
+  Future<Category?> _getOrCreateSuggestedCategory(ProcessedIntent intent, BuildContext context) async {
+    final suggestedCategoryIds = intent.data['suggestedCategoryIds'] as List<String>?;
+    if (suggestedCategoryIds == null || suggestedCategoryIds.isEmpty) return null;
+
+    print('IntentHandler: Looking for suggested categories with original_ids: $suggestedCategoryIds');
+
+    try {
+      final currentUserId = AuthUtils.getCurrentUserId();
+      if (currentUserId == null) return null;
+
+      // Check if user already has any of the suggested categories
+      for (final suggestedId in suggestedCategoryIds) {
+        final existingResponse = await supabase
+            .from('Categories')
+            .select()
+            .eq('owner_id', currentUserId)
+            .eq('original_id', suggestedId)
+            .limit(1)
+            .maybeSingle();
+
+        if (existingResponse != null) {
+          final existingCategory = Category.fromJson(existingResponse);
+          print('IntentHandler: Found existing user category: ${existingCategory.headline}');
+          return existingCategory;
+        }
+      }
+
+      // User doesn't have any of the suggested categories, offer choices
+      return await _showMultipleCategoryOptions(context, suggestedCategoryIds, currentUserId);
+
+    } catch (e) {
+      print('IntentHandler: Error getting or creating suggested category: $e');
+      return null;
+    }
+  }
+
+  /// Show dialog with multiple category options
+  Future<Category?> _showMultipleCategoryOptions(BuildContext context, List<String> suggestedIds, String userId) async {
+    try {
+      print('IntentHandler: Fetching category options for IDs: $suggestedIds');
+
+      // Fetch all the suggested original categories
+      final List<Category> categoryOptions = [];
+
+      for (final id in suggestedIds) {
+        final response = await supabase
+            .from('Categories')
+            .select()
+            .eq('id', id)
+            .limit(1)
+            .maybeSingle();
+
+        if (response != null) {
+          categoryOptions.add(Category.fromJson(response));
+        }
+      }
+
+      if (categoryOptions.isEmpty) {
+        print('IntentHandler: No category options found');
+        return null;
+      }
+
+      if (categoryOptions.length == 1) {
+        // Only one option available, show single adoption dialog
+        final shouldAdopt = await _showCategoryAdoptionDialog(context, categoryOptions.first);
+        if (shouldAdopt) {
+          return await _createCategoryCopy(categoryOptions.first, userId);
+        }
+        return null;
+      }
+
+      // Multiple options available, show selection dialog
+      final selectedCategory = await _showCategorySelectionDialog(context, categoryOptions);
+      if (selectedCategory != null) {
+        return await _createCategoryCopy(selectedCategory, userId);
+      }
+
+      return null;
+
+    } catch (e) {
+      print('IntentHandler: Error showing multiple category options: $e');
+      return null;
+    }
+  }
+
+  /// Show dialog for selecting between multiple suggested categories
+  Future<Category?> _showCategorySelectionDialog(BuildContext context, List<Category> options) async {
+    return await showDialog<Category>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Choose ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This link could belong in one of these ${NamingUtils.categoriesName(plural: true, capitalize: false)}:',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 16),
+            ...options.map((category) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(category),
+                  style: ElevatedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.all(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        category.headline,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      if (category.invitation != null && category.invitation!.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          category.invitation!,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            )),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: const Text('Use current category instead'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show dialog asking user if they want to adopt a suggested category
+  Future<bool> _showCategoryAdoptionDialog(BuildContext context, Category originalCategory) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Suggested ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This link looks like it belongs in:',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    originalCategory.headline,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  if (originalCategory.invitation != null && originalCategory.invitation!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      originalCategory.invitation!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('Would you like to adopt this ${NamingUtils.categoriesName(plural: false, capitalize: false)} for your own use?'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('No, use current'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text('Yes, adopt this ${NamingUtils.categoriesName(plural: false, capitalize: false)}'),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  /// Create a copy of a category for the current user
+  Future<Category?> _createCategoryCopy(Category originalCategory, String userId) async {
+    try {
+      print('IntentHandler: Creating category copy for user: $userId');
+
+      final categoryData = {
+        'headline': originalCategory.headline,
+        'invitation': originalCategory.invitation,
+        'owner_id': userId,
+        'original_id': originalCategory.id, // Link to the original
+        'private': originalCategory.private,
+        'tasks_are_private': originalCategory.tasksArePrivate,
+      };
+
+      final response = await supabase
+          .from('Categories')
+          .insert(categoryData)
+          .select()
+          .single();
+
+      final newCategory = Category.fromJson(response);
+      print('IntentHandler: Created category copy: ${newCategory.headline}');
+
+      // Initialize cache with the new category
+      final cacheManager = CacheManager();
+      await cacheManager.initializeWithSavedCategory(newCategory, userId);
+
+      return newCategory;
+
+    } catch (e) {
+      print('IntentHandler: Error creating category copy: $e');
+      return null;
+    }
   }
 
   /// Find user's equivalent category (same original_id)
