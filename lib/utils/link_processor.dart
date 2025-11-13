@@ -376,7 +376,7 @@ class LinkProcessor {
             'User-Agent':
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
           },
-        ).timeout(Duration(seconds: 10));
+        ).timeout(const Duration(seconds: 10));
 
         if (response.statusCode == 200 && response.body.length > 500) {
           print(
@@ -475,7 +475,7 @@ class LinkProcessor {
                   'User-Agent':
                       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
                 },
-              ).timeout(Duration(seconds: 10));
+              ).timeout(const Duration(seconds: 10));
 
               final httpRequestEndTime = DateTime.now();
               final httpRequestDuration =
@@ -1030,10 +1030,11 @@ class LinkProcessor {
       }
     }
 
-    // Clean up IMDb titles by removing year and site suffixes
+    // Clean IMDb titles before creating final link
     if (finalTitle != null && url.contains('imdb.com')) {
       finalTitle = cleanImdbTitle(finalTitle);
-      print('LinkProcessor.processLinkForDisplay: Cleaned IMDb title: "$finalTitle"');
+      print(
+          'LinkProcessor.processLinkForDisplay: Cleaned IMDb title: "$finalTitle"');
     }
 
     // Create the final HTML link with the title
@@ -1086,24 +1087,6 @@ class LinkProcessor {
     return null;
   }
 
-  /// Clean up IMDb title by removing year and IMDb-specific suffixes
-  /// This is used by both UI display and task creation to ensure consistent title formatting
-  static String cleanImdbTitle(String title) {
-    // Remove IMDb page suffixes like "- IMDb", "- Reference view", etc.
-    String cleaned = title.replaceAll(RegExp(r'\s*-\s*(IMDb|Reference view)\s*$'), '');
-
-    // Remove year in parentheses like " (1994)"
-    cleaned = cleaned.replaceAll(RegExp(r'\s*\(\d{4}\)\s*$'), '');
-
-    // Remove TV Series indicator like " (TV Series 2008–2013)"
-    cleaned = cleaned.replaceAll(RegExp(r'\s*\(TV Series [^)]+\)\s*$'), '');
-
-    // Remove TV Mini Series indicator like " (TV Mini Series 2019)"
-    cleaned = cleaned.replaceAll(RegExp(r'\s*\(TV Mini Series [^)]+\)\s*$'), '');
-
-    return cleaned.trim();
-  }
-
   static Future<List<ProcessedLink>> processLinksForDisplay(
       List<String> links) async {
     final processedLinks = <ProcessedLink>[];
@@ -1138,6 +1121,37 @@ class LinkProcessor {
     }
 
     return processedLinks;
+  }
+
+  /// Clean up IMDb title by removing year and IMDb-specific suffixes.
+  /// Ensures consistent title formatting for both UI display and task creation.
+  static String cleanImdbTitle(String title) {
+    String cleaned = title.trim();
+
+    // Remove everything from the first parenthesis or hyphen suffix onward.
+    // Examples handled:
+    //   "Movie Title (1994) - IMDb"                -> "Movie Title"
+    //   "Series Name (TV Series 2008–2013) - IMDb" -> "Series Name"
+    //   "Short Film (Short 2020) - Reference view" -> "Short Film"
+    final truncationMatch =
+        RegExp(r'^(.*?)\s*(?:\(|\s-\s).*$').firstMatch(cleaned);
+    if (truncationMatch != null &&
+        truncationMatch.group(1)?.isNotEmpty == true) {
+      cleaned = truncationMatch.group(1)!;
+    } else {
+      // Fallback: remove trailing IMDb/Reference view suffixes if no parentheses found.
+      cleaned =
+          cleaned.replaceAll(RegExp(r'\s*-\s*(IMDb|Reference view)\s*$'), '');
+    }
+
+    // Remove only the specific suffix patterns that include a parenthesis ending in a year
+    // Examples handled:
+    //   "Movie Title (1994)"                  -> "Movie Title"
+    //   "Series Name (TV Series 2008–2013)"  -> "Series Name"
+    cleaned = cleaned.replaceAll(
+        RegExp(r'\s*\((?:[^()]*?)\d{4}(?:[–-]\d{4})?\)\s*$'), '');
+
+    return cleaned.trim();
   }
 
   // Process and display links
@@ -1212,7 +1226,7 @@ class LinkProcessor {
         // Always use the fetched description
         description = content.description;
         print(
-            'LinkProcessor: Fetched title: "${content.title}", description: "${description?.substring(0, description != null && description.length > 100 ? 100 : description.length)}..."');
+            'LinkProcessor: Fetched title: "${content.title}", description: "${description?.substring(0, description.length > 100 ? 100 : description.length)}..."');
       }
     }
 

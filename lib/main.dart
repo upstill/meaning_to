@@ -186,27 +186,6 @@ class _MyAppState extends State<MyApp> {
       print('Data: $data');
       print('=====================\n');
     }
-
-    // Show a snackbar to report the intent to the user
-    if (mounted) {
-      _scaffoldKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text('Received $type intent'),
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: 'Details',
-            onPressed: () {
-              _shareHandler.showDetailsDialog(
-                MyApp.navigatorKey.currentContext!,
-                type,
-                data,
-                timestamp,
-              );
-            },
-          ),
-        ),
-      );
-    }
   }
 
   @override

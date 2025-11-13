@@ -1,7 +1,10 @@
+// ignore_for_file: unused_element, unused_local_variable
+
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
@@ -17,6 +20,7 @@ class LinkProcessingResult {
   final String? description;
   final List<DuplicateMatch> duplicates;
   final bool hasValidMetadata;
+  final ProposedTask? proposedTask;
 
   LinkProcessingResult({
     required this.url,
@@ -24,6 +28,7 @@ class LinkProcessingResult {
     this.description,
     required this.duplicates,
     required this.hasValidMetadata,
+    this.proposedTask,
   });
 }
 
@@ -74,14 +79,64 @@ class IncomingLinkProcessor {
         description = content.description;
         hasValidMetadata = true;
         print('IncomingLinkProcessor: Extracted metadata - Title: "$title"');
+
+        if (normalizedUrl.contains('imdb.com')) {
+          final cleanedTitle = LinkProcessor.cleanImdbTitle(content.title);
+          if (cleanedTitle != content.title) {
+            print(
+                'IncomingLinkProcessor: Cleaned IMDb title from "${content.title}" to "$cleanedTitle"');
+            title = cleanedTitle;
+          }
+        }
       }
     } catch (e) {
       print('IncomingLinkProcessor: Failed to extract metadata: $e');
     }
 
+    // Use LinkToTaskConverter to build a rich ProposedTask for this link
+    ProposedTask? proposedTask;
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+      proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+        normalizedUrl,
+        userId,
+      );
+
+      print(
+          'IncomingLinkProcessor: Received ProposedTask - Headline: "${proposedTask.headline}"');
+
+      // If metadata was missing or incomplete, fill it from the ProposedTask
+      if (title == null || title.isEmpty) {
+        title = proposedTask.headline;
+      }
+      if ((description == null || description.isEmpty) &&
+          proposedTask.synopsis != null &&
+          proposedTask.synopsis!.isNotEmpty) {
+        description = proposedTask.synopsis;
+      }
+
+      if (!hasValidMetadata &&
+          (proposedTask.headline.isNotEmpty ||
+              (proposedTask.synopsis != null &&
+                  proposedTask.synopsis!.isNotEmpty))) {
+        hasValidMetadata = true;
+      }
+    } catch (e) {
+      print('IncomingLinkProcessor: LinkToTaskConverter failed: $e');
+    }
+
     // Find all duplicates across user's tasks
+    print(
+        'IncomingLinkProcessor: Checking for duplicates of normalized URL: $normalizedUrl');
     final duplicates = await findAllDuplicates(normalizedUrl);
-    print('IncomingLinkProcessor: Found ${duplicates.length} duplicates');
+    print(
+        'IncomingLinkProcessor: Found ${duplicates.length} duplicate(s) for URL: $normalizedUrl');
+    if (duplicates.isNotEmpty) {
+      for (final dup in duplicates) {
+        print(
+            '  - Duplicate: "${dup.task.headline}" in "${dup.category.headline}"');
+      }
+    }
 
     return LinkProcessingResult(
       url: normalizedUrl,
@@ -89,6 +144,7 @@ class IncomingLinkProcessor {
       description: description,
       duplicates: duplicates,
       hasValidMetadata: hasValidMetadata,
+      proposedTask: proposedTask,
     );
   }
 
@@ -141,24 +197,29 @@ class IncomingLinkProcessor {
           // Check each link in the task
           for (final linkText in task.links ?? []) {
             final linkUrl = _extractUrlFromHtmlLink(linkText);
-            if (linkUrl != null && _urlsMatch(url, linkUrl)) {
-              matchingTasks++;
+            if (linkUrl != null) {
+              final urlsMatch = _urlsMatch(url, linkUrl);
+              if (urlsMatch) {
+                matchingTasks++;
 
-              // Only add to duplicates list if it's the current user's task
-              if (task.ownerId == userId) {
-                userDuplicates++;
-                print(
-                    'IncomingLinkProcessor: Found duplicate in user task "${task.headline}" in category "${category.headline}"');
-                duplicates.add(DuplicateMatch(
-                  task: task,
-                  category: category,
-                  matchingUrl: linkUrl,
-                  originalLinkText: linkText,
-                ));
-              } else {
-                otherUserTasks++;
-                print(
-                    'IncomingLinkProcessor: Found matching task from other user: "${task.headline}" (ID: ${task.id}, original_id: ${task.originalId})');
+                // Only add to duplicates list if it's the current user's task
+                if (task.ownerId == userId) {
+                  userDuplicates++;
+                  print(
+                      'IncomingLinkProcessor: Found duplicate in user task "${task.headline}" in category "${category.headline}"');
+                  print('  Incoming URL: $url');
+                  print('  Existing URL: $linkUrl');
+                  duplicates.add(DuplicateMatch(
+                    task: task,
+                    category: category,
+                    matchingUrl: linkUrl,
+                    originalLinkText: linkText,
+                  ));
+                } else {
+                  otherUserTasks++;
+                  print(
+                      'IncomingLinkProcessor: Found matching task from other user: "${task.headline}" (ID: ${task.id}, original_id: ${task.originalId})');
+                }
               }
             }
           }
@@ -233,87 +294,135 @@ class IncomingLinkProcessor {
   }) async {
     print('IncomingLinkProcessor: Processing incoming link: $url');
 
-    // Parse the incoming text as if it's from an import
-    final result = await processIncomingLink(url);
+    // Show processing dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                'Processing link...',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
 
-    if (!context.mounted) return;
+    // Declare result variable before try block so it's accessible after
+    late final LinkProcessingResult result;
 
-    // Check for URL duplicates first
-    if (result.duplicates.isNotEmpty) {
-      // Link exists - go to Edit Task
-      await _navigateToEditExistingTask(context, result.duplicates.first);
-      return;
+    try {
+      // Parse the incoming text as if it's from an import
+      result = await processIncomingLink(url);
+
+      if (!context.mounted) return;
+
+      // Dismiss processing dialog
+      Navigator.of(context).pop();
+
+      if (!context.mounted) return;
+
+      // Check for URL duplicates first
+      if (result.duplicates.isNotEmpty) {
+        // Link exists - go to Edit Task
+        await _navigateToEditExistingTask(context, result.duplicates.first);
+        return;
+      }
+    } catch (e) {
+      print('IncomingLinkProcessor: Error processing link: $e');
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Dismiss dialog on error
+      }
+      rethrow;
     }
 
     // No URL duplicates - check if this is a Tidal link with artist matching
-    if (isStreamingMediaUrl(result.url) && result.title != null) {
-      final artistWorkInfo = extractArtistAndWorkFromTidal(result.title!);
+    ArtistWorkInfo? artistWorkInfo;
+    if (isStreamingMediaUrl(result.url)) {
+      if (result.proposedTask != null &&
+          result.proposedTask!.notes != null &&
+          result.proposedTask!.notes!.isNotEmpty) {
+        artistWorkInfo = ArtistWorkInfo(
+          artist: result.proposedTask!.headline,
+          work: result.proposedTask!.notes!,
+        );
+      } else if (result.title != null) {
+        artistWorkInfo = extractArtistAndWorkFromTidal(result.title!);
+      }
+    }
 
-      if (artistWorkInfo != null) {
-        print(
-            'IncomingLinkProcessor: Detected Tidal link - Artist: "${artistWorkInfo.artist}", Work: "${artistWorkInfo.work}"');
+    if (artistWorkInfo != null) {
+      print(
+          'IncomingLinkProcessor: Detected Tidal link - Artist: "${artistWorkInfo.artist}", Work: "${artistWorkInfo.work}"');
 
-        // Search for existing task with this artist
-        final userId = AuthUtils.getCurrentUserId();
-        final existingTask = await findTaskByArtistInStreamingCategories(
-            artistWorkInfo.artist, userId);
+      // Search for existing task with this artist
+      final userId = AuthUtils.getCurrentUserId();
+      final existingTask = await findTaskByArtistInStreamingCategories(
+          artistWorkInfo.artist, userId);
 
-        if (existingTask != null && context.mounted) {
-          // Found exactly one matching artist task
-          // Get the category for the existing task
-          final categoryResponse = await supabase
-              .from('Categories')
-              .select()
-              .eq('id', existingTask.categoryId)
-              .single();
+      if (existingTask != null && context.mounted) {
+        // Found exactly one matching artist task
+        // Get the category for the existing task
+        final categoryResponse = await supabase
+            .from('Categories')
+            .select()
+            .eq('id', existingTask.categoryId)
+            .single();
 
-          final category = Category.fromJson(categoryResponse);
+        final category = Category.fromJson(categoryResponse);
 
-          // Show dialog asking if user wants to add to existing or create new
-          final userChoice = await _showArtistMatchDialog(
+        // Show dialog asking if user wants to add to existing or create new
+        final userChoice = await _showArtistMatchDialog(
+          context,
+          existingTask,
+          category,
+          artistWorkInfo.work,
+        );
+
+        if (!context.mounted) return;
+
+        if (userChoice == 'add') {
+          // User wants to add to existing task
+          await _navigateToAddWorkToExistingTask(
             context,
             existingTask,
             category,
             artistWorkInfo.work,
+            result.url,
+            artistWorkInfo.work,
           );
-
-          if (!context.mounted) return;
-
-          if (userChoice == 'add') {
-            // User wants to add to existing task
-            await _navigateToAddWorkToExistingTask(
-              context,
-              existingTask,
-              category,
-              artistWorkInfo.work,
-              result.url,
-              result.title!,
-            );
-            return;
-          } else if (userChoice == 'new') {
-            // User wants to create new task - continue with normal flow
-            // but use artist as headline and work as notes
-            await _navigateToTaskEditScreenWithArtistWork(
-              context,
-              result,
-              defaultCategory,
-              artistWorkInfo,
-            );
-            return;
-          }
-          // If userChoice is null, user dismissed dialog - do nothing
+          return;
+        } else if (userChoice == 'new') {
+          // User wants to create new task - continue with normal flow
+          // but use artist as headline and work as notes
+          await _navigateToTaskEditScreenWithArtistWork(
+            context,
+            result,
+            defaultCategory,
+            artistWorkInfo,
+          );
           return;
         }
-
-        // No matching artist found or multiple matches - create new task with artist/work
-        await _navigateToTaskEditScreenWithArtistWork(
-          context,
-          result,
-          defaultCategory,
-          artistWorkInfo,
-        );
+        // If userChoice is null, user dismissed dialog - do nothing
         return;
       }
+
+      // No matching artist found or multiple matches - create new task with artist/work
+      await _navigateToTaskEditScreenWithArtistWork(
+        context,
+        result,
+        defaultCategory,
+        artistWorkInfo,
+      );
+      return;
     }
 
     // Not a Tidal link or couldn't parse artist/work - use normal flow
@@ -412,14 +521,14 @@ class IncomingLinkProcessor {
                     duplicate.task.headline,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize: 14,
+                      fontSize: 18,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'in ${duplicate.category.headline}',
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 16,
                       color: Colors.grey[600],
                     ),
                   ),
@@ -429,24 +538,67 @@ class IncomingLinkProcessor {
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop('done'),
-            child: const Text('All Done'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop('new'),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.green[700],
-            ),
-            child: const Text('Make New'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop('edit'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[700],
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Edit Old'),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop('new'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                ),
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add, size: 20),
+                    SizedBox(height: 2),
+                    Text('Make\nNew',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, height: 1.1)),
+                  ],
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop('edit'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[700],
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                ),
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.edit, size: 20),
+                    SizedBox(height: 2),
+                    Text('Edit\nOld',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, height: 1.1)),
+                  ],
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop('done'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 226, 85, 85),
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                ),
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.close, size: 20),
+                    SizedBox(height: 2),
+                    Text('Cancel',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, height: 1.1)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -470,9 +622,8 @@ class IncomingLinkProcessor {
 
       // Prepare the new notes: append work title to existing notes
       final existingNotes = existingTask.notes ?? '';
-      final newNotes = existingNotes.isEmpty
-          ? workTitle
-          : '$existingNotes\n$workTitle';
+      final newNotes =
+          existingNotes.isEmpty ? workTitle : '$existingNotes\n$workTitle';
 
       // Prepare the new link to add to links array
       final newLink = '<a href="$url">$linkTitle</a>';
@@ -511,11 +662,13 @@ class IncomingLinkProcessor {
       Category? category = defaultCategory;
 
       if (category == null) {
-        // Show category picker first - suggest streaming media categories
+        // Show category picker first with suggested categories from the link
         await CategoryPickerDialog.show(
           context,
           title:
               'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
+          suggestedCategoryIds:
+              result.proposedTask?.suggestedCategoryOriginalIds,
           onCategorySelected: (Category selectedCategory,
               {bool? shouldMove}) async {
             await Future.delayed(const Duration(milliseconds: 100));
@@ -545,17 +698,24 @@ class IncomingLinkProcessor {
       print(
           'IncomingLinkProcessor: Opening TaskEditScreen with artist: ${artistWorkInfo.artist}, work: ${artistWorkInfo.work}');
 
-      // Create HTML link from the result
-      final htmlLink = '<a href="${result.url}">${result.title}</a>';
+      final proposed = result.proposedTask;
+
+      // Create HTML link(s) from the result or proposed task
+      final List<String> initialLinks =
+          (proposed != null && proposed.links.isNotEmpty)
+              ? proposed.links
+              : ['<a href="${result.url}">${artistWorkInfo.work}</a>'];
 
       // Navigate to TaskEditScreen with artist as headline and work as notes
       final taskSaved = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (context) => TaskEditScreen(
             category: category,
-            initialLinks: [htmlLink],
-            initialHeadline: artistWorkInfo.artist, // Artist as headline
-            initialNotes: artistWorkInfo.work, // Work as notes
+            initialLinks: initialLinks,
+            initialHeadline: proposed?.headline ??
+                artistWorkInfo.artist, // Artist as headline
+            initialNotes:
+                proposed?.notes ?? artistWorkInfo.work, // Work as notes
             showAlternativeOptions: false,
           ),
         ),
@@ -587,11 +747,13 @@ class IncomingLinkProcessor {
       Category? category = defaultCategory;
 
       if (category == null) {
-        // Show category picker first
+        // Show category picker first with suggested categories from the link
         await CategoryPickerDialog.show(
           context,
           title:
               'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
+          suggestedCategoryIds:
+              result.proposedTask?.suggestedCategoryOriginalIds,
           onCategorySelected: (Category selectedCategory,
               {bool? shouldMove}) async {
             await Future.delayed(const Duration(milliseconds: 100));
@@ -619,10 +781,17 @@ class IncomingLinkProcessor {
       print('IncomingLinkProcessor: URL: ${result.url}');
       print('IncomingLinkProcessor: Title: ${result.title}');
 
+      final proposed = result.proposedTask;
+
       // Create HTML link from the result
-      final htmlLink = result.hasValidMetadata && result.title != null
-          ? '<a href="${result.url}">${result.title}</a>'
-          : '<a href="${result.url}">${result.url}</a>';
+      final List<String> initialLinks =
+          (proposed != null && proposed.links.isNotEmpty)
+              ? proposed.links
+              : [
+                  result.hasValidMetadata && result.title != null
+                      ? '<a href="${result.url}">${result.title}</a>'
+                      : '<a href="${result.url}">${result.url}</a>'
+                ];
 
       // Note: Synopsis will be auto-fetched by SynopsisFetcher when the task is viewed
       // We don't pre-populate it here to keep the initial task creation simple
@@ -632,9 +801,9 @@ class IncomingLinkProcessor {
         MaterialPageRoute(
           builder: (context) => TaskEditScreen(
             category: category,
-            initialLinks: [htmlLink],
-            initialHeadline: result.title,
-            initialNotes: null, // Notes are user-entered, not auto-filled
+            initialLinks: initialLinks,
+            initialHeadline: proposed?.headline ?? result.title ?? 'New Task',
+            initialNotes: proposed?.notes,
             showAlternativeOptions:
                 false, // Hide bulk import options for single task
           ),
@@ -668,90 +837,6 @@ class IncomingLinkProcessor {
     }
   }
 
-  /// Show dialog when duplicates are found
-  /// Show dialog for new (non-duplicate) links
-  static Future<void> _showNewLinkDialog(
-    BuildContext context,
-    LinkProcessingResult result, {
-    Category? defaultCategory,
-    bool ignoreWarnings = false,
-  }) async {
-    // Check if context is still mounted
-    if (!context.mounted) {
-      print(
-          'IncomingLinkProcessor: Context no longer mounted, cannot show new link dialog');
-      return;
-    }
-
-    final title = result.title ?? 'Untitled Link';
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Link'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (result.hasValidMetadata) ...[
-              Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                result.url,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                ),
-              ),
-            ] else ...[
-              Text('Link: ${result.url}'),
-              if (!ignoreWarnings) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'Could not extract title from this link',
-                    style: TextStyle(color: Colors.orange),
-                  ),
-                ),
-              ],
-            ],
-            const SizedBox(height: 16),
-            const Text('What would you like to do?'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _showTaskSelectionDialog(context, result);
-            },
-            child: const Text('Add to Existing Task'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _showCategorySelectionDialog(context, result,
-                  defaultCategory: defaultCategory);
-            },
-            child: const Text('Create New Task'),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// Show category selection dialog for new task creation
   static Future<void> _showCategorySelectionDialog(
     BuildContext context,
@@ -775,6 +860,7 @@ class IncomingLinkProcessor {
       title:
           'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
       defaultCategory: defaultCategory,
+      suggestedCategoryIds: result.proposedTask?.suggestedCategoryOriginalIds,
       onCategorySelected: (Category category, {bool? shouldMove}) async {
         // Use the stored root context instead of the dialog context
         // Add a small delay to ensure the dialog is fully dismissed
@@ -802,37 +888,41 @@ class IncomingLinkProcessor {
         throw ArgumentError('Cannot create task with empty URL');
       }
 
-      // Create HTML link with proper title
-      final htmlLink = result.hasValidMetadata && result.title != null
-          ? '<a href="${result.url}">${result.title}</a>'
-          : '<a href="${result.url}">${result.url}</a>';
+      final proposed = result.proposedTask;
 
-      print('IncomingLinkProcessor: Created HTML link: $htmlLink');
+      // Create HTML link(s) with proper title
+      final List<String> links = (proposed != null && proposed.links.isNotEmpty)
+          ? proposed.links
+          : [
+              result.hasValidMetadata && result.title != null
+                  ? '<a href="${result.url}">${result.title}</a>'
+                  : '<a href="${result.url}">${result.url}</a>'
+            ];
+
+      print(
+          'IncomingLinkProcessor: Prepared ${links.length} link(s) for new task');
 
       // Find the original_id by checking if any other task has this same link
       print('IncomingLinkProcessor: Looking for original_id...');
       final originalId = await findOriginalIdForLink(result.url);
 
       // Format description for synopsis if available
-      String? synopsis;
-      if (result.description != null && result.description!.isNotEmpty) {
-        if (result.description!.length > 200) {
-          synopsis =
-              '${result.description!.substring(0, 200)}... <a href="${result.url}">(more)</a>';
-        } else {
-          synopsis =
-              '${result.description!} <a href="${result.url}">(reference)</a>';
-        }
+      String? synopsis = proposed?.synopsis;
+      if ((synopsis == null || synopsis.isEmpty) &&
+          result.description != null &&
+          result.description!.isNotEmpty) {
+        synopsis = result.description!.length > 200
+            ? '${result.description!.substring(0, 200)}... <a href="${result.url}">(more)</a>'
+            : '${result.description!} <a href="${result.url}">(reference)</a>';
       }
 
       // Create the task data
       final taskData = {
         'category_id': category.id,
-        'headline': result.title ?? 'New Task',
-        'links': [
-          htmlLink
-        ], // Ensure this is always an array with at least one element
-        'notes': null, // User-entered notes (none yet)
+        'headline': proposed?.headline ?? result.title ?? 'New Task',
+        'links':
+            links, // Ensure this is always an array with at least one element
+        'notes': proposed?.notes,
         'synopsis': synopsis, // Auto-fetched description
         'original_id': originalId, // Link to original task if it exists
         'owner_id': AuthUtils.getCurrentUserId(),
@@ -866,192 +956,6 @@ class IncomingLinkProcessor {
     } catch (e) {
       print('IncomingLinkProcessor: Error creating task directly: $e');
     }
-  }
-
-  /// Create a new task in the specified category with the link
-  static Future<void> _createTaskInCategory(
-    BuildContext context,
-    LinkProcessingResult result,
-    Category category,
-  ) async {
-    print(
-        'IncomingLinkProcessor: Creating new task in category: ${category.headline}');
-
-    // Check if context is still mounted
-    if (!context.mounted) {
-      print(
-          'IncomingLinkProcessor: Context no longer mounted, trying alternative approach');
-
-      // Try to use a different approach - get context from the app's navigator
-      try {
-        // Import the main app's navigator key if available
-        // For now, just return with an error message
-        print('IncomingLinkProcessor: Cannot create task - context unmounted');
-        return;
-      } catch (e) {
-        print('IncomingLinkProcessor: Error in context recovery: $e');
-        return;
-      }
-    }
-
-    // Create HTML link with proper title
-    // Navigate to TaskEditScreen to create new task
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => TaskEditScreen(
-          category: category,
-        ),
-      ),
-    );
-  }
-
-  /// Show the existing task with action options
-  static Future<void> _navigateToExistingTask(
-    BuildContext context,
-    DuplicateMatch duplicate,
-  ) async {
-    print(
-        'IncomingLinkProcessor: Showing existing task dialog: ${duplicate.task.headline}');
-
-    // Check if context is still mounted
-    if (!context.mounted) {
-      print(
-          'IncomingLinkProcessor: Context no longer mounted, cannot show task dialog');
-      return;
-    }
-
-    await _showExistingTaskDialog(context, duplicate);
-  }
-
-  /// Show dialog with existing task details and action options
-  static Future<void> _showExistingTaskDialog(
-    BuildContext context,
-    DuplicateMatch duplicate,
-  ) async {
-    if (!context.mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Task Already Exists'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'This link already exists in your tasks:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            // Task display similar to Home Screen
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Task headline
-                  Text(
-                    duplicate.task.headline,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: duplicate.task.finished
-                              ? Colors.grey
-                              : Colors.black,
-                        ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Task status
-                  Row(
-                    children: [
-                      Icon(
-                        duplicate.task.finished
-                            ? Icons.check_circle
-                            : Icons.schedule,
-                        size: 16,
-                        color: duplicate.task.finished
-                            ? Colors.grey
-                            : Colors.orange,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        duplicate.task.finished ? 'Finished' : 'Available',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: duplicate.task.finished
-                              ? Colors.grey
-                              : Colors.orange,
-                        ),
-                      ),
-                      if (duplicate.task.suggestibleAt != null) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          '• Suggestible ${_formatSuggestibleTime(duplicate.task.suggestibleAt!)}',
-                          style:
-                              const TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      ],
-                    ],
-                  ),
-
-                  // Category info
-                  const SizedBox(height: 4),
-                  Text(
-                    'Category: ${duplicate.category.headline}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-
-                  // Link preview
-                  if (duplicate.originalLinkText.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Link: ${duplicate.originalLinkText}',
-                      style: const TextStyle(fontSize: 12, color: Colors.blue),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          if (duplicate.task.finished) ...[
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _reviveTask(context, duplicate.task);
-              },
-              child: const Text('Revive Task'),
-            ),
-          ],
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _editExistingTask(context, duplicate.task);
-            },
-            child: const Text('Edit Task'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _createNewTaskAnyway(context, duplicate);
-            },
-            child: const Text('Create New'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Keep As Is'),
-          ),
-        ],
-      ),
-    );
   }
 
   /// Format suggestible time for display
@@ -1168,42 +1072,15 @@ class IncomingLinkProcessor {
   /// Normalize URL for comparison (remove tracking parameters, etc.)
   static String? _normalizeUrl(String url) {
     try {
-      // Handle plain URLs and extract from HTML links
-      String cleanUrl = url.trim();
-
-      // Extract URL from HTML link if provided
-      final htmlMatch =
-          RegExp(r'<a[^>]+href="([^"]*)"[^>]*>').firstMatch(cleanUrl);
-      if (htmlMatch != null) {
-        cleanUrl = htmlMatch.group(1)!;
+      // Use LinkToTaskConverter's normalization for consistency
+      final normalized = LinkToTaskConverter.normalizeUrl(url);
+      // Only log for IMDb URLs to reduce noise
+      if (url.contains('imdb.com')) {
+        print('IncomingLinkProcessor._normalizeUrl:');
+        print('  Input:  $url');
+        print('  Output: $normalized');
       }
-
-      // Parse and normalize
-      final uri = Uri.parse(cleanUrl);
-
-      // Remove common tracking parameters
-      final cleanParams = Map<String, String>.from(uri.queryParameters);
-      final trackingParams = {
-        'utm_source',
-        'utm_medium',
-        'utm_campaign',
-        'utm_term',
-        'utm_content',
-        'fbclid',
-        'gclid',
-        'ref',
-        'source',
-        '_campaign'
-      };
-
-      for (final param in trackingParams) {
-        cleanParams.remove(param);
-      }
-
-      // Rebuild URL without tracking parameters
-      final cleanUri = uri.replace(
-          queryParameters: cleanParams.isEmpty ? null : cleanParams);
-      return cleanUri.toString();
+      return normalized;
     } catch (e) {
       print('IncomingLinkProcessor: Error normalizing URL "$url": $e');
       return null;
@@ -1222,10 +1099,25 @@ class IncomingLinkProcessor {
     final normalized2 = _normalizeUrl(url2);
 
     if (normalized1 == null || normalized2 == null) {
+      print('IncomingLinkProcessor._urlsMatch: Normalization failed');
+      print('  url1: $url1 -> $normalized1');
+      print('  url2: $url2 -> $normalized2');
       return false;
     }
 
-    return normalized1 == normalized2;
+    final matches = normalized1 == normalized2;
+    if (!matches) {
+      // Only log mismatches for IMDb URLs to reduce noise
+      if (url1.contains('imdb.com') || url2.contains('imdb.com')) {
+        print('IncomingLinkProcessor._urlsMatch: URLs do NOT match');
+        print('  url1: $url1');
+        print('  normalized1: $normalized1');
+        print('  url2: $url2');
+        print('  normalized2: $normalized2');
+      }
+    }
+
+    return matches;
   }
 
   /// Get the currently active category from cache/context
@@ -1245,10 +1137,8 @@ class IncomingLinkProcessor {
           'IncomingLinkProcessor: Searching for artist "$artist" in streaming media categories');
 
       // Get all user's categories to filter for streaming media ones
-      final categoriesResponse = await supabase
-          .from('Categories')
-          .select()
-          .eq('owner_id', userId);
+      final categoriesResponse =
+          await supabase.from('Categories').select().eq('owner_id', userId);
 
       final categoriesData = categoriesResponse as List<dynamic>;
 
@@ -1263,8 +1153,7 @@ class IncomingLinkProcessor {
           .toList();
 
       if (streamingCategoryIds.isEmpty) {
-        print(
-            'IncomingLinkProcessor: User has no streaming media categories');
+        print('IncomingLinkProcessor: User has no streaming media categories');
         return null;
       }
 

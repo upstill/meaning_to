@@ -16,6 +16,8 @@ class CategoryPickerDialog extends StatefulWidget {
   final Category? excludeCategory; // Category to exclude from the list
   final bool showMoveAndCopy; // Show move/copy buttons instead of create new
   final String? taskHeadline; // Optional task headline for custom title
+  final List<int>?
+      suggestedCategoryIds; // Suggested category IDs (e.g., from LinkToTask)
 
   const CategoryPickerDialog({
     super.key,
@@ -27,6 +29,7 @@ class CategoryPickerDialog extends StatefulWidget {
     this.excludeCategory,
     this.showMoveAndCopy = false,
     this.taskHeadline,
+    this.suggestedCategoryIds,
   });
 
   static Future<void> show(
@@ -39,6 +42,7 @@ class CategoryPickerDialog extends StatefulWidget {
     Category? excludeCategory,
     bool showMoveAndCopy = false,
     String? taskHeadline,
+    List<int>? suggestedCategoryIds,
   }) {
     return showDialog(
       context: context,
@@ -51,6 +55,7 @@ class CategoryPickerDialog extends StatefulWidget {
         excludeCategory: excludeCategory,
         showMoveAndCopy: showMoveAndCopy,
         taskHeadline: taskHeadline,
+        suggestedCategoryIds: suggestedCategoryIds,
       ),
     );
   }
@@ -62,6 +67,8 @@ class CategoryPickerDialog extends StatefulWidget {
 class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
   List<Category> _categories = [];
   List<Category> _recentCategories = [];
+  List<Category> _suggestedCategories =
+      []; // Categories suggested by LinkToTask
   bool _isLoading = true;
   String? _error;
   String _searchQuery = '';
@@ -108,9 +115,13 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       // Get recent categories from cache
       final recentCategories = await _getRecentCategories(categories);
 
+      // Get suggested categories if IDs provided
+      final suggestedCategories = _getSuggestedCategories(categories);
+
       setState(() {
         _categories = categories;
         _recentCategories = recentCategories;
+        _suggestedCategories = suggestedCategories;
         _isLoading = false;
       });
     } catch (e) {
@@ -144,8 +155,34 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     }
   }
 
+  List<Category> _getSuggestedCategories(List<Category> allCategories) {
+    if (widget.suggestedCategoryIds == null ||
+        widget.suggestedCategoryIds!.isEmpty) {
+      return [];
+    }
+
+    // Find categories matching the suggested IDs (by original_id)
+    final suggested = <Category>[];
+    for (final suggestedId in widget.suggestedCategoryIds!) {
+      final category =
+          allCategories.where((c) => c.originalId == suggestedId).firstOrNull;
+      if (category != null) {
+        suggested.add(category);
+      }
+    }
+
+    return suggested;
+  }
+
   List<Category> get _filteredCategories {
     var filtered = _categories;
+
+    // Exclude the default category since it's shown prominently at the top
+    if (widget.defaultCategory != null) {
+      filtered = filtered
+          .where((category) => category.id != widget.defaultCategory!.id)
+          .toList();
+    }
 
     // Exclude the specified category if provided
     if (widget.excludeCategory != null) {
@@ -171,13 +208,17 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     final prioritized = <Category>[];
     final remaining = <Category>[];
 
-    // Add default category first if it exists and matches search
-    if (widget.defaultCategory != null &&
-        filtered.contains(widget.defaultCategory)) {
-      prioritized.add(widget.defaultCategory!);
+    // Note: Default category is excluded from filtered list and shown at top,
+    // so we don't add it here
+
+    // Add suggested categories (excluding default which is filtered out)
+    for (final suggested in _suggestedCategories) {
+      if (filtered.contains(suggested) && !prioritized.contains(suggested)) {
+        prioritized.add(suggested);
+      }
     }
 
-    // Add recent categories (excluding default if already added)
+    // Add recent categories (excluding default and suggested if already added)
     for (final recent in _recentCategories) {
       if (filtered.contains(recent) && !prioritized.contains(recent)) {
         prioritized.add(recent);
@@ -216,7 +257,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       ),
       content: SizedBox(
         width: double.maxFinite,
-        height: 400,
+        height: 500,
         child: Column(
           children: [
             // Guidance text (if provided)
@@ -235,11 +276,144 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
               ),
             ],
 
-            // Current category display (if excluding one)
+            // Combined default and suggested categories section
+            if (widget.defaultCategory != null ||
+                _suggestedCategories.isNotEmpty) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color:
+                        Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Current category section
+                    if (widget.defaultCategory != null) ...[
+                      Text(
+                        'Currently:',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      InkWell(
+                        onTap: () => widget.showMoveAndCopy
+                            ? _selectCategoryForMoveOrCopy(
+                                widget.defaultCategory!)
+                            : _selectCategory(widget.defaultCategory!),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.star,
+                                size: 14,
+                                color: Theme.of(context).colorScheme.onPrimary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                widget.defaultCategory!.headline,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color:
+                                      Theme.of(context).colorScheme.onPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    // Recommended categories section
+                    if (_suggestedCategories
+                        .where((cat) => cat.id != widget.defaultCategory?.id)
+                        .isNotEmpty) ...[
+                      if (widget.defaultCategory != null)
+                        const SizedBox(height: 8),
+                      Text(
+                        'Suggested:',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: _suggestedCategories
+                            .where(
+                                (cat) => cat.id != widget.defaultCategory?.id)
+                            .map((category) {
+                          return InkWell(
+                            onTap: () => widget.showMoveAndCopy
+                                ? _selectCategoryForMoveOrCopy(category)
+                                : _selectCategory(category),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primaryContainer
+                                    .withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              child: Text(
+                                category.headline,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+
+            // Current category display (if excluding one - for move/copy operations)
             if (widget.excludeCategory != null) ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(8),
@@ -258,7 +432,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
                     Text(
                       widget.excludeCategory!.headline,
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: Theme.of(context).colorScheme.onSurface,
                       ),
@@ -266,33 +440,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-            ],
-
-            // Create new category option (show if enabled)
-            if (widget.showCreateNew && !widget.showMoveAndCopy) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    '...alternatively ',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _createNewCategory,
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.green[100],
-                      foregroundColor: Colors.green[800],
-                    ),
-                    child: Text(
-                        'Create New ${NamingUtils.categoriesName(plural: false)}'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
             ],
 
             // Search field
@@ -322,6 +470,40 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
             Expanded(
               child: _buildCategoriesList(),
             ),
+
+            // Create new category option at the bottom (show if enabled)
+            if (widget.showCreateNew && !widget.showMoveAndCopy) ...[
+              const SizedBox(height: 6),
+              const Divider(height: 1),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '...alternatively ',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _createNewCategory,
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.green[100],
+                      foregroundColor: Colors.green[800],
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      'Create New ${NamingUtils.categoriesName(plural: false)}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -440,17 +622,22 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       itemBuilder: (context, index) {
         final category = categories[index];
         final isDefault = category == widget.defaultCategory;
-        final isRecent = _recentCategories.contains(category) && !isDefault;
+        final isSuggested =
+            _suggestedCategories.contains(category) && !isDefault;
+        final isRecent =
+            _recentCategories.contains(category) && !isDefault && !isSuggested;
 
         return ListTile(
-          leading: _buildCategoryIcon(category, isDefault, isRecent),
+          leading:
+              _buildCategoryIcon(category, isDefault, isSuggested, isRecent),
           title: Text(
             category.headline,
             style: TextStyle(
               fontWeight: isDefault ? FontWeight.bold : FontWeight.normal,
             ),
           ),
-          subtitle: _buildCategorySubtitle(category, isDefault, isRecent),
+          subtitle: _buildCategorySubtitle(
+              category, isDefault, isSuggested, isRecent),
           onTap: () => widget.showMoveAndCopy
               ? _selectCategoryForMoveOrCopy(category)
               : _selectCategory(category),
@@ -462,10 +649,16 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     );
   }
 
-  Widget _buildCategoryIcon(Category category, bool isDefault, bool isRecent) {
+  Widget _buildCategoryIcon(
+      Category category, bool isDefault, bool isSuggested, bool isRecent) {
     if (isDefault) {
       return Icon(
         Icons.star,
+        color: Theme.of(context).colorScheme.primary,
+      );
+    } else if (isSuggested) {
+      return Icon(
+        Icons.lightbulb_outline,
         color: Theme.of(context).colorScheme.primary,
       );
     } else if (isRecent) {
@@ -482,11 +675,14 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
   }
 
   Widget? _buildCategorySubtitle(
-      Category category, bool isDefault, bool isRecent) {
+      Category category, bool isDefault, bool isSuggested, bool isRecent) {
     final labels = <String>[];
 
     if (isDefault) {
       labels.add('Current');
+    }
+    if (isSuggested) {
+      labels.add('Suggested');
     }
     if (isRecent) {
       labels.add('Recent');

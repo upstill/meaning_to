@@ -63,12 +63,14 @@ class LinkToTaskConverter {
     print('LinkToTaskConverter: Normalized URL: $normalizedUrl');
 
     // Fetch webpage metadata
-    final webpageContent = await LinkProcessor.validateAndProcessLink(normalizedUrl);
+    final webpageContent =
+        await LinkProcessor.validateAndProcessLink(normalizedUrl);
     final pageTitle = webpageContent.title ?? 'Untitled';
     final pageDescription = webpageContent.description;
 
     print('LinkToTaskConverter: Page title: "$pageTitle"');
-    print('LinkToTaskConverter: Page description: ${pageDescription?.substring(0, pageDescription.length > 100 ? 100 : pageDescription.length)}...');
+    print(
+        'LinkToTaskConverter: Page description: ${pageDescription?.substring(0, pageDescription.length > 100 ? 100 : pageDescription.length)}...');
 
     // Analyze URL to suggest categories
     var suggestedCategoryIds = analyzeLinkForCategorySuggestions(normalizedUrl);
@@ -80,14 +82,18 @@ class LinkToTaskConverter {
         STREAMING_MEDIA_CATEGORY_IDS.contains(currentCategory!.originalId);
 
     print('LinkToTaskConverter: Is streaming URL: $isStreamingUrl');
-    print('LinkToTaskConverter: Is in streaming category: $isInStreamingCategory');
+    print(
+        'LinkToTaskConverter: Is in streaming category: $isInStreamingCategory');
 
     String headline;
     String? notes;
     String? synopsis;
 
     // Process based on link type
-    if (isStreamingUrl && (isInStreamingCategory || suggestedCategoryIds.any((id) => STREAMING_MEDIA_CATEGORY_IDS.contains(id)))) {
+    if (isStreamingUrl &&
+        (isInStreamingCategory ||
+            suggestedCategoryIds
+                .any((id) => STREAMING_MEDIA_CATEGORY_IDS.contains(id)))) {
       // Streaming media: extract artist and work
       final artistWorkInfo = extractArtistAndWorkFromTidal(pageTitle);
 
@@ -95,13 +101,15 @@ class LinkToTaskConverter {
         headline = artistWorkInfo.artist;
         notes = artistWorkInfo.work;
         synopsis = pageDescription;
-        print('LinkToTaskConverter: Extracted streaming media - Artist: "$headline", Work: "$notes"');
+        print(
+            'LinkToTaskConverter: Extracted streaming media - Artist: "$headline", Work: "$notes"');
       } else {
         // Fallback if extraction fails
         headline = pageTitle;
         notes = null;
         synopsis = pageDescription;
-        print('LinkToTaskConverter: Could not extract artist/work, using page title');
+        print(
+            'LinkToTaskConverter: Could not extract artist/work, using page title');
       }
     } else if (normalizedUrl.contains('imdb.com')) {
       // IMDb: clean up title and extract plot synopsis with type information
@@ -114,23 +122,28 @@ class LinkToTaskConverter {
 
       print('🎯 LinkToTaskConverter: IMDb processing complete:');
       print('   - Headline: "$headline"');
-      print('   - Synopsis: ${synopsis != null ? "${synopsis.length} chars" : "null"}');
-      print('   - Synopsis preview: ${synopsis != null ? synopsis.substring(0, synopsis.length > 100 ? 100 : synopsis.length) : "N/A"}...');
+      print(
+          '   - Synopsis: ${synopsis != null ? "${synopsis.length} chars" : "null"}');
+      print(
+          '   - Synopsis preview: ${synopsis != null ? synopsis.substring(0, synopsis.length > 100 ? 100 : synopsis.length) : "N/A"}...');
       print('   - Media type: $mediaType');
 
       // Override category suggestions based on OMDb API Type field
       if (mediaType != null) {
         if (mediaType == 'movie' || mediaType == 'short') {
           suggestedCategoryIds = [1]; // Movie category only
-          print('LinkToTaskConverter: IMDb Type is "$mediaType" - suggesting Movie category only');
+          print(
+              'LinkToTaskConverter: IMDb Type is "$mediaType" - suggesting Movie category only');
         } else if (mediaType == 'series') {
           suggestedCategoryIds = [2]; // TV category only
-          print('LinkToTaskConverter: IMDb Type is "$mediaType" - suggesting TV category only');
+          print(
+              'LinkToTaskConverter: IMDb Type is "$mediaType" - suggesting TV category only');
         }
       }
 
       print('LinkToTaskConverter: IMDb link - cleaned headline: "$headline"');
-    } else if (normalizedUrl.contains('letterboxd.com') || normalizedUrl.contains('boxd.it')) {
+    } else if (normalizedUrl.contains('letterboxd.com') ||
+        normalizedUrl.contains('boxd.it')) {
       // Letterboxd: special handling
       headline = pageTitle;
       notes = null;
@@ -148,8 +161,10 @@ class LinkToTaskConverter {
     final htmlLink = '<a href="$normalizedUrl">$pageTitle</a>';
 
     // Check for existing task with this link (for original_id)
-    final existingTaskOriginalId = await _findExistingTaskOriginalId(normalizedUrl, userId);
-    print('LinkToTaskConverter: Existing task original_id: $existingTaskOriginalId');
+    final existingTaskOriginalId =
+        await _findExistingTaskOriginalId(normalizedUrl, userId);
+    print(
+        'LinkToTaskConverter: Existing task original_id: $existingTaskOriginalId');
 
     // If we found an existing task, try to use its synopsis if we don't have one
     if (existingTaskOriginalId != null && synopsis == null) {
@@ -161,7 +176,8 @@ class LinkToTaskConverter {
     print('   - Headline: "$headline"');
     print('   - Notes: ${notes != null ? "\"$notes\"" : "null"}');
     print('   - Links: ${[htmlLink].length} link(s)');
-    print('   - Synopsis: ${synopsis != null ? "${synopsis.length} chars" : "null"}');
+    print(
+        '   - Synopsis: ${synopsis != null ? "${synopsis.length} chars" : "null"}');
     print('   - Suggested categories: $suggestedCategoryIds');
     print('   - Existing task original_id: $existingTaskOriginalId');
 
@@ -181,7 +197,8 @@ class LinkToTaskConverter {
       String cleanUrl = url.trim();
 
       // Extract URL from HTML link if provided
-      final htmlMatch = RegExp(r'<a[^>]+href="([^"]*)"[^>]*>').firstMatch(cleanUrl);
+      final htmlMatch =
+          RegExp(r'<a[^>]+href="([^"]*)"[^>]*>').firstMatch(cleanUrl);
       if (htmlMatch != null) {
         cleanUrl = htmlMatch.group(1)!;
       }
@@ -192,12 +209,32 @@ class LinkToTaskConverter {
       // For IMDb URLs, remove ALL query parameters (they're never needed)
       // The canonical IMDb URL is just: https://www.imdb.com/title/tt1234567/
       if (uri.host.contains('imdb.com')) {
-        print('LinkToTaskConverter: Normalizing IMDb URL - removing all query parameters');
-        final cleanUri = uri.replace(queryParameters: {});
-        String result = cleanUri.toString();
-        if (result.endsWith('?')) {
-          result = result.substring(0, result.length - 1);
+        print(
+            'LinkToTaskConverter: Normalizing IMDb URL - removing query parameters and extra path segments');
+
+        // Extract the IMDb title ID (e.g., tt0111161)
+        final idMatch = RegExp(r'/title/(tt\d+)').firstMatch(uri.path);
+        String? imdbId;
+        if (idMatch != null) {
+          imdbId = idMatch.group(1);
         }
+
+        if (imdbId == null) {
+          print(
+              '   Warning: Could not extract IMDb ID from path "${uri.path}". Returning original URL.');
+          return cleanUrl;
+        }
+
+        // Rebuild the canonical IMDb URL: https://www.imdb.com/title/tt1234567/
+        final cleanUri = Uri(
+          scheme: uri.scheme,
+          userInfo: uri.userInfo,
+          host: uri.host,
+          port: uri.hasPort ? uri.port : null,
+          path: '/title/$imdbId/',
+        );
+
+        String result = cleanUri.toString();
         print('   Original: $url');
         print('   Cleaned:  $result');
         return result;
@@ -290,9 +327,9 @@ class LinkToTaskConverter {
     }
   }
 
-
   /// Fetch IMDb data from OMDb API, returns map with 'synopsis' and 'type' keys
-  static Future<Map<String, String?>> _fetchImdbData(String url, String? pageDescription) async {
+  static Future<Map<String, String?>> _fetchImdbData(
+      String url, String? pageDescription) async {
     try {
       // Extract IMDb ID from URL
       final imdbId = _extractImdbId(url);
@@ -304,20 +341,26 @@ class LinkToTaskConverter {
       print('LinkToTaskConverter: Extracted IMDb ID: $imdbId');
 
       // Try OMDb API first
-      print('🔍 LinkToTaskConverter: Attempting to fetch IMDb data from OMDb API...');
+      print(
+          '🔍 LinkToTaskConverter: Attempting to fetch IMDb data from OMDb API...');
       final omdbData = await _fetchFromOmdbApi(imdbId);
       if (omdbData != null) {
-        print('✅ LinkToTaskConverter: OMDb data received, building synopsis...');
+        print(
+            '✅ LinkToTaskConverter: OMDb data received, building synopsis...');
         final synopsis = _buildSynopsisFromOmdbData(omdbData);
-        final type = omdbData['Type'] as String?; // "movie", "series", "short", or "episode"
-        print('📦 LinkToTaskConverter: Returning OMDb data - synopsis length: ${synopsis.length} chars, type: $type');
+        final type = omdbData['Type']
+            as String?; // "movie", "series", "short", or "episode"
+        print(
+            '📦 LinkToTaskConverter: Returning OMDb data - synopsis length: ${synopsis.length} chars, type: $type');
         return {'synopsis': synopsis, 'type': type};
       }
 
       // Fallback to HTML scraping if API fails
-      print('⚠️  LinkToTaskConverter: OMDb API returned null, falling back to HTML scraping');
+      print(
+          '⚠️  LinkToTaskConverter: OMDb API returned null, falling back to HTML scraping');
       final synopsis = await _fetchImdbSynopsisFromHtml(url, pageDescription);
-      print('📦 LinkToTaskConverter: Returning HTML-scraped data - synopsis: ${synopsis != null ? "${synopsis.length} chars" : "null"}');
+      print(
+          '📦 LinkToTaskConverter: Returning HTML-scraped data - synopsis: ${synopsis != null ? "${synopsis.length} chars" : "null"}');
       return {'synopsis': synopsis, 'type': null};
     } catch (e) {
       print('LinkToTaskConverter: Error fetching IMDb data: $e');
@@ -326,7 +369,8 @@ class LinkToTaskConverter {
   }
 
   /// Fetch synopsis specifically for IMDb links using OMDb API (backward compatibility)
-  static Future<String?> _fetchImdbSynopsis(String url, String? pageDescription) async {
+  static Future<String?> _fetchImdbSynopsis(
+      String url, String? pageDescription) async {
     final data = await _fetchImdbData(url, pageDescription);
     return data['synopsis'];
   }
@@ -342,7 +386,7 @@ class LinkToTaskConverter {
     try {
       // Get OMDb API key with fallback to .env for local development
       String? apiKey;
-      
+
       // Priority 1: Build-time environment variable (Production)
       const apiKeyFromBuild = String.fromEnvironment('OMDB_API_KEY');
       if (apiKeyFromBuild.isNotEmpty) {
@@ -361,17 +405,22 @@ class LinkToTaskConverter {
 
       // Skip API call if no key is configured
       if (apiKey == null || apiKey.isEmpty) {
-        print('❌ LinkToTaskConverter: OMDb API key not configured, skipping API call');
-        print('   - Build-time key: ${apiKeyFromBuild.isNotEmpty ? "present but empty" : "not set"}');
-        print('   - Runtime .env key: ${apiKey == null ? "not found" : "empty"}');
+        print(
+            '❌ LinkToTaskConverter: OMDb API key not configured, skipping API call');
+        print(
+            '   - Build-time key: ${apiKeyFromBuild.isNotEmpty ? "present but empty" : "not set"}');
+        print(
+            '   - Runtime .env key: ${apiKey == null ? "not found" : "empty"}');
         return null;
       }
 
       print('✅ LinkToTaskConverter: OMDb API key found, making API call...');
-      final omdbUrl = 'http://www.omdbapi.com/?i=$imdbId&plot=full&apikey=$apiKey';
+      final omdbUrl =
+          'http://www.omdbapi.com/?i=$imdbId&plot=full&apikey=$apiKey';
       print('🌐 LinkToTaskConverter: Calling OMDb API for $imdbId');
 
-      final response = await http.get(Uri.parse(omdbUrl)).timeout(Duration(seconds: 10));
+      final response =
+          await http.get(Uri.parse(omdbUrl)).timeout(Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -381,19 +430,24 @@ class LinkToTaskConverter {
           print('   📝 Title: ${data['Title']}');
           print('   🎬 Type: ${data['Type']}');
           final plot = data['Plot']?.toString();
-          final plotPreview = plot != null ? (plot.length > 100 ? plot.substring(0, 100) : plot) : "N/A";
+          final plotPreview = plot != null
+              ? (plot.length > 100 ? plot.substring(0, 100) : plot)
+              : "N/A";
           print('   📖 Plot: $plotPreview...');
-          print('   ⭐ Rating: ${data['Rated']} | IMDb: ${data['imdbRating']}/10');
+          print(
+              '   ⭐ Rating: ${data['Rated']} | IMDb: ${data['imdbRating']}/10');
           print('   ⏱️  Runtime: ${data['Runtime']}');
           print('   📅 Released: ${data['Released']}');
           return data;
         } else {
-          print('❌ LinkToTaskConverter: OMDb API error response: ${data['Error']}');
+          print(
+              '❌ LinkToTaskConverter: OMDb API error response: ${data['Error']}');
           return null;
         }
       }
 
-      print('❌ LinkToTaskConverter: OMDb API returned HTTP status ${response.statusCode}');
+      print(
+          '❌ LinkToTaskConverter: OMDb API returned HTTP status ${response.statusCode}');
       return null;
     } catch (e) {
       print('LinkToTaskConverter: Error calling OMDb API: $e');
@@ -433,18 +487,22 @@ class LinkToTaskConverter {
     final synopsis = parts.join('. ');
     print('📝 LinkToTaskConverter: Built synopsis from OMDb data:');
     print('   - Total length: ${synopsis.length} characters');
-    print('   - Preview: "${synopsis.substring(0, synopsis.length > 150 ? 150 : synopsis.length)}${synopsis.length > 150 ? "..." : ""}"');
-    print('   - Parts included: ${parts.length} (${parts.map((p) => p.split('.').first).join(", ")})');
+    print(
+        '   - Preview: "${synopsis.substring(0, synopsis.length > 150 ? 150 : synopsis.length)}${synopsis.length > 150 ? "..." : ""}"');
+    print(
+        '   - Parts included: ${parts.length} (${parts.map((p) => p.split('.').first).join(", ")})');
     return synopsis;
   }
 
   /// Fallback: Fetch synopsis from HTML scraping
-  static Future<String?> _fetchImdbSynopsisFromHtml(String url, String? pageDescription) async {
+  static Future<String?> _fetchImdbSynopsisFromHtml(
+      String url, String? pageDescription) async {
     try {
       final response = await http.get(
         Uri.parse(url),
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
         },
       ).timeout(Duration(seconds: 10));
 
@@ -472,7 +530,8 @@ class LinkToTaskConverter {
           }
 
           final fullSynopsis = parts.join('. ');
-          print('LinkToTaskConverter: Extracted IMDb synopsis from HTML: "${fullSynopsis.substring(0, fullSynopsis.length > 100 ? 100 : fullSynopsis.length)}..."');
+          print(
+              'LinkToTaskConverter: Extracted IMDb synopsis from HTML: "${fullSynopsis.substring(0, fullSynopsis.length > 100 ? 100 : fullSynopsis.length)}..."');
           return fullSynopsis;
         }
       }
@@ -488,8 +547,10 @@ class LinkToTaskConverter {
   static String? _extractImdbPlot(String html) {
     // Try to extract the plot synopsis from IMDb's HTML
     // IMDb typically has the plot in a <span data-testid="plot-xl"> or similar
-    final plotMatch = RegExp(r'<span[^>]*data-testid="plot[^"]*"[^>]*>(.*?)</span>',
-      dotAll: true).firstMatch(html);
+    final plotMatch = RegExp(
+            r'<span[^>]*data-testid="plot[^"]*"[^>]*>(.*?)</span>',
+            dotAll: true)
+        .firstMatch(html);
 
     if (plotMatch != null) {
       final plotText = plotMatch.group(1)?.trim();
@@ -543,7 +604,8 @@ class LinkToTaskConverter {
               .allMatches(inlineListHtml)
               .toList();
 
-          print('LinkToTaskConverter: Found ${liMatches.length} metadata items in ipc-inline-list');
+          print(
+              'LinkToTaskConverter: Found ${liMatches.length} metadata items in ipc-inline-list');
 
           if (liMatches.length >= 3) {
             // First item: Rating
@@ -581,7 +643,8 @@ class LinkToTaskConverter {
   }
 
   /// Fetch synopsis specifically for Letterboxd links
-  static Future<String?> _fetchLetterboxdSynopsis(String url, String? pageDescription) async {
+  static Future<String?> _fetchLetterboxdSynopsis(
+      String url, String? pageDescription) async {
     // If we already have a good description from the page, use it
     if (pageDescription != null && pageDescription.isNotEmpty) {
       // Truncate if too long
@@ -598,7 +661,8 @@ class LinkToTaskConverter {
   }
 
   /// Find the original_id of an existing task with this link
-  static Future<int?> _findExistingTaskOriginalId(String url, String userId) async {
+  static Future<int?> _findExistingTaskOriginalId(
+      String url, String userId) async {
     try {
       // Fetch ALL tasks in the database to find the original
       final response = await supabase
@@ -619,7 +683,8 @@ class LinkToTaskConverter {
               // Found a task with this link
               // If it has an original_id, use that; otherwise use its own id
               final originalId = task.originalId ?? task.id;
-              print('LinkToTaskConverter: Found original_id: $originalId (from task: "${task.headline}")');
+              print(
+                  'LinkToTaskConverter: Found original_id: $originalId (from task: "${task.headline}")');
               return originalId;
             }
           }
@@ -636,13 +701,12 @@ class LinkToTaskConverter {
   }
 
   /// Get synopsis from an existing task with this link
-  static Future<String?> _getExistingTaskSynopsis(String url, String userId) async {
+  static Future<String?> _getExistingTaskSynopsis(
+      String url, String userId) async {
     try {
       // Search user's tasks for this link
-      final response = await supabase
-          .from('Tasks')
-          .select()
-          .eq('owner_id', userId);
+      final response =
+          await supabase.from('Tasks').select().eq('owner_id', userId);
 
       final tasksData = response as List<dynamic>;
 
@@ -656,7 +720,8 @@ class LinkToTaskConverter {
             if (linkUrl != null && _urlsMatch(url, linkUrl)) {
               // Found matching task, return its synopsis
               if (task.synopsis != null && task.synopsis!.isNotEmpty) {
-                print('LinkToTaskConverter: Retrieved synopsis from task: "${task.headline}"');
+                print(
+                    'LinkToTaskConverter: Retrieved synopsis from task: "${task.headline}"');
                 return task.synopsis;
               }
             }
