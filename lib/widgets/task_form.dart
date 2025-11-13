@@ -11,6 +11,8 @@ import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/link_edit_screen.dart';
 import 'package:meaning_to/utils/auth.dart';
+import 'package:meaning_to/utils/incoming_link_processor.dart';
+import 'package:html/parser.dart' as html_parser;
 
 class TaskForm extends StatefulWidget {
   final List<Category> categories;
@@ -137,6 +139,45 @@ class _TaskFormState extends State<TaskForm> {
     }
   }
 
+  /// Extract URL from HTML link format
+  String? _extractUrlFromHtmlLink(String htmlLink) {
+    try {
+      final document = html_parser.parse(htmlLink);
+      final anchor = document.querySelector('a');
+      return anchor?.attributes['href'];
+    } catch (e) {
+      print('TaskForm: Error extracting URL from HTML link: $e');
+      return null;
+    }
+  }
+
+  /// Check for duplicate link across all tasks
+  /// Returns the DuplicateMatch if found, null otherwise
+  Future<DuplicateMatch?> _checkForDuplicateLink(String htmlLink) async {
+    print('TaskForm: Checking for duplicate link: $htmlLink');
+
+    // Extract URL from HTML link
+    final url = _extractUrlFromHtmlLink(htmlLink);
+    if (url == null) {
+      print('TaskForm: Could not extract URL from HTML link');
+      return null;
+    }
+
+    // Use IncomingLinkProcessor's comprehensive duplicate detection
+    final duplicates = await IncomingLinkProcessor.findAllDuplicates(url);
+
+    if (duplicates.isNotEmpty) {
+      // Found duplicate(s) - use the first one
+      final duplicate = duplicates.first;
+      print(
+          'TaskForm: Found duplicate in task "${duplicate.task.headline}" in category "${duplicate.category.headline}"');
+      return duplicate;
+    }
+
+    print('TaskForm: No duplicates found');
+    return null;
+  }
+
   /// Process a URL found in the headline field
   Future<void> _processUrlInHeadline(String url) async {
     if (_isProcessingUrl) {
@@ -191,14 +232,71 @@ class _TaskFormState extends State<TaskForm> {
           print(
               'TaskForm: Stored synopsis for saving: ${_synopsis!.length} characters');
         }
-
-        // Add the HTML link from proposedTask (it's already formatted)
-        if (proposedTask.links.isNotEmpty) {
-          _links.add(proposedTask.links.first);
-        }
       });
 
       _isProgrammaticUpdate = false;
+
+      // Check for duplicates before adding the link
+      if (proposedTask.links.isNotEmpty) {
+        final htmlLink = proposedTask.links.first;
+        final duplicate = await _checkForDuplicateLink(htmlLink);
+
+        if (duplicate != null && mounted) {
+          // Show dialog to user about the duplicate
+          final result = await showDialog<String>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('That link is already on file'),
+              content: Text(
+                'It\'s used in the ${NamingUtils.tasksName(capitalize: false, plural: false)} "${duplicate.task.headline}" '
+                'for ${NamingUtils.categoriesName(capitalize: false, plural: false)} "${duplicate.category.headline}".\n\n'
+                'Do you want to add it anyway?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop('cancel'),
+                  child: const Text('Never Mind'),
+                ),
+                // TextButton(
+                //   onPressed: () => Navigator.of(context).pop('view'),
+                //   child: Text(
+                //       'Go to the Existing ${NamingUtils.tasksName(capitalize: true, plural: false)}'),
+                // ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop('add_anyway'),
+                  style: AppButtons.goForth(),
+                  child: const Text('Add It Anyway'),
+                ),
+              ],
+            ),
+          );
+
+          if (result == 'add_anyway') {
+            // User chose to add anyway
+            setState(() {
+              _links.add(htmlLink);
+            });
+          } else if (result == 'view') {
+            // TODO: Navigate to the existing task
+            // For now, just show a snackbar
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                      'Existing task: "${duplicate.task.headline}" in "${duplicate.category.headline}"'),
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
+          }
+          // If 'cancel' or dialog dismissed, do nothing (don't add the link)
+        } else {
+          // No duplicate found, add the link
+          setState(() {
+            _links.add(htmlLink);
+          });
+        }
+      }
 
       print('TaskForm: Successfully updated fields from proposed task');
       print('TaskForm: === URL PROCESSING COMPLETE ===');
@@ -227,25 +325,91 @@ class _TaskFormState extends State<TaskForm> {
       ),
     );
 
-    if (result != null) {
-      setState(() {
-        // Add the link
-        if (result.links.isNotEmpty) {
-          _links.add(result.links.first);
-        }
+    if (result != null && result.links.isNotEmpty) {
+      final htmlLink = result.links.first;
 
-        // If headline is empty, use the link's title
-        if (_headlineController.text.trim().isEmpty) {
-          _headlineController.text = result.headline;
-        }
+      // Check for duplicates before adding the link
+      final duplicate = await _checkForDuplicateLink(htmlLink);
 
-        // If synopsis is available and current synopsis is empty, use it
-        if (result.synopsis != null &&
-            result.synopsis!.isNotEmpty &&
-            (_synopsis == null || _synopsis!.isEmpty)) {
-          _synopsis = result.synopsis;
+      if (duplicate != null && mounted) {
+        // Show dialog to user about the duplicate
+        final dialogResult = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('That link is already on file'),
+            content: Text(
+              'It\'s used in the ${NamingUtils.tasksName(capitalize: false, plural: false)} "${duplicate.task.headline}" '
+              'in ${NamingUtils.categoriesName(capitalize: false, plural: false)} "${duplicate.category.headline}".\n\n'
+              'Do you want to add it anyway?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop('cancel'),
+                child: const Text('Forget It'),
+              ),
+              // TextButton(
+              //   onPressed: () => Navigator.of(context).pop('view'),
+              //   child: Text(
+              //       'Go to the Existing ${NamingUtils.tasksName(capitalize: true, plural: false)}'),
+              // ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop('add_anyway'),
+                style: AppButtons.goForth(),
+                child: const Text('Add Anyway'),
+              ),
+            ],
+          ),
+        );
+
+        if (dialogResult == 'add_anyway') {
+          // User chose to add anyway
+          setState(() {
+            _links.add(htmlLink);
+
+            // If headline is empty, use the link's title
+            if (_headlineController.text.trim().isEmpty) {
+              _headlineController.text = result.headline;
+            }
+
+            // If synopsis is available and current synopsis is empty, use it
+            if (result.synopsis != null &&
+                result.synopsis!.isNotEmpty &&
+                (_synopsis == null || _synopsis!.isEmpty)) {
+              _synopsis = result.synopsis;
+            }
+          });
+        } else if (dialogResult == 'view') {
+          // TODO: Navigate to the existing task
+          // For now, just show a snackbar
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    'Existing ${NamingUtils.tasksName(capitalize: true, plural: false)}: "${duplicate.task.headline}" in "${duplicate.category.headline}"'),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
         }
-      });
+        // If 'cancel' or dialog dismissed, do nothing (don't add the link)
+      } else {
+        // No duplicate found, add the link
+        setState(() {
+          _links.add(htmlLink);
+
+          // If headline is empty, use the link's title
+          if (_headlineController.text.trim().isEmpty) {
+            _headlineController.text = result.headline;
+          }
+
+          // If synopsis is available and current synopsis is empty, use it
+          if (result.synopsis != null &&
+              result.synopsis!.isNotEmpty &&
+              (_synopsis == null || _synopsis!.isEmpty)) {
+            _synopsis = result.synopsis;
+          }
+        });
+      }
     }
   }
 

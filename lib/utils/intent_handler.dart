@@ -247,15 +247,55 @@ class IntentHandler {
 
     print('IntentHandler: Processing link intent for URL: $url');
 
-    // Analyze URL and determine suggested categories
-    final suggestedCategoryIds = _analyzeLinkForCategorySuggestions(url);
-    if (suggestedCategoryIds.isNotEmpty) {
-      print('IntentHandler: URL suggests category IDs: $suggestedCategoryIds');
-      intent.data['suggestedCategoryIds'] = suggestedCategoryIds;
-    }
+    // Show loading dialog
+    _showProcessingDialog(context);
 
-    // First, check for existing tasks with this link
-    await _checkForDuplicateLinkAndHandle(url, intent, context);
+    try {
+      // Analyze URL and determine suggested categories
+      final suggestedCategoryIds = _analyzeLinkForCategorySuggestions(url);
+      if (suggestedCategoryIds.isNotEmpty) {
+        print('IntentHandler: URL suggests category IDs: $suggestedCategoryIds');
+        intent.data['suggestedCategoryIds'] = suggestedCategoryIds;
+      }
+
+      // First, check for existing tasks with this link
+      await _checkForDuplicateLinkAndHandle(url, intent, context);
+    } catch (e) {
+      print('IntentHandler: Error processing link intent: $e');
+      _dismissProcessingDialog(context);
+      rethrow;
+    }
+  }
+
+  /// Show processing dialog
+  void _showProcessingDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                'Processing link...',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Dismiss processing dialog
+  void _dismissProcessingDialog(BuildContext context) {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   /// Check for duplicate links and handle based on ownership
@@ -317,6 +357,9 @@ class IntentHandler {
     print(
         'IntentHandler: Handling user-owned duplicate for task: ${duplicate.task.headline}');
 
+    // Dismiss processing dialog before showing user choice dialog
+    _dismissProcessingDialog(context);
+
     // Show dialog asking user if they want to keep existing or create new
     final action = await _showUserOwnedDuplicateDialog(context, duplicate);
 
@@ -349,6 +392,9 @@ class IntentHandler {
     // Find user's equivalent category (same original_id)
     final userCategory = await _findUserEquivalentCategory(duplicate.category);
 
+    // Dismiss processing dialog before navigating
+    _dismissProcessingDialog(context);
+
     if (userCategory != null) {
       print(
           'IntentHandler: Found user equivalent category: ${userCategory.headline}');
@@ -367,6 +413,10 @@ class IntentHandler {
   Future<void> _handleNewLinkCreation(
       String url, ProcessedIntent intent, BuildContext context) async {
     print('IntentHandler: Creating new task for link: $url');
+
+    // Dismiss processing dialog before navigating
+    _dismissProcessingDialog(context);
+
     await _navigateToNewContentWithLink(url, intent, context);
   }
 
@@ -629,7 +679,7 @@ class IntentHandler {
     }
   }
 
-  /// Get or create the suggested category for the user
+  /// Get the suggested category if the user already has it
   Future<Category?> _getOrCreateSuggestedCategory(ProcessedIntent intent, BuildContext context) async {
     final suggestedCategoryIds = intent.data['suggestedCategoryIds'] as List<String>?;
     if (suggestedCategoryIds == null || suggestedCategoryIds.isEmpty) return null;
@@ -657,211 +707,13 @@ class IntentHandler {
         }
       }
 
-      // User doesn't have any of the suggested categories, offer choices
-      return await _showMultipleCategoryOptions(context, suggestedCategoryIds, currentUserId);
-
-    } catch (e) {
-      print('IntentHandler: Error getting or creating suggested category: $e');
-      return null;
-    }
-  }
-
-  /// Show dialog with multiple category options
-  Future<Category?> _showMultipleCategoryOptions(BuildContext context, List<String> suggestedIds, String userId) async {
-    try {
-      print('IntentHandler: Fetching category options for IDs: $suggestedIds');
-
-      // Fetch all the suggested original categories
-      final List<Category> categoryOptions = [];
-
-      for (final id in suggestedIds) {
-        final response = await supabase
-            .from('Categories')
-            .select()
-            .eq('id', id)
-            .limit(1)
-            .maybeSingle();
-
-        if (response != null) {
-          categoryOptions.add(Category.fromJson(response));
-        }
-      }
-
-      if (categoryOptions.isEmpty) {
-        print('IntentHandler: No category options found');
-        return null;
-      }
-
-      if (categoryOptions.length == 1) {
-        // Only one option available, show single adoption dialog
-        final shouldAdopt = await _showCategoryAdoptionDialog(context, categoryOptions.first);
-        if (shouldAdopt) {
-          return await _createCategoryCopy(categoryOptions.first, userId);
-        }
-        return null;
-      }
-
-      // Multiple options available, show selection dialog
-      final selectedCategory = await _showCategorySelectionDialog(context, categoryOptions);
-      if (selectedCategory != null) {
-        return await _createCategoryCopy(selectedCategory, userId);
-      }
-
+      // User doesn't have the suggested categories - return null to use current category
+      // The unified CategoryPickerDialog will show suggestions when user clicks "Move to Different Pursuit"
+      print('IntentHandler: User doesn\'t have suggested categories, will use current category with suggestions');
       return null;
 
     } catch (e) {
-      print('IntentHandler: Error showing multiple category options: $e');
-      return null;
-    }
-  }
-
-  /// Show dialog for selecting between multiple suggested categories
-  Future<Category?> _showCategorySelectionDialog(BuildContext context, List<Category> options) async {
-    return await showDialog<Category>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Choose ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'This link could belong in one of these ${NamingUtils.categoriesName(plural: true, capitalize: false)}:',
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 16),
-            ...options.map((category) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(category),
-                  style: ElevatedButton.styleFrom(
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.all(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        category.headline,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                      if (category.invitation != null && category.invitation!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          category.invitation!,
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            )),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(null),
-            child: const Text('Use current category instead'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Show dialog asking user if they want to adopt a suggested category
-  Future<bool> _showCategoryAdoptionDialog(BuildContext context, Category originalCategory) async {
-    return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Suggested ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'This link looks like it belongs in:',
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    originalCategory.headline,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  if (originalCategory.invitation != null && originalCategory.invitation!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      originalCategory.invitation!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text('Would you like to adopt this ${NamingUtils.categoriesName(plural: false, capitalize: false)} for your own use?'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('No, use current'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Yes, adopt this ${NamingUtils.categoriesName(plural: false, capitalize: false)}'),
-          ),
-        ],
-      ),
-    ) ?? false;
-  }
-
-  /// Create a copy of a category for the current user
-  Future<Category?> _createCategoryCopy(Category originalCategory, String userId) async {
-    try {
-      print('IntentHandler: Creating category copy for user: $userId');
-
-      final categoryData = {
-        'headline': originalCategory.headline,
-        'invitation': originalCategory.invitation,
-        'owner_id': userId,
-        'original_id': originalCategory.id, // Link to the original
-        'private': originalCategory.private,
-        'tasks_are_private': originalCategory.tasksArePrivate,
-      };
-
-      final response = await supabase
-          .from('Categories')
-          .insert(categoryData)
-          .select()
-          .single();
-
-      final newCategory = Category.fromJson(response);
-      print('IntentHandler: Created category copy: ${newCategory.headline}');
-
-      // Initialize cache with the new category
-      final cacheManager = CacheManager();
-      await cacheManager.initializeWithSavedCategory(newCategory, userId);
-
-      return newCategory;
-
-    } catch (e) {
-      print('IntentHandler: Error creating category copy: $e');
+      print('IntentHandler: Error getting suggested category: $e');
       return null;
     }
   }
@@ -1152,13 +1004,7 @@ class IntentHandler {
     print('Data: $data');
     print('========================\n');
 
-    // Show user notification
-    _scaffoldKey?.currentState?.showSnackBar(
-      SnackBar(
-        content: Text('Received ${type.name} intent'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    // User notification is now shown via processing dialog instead of SnackBar
   }
 
   /// Public methods for checking pending intents

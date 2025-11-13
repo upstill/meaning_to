@@ -8,13 +8,6 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 
-/// Result of duplicate checking
-enum DuplicateCheckResult {
-  noDuplicate,
-  currentTaskDuplicate,
-  categoryDuplicate,
-}
-
 class LinkEditScreen extends StatefulWidget {
   final String? initialLink; // HTML link to edit, or null for new link
   final String? errorMessage; // Add error message parameter
@@ -42,10 +35,6 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
   String? _testedUrl;
   String? _testedIcon;
   bool _hasUrlText = false; // Add state for URL text presence
-  String?
-      _duplicateTaskName; // Store the name of the task that has the duplicate link
-  DuplicateCheckResult?
-      _lastDuplicateResult; // Store the last duplicate check result
   String? _lastAutoVerifiedUrl; // Track which URL we last auto-verified
   bool _isAutoVerifying = false; // Track if we're currently auto-verifying
 
@@ -108,9 +97,6 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
       print('Updating _hasUrlText from $_hasUrlText to $hasText');
       setState(() {
         _hasUrlText = hasText;
-        // Clear duplicate task name when URL changes
-        _duplicateTaskName = null;
-        _lastDuplicateResult = null;
         _error = null;
       });
     }
@@ -320,32 +306,7 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
           ? proposedTask.headline
           : _textController.text.trim();
 
-      // Create HTML link with normalized URL
-      final htmlLink = '<a href="$normalizedUrl">$linkText</a>';
-
-      // Two-tier duplicate checking
-      final duplicateCheckResult = await _checkForDuplicates(htmlLink);
-      _lastDuplicateResult = duplicateCheckResult;
-
-      if (duplicateCheckResult == DuplicateCheckResult.currentTaskDuplicate) {
-        // First tier: Link already exists in current task
-        setState(() {
-          _error = 'This link is already in the current task';
-          _isLoading = false;
-        });
-        return;
-      } else if (duplicateCheckResult ==
-          DuplicateCheckResult.categoryDuplicate) {
-        // Second tier: Link exists in another task in the current category
-        setState(() {
-          _error =
-              'This link already exists in task "$_duplicateTaskName" in this category';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // No duplicates found - return ProposedTask with metadata
+      // Return ProposedTask with metadata
       if (mounted) {
         Navigator.pop(context, proposedTask);
       }
@@ -358,79 +319,6 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
     }
   }
 
-  Future<void> _saveLinkAnyway() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_urlController.text.trim().isEmpty) {
-      setState(() {
-        _error = 'Please enter a URL';
-      });
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      final url = _urlController.text.trim();
-
-      // Normalize the URL (remove query parameters, etc.)
-      final normalizedUrl = LinkToTaskConverter.normalizeUrl(url);
-      print('LinkEditScreen: Save Link Anyway - Normalized URL: $normalizedUrl');
-
-      // Use LinkToTaskConverter to get properly cleaned metadata (including OMDb for IMDb)
-      // bypassing duplicate checks
-      final userId = AuthUtils.getCurrentUserId();
-      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
-        normalizedUrl,
-        userId,
-        currentCategory: widget.currentCategory,
-      );
-
-      if (mounted) {
-        Navigator.pop(context, proposedTask);
-      }
-    } catch (e) {
-      print('Error saving link anyway: $e');
-      setState(() {
-        _error = 'Failed to save link: ${e.toString()}';
-        _isLoading = false;
-      });
-    }
-  }
-
-  /// Checks for duplicates in current task and across all tasks
-  Future<DuplicateCheckResult> _checkForDuplicates(String htmlLink) async {
-    print('LinkEditScreen: _checkForDuplicates called for: $htmlLink');
-    print('LinkEditScreen: currentTask: ${widget.currentTask?.headline}');
-    print(
-        'LinkEditScreen: currentCategory: ${widget.currentCategory?.headline}');
-
-    // First check: current task duplicate
-    if (widget.currentTask != null) {
-      print('LinkEditScreen: Checking current task for duplicates...');
-      if (widget.currentTask!.hasLink(htmlLink)) {
-        print('LinkEditScreen: Found duplicate in current task');
-        return DuplicateCheckResult.currentTaskDuplicate;
-      }
-    }
-
-    // Second check: check across tasks in the current category
-    print(
-        'LinkEditScreen: Checking tasks in current category for duplicates...');
-    final duplicateTask = await _checkForDuplicateInCurrentCategory(htmlLink);
-
-    if (duplicateTask != null) {
-      print(
-          'LinkEditScreen: Found duplicate in task: ${duplicateTask.headline}');
-      _duplicateTaskName = duplicateTask.headline;
-      return DuplicateCheckResult.categoryDuplicate;
-    }
-
-    print('LinkEditScreen: No duplicates found');
-    return DuplicateCheckResult.noDuplicate;
-  }
 
   /// Check for duplicate link across tasks in the current category
   Future<Task?> _checkForDuplicateInCurrentCategory(String htmlLink) async {
@@ -585,29 +473,6 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
     return null;
   }
 
-  /// Shows confirmation dialog for duplicate links
-  Future<bool> _showDuplicateConfirmationDialog() async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Duplicate Link Found'),
-            content: Text(
-                'This link already exists in task "$_duplicateTaskName" in this category. '
-                'Do you want to add it anyway?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Add Anyway'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -631,32 +496,9 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.red.withOpacity(0.3)),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _error!,
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                    if (_lastDuplicateResult ==
-                        DuplicateCheckResult.categoryDuplicate) ...[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _isLoading ? null : _saveLinkAnyway,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red),
-                              ),
-                              child: const Text('Save Anyway'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.red),
                 ),
               ),
               const SizedBox(height: 8),

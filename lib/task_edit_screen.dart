@@ -20,6 +20,7 @@ import 'package:meaning_to/models/icon.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
+import 'package:meaning_to/utils/link_to_task_converter.dart';
 
 // Widget to display favicon for a domain
 class DomainFaviconWidget extends StatelessWidget {
@@ -408,13 +409,40 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
+  /// Get suggested category IDs from current links
+  List<int> _getSuggestedCategoryIds() {
+    final suggestedIds = <int>{};
+
+    for (final htmlLink in _links) {
+      try {
+        // Extract URL from HTML link
+        final urlMatch = RegExp(r'href="([^"]+)"').firstMatch(htmlLink);
+        if (urlMatch != null) {
+          final url = urlMatch.group(1)!;
+          // Get suggested categories for this URL
+          final suggestions = LinkToTaskConverter.analyzeLinkForCategorySuggestions(url);
+          suggestedIds.addAll(suggestions);
+        }
+      } catch (e) {
+        print('TaskEditScreen: Error extracting URL from link: $e');
+      }
+    }
+
+    return suggestedIds.toList();
+  }
+
   /// Show category selection dialog
   void _showCategorySelectionDialog() async {
+    // Get suggested categories from current links
+    final suggestedCategoryIds = _getSuggestedCategoryIds();
+    print('TaskEditScreen: Suggested category IDs: $suggestedCategoryIds');
+
     await CategoryPickerDialog.show(
       context,
       title:
           'Select ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
       defaultCategory: widget.category,
+      suggestedCategoryIds: suggestedCategoryIds.isNotEmpty ? suggestedCategoryIds : null,
       onCategorySelected: (Category selectedCategory,
           {bool? shouldMove}) async {
         if (selectedCategory.id != widget.category.id) {

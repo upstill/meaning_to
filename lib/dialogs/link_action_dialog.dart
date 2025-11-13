@@ -5,6 +5,7 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'package:meaning_to/dialogs/task_picker_dialog.dart';
 import 'package:meaning_to/task_edit_screen.dart';
+import 'package:meaning_to/utils/naming.dart';
 
 /// Primary dialog for handling incoming shared links
 class LinkActionDialog extends StatelessWidget {
@@ -254,6 +255,7 @@ class LinkActionDialog extends StatelessWidget {
           description: result.description,
           duplicates: [], // Clear duplicates to show as new link
           hasValidMetadata: result.hasValidMetadata,
+          proposedTask: result.proposedTask,
         ),
         defaultCategory: defaultCategory,
       ),
@@ -290,16 +292,16 @@ class LinkActionDialog extends StatelessWidget {
 
   void _createTaskInCategory(BuildContext context, Category category) {
     // Navigate to task creation screen with pre-populated link
-    final htmlLink = result.hasValidMetadata
-        ? '<a href="${result.url}">${result.title}</a>'
-        : '<a href="${result.url}">${result.url}</a>';
+    final infoMessage =
+        'Paste this link into the links section to attach it:\n$result.url';
 
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => TaskEditScreen(
           category: category,
-          initialLinks: [htmlLink],
+          initialLinks: [result.url],
           initialHeadline: result.title,
+          infoMessage: infoMessage,
         ),
       ),
     );
@@ -307,16 +309,15 @@ class LinkActionDialog extends StatelessWidget {
 
   void _addLinkToTask(BuildContext context, Task task, Category category) {
     // Navigate to task edit screen with the link to add
-    final htmlLink = result.hasValidMetadata
-        ? '<a href="${result.url}">${result.title}</a>'
-        : '<a href="${result.url}">${result.url}</a>';
+    final infoMessage =
+        'Paste this link into the links section to attach it:\n$result.url';
 
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => TaskEditScreen(
           category: category,
           task: task,
-          linkToAdd: htmlLink,
+          infoMessage: infoMessage,
         ),
       ),
     );
