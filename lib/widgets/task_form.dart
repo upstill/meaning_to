@@ -255,7 +255,8 @@ class _TaskFormState extends State<TaskForm> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop('cancel'),
-                  child: const Text('Never Mind'),
+                  style: AppButtons.cancel(),
+                  child: const Text('Cancel'),
                 ),
                 // TextButton(
                 //   onPressed: () => Navigator.of(context).pop('view'),
@@ -345,7 +346,8 @@ class _TaskFormState extends State<TaskForm> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop('cancel'),
-                child: const Text('Forget It'),
+                style: AppButtons.cancel(),
+                child: const Text('Cancel'),
               ),
               // TextButton(
               //   onPressed: () => Navigator.of(context).pop('view'),

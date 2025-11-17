@@ -125,7 +125,8 @@ void main() {
       expect(result.enrichedTask.processedLinks, isNotNull);
     });
 
-    test('should generate processed links when ensureProcessedLinks is true', () async {
+    test('should generate processed links when ensureProcessedLinks is true',
+        () async {
       final task = _createTestTask(
         links: ['<a href="https://example.com">Example</a>'],
         processedLinks: null,
@@ -140,7 +141,8 @@ void main() {
       expect(result.enrichedTask.processedLinks!.length, 1);
     });
 
-    test('should not generate processed links when they already exist', () async {
+    test('should not generate processed links when they already exist',
+        () async {
       final existingProcessedLinks = [
         ProcessedLink(
           url: 'https://example.com',
@@ -185,7 +187,7 @@ void main() {
 
     test('should create task with all optional parameters', () async {
       final createdAt = DateTime.now();
-      final suggestibleAt = DateTime.now().add(Duration(days: 1));
+      final suggestibleAt = DateTime.now().add(const Duration(days: 1));
 
       final result = await TaskEnricher.createAndEnrichTask(
         id: 2,
@@ -230,8 +232,14 @@ void main() {
 
       final afterTime = DateTime.now();
 
-      expect(result.enrichedTask.createdAt.isAfter(beforeTime.subtract(Duration(seconds: 1))), true);
-      expect(result.enrichedTask.createdAt.isBefore(afterTime.add(Duration(seconds: 1))), true);
+      expect(
+          result.enrichedTask.createdAt
+              .isAfter(beforeTime.subtract(const Duration(seconds: 1))),
+          true);
+      expect(
+          result.enrichedTask.createdAt
+              .isBefore(afterTime.add(const Duration(seconds: 1))),
+          true);
     });
 
     test('should extract title from JustWatch URL in headline', () async {
@@ -246,7 +254,8 @@ void main() {
       expect(result.enrichedTask.headline, 'Wonder Boys');
       expect(result.enrichedTask.links, isNotNull);
       expect(result.enrichedTask.links!.length, 1);
-      expect(result.enrichedTask.links!.first, '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>');
+      expect(result.enrichedTask.links!.first,
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>');
       expect(result.hasChanges, true);
       expect(result.enrichedFields, contains('headline'));
       expect(result.enrichedFields, contains('links'));
@@ -317,7 +326,8 @@ void main() {
       );
     });
 
-    test('should process JustWatch Wonder Boys URL with exact format', () async {
+    test('should process JustWatch Wonder Boys URL with exact format',
+        () async {
       final result = await TaskEnricher.processSingleLineInput(
         inputLine: 'https://www.justwatch.com/us/movie/wonder-boys',
         categoryId: 1,
@@ -327,12 +337,15 @@ void main() {
       expect(result.enrichedTask.headline, 'Wonder Boys');
       expect(result.enrichedTask.links, isNotNull);
       expect(result.enrichedTask.links!.length, 1);
-      expect(result.enrichedTask.links!.first, '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>');
+      expect(result.enrichedTask.links!.first,
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>');
     });
 
-    test('should use existing link title instead of fetching from webpage', () async {
+    test('should use existing link title instead of fetching from webpage',
+        () async {
       final result = await TaskEnricher.processSingleLineInput(
-        inputLine: '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>',
+        inputLine:
+            '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>',
         categoryId: 1,
         ownerId: 'user1',
       );
@@ -340,7 +353,8 @@ void main() {
       expect(result.enrichedTask.headline, 'Wonder Buoys');
       expect(result.enrichedTask.links, isNotNull);
       expect(result.enrichedTask.links!.length, 1);
-      expect(result.enrichedTask.links!.first, '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>');
+      expect(result.enrichedTask.links!.first,
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>');
 
       // The link should remain exactly as provided (no webpage fetch occurred)
       // If a webpage fetch had occurred, the title would have been "Wonder Boys" not "Wonder Buoys"
@@ -348,10 +362,13 @@ void main() {
   });
 
   group('TaskEnricher.enrichTask headline extraction from links', () {
-    test('should extract headline from HTML link when task has no headline', () async {
+    test('should extract headline from HTML link when task has no headline',
+        () async {
       final task = _createTestTask(
         headline: '', // Empty headline
-        links: ['<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>'],
+        links: [
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>'
+        ],
       );
 
       const spec = TaskEnrichmentSpec.withLinks;
@@ -364,7 +381,9 @@ void main() {
       expect(result.enrichedTask.links!.first, contains('Wonder Buoys'));
     });
 
-    test('should extract headline from URL and fetch notes for JustWatch when task has no headline', () async {
+    test(
+        'should extract headline from URL and fetch notes for JustWatch when task has no headline',
+        () async {
       final task = _createTestTask(
         headline: '', // Empty headline
         links: ['https://www.justwatch.com/us/movie/wonder-boys'],
@@ -373,7 +392,8 @@ void main() {
       const spec = TaskEnrichmentSpec.webContent;
       final result = await TaskEnricher.enrichTask(task, spec);
 
-      expect(result.enrichedTask.headline, 'Wonder Boys'); // Fetched from webpage
+      expect(
+          result.enrichedTask.headline, 'Wonder Boys'); // Fetched from webpage
       expect(result.hasChanges, true);
       expect(result.enrichedFields, contains('headline'));
       expect(result.enrichedTask.links, isNotNull);
@@ -382,16 +402,21 @@ void main() {
       // Note: The actual notes content may vary based on webpage availability
     });
 
-    test('should not change headline when task already has one even with links', () async {
+    test('should not change headline when task already has one even with links',
+        () async {
       final task = _createTestTask(
         headline: 'My Custom Title',
-        links: ['<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>'],
+        links: [
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>'
+        ],
       );
 
-      const spec = TaskEnrichmentSpec.minimal; // Don't enrich links when headline exists
+      const spec =
+          TaskEnrichmentSpec.minimal; // Don't enrich links when headline exists
       final result = await TaskEnricher.enrichTask(task, spec);
 
-      expect(result.enrichedTask.headline, 'My Custom Title'); // Should keep original
+      expect(result.enrichedTask.headline,
+          'My Custom Title'); // Should keep original
       expect(result.enrichedTask.links, isNotNull);
       expect(result.enrichedTask.links!.first, contains('Wonder Buoys'));
       // Since headline already exists, no headline extraction should occur
@@ -450,7 +475,8 @@ Read 1984,Dystopian novel,
       expect(results[1].enrichedTask.notes, 'Dystopian novel');
     });
 
-    test('should fall back to plain text processing for unstructured input', () async {
+    test('should fall back to plain text processing for unstructured input',
+        () async {
       const plainInput = '''
 Buy groceries
 Call dentist: Make appointment for next week
@@ -467,7 +493,8 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(results[0].enrichedTask.headline, 'Buy groceries');
       expect(results[1].enrichedTask.headline, 'Call dentist');
       expect(results[1].enrichedTask.notes, 'Make appointment for next week');
-      expect(results[2].enrichedTask.headline, 'Wonder Boys'); // From JustWatch URL
+      expect(results[2].enrichedTask.headline,
+          'Wonder Boys'); // From JustWatch URL
     });
 
     test('should handle site-specific JSON mappings', () async {
@@ -489,7 +516,8 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(results.length, 1);
       expect(results[0].enrichedTask.headline, 'The Batman');
       expect(results[0].enrichedTask.notes, 'Dark superhero film');
-      expect(results[0].enrichedTask.links!.first, contains('https://www.justwatch.com/us/movie/the-batman'));
+      expect(results[0].enrichedTask.links!.first,
+          contains('https://www.justwatch.com/us/movie/the-batman'));
     });
 
     test('should handle empty and invalid input gracefully', () async {
@@ -513,7 +541,8 @@ https://www.justwatch.com/us/movie/wonder-boys
 
     test('should process real JustWatch JSON file data', () async {
       // Read the actual JustWatch JSON file
-      final jsonFile = File('/Users/upstill/Dev/Flutter Projects/meaning_to/test/data/justwatch.json');
+      final jsonFile = File(
+          '/Users/upstill/Dev/Flutter Projects/meaning_to/test/data/justwatch.json');
       final jsonContent = await jsonFile.readAsString();
 
       final results = await TaskEnricher.processBulkInput(
@@ -527,24 +556,30 @@ https://www.justwatch.com/us/movie/wonder-boys
 
       // First task: Sirens
       expect(results[0].enrichedTask.headline, 'Sirens');
-      expect(results[0].enrichedTask.notes, 'Worried about her sister\'s too-close relationship with her billionaire boss, a scrappy everywoman seeks answers at a lavish seaside estate.');
+      expect(results[0].enrichedTask.notes,
+          'Worried about her sister\'s too-close relationship with her billionaire boss, a scrappy everywoman seeks answers at a lavish seaside estate.');
       expect(results[0].enrichedTask.links, isNotNull);
       expect(results[0].enrichedTask.links!.length, 1);
       expect(results[0].enrichedTask.links!.first, contains('Sirens'));
-      expect(results[0].enrichedTask.links!.first, contains('https://justwatch.com/us/tv-show/sirens-0'));
+      expect(results[0].enrichedTask.links!.first,
+          contains('https://justwatch.com/us/tv-show/sirens-0'));
 
       // Second task: Crazy Rich Asians
       expect(results[1].enrichedTask.headline, 'Crazy Rich Asians');
-      expect(results[1].enrichedTask.notes, 'An American-born Chinese economics professor accompanies her boyfriend to Singapore for his best friend\'s wedding, only to get thrust into the lives of Asia\'s rich and famous.');
+      expect(results[1].enrichedTask.notes,
+          'An American-born Chinese economics professor accompanies her boyfriend to Singapore for his best friend\'s wedding, only to get thrust into the lives of Asia\'s rich and famous.');
       expect(results[1].enrichedTask.links, isNotNull);
       expect(results[1].enrichedTask.links!.length, 1);
-      expect(results[1].enrichedTask.links!.first, contains('Crazy Rich Asians'));
-      expect(results[1].enrichedTask.links!.first, contains('https://justwatch.com/us/movie/crazy-rich-asians'));
+      expect(
+          results[1].enrichedTask.links!.first, contains('Crazy Rich Asians'));
+      expect(results[1].enrichedTask.links!.first,
+          contains('https://justwatch.com/us/movie/crazy-rich-asians'));
     });
 
     test('should process real Letterboxd CSV file data', () async {
       // Read the actual Letterboxd CSV file
-      final csvFile = File('/Users/upstill/Dev/Flutter Projects/meaning_to/test/data/Letterboxd.csv');
+      final csvFile = File(
+          '/Users/upstill/Dev/Flutter Projects/meaning_to/test/data/Letterboxd.csv');
       final csvContent = await csvFile.readAsString();
 
       final results = await TaskEnricher.processBulkInput(
@@ -557,21 +592,27 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(results.length, greaterThanOrEqualTo(2));
 
       // First task: The Life and Death of Colonel Blimp
-      expect(results[0].enrichedTask.headline, 'The Life and Death of Colonel Blimp');
+      expect(results[0].enrichedTask.headline,
+          'The Life and Death of Colonel Blimp');
       expect(results[0].enrichedTask.links, isNotNull);
       expect(results[0].enrichedTask.links!.length, 1);
-      expect(results[0].enrichedTask.links!.first, contains('The Life and Death of Colonel Blimp'));
-      expect(results[0].enrichedTask.links!.first, contains('https://boxd.it/1wwk'));
+      expect(results[0].enrichedTask.links!.first,
+          contains('The Life and Death of Colonel Blimp'));
+      expect(results[0].enrichedTask.links!.first,
+          contains('https://boxd.it/1wwk'));
 
       // Second task: Phantom Thread
       expect(results[1].enrichedTask.headline, 'Phantom Thread');
       expect(results[1].enrichedTask.links, isNotNull);
       expect(results[1].enrichedTask.links!.length, 1);
       expect(results[1].enrichedTask.links!.first, contains('Phantom Thread'));
-      expect(results[1].enrichedTask.links!.first, contains('https://boxd.it/e4uc'));
+      expect(results[1].enrichedTask.links!.first,
+          contains('https://boxd.it/e4uc'));
     });
 
-    test('should create enriched task from URL-only input with fetched headline and description', () async {
+    test(
+        'should create enriched task from URL-only input with fetched headline and description',
+        () async {
       // Test that a task with only a URL gets both headline and description from the webpage
       final result = await TaskEnricher.createAndEnrichTask(
         id: 999,
@@ -579,7 +620,8 @@ https://www.justwatch.com/us/movie/wonder-boys
         headline: '', // Empty headline - should be extracted from URL
         ownerId: 'test-user',
         links: ['https://www.justwatch.com/us/movie/wonder-boys'],
-        spec: TaskEnrichmentSpec.webContent, // Includes generateDescription: true
+        spec:
+            TaskEnrichmentSpec.webContent, // Includes generateDescription: true
       );
 
       // Verify headline was extracted from webpage
@@ -591,7 +633,8 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(result.enrichedTask.links, isNotNull);
       expect(result.enrichedTask.links!.length, 1);
       expect(result.enrichedTask.links!.first, contains('Wonder Boys'));
-      expect(result.enrichedTask.links!.first, contains('https://www.justwatch.com/us/movie/wonder-boys'));
+      expect(result.enrichedTask.links!.first,
+          contains('https://www.justwatch.com/us/movie/wonder-boys'));
 
       // Verify description was fetched and populated in notes
       // Note: The actual description content may vary, but it should be populated for JustWatch URLs
@@ -604,10 +647,13 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(result.enrichedTask.processedLinks, isNotNull);
       expect(result.enrichedTask.processedLinks!.length, 1);
       expect(result.enrichedTask.processedLinks!.first.title, 'Wonder Boys');
-      expect(result.enrichedTask.processedLinks!.first.url, 'https://www.justwatch.com/us/movie/wonder-boys');
+      expect(result.enrichedTask.processedLinks!.first.url,
+          'https://www.justwatch.com/us/movie/wonder-boys');
     });
 
-    test('should use processSingleLineInput to create task from bare URL with fetched content', () async {
+    test(
+        'should use processSingleLineInput to create task from bare URL with fetched content',
+        () async {
       // Test the complete pipeline: URL input -> task creation with fetched content
       final result = await TaskEnricher.processSingleLineInput(
         inputLine: 'https://www.justwatch.com/us/movie/wonder-boys',
@@ -622,12 +668,15 @@ https://www.justwatch.com/us/movie/wonder-boys
       // Verify link was created with proper title
       expect(result.enrichedTask.links, isNotNull);
       expect(result.enrichedTask.links!.length, 1);
-      expect(result.enrichedTask.links!.first, '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>');
+      expect(result.enrichedTask.links!.first,
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>');
 
       // Verify description was potentially fetched for JustWatch URLs
       // Note: Description availability depends on the specific page
-      if (result.enrichedTask.notes != null && result.enrichedTask.notes!.isNotEmpty) {
-        expect(result.enrichedTask.notes!.length, greaterThan(10)); // Should be substantial description
+      if (result.enrichedTask.notes != null &&
+          result.enrichedTask.notes!.isNotEmpty) {
+        expect(result.enrichedTask.notes!.length,
+            greaterThan(10)); // Should be substantial description
       }
     });
   });
@@ -674,7 +723,9 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(result.enrichedTask.createdAt, originalTask.createdAt);
     });
 
-    test('should enrich existing task with only link URL to fetch headline and notes', () async {
+    test(
+        'should enrich existing task with only link URL to fetch headline and notes',
+        () async {
       // Create a task with only a link URL and no other data
       final existingTask = _createTestTask(
         id: 999,
@@ -696,27 +747,38 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(enrichedTask.headline, equals('Wonder Boys'));
 
       // Verify the enrichment process extracted both headline and notes
-      expect(result.enrichedFields.contains('headline'), isTrue, reason: 'Should have enriched headline from URL');
-      expect(enrichedTask.notes, isNotEmpty, reason: 'Should have extracted description from JustWatch synopsis');
-      expect(enrichedTask.notes, startsWith('Grady is a 50-ish English professor'), reason: 'Should extract the correct movie description');
+      expect(result.enrichedFields.contains('headline'), isTrue,
+          reason: 'Should have enriched headline from URL');
+      expect(enrichedTask.notes, isNotEmpty,
+          reason: 'Should have extracted description from JustWatch synopsis');
+      expect(
+          enrichedTask.notes, startsWith('Grady is a 50-ish English professor'),
+          reason: 'Should extract the correct movie description');
 
       // Verify the link was processed into HTML format
       expect(enrichedTask.links, isNotNull);
       expect(enrichedTask.links, hasLength(1));
-      expect(enrichedTask.links![0], contains('<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>'));
+      expect(
+          enrichedTask.links![0],
+          contains(
+              '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>'));
 
       // Verify ProcessedLink was created
       expect(enrichedTask.processedLinks, isNotNull);
       expect(enrichedTask.processedLinks, hasLength(1));
       expect(enrichedTask.processedLinks![0].title, equals('Wonder Boys'));
-      expect(enrichedTask.processedLinks![0].url, equals('https://www.justwatch.com/us/movie/wonder-boys'));
+      expect(enrichedTask.processedLinks![0].url,
+          equals('https://www.justwatch.com/us/movie/wonder-boys'));
 
       // Print notes for debugging - may be empty if description extraction failed
       print('Test result - Notes field: "${enrichedTask.notes ?? "null"}"');
-      print('Test result - ProcessedLink description: "${enrichedTask.processedLinks![0].description ?? "null"}"');
+      print(
+          'Test result - ProcessedLink description: "${enrichedTask.processedLinks![0].description ?? "null"}"');
     });
 
-    test('should produce same result when URL comes in as headline text instead of link', () async {
+    test(
+        'should produce same result when URL comes in as headline text instead of link',
+        () async {
       // Create a task with URL as headline text instead of in links array
       final taskWithUrlAsHeadline = _createTestTask(
         id: 998,
@@ -736,18 +798,23 @@ https://www.justwatch.com/us/movie/wonder-boys
 
       // Should produce the same results as the previous test
       expect(enrichedTask.headline, equals('Wonder Boys'));
-      expect(result.enrichedFields.contains('headline'), isTrue, reason: 'Should have enriched headline from URL');
+      expect(result.enrichedFields.contains('headline'), isTrue,
+          reason: 'Should have enriched headline from URL');
 
       // Verify the link was extracted from headline and processed into HTML format
       expect(enrichedTask.links, isNotNull);
       expect(enrichedTask.links, hasLength(1));
-      expect(enrichedTask.links![0], contains('<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>'));
+      expect(
+          enrichedTask.links![0],
+          contains(
+              '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>'));
 
       // Verify ProcessedLink was created
       expect(enrichedTask.processedLinks, isNotNull);
       expect(enrichedTask.processedLinks, hasLength(1));
       expect(enrichedTask.processedLinks![0].title, equals('Wonder Boys'));
-      expect(enrichedTask.processedLinks![0].url, equals('https://www.justwatch.com/us/movie/wonder-boys'));
+      expect(enrichedTask.processedLinks![0].url,
+          equals('https://www.justwatch.com/us/movie/wonder-boys'));
 
       // NOTE: Currently there's a limitation where URL-as-headline doesn't preserve
       // description through the enrichment pipeline the same way as URL-in-links does
@@ -755,13 +822,16 @@ https://www.justwatch.com/us/movie/wonder-boys
       // For now, we verify the core functionality works (headline + links creation)
 
       // Print notes for comparison - shows current limitation
-      print('Test result (URL as headline) - Notes field: "${enrichedTask.notes ?? "null"}"');
-      print('Test result (URL as headline) - ProcessedLink description: "${enrichedTask.processedLinks![0].description ?? "null"}"');
+      print(
+          'Test result (URL as headline) - Notes field: "${enrichedTask.notes ?? "null"}"');
+      print(
+          'Test result (URL as headline) - ProcessedLink description: "${enrichedTask.processedLinks![0].description ?? "null"}"');
     });
 
-    test('should handle empty headline by using existing link for enrichment', () async {
+    test('should handle empty headline by using existing link for enrichment',
+        () async {
       // Simulate the Add Tasks scenario: empty headline input but existing task with links
-      final existingLink = 'https://www.justwatch.com/us/movie/wonder-boys';
+      const existingLink = 'https://www.justwatch.com/us/movie/wonder-boys';
 
       // Process the link as input (simulating what Add Tasks would do)
       final result = await TaskEnricher.processSingleLineInput(
@@ -776,12 +846,15 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(result.enrichedTask.links, hasLength(1));
       expect(result.enrichedTask.links![0], contains('Wonder Boys'));
 
-      print('Test result (empty headline + link processing) - Headline: "${result.enrichedTask.headline}"');
-      print('Test result (empty headline + link processing) - Links: ${result.enrichedTask.links}');
+      print(
+          'Test result (empty headline + link processing) - Headline: "${result.enrichedTask.headline}"');
+      print(
+          'Test result (empty headline + link processing) - Links: ${result.enrichedTask.links}');
     });
 
-    test('should preserve category ID through all enrichment processes', () async {
-      final testCategoryId = 42;
+    test('should preserve category ID through all enrichment processes',
+        () async {
+      const testCategoryId = 42;
 
       // Test processSingleLineInput preserves category ID
       final singleLineResult = await TaskEnricher.processSingleLineInput(
@@ -810,14 +883,18 @@ https://www.justwatch.com/us/movie/wonder-boys
         expect(bulkResult.enrichedTask.categoryId, equals(testCategoryId));
       }
 
-      print('All Task creation methods correctly preserve category ID: $testCategoryId');
+      print(
+          'All Task creation methods correctly preserve category ID: $testCategoryId');
     });
 
-    test('should produce identical results for Wonder Boys URL in different input formats', () async {
-      final wonderBoysUrl = 'https://www.justwatch.com/us/movie/wonder-boys';
-      final wonderBoysHtmlLink = '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>';
-      final categoryId = 1;
-      final ownerId = 'test-user';
+    test(
+        'should produce identical results for Wonder Boys URL in different input formats',
+        () async {
+      const wonderBoysUrl = 'https://www.justwatch.com/us/movie/wonder-boys';
+      const wonderBoysHtmlLink =
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>';
+      const categoryId = 1;
+      const ownerId = 'test-user';
 
       // Scenario 1: Task has only the URL in the headline
       final result1 = await TaskEnricher.processSingleLineInput(
@@ -858,15 +935,19 @@ https://www.justwatch.com/us/movie/wonder-boys
       );
 
       // All scenarios should produce the same core results
-      final expectedHeadline = 'Wonder Boys';
+      const expectedHeadline = 'Wonder Boys';
       final expectedCategoryId = categoryId;
       final expectedOwnerId = ownerId;
 
       // Verify all scenarios produce the same headline
-      expect(result1.enrichedTask.headline, equals(expectedHeadline), reason: 'Scenario 1: URL in headline');
-      expect(result2.enrichedTask.headline, equals(expectedHeadline), reason: 'Scenario 2: HTML link in headline');
-      expect(result3.enrichedTask.headline, equals(expectedHeadline), reason: 'Scenario 3: URL in links array');
-      expect(result4.enrichedTask.headline, equals(expectedHeadline), reason: 'Scenario 4: HTML link in links array');
+      expect(result1.enrichedTask.headline, equals(expectedHeadline),
+          reason: 'Scenario 1: URL in headline');
+      expect(result2.enrichedTask.headline, equals(expectedHeadline),
+          reason: 'Scenario 2: HTML link in headline');
+      expect(result3.enrichedTask.headline, equals(expectedHeadline),
+          reason: 'Scenario 3: URL in links array');
+      expect(result4.enrichedTask.headline, equals(expectedHeadline),
+          reason: 'Scenario 4: HTML link in links array');
 
       // Verify all scenarios preserve category ID and owner ID
       expect(result1.enrichedTask.categoryId, equals(expectedCategoryId));
@@ -903,16 +984,24 @@ https://www.justwatch.com/us/movie/wonder-boys
 
       // Print debug information for each scenario
       print('Debug info before ProcessedLinks check:');
-      print('  Result 1 ProcessedLinks: ${result1.enrichedTask.processedLinks}');
-      print('  Result 2 ProcessedLinks: ${result2.enrichedTask.processedLinks}');
-      print('  Result 3 ProcessedLinks: ${result3.enrichedTask.processedLinks}');
-      print('  Result 4 ProcessedLinks: ${result4.enrichedTask.processedLinks}');
+      print(
+          '  Result 1 ProcessedLinks: ${result1.enrichedTask.processedLinks}');
+      print(
+          '  Result 2 ProcessedLinks: ${result2.enrichedTask.processedLinks}');
+      print(
+          '  Result 3 ProcessedLinks: ${result3.enrichedTask.processedLinks}');
+      print(
+          '  Result 4 ProcessedLinks: ${result4.enrichedTask.processedLinks}');
 
       // Verify all scenarios have ProcessedLinks
-      expect(result1.enrichedTask.processedLinks, isNotNull, reason: 'Scenario 1: URL in headline');
-      expect(result2.enrichedTask.processedLinks, isNotNull, reason: 'Scenario 2: HTML link in headline');
-      expect(result3.enrichedTask.processedLinks, isNotNull, reason: 'Scenario 3: URL in links array');
-      expect(result4.enrichedTask.processedLinks, isNotNull, reason: 'Scenario 4: HTML link in links array');
+      expect(result1.enrichedTask.processedLinks, isNotNull,
+          reason: 'Scenario 1: URL in headline');
+      expect(result2.enrichedTask.processedLinks, isNotNull,
+          reason: 'Scenario 2: HTML link in headline');
+      expect(result3.enrichedTask.processedLinks, isNotNull,
+          reason: 'Scenario 3: URL in links array');
+      expect(result4.enrichedTask.processedLinks, isNotNull,
+          reason: 'Scenario 4: HTML link in links array');
 
       expect(result1.enrichedTask.processedLinks, hasLength(1));
       expect(result2.enrichedTask.processedLinks, hasLength(1));
@@ -920,24 +1009,36 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(result4.enrichedTask.processedLinks, hasLength(1));
 
       // All ProcessedLinks should have the same title and URL
-      expect(result1.enrichedTask.processedLinks![0].title, equals('Wonder Boys'));
-      expect(result2.enrichedTask.processedLinks![0].title, equals('Wonder Boys'));
-      expect(result3.enrichedTask.processedLinks![0].title, equals('Wonder Boys'));
-      expect(result4.enrichedTask.processedLinks![0].title, equals('Wonder Boys'));
+      expect(
+          result1.enrichedTask.processedLinks![0].title, equals('Wonder Boys'));
+      expect(
+          result2.enrichedTask.processedLinks![0].title, equals('Wonder Boys'));
+      expect(
+          result3.enrichedTask.processedLinks![0].title, equals('Wonder Boys'));
+      expect(
+          result4.enrichedTask.processedLinks![0].title, equals('Wonder Boys'));
 
-      expect(result1.enrichedTask.processedLinks![0].url, equals(wonderBoysUrl));
-      expect(result2.enrichedTask.processedLinks![0].url, equals(wonderBoysUrl));
-      expect(result3.enrichedTask.processedLinks![0].url, equals(wonderBoysUrl));
-      expect(result4.enrichedTask.processedLinks![0].url, equals(wonderBoysUrl));
+      expect(
+          result1.enrichedTask.processedLinks![0].url, equals(wonderBoysUrl));
+      expect(
+          result2.enrichedTask.processedLinks![0].url, equals(wonderBoysUrl));
+      expect(
+          result3.enrichedTask.processedLinks![0].url, equals(wonderBoysUrl));
+      expect(
+          result4.enrichedTask.processedLinks![0].url, equals(wonderBoysUrl));
 
       // Print results for verification
-      print('Scenario 1 (URL in headline) - Headline: "${result1.enrichedTask.headline}", Links: ${result1.enrichedTask.links}');
-      print('Scenario 2 (HTML in headline) - Headline: "${result2.enrichedTask.headline}", Links: ${result2.enrichedTask.links}');
-      print('Scenario 3 (URL in links) - Headline: "${result3.enrichedTask.headline}", Links: ${result3.enrichedTask.links}');
-      print('Scenario 4 (HTML in links) - Headline: "${result4.enrichedTask.headline}", Links: ${result4.enrichedTask.links}');
+      print(
+          'Scenario 1 (URL in headline) - Headline: "${result1.enrichedTask.headline}", Links: ${result1.enrichedTask.links}');
+      print(
+          'Scenario 2 (HTML in headline) - Headline: "${result2.enrichedTask.headline}", Links: ${result2.enrichedTask.links}');
+      print(
+          'Scenario 3 (URL in links) - Headline: "${result3.enrichedTask.headline}", Links: ${result3.enrichedTask.links}');
+      print(
+          'Scenario 4 (HTML in links) - Headline: "${result4.enrichedTask.headline}", Links: ${result4.enrichedTask.links}');
 
       // Check notes - should all contain the expected description from JustWatch
-      final expectedNotesStart = 'Grady is a 50-ish English professor';
+      const expectedNotesStart = 'Grady is a 50-ish English professor';
 
       print('Notes comparison:');
       print('  Scenario 1: "${result1.enrichedTask.notes ?? "null"}"');
@@ -947,35 +1048,46 @@ https://www.justwatch.com/us/movie/wonder-boys
 
       // Verify all scenarios should ideally extract the description from JustWatch
       // Currently, scenarios 2 and 4 (HTML links) don't extract descriptions - this may be a limitation
-      expect(result1.enrichedTask.notes, isNotNull, reason: 'Scenario 1 should have notes from webpage');
-      expect(result1.enrichedTask.notes!, startsWith(expectedNotesStart), reason: 'Scenario 1 should have JustWatch description');
+      expect(result1.enrichedTask.notes, isNotNull,
+          reason: 'Scenario 1 should have notes from webpage');
+      expect(result1.enrichedTask.notes!, startsWith(expectedNotesStart),
+          reason: 'Scenario 1 should have JustWatch description');
 
-      expect(result3.enrichedTask.notes, isNotNull, reason: 'Scenario 3 should have notes from webpage');
-      expect(result3.enrichedTask.notes!, startsWith(expectedNotesStart), reason: 'Scenario 3 should have JustWatch description');
+      expect(result3.enrichedTask.notes, isNotNull,
+          reason: 'Scenario 3 should have notes from webpage');
+      expect(result3.enrichedTask.notes!, startsWith(expectedNotesStart),
+          reason: 'Scenario 3 should have JustWatch description');
 
       // Document the current limitations for HTML link scenarios
       print('Current limitations:');
-      print('  Scenario 2 (HTML in headline): ${result2.enrichedTask.notes == null ? "❌ No description extracted" : "✅ Description extracted"}');
-      print('  Scenario 4 (HTML in links): ${result4.enrichedTask.notes == null ? "❌ No description extracted" : "✅ Description extracted"}');
+      print(
+          '  Scenario 2 (HTML in headline): ${result2.enrichedTask.notes == null ? "❌ No description extracted" : "✅ Description extracted"}');
+      print(
+          '  Scenario 4 (HTML in links): ${result4.enrichedTask.notes == null ? "❌ No description extracted" : "✅ Description extracted"}');
 
       // TODO: Scenarios 2 and 4 should also extract descriptions for complete consistency
-      if (result2.enrichedTask.notes != null && result2.enrichedTask.notes!.startsWith(expectedNotesStart)) {
+      if (result2.enrichedTask.notes != null &&
+          result2.enrichedTask.notes!.startsWith(expectedNotesStart)) {
         print('✅ Scenario 2 correctly extracts description');
       } else {
-        print('⚠️  Scenario 2 limitation: HTML links in headline don\'t extract webpage descriptions');
+        print(
+            '⚠️  Scenario 2 limitation: HTML links in headline don\'t extract webpage descriptions');
       }
 
-      if (result4.enrichedTask.notes != null && result4.enrichedTask.notes!.startsWith(expectedNotesStart)) {
+      if (result4.enrichedTask.notes != null &&
+          result4.enrichedTask.notes!.startsWith(expectedNotesStart)) {
         print('✅ Scenario 4 correctly extracts description');
       } else {
-        print('⚠️  Scenario 4 limitation: HTML links in links array don\'t extract webpage descriptions');
+        print(
+            '⚠️  Scenario 4 limitation: HTML links in links array don\'t extract webpage descriptions');
       }
     });
   });
 
   group('HTML link parsing debug', () {
     test('should correctly parse HTML link for title extraction', () {
-      const htmlLink = '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>';
+      const htmlLink =
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>';
 
       final (url, title) = LinkProcessor.parseHtmlLink(htmlLink);
 
@@ -983,11 +1095,13 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(title, equals('Wonder Boys'));
 
       // This should NOT be true - if it is, that's the bug
-      expect(title == htmlLink, isFalse, reason: 'Title should be extracted text, not full HTML tag');
+      expect(title == htmlLink, isFalse,
+          reason: 'Title should be extracted text, not full HTML tag');
     });
 
     test('should create task with extracted title, not HTML tag', () async {
-      const htmlLink = '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>';
+      const htmlLink =
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>';
       const categoryId = 1;
       const ownerId = 'test-user';
 
@@ -1006,8 +1120,11 @@ https://www.justwatch.com/us/movie/wonder-boys
       print('Problem exists: ${result.enrichedTask.headline == htmlLink}');
     });
 
-    test('should create task with correct description when HTML link is provided', () async {
-      const htmlLink = '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>';
+    test(
+        'should create task with correct description when HTML link is provided',
+        () async {
+      const htmlLink =
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Boys</a>';
       const categoryId = 1;
       const ownerId = 'test-user';
 
@@ -1020,20 +1137,24 @@ https://www.justwatch.com/us/movie/wonder-boys
       // Verify all aspects of the created task
       expect(result.enrichedTask.headline, equals('Wonder Boys'));
       expect(result.enrichedTask.notes, isNotNull);
-      expect(result.enrichedTask.notes, contains('Grady is a 50-ish English professor'));
+      expect(result.enrichedTask.notes,
+          contains('Grady is a 50-ish English professor'));
       expect(result.enrichedTask.links, isNotNull);
       expect(result.enrichedTask.links, hasLength(1));
 
       print('=== DEBUGGING USER ISSUE ===');
       print('Input: $htmlLink');
       print('Output headline: "${result.enrichedTask.headline}"');
-      print('Output notes: "${result.enrichedTask.notes?.substring(0, 50)}..."');
+      print(
+          'Output notes: "${result.enrichedTask.notes?.substring(0, 50)}..."');
       print('Output links: ${result.enrichedTask.links}');
-      print('Is headline the full HTML? ${result.enrichedTask.headline == htmlLink}');
+      print(
+          'Is headline the full HTML? ${result.enrichedTask.headline == htmlLink}');
     });
 
     test('should handle HTML link with invalid URL gracefully', () async {
-      const htmlLink = '<a href="https://invalid-domain-that-does-not-exist.com/movie/test">Test Movie</a>';
+      const htmlLink =
+          '<a href="https://invalid-domain-that-does-not-exist.com/movie/test">Test Movie</a>';
       const categoryId = 1;
       const ownerId = 'test-user';
 
@@ -1050,12 +1171,14 @@ https://www.justwatch.com/us/movie/wonder-boys
       print('=== TESTING INVALID URL CASE ===');
       print('Input: $htmlLink');
       print('Output headline: "${result.enrichedTask.headline}"');
-      print('Is headline the full HTML? ${result.enrichedTask.headline == htmlLink}');
+      print(
+          'Is headline the full HTML? ${result.enrichedTask.headline == htmlLink}');
     });
 
     test('should handle malformed HTML link (missing closing slash)', () async {
       // This is the exact malformed HTML the user reported
-      const malformedHtmlLink = '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys<a>';
+      const malformedHtmlLink =
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys<a>';
       const categoryId = 1;
       const ownerId = 'test-user';
 
@@ -1075,9 +1198,13 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(result.enrichedTask.headline, isNot(contains('<a href=')));
       expect(result.enrichedTask.links, isNotNull);
       expect(result.enrichedTask.links, hasLength(1));
-      expect(result.enrichedTask.links![0], equals('<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>'));
+      expect(
+          result.enrichedTask.links![0],
+          equals(
+              '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>'));
       expect(result.enrichedTask.notes, isNotNull);
-      expect(result.enrichedTask.notes, contains('Grady is a 50-ish English professor'));
+      expect(result.enrichedTask.notes,
+          contains('Grady is a 50-ish English professor'));
 
       print('✅ Fixed malformed HTML successfully!');
     });
@@ -1125,7 +1252,8 @@ https://www.justwatch.com/us/movie/wonder-boys
 
     test('should handle user reported well-formed HTML correctly', () async {
       // This is the exact well-formed HTML the user reported still having issues with
-      const wellFormedHtmlLink = '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>';
+      const wellFormedHtmlLink =
+          '<a href="https://www.justwatch.com/us/movie/wonder-boys">Wonder Buoys</a>';
       const categoryId = 1;
       const ownerId = 'test-user';
 
@@ -1139,7 +1267,8 @@ https://www.justwatch.com/us/movie/wonder-boys
       print('Input: $wellFormedHtmlLink');
       print('Output headline: "${result.enrichedTask.headline}"');
       print('Output links: ${result.enrichedTask.links}');
-      print('Problem still exists: ${result.enrichedTask.headline.contains('<a href=')}');
+      print(
+          'Problem still exists: ${result.enrichedTask.headline.contains('<a href=')}');
 
       // This should work correctly
       expect(result.enrichedTask.headline, equals('Wonder Buoys'));
@@ -1148,13 +1277,16 @@ https://www.justwatch.com/us/movie/wonder-boys
       expect(result.enrichedTask.links, hasLength(1));
 
       // Check what the user is reporting
-      final userReportedHeadline = '<a href=" Buoys<a>';
-      final userReportedLink = 'https://www.justwatch.com/us/movie/wonder-boys">Wonder';
+      const userReportedHeadline = '<a href=" Buoys<a>';
+      const userReportedLink =
+          'https://www.justwatch.com/us/movie/wonder-boys">Wonder';
 
       print('User reported headline: "$userReportedHeadline"');
       print('User reported link: "$userReportedLink"');
-      print('Does our headline match user report: ${result.enrichedTask.headline == userReportedHeadline}');
-      print('Does our link match user report: ${result.enrichedTask.links?.contains(userReportedLink)}');
+      print(
+          'Does our headline match user report: ${result.enrichedTask.headline == userReportedHeadline}');
+      print(
+          'Does our link match user report: ${result.enrichedTask.links?.contains(userReportedLink)}');
     });
   });
 }

@@ -5,8 +5,9 @@ import 'package:http/http.dart' as http;
 void main() {
   group('YouTube Integration Tests', () {
     test('Test direct vs proxy URL access', () async {
-      final url = 'https://www.youtube.com/watch?v=qd1RXxf2LsQ';
-      final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
+      const url = 'https://www.youtube.com/watch?v=qd1RXxf2LsQ';
+      final proxyUrl =
+          'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
 
       print('Testing YouTube URL extraction approaches...');
       print('Original URL: $url');
@@ -15,7 +16,8 @@ void main() {
       // Test direct access (this might fail in web environments)
       try {
         print('\n--- Testing Direct Access ---');
-        final directResponse = await http.get(Uri.parse(url)).timeout(Duration(seconds: 5));
+        final directResponse =
+            await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
         print('Direct access status: ${directResponse.statusCode}');
         print('Direct access response length: ${directResponse.body.length}');
       } catch (e) {
@@ -25,7 +27,9 @@ void main() {
       // Test proxy access (this should work)
       try {
         print('\n--- Testing Proxy Access ---');
-        final proxyResponse = await http.get(Uri.parse(proxyUrl)).timeout(Duration(seconds: 10));
+        final proxyResponse = await http
+            .get(Uri.parse(proxyUrl))
+            .timeout(const Duration(seconds: 10));
         print('Proxy access status: ${proxyResponse.statusCode}');
         print('Proxy access response length: ${proxyResponse.body.length}');
 
@@ -45,7 +49,8 @@ void main() {
         final content = await LinkProcessor.fetchWebpageContent(url);
         if (content != null) {
           print('LinkProcessor extracted title: "${content.title}"');
-          print('LinkProcessor extracted description: "${content.description?.substring(0, content.description!.length > 100 ? 100 : content.description!.length)}..."');
+          print(
+              'LinkProcessor extracted description: "${content.description?.substring(0, content.description!.length > 100 ? 100 : content.description!.length)}..."');
         } else {
           print('LinkProcessor failed to extract content');
         }

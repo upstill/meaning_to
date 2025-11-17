@@ -6,6 +6,8 @@ class AppButtons {
   static const Color finalizeFg = Colors.white;
   static const Color goForthBg = Colors.blue;
   static const Color goForthFg = Colors.white;
+  static const Color cancelBg = Colors.grey;
+  static const Color cancelFg = Colors.white;
 
   // Elevated buttons
   static ButtonStyle finalize() {
@@ -19,6 +21,13 @@ class AppButtons {
     return ElevatedButton.styleFrom(
       backgroundColor: goForthBg,
       foregroundColor: goForthFg,
+    );
+  }
+
+  static ButtonStyle cancel() {
+    return ElevatedButton.styleFrom(
+      backgroundColor: cancelBg,
+      foregroundColor: cancelFg,
     );
   }
 
@@ -37,6 +46,13 @@ class AppButtons {
     );
   }
 
+  static ButtonStyle cancelOutlined() {
+    return OutlinedButton.styleFrom(
+      foregroundColor: cancelBg,
+      side: const BorderSide(color: cancelBg),
+    );
+  }
+
   // Icon buttons (optional helpers)
   static ButtonStyle iconGoForth() {
     return IconButton.styleFrom(
@@ -49,6 +65,13 @@ class AppButtons {
     return IconButton.styleFrom(
       backgroundColor: finalizeBg.withOpacity(0.08),
       foregroundColor: finalizeBg,
+    );
+  }
+
+  static ButtonStyle iconCancel() {
+    return IconButton.styleFrom(
+      backgroundColor: cancelBg.withOpacity(0.08),
+      foregroundColor: cancelBg,
     );
   }
 }

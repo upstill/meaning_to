@@ -24,7 +24,7 @@ class TaskCreatedDialog extends StatelessWidget {
 
     return AlertDialog(
       title: Text(
-          'New ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${category.headline} Created!'),
+          'Added ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${category.headline}!'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -146,7 +146,8 @@ class TaskCreatedDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop('accept'),
-          child: const Text('Accept'),
+          style: AppButtons.finalize(),
+          child: const Text('Done'),
         ),
         ElevatedButton(
           onPressed: () => Navigator.of(context).pop('edit'),

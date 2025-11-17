@@ -5,7 +5,7 @@ import 'package:html/parser.dart' as html_parser;
 void main() {
   group('Test Multiple Proxy Services', () {
     test('Test all proxy services for YouTube', () async {
-      final url = 'https://www.youtube.com/watch?v=qd1RXxf2LsQ';
+      const url = 'https://www.youtube.com/watch?v=qd1RXxf2LsQ';
 
       final proxyUrls = [
         'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}',
@@ -28,9 +28,10 @@ void main() {
           final response = await http.get(
             Uri.parse(proxyUrl),
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+              'User-Agent':
+                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
             },
-          ).timeout(Duration(seconds: 10));
+          ).timeout(const Duration(seconds: 10));
 
           print('Status: ${response.statusCode}');
           print('Content length: ${response.body.length}');
@@ -44,7 +45,8 @@ void main() {
             final ogTitle = document.querySelector('meta[property="og:title"]');
 
             print('Title tag: ${titleElement?.text ?? "NOT FOUND"}');
-            print('Meta title: ${metaTitle?.attributes["content"] ?? "NOT FOUND"}');
+            print(
+                'Meta title: ${metaTitle?.attributes["content"] ?? "NOT FOUND"}');
             print('OG title: ${ogTitle?.attributes["content"] ?? "NOT FOUND"}');
 
             // Check for expected content

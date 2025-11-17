@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
+import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/link_edit_screen.dart';
 import 'package:meaning_to/utils/auth.dart';
@@ -437,12 +438,27 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     final suggestedCategoryIds = _getSuggestedCategoryIds();
     print('TaskEditScreen: Suggested category IDs: $suggestedCategoryIds');
 
+    // Extract first link URL for domain-based relevance scoring
+    String? linkUrl;
+    if (_links.isNotEmpty) {
+      try {
+        final urlMatch = RegExp(r'href="([^"]+)"').firstMatch(_links.first);
+        if (urlMatch != null) {
+          linkUrl = urlMatch.group(1);
+          print('TaskEditScreen: Using link for domain relevance: $linkUrl');
+        }
+      } catch (e) {
+        print('TaskEditScreen: Error extracting URL from link: $e');
+      }
+    }
+
     await CategoryPickerDialog.show(
       context,
       title:
           'Select ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
       defaultCategory: widget.category,
       suggestedCategoryIds: suggestedCategoryIds.isNotEmpty ? suggestedCategoryIds : null,
+      linkUrl: linkUrl,
       onCategorySelected: (Category selectedCategory,
           {bool? shouldMove}) async {
         if (selectedCategory.id != widget.category.id) {
@@ -589,7 +605,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   }
 
   Future<void> _addLink() async {
-    final result = await Navigator.push<String>(
+    final result = await Navigator.push<ProposedTask?>(
       context,
       MaterialPageRoute(
         builder: (context) => LinkEditScreen(
@@ -599,8 +615,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       ),
     );
 
-    if (result != null) {
-      final errorMessage = await _addLinkToTask(result);
+    if (result != null && result.links.isNotEmpty) {
+      final htmlLink = result.links.first;
+      final errorMessage = await _addLinkToTask(htmlLink);
       if (errorMessage != null) {
         setState(() {
           _error = errorMessage;
@@ -610,7 +627,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   }
 
   Future<void> _editLink(int index) async {
-    final result = await Navigator.push<String>(
+    final result = await Navigator.push<ProposedTask?>(
       context,
       MaterialPageRoute(
         builder: (context) => LinkEditScreen(
@@ -621,8 +638,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       ),
     );
 
-    if (result != null) {
-      final errorMessage = await _updateLinkInTask(result, index);
+    if (result != null && result.links.isNotEmpty) {
+      final htmlLink = result.links.first;
+      final errorMessage = await _updateLinkInTask(htmlLink, index);
       if (errorMessage != null) {
         setState(() {
           _error = errorMessage;
@@ -927,7 +945,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             htmlLink = '<a href="$text">${processedLink.title ?? text}</a>';
           } else {
             // Open link edit screen with the text pre-filled
-            final result = await Navigator.push<String>(
+            final result = await Navigator.push<ProposedTask?>(
               context,
               MaterialPageRoute(
                 builder: (context) => LinkEditScreen(
@@ -939,8 +957,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 ),
               ),
             );
-            if (result != null) {
-              htmlLink = result;
+            if (result != null && result.links.isNotEmpty) {
+              htmlLink = result.links.first;
             } else {
               setState(() {
                 _isLoading = false;
@@ -965,7 +983,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       } catch (e) {
         print('Error processing pasted link: $e');
         // Open link edit screen with error message
-        final result = await Navigator.push<String>(
+        final result = await Navigator.push<ProposedTask?>(
           context,
           MaterialPageRoute(
             builder: (context) => LinkEditScreen(
@@ -976,9 +994,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             ),
           ),
         );
-        if (result != null) {
+        if (result != null && result.links.isNotEmpty) {
+          final htmlLink = result.links.first;
           // Add the link (duplicate checking handled by LinkEditScreen)
-          await _addLinkToTask(result);
+          await _addLinkToTask(htmlLink);
         }
       } finally {
         setState(() {

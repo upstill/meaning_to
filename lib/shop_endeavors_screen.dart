@@ -9,6 +9,7 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/widgets/link_display.dart';
+import 'package:meaning_to/home_screen.dart';
 
 class ShopEndeavorsScreen extends StatefulWidget {
   final Category?
@@ -300,10 +301,22 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           _isLoading = false;
         });
 
+        print('Loaded ${items.length} public categories for shop');
+
+        // If no categories available, navigate to new category screen
+        if (items.isEmpty && mounted) {
+          print(
+              'ShopEndeavorsScreen: No public categories available, navigating to new category screen');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              Navigator.pushReplacementNamed(context, '/new-category');
+            }
+          });
+          return;
+        }
+
         // Check which categories have tasks available
         _checkTaskAvailability();
-
-        print('Loaded ${items.length} public categories for shop');
       } catch (e) {
         print('ShopEndeavorsScreen: Error getting categories from API: $e');
         setState(() {
@@ -414,8 +427,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     if (willBeSelected && !_shopItems[index].isExpanded) {
       await _toggleExpansion(index);
 
-      // Show prompt if this is the first time selecting a category
-      if (!_hasShownPrompt) {
+      // Show prompt if this is the first time selecting a category AND it has tasks
+      if (!_hasShownPrompt && _shopItems[index].tasks.isNotEmpty) {
         _hasShownPrompt = true;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1002,6 +1015,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
             },
           );
 
+          // Mark that data has been modified so HomeScreen will refresh
+          HomeScreen.markDataModified();
+
           // Navigate based on user choice
           if (shouldGoHome == true && mounted) {
             // Pop all the way back to home screen (first route)
@@ -1021,16 +1037,21 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                 'Successfully added $importedTasks tasks to ${widget.existingCategory!.headline}!';
           }
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 4),
-            ),
-          );
+          // Mark that data has been modified so HomeScreen will refresh
+          HomeScreen.markDataModified();
 
-          // Return simple true for multiple tasks
-          Navigator.pop(context, true);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+
+            // Return simple true for multiple tasks
+            Navigator.pop(context, true);
+          }
         }
       }
     } catch (e) {
@@ -1154,6 +1175,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
         _isLoading = false;
       });
 
+      // Mark that data has been modified so HomeScreen will refresh
+      HomeScreen.markDataModified();
+
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1166,8 +1190,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           ),
         );
 
-        // Navigate back to home screen with result indicating categories were imported
-        Navigator.of(context).pop(true);
+        // Return to previous screen with success result
+        // The calling screen (NewCategoryScreen) will handle further navigation
+        Navigator.pop(context, true);
       }
     } catch (e) {
       print('Error importing categories: $e');

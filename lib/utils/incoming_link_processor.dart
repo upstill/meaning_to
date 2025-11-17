@@ -165,23 +165,18 @@ class IncomingLinkProcessor {
         return [];
       }
 
-      // Fetch ALL tasks in the database to check for duplicates
-      // This allows us to find tasks with the same link across all users
-      // so we can properly set original_id for content linking
-      final response = await supabase
+      // Fetch tasks for the current user across ALL categories
+      final userTasksResponse = await supabase
           .from('Tasks')
-          .select('*, Categories!Tasks_category_id_fkey(*)');
-      // Note: No owner_id filter - we want to check ALL tasks
+          .select('*, Categories!Tasks_category_id_fkey(*)')
+          .eq('owner_id', userId!);
 
-      final tasksData = response as List<dynamic>;
+      final userTasksData = userTasksResponse as List<dynamic>;
       print(
-          'IncomingLinkProcessor: Found ${tasksData.length} total tasks in database');
+          'IncomingLinkProcessor: Checking ${userTasksData.length} tasks across all user categories');
 
-      int matchingTasks = 0;
-      int userDuplicates = 0;
-      int otherUserTasks = 0;
-
-      for (final taskData in tasksData) {
+      // Check user's tasks for duplicates
+      for (final taskData in userTasksData) {
         try {
           final task = Task.fromJson(taskData);
           final categoryData = taskData['Categories'];
@@ -200,26 +195,17 @@ class IncomingLinkProcessor {
             if (linkUrl != null) {
               final urlsMatch = _urlsMatch(url, linkUrl);
               if (urlsMatch) {
-                matchingTasks++;
-
-                // Only add to duplicates list if it's the current user's task
-                if (task.ownerId == userId) {
-                  userDuplicates++;
-                  print(
-                      'IncomingLinkProcessor: Found duplicate in user task "${task.headline}" in category "${category.headline}"');
-                  print('  Incoming URL: $url');
-                  print('  Existing URL: $linkUrl');
-                  duplicates.add(DuplicateMatch(
-                    task: task,
-                    category: category,
-                    matchingUrl: linkUrl,
-                    originalLinkText: linkText,
-                  ));
-                } else {
-                  otherUserTasks++;
-                  print(
-                      'IncomingLinkProcessor: Found matching task from other user: "${task.headline}" (ID: ${task.id}, original_id: ${task.originalId})');
-                }
+                print(
+                    'IncomingLinkProcessor: Found duplicate in task "${task.headline}" in category "${category.headline}"');
+                print('  Incoming URL: $url');
+                print('  Existing URL: $linkUrl');
+                duplicates.add(DuplicateMatch(
+                  task: task,
+                  category: category,
+                  matchingUrl: linkUrl,
+                  originalLinkText: linkText,
+                ));
+                break; // Only count each task once
               }
             }
           }
@@ -229,10 +215,7 @@ class IncomingLinkProcessor {
         }
       }
 
-      print('IncomingLinkProcessor: Summary:');
-      print('  - Total matching tasks: $matchingTasks');
-      print('  - User duplicates: $userDuplicates');
-      print('  - Other user tasks: $otherUserTasks');
+      print('IncomingLinkProcessor: Found ${duplicates.length} duplicate(s) across all user categories');
     } catch (e) {
       print('IncomingLinkProcessor: Error during duplicate check: $e');
     }
@@ -669,6 +652,7 @@ class IncomingLinkProcessor {
               'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
           suggestedCategoryIds:
               result.proposedTask?.suggestedCategoryOriginalIds,
+          linkUrl: result.url,
           onCategorySelected: (Category selectedCategory,
               {bool? shouldMove}) async {
             await Future.delayed(const Duration(milliseconds: 100));
@@ -754,6 +738,7 @@ class IncomingLinkProcessor {
               'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
           suggestedCategoryIds:
               result.proposedTask?.suggestedCategoryOriginalIds,
+          linkUrl: result.url,
           onCategorySelected: (Category selectedCategory,
               {bool? shouldMove}) async {
             await Future.delayed(const Duration(milliseconds: 100));
@@ -861,6 +846,7 @@ class IncomingLinkProcessor {
           'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
       defaultCategory: defaultCategory,
       suggestedCategoryIds: result.proposedTask?.suggestedCategoryOriginalIds,
+      linkUrl: result.url,
       onCategorySelected: (Category category, {bool? shouldMove}) async {
         // Use the stored root context instead of the dialog context
         // Add a small delay to ensure the dialog is fully dismissed
