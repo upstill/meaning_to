@@ -4,7 +4,6 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/widgets/category_form.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 
@@ -56,14 +55,9 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
       print(
           'CacheManager initialized with new category: ${newCategory.headline}');
 
-      // Navigate to Edit Category screen with the new category
+      // Return the created category to the caller
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => EditCategoryScreen(category: newCategory),
-          ),
-        );
+        Navigator.pop(context, newCategory);
       }
     } catch (e) {
       print('Error creating category: $e');
@@ -119,12 +113,16 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
             onPressed: () async {
               print('NewCategoryScreen: Shop for Ideas button pressed');
               try {
-                final result =
+                final dynamic result =
                     await Navigator.pushNamed(context, '/shop-endeavors');
                 print(
-                    'NewCategoryScreen: Navigation returned with result: $result');
-                // If categories were imported, pass the result back to the calling screen
+                    'NewCategoryScreen: Navigation returned with result: $result (type: ${result.runtimeType})');
+                // ShopEndeavorsScreen returns true when categories/tasks are imported
                 if (result == true && mounted) {
+                  // Categories were imported successfully, navigate back to Home
+                  // Pass true so HomeScreen knows to refresh
+                  print(
+                      'NewCategoryScreen: Categories were imported successfully, returning to Home');
                   Navigator.pop(context, true);
                 }
               } catch (e) {

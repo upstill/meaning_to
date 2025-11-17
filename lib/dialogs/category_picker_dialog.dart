@@ -18,6 +18,7 @@ class CategoryPickerDialog extends StatefulWidget {
   final String? taskHeadline; // Optional task headline for custom title
   final List<int>?
       suggestedCategoryIds; // Suggested category IDs (e.g., from LinkToTask)
+  final String? linkUrl; // Optional link URL for domain-based relevance scoring
 
   const CategoryPickerDialog({
     super.key,
@@ -30,6 +31,7 @@ class CategoryPickerDialog extends StatefulWidget {
     this.showMoveAndCopy = false,
     this.taskHeadline,
     this.suggestedCategoryIds,
+    this.linkUrl,
   });
 
   static Future<void> show(
@@ -43,6 +45,7 @@ class CategoryPickerDialog extends StatefulWidget {
     bool showMoveAndCopy = false,
     String? taskHeadline,
     List<int>? suggestedCategoryIds,
+    String? linkUrl,
   }) {
     return showDialog(
       context: context,
@@ -56,6 +59,7 @@ class CategoryPickerDialog extends StatefulWidget {
         showMoveAndCopy: showMoveAndCopy,
         taskHeadline: taskHeadline,
         suggestedCategoryIds: suggestedCategoryIds,
+        linkUrl: linkUrl,
       ),
     );
   }
@@ -69,6 +73,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
   List<Category> _recentCategories = [];
   List<Category> _suggestedCategories =
       []; // Categories suggested by LinkToTask
+  Map<int, int> _domainRelevanceScores = {}; // Category ID -> relevance count
   bool _isLoading = true;
   String? _error;
   String _searchQuery = '';
@@ -118,10 +123,14 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       // Get suggested categories if IDs provided
       final suggestedCategories = _getSuggestedCategories(categories);
 
+      // Calculate domain-based relevance scores if link URL provided
+      final domainScores = await _calculateDomainRelevanceScores(categories);
+
       setState(() {
         _categories = categories;
         _recentCategories = recentCategories;
         _suggestedCategories = suggestedCategories;
+        _domainRelevanceScores = domainScores;
         _isLoading = false;
       });
     } catch (e) {
@@ -174,6 +183,95 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     return suggested;
   }
 
+  /// Calculate domain-based relevance scores for categories
+  /// Returns a map of category ID -> count of tasks with links to the same domain
+  Future<Map<int, int>> _calculateDomainRelevanceScores(
+      List<Category> allCategories) async {
+    final scores = <int, int>{};
+
+    // If no link URL provided, return empty scores
+    if (widget.linkUrl == null || widget.linkUrl!.isEmpty) {
+      return scores;
+    }
+
+    try {
+      // Extract domain from the link URL
+      final uri = Uri.tryParse(widget.linkUrl!);
+      if (uri == null) {
+        print('CategoryPickerDialog: Invalid link URL: ${widget.linkUrl}');
+        return scores;
+      }
+
+      final domain = uri.host;
+      print(
+          'CategoryPickerDialog: Calculating domain relevance scores for domain: $domain');
+
+      // For each category, calculate its relevance score
+      for (final category in allCategories) {
+        // Find all categories with the same original_id
+        final relatedCategoryIds = <int>[];
+
+        // Add the category's own ID
+        relatedCategoryIds.add(category.id);
+
+        // If this category has an original_id, find all categories with the same original_id
+        if (category.originalId != null) {
+          for (final otherCategory in allCategories) {
+            if (otherCategory.originalId == category.originalId &&
+                otherCategory.id != category.id) {
+              relatedCategoryIds.add(otherCategory.id);
+            }
+          }
+        }
+
+        // Also find categories that have this category as their original
+        for (final otherCategory in allCategories) {
+          if (otherCategory.originalId == category.id) {
+            relatedCategoryIds.add(otherCategory.id);
+          }
+        }
+
+        print(
+            'CategoryPickerDialog: Category "${category.headline}" has ${relatedCategoryIds.length} related categories');
+
+        // Query to count tasks in these categories that have links to the domain
+        final response = await supabase
+            .from('Tasks')
+            .select('id, links')
+            .inFilter('category_id', relatedCategoryIds);
+
+        final tasksData = response as List<dynamic>;
+        int matchCount = 0;
+
+        // Count tasks that have links to this domain
+        for (final taskData in tasksData) {
+          final links = taskData['links'] as List<dynamic>?;
+          if (links != null) {
+            for (final link in links) {
+              if (link is String && link.contains(domain)) {
+                matchCount++;
+                break; // Count each task only once
+              }
+            }
+          }
+        }
+
+        scores[category.id] = matchCount;
+        if (matchCount > 0) {
+          print(
+              'CategoryPickerDialog: Category "${category.headline}" has $matchCount tasks with links to $domain');
+        }
+      }
+
+      print('CategoryPickerDialog: Domain relevance scores calculated');
+    } catch (e) {
+      print(
+          'CategoryPickerDialog: Error calculating domain relevance scores: $e');
+    }
+
+    return scores;
+  }
+
   List<Category> get _filteredCategories {
     var filtered = _categories;
 
@@ -181,6 +279,14 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     if (widget.defaultCategory != null) {
       filtered = filtered
           .where((category) => category.id != widget.defaultCategory!.id)
+          .toList();
+    }
+
+    // Exclude suggested categories since they're shown prominently at the top
+    if (_suggestedCategories.isNotEmpty) {
+      final suggestedIds = _suggestedCategories.map((c) => c.id).toSet();
+      filtered = filtered
+          .where((category) => !suggestedIds.contains(category.id))
           .toList();
     }
 
@@ -232,6 +338,19 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       }
     }
 
+    // Sort remaining categories by domain relevance score (highest first)
+    if (_domainRelevanceScores.isNotEmpty) {
+      remaining.sort((a, b) {
+        final scoreA = _domainRelevanceScores[a.id] ?? 0;
+        final scoreB = _domainRelevanceScores[b.id] ?? 0;
+        // Sort by score descending, then by headline ascending as tiebreaker
+        if (scoreB != scoreA) {
+          return scoreB.compareTo(scoreA);
+        }
+        return a.headline.compareTo(b.headline);
+      });
+    }
+
     return [...prioritized, ...remaining];
   }
 
@@ -255,6 +374,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
           ),
         ],
       ),
+      contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
       content: SizedBox(
         width: double.maxFinite,
         height: 500,
@@ -473,16 +593,16 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
 
             // Create new category option at the bottom (show if enabled)
             if (widget.showCreateNew && !widget.showMoveAndCopy) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 16),
               const Divider(height: 1),
-              const SizedBox(height: 4),
+              const SizedBox(height: 16),
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Text(
-                    '...alternatively ',
+                    '...alternatively, ',
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 16,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
@@ -492,7 +612,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
                       backgroundColor: Colors.green[100],
                       foregroundColor: Colors.green[800],
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
+                          horizontal: 16, vertical: 16),
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
@@ -606,8 +726,8 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
             const SizedBox(height: 8),
             Text(
               _searchQuery.isNotEmpty
-                  ? 'No categories match your search'
-                  : 'No categories found',
+                  ? 'No ${NamingUtils.categoriesName(plural: true)} match your search'
+                  : 'No NamingUtils.categoriesName(plural: true) found',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -686,6 +806,12 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     }
     if (isRecent) {
       labels.add('Recent');
+    }
+
+    // Add relevance score if available and greater than 0
+    final score = _domainRelevanceScores[category.id];
+    if (score != null && score > 0) {
+      labels.add('$score match${score == 1 ? '' : 'es'}');
     }
 
     if (labels.isEmpty) {

@@ -5,8 +5,9 @@ import 'package:html/parser.dart' as html_parser;
 void main() {
   group('Debug Proxy Content', () {
     test('Check what proxy returns for YouTube', () async {
-      final url = 'https://www.youtube.com/watch?v=qd1RXxf2LsQ';
-      final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
+      const url = 'https://www.youtube.com/watch?v=qd1RXxf2LsQ';
+      final proxyUrl =
+          'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
 
       print('=== Fetching content via proxy ===');
       print('Original URL: $url');
@@ -34,14 +35,17 @@ void main() {
           // Check for YouTube-specific meta tags
           final metaTitle = document.querySelector('meta[name="title"]');
           if (metaTitle != null) {
-            print('Found meta[name="title"]: "${metaTitle.attributes["content"]}"');
+            print(
+                'Found meta[name="title"]: "${metaTitle.attributes["content"]}"');
           } else {
             print('No meta[name="title"] found');
           }
 
-          final metaDescription = document.querySelector('meta[name="description"]');
+          final metaDescription =
+              document.querySelector('meta[name="description"]');
           if (metaDescription != null) {
-            print('Found meta[name="description"]: "${metaDescription.attributes["content"]}"');
+            print(
+                'Found meta[name="description"]: "${metaDescription.attributes["content"]}"');
           } else {
             print('No meta[name="description"] found');
           }
@@ -56,13 +60,15 @@ void main() {
 
           // Check what the page actually looks like
           print('\n=== First 1000 characters of content ===');
-          print(response.body.substring(0, response.body.length > 1000 ? 1000 : response.body.length));
+          print(response.body.substring(
+              0, response.body.length > 1000 ? 1000 : response.body.length));
 
           // Look for any mention of the video title
           print('\n=== Searching for expected content ===');
           final hasFleetwood = response.body.contains('Fleetwood Mac');
           final hasRumours = response.body.contains('Rumours');
-          final hasDisclaimer = response.body.contains('⚠️ IMPORTANT DISCLAIMER');
+          final hasDisclaimer =
+              response.body.contains('⚠️ IMPORTANT DISCLAIMER');
 
           print('Contains "Fleetwood Mac": $hasFleetwood');
           print('Contains "Rumours": $hasRumours');

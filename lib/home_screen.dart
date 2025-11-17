@@ -132,11 +132,18 @@ class HomeScreenState extends State<HomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Check if data was modified by other screens
+    final dataModified = HomeScreen.checkAndResetDataModified();
+
     // Refresh cache when dependencies change (e.g., when returning from other screens)
     if (_selectedCategory != null) {
-      // Check if data was modified by other screens
-      final dataModified = HomeScreen.checkAndResetDataModified();
       _refreshCacheIfNeeded(forceDatabaseRefresh: dataModified);
+    } else if (dataModified) {
+      // If no category is selected but data was modified (e.g., new categories imported),
+      // reload categories to pick up the new data
+      print(
+          'HomeScreen: No category selected but data was modified, reloading categories');
+      _loadCategories();
     }
   }
 
@@ -463,9 +470,10 @@ class HomeScreenState extends State<HomeScreen> {
     }
 
     Navigator.pushNamed(context, '/new-category').then((result) {
-      // If we got a result (true), reload categories
-      if (result == true) {
-        print('HomeScreen: Category was created, reloading categories');
+      // If we got a result (Category from direct creation, or true from ShopEndeavorsScreen import), reload categories
+      if (result != null) {
+        print(
+            'HomeScreen: Category was created or imported, reloading categories');
         _loadCategories();
       }
     });
@@ -1325,6 +1333,20 @@ class HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Check if data was modified after this frame completes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final dataModified = HomeScreen.checkAndResetDataModified();
+      if (dataModified && mounted) {
+        print('HomeScreen.build: Data was modified, triggering reload');
+        if (_selectedCategory != null) {
+          _refreshCacheIfNeeded(forceDatabaseRefresh: true);
+        } else {
+          print('HomeScreen.build: No category selected, reloading categories');
+          _loadCategories();
+        }
+      }
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('I\'ve Been Meaning To...'),
@@ -1454,63 +1476,78 @@ class HomeScreenState extends State<HomeScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: DropdownButtonFormField<Category>(
-                          initialValue: _selectedCategory,
-                          // Must be >= kMinInteractiveDimension (48)
-                          itemHeight: 48.0,
-                          isExpanded: true,
-                          style: const TextStyle(
-                              fontSize:
-                                  20), // Increased by 8 points from default 12
-                          decoration: InputDecoration(
-                            border: const OutlineInputBorder(),
-                            hintText:
-                                'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false, withArticle: true)}',
-                            isDense: false,
-                            contentPadding: const EdgeInsets.symmetric(
-                              vertical: 14,
-                              horizontal: 12,
-                            ),
-                          ),
-                          selectedItemBuilder: (context) => _categories
-                              .map((category) => Text(
-                                    '...${category.headline}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      height: 1.0,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1A237E),
-                                    ),
-                                  ))
-                              .toList(),
-                          items: _categories.map((category) {
-                            return DropdownMenuItem(
-                              value: category,
-                              child: Text(
-                                '...${category.headline}',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  height: 0.95,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1A237E),
+                        child: _categories.length == 1
+                            ? Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                  horizontal: 12,
                                 ),
+                                child: Text(
+                                  '...${_categories.first.headline}',
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1A237E),
+                                  ),
+                                ),
+                              )
+                            : DropdownButtonFormField<Category>(
+                                initialValue: _selectedCategory,
+                                // Must be >= kMinInteractiveDimension (48)
+                                itemHeight: 48.0,
+                                isExpanded: true,
+                                style: const TextStyle(
+                                    fontSize:
+                                        20), // Increased by 8 points from default 12
+                                decoration: InputDecoration(
+                                  border: const OutlineInputBorder(),
+                                  hintText:
+                                      'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false, withArticle: true)}',
+                                  isDense: false,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                    horizontal: 12,
+                                  ),
+                                ),
+                                selectedItemBuilder: (context) => _categories
+                                    .map((category) => Text(
+                                          '...${category.headline}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            height: 1.0,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF1A237E),
+                                          ),
+                                        ))
+                                    .toList(),
+                                items: _categories.map((category) {
+                                  return DropdownMenuItem(
+                                    value: category,
+                                    child: Text(
+                                      '...${category.headline}',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        height: 0.95,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1A237E),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (Category? newValue) async {
+                                  setState(() {
+                                    _selectedCategory = newValue;
+                                    _randomTask = null; // Clear the current task
+                                  });
+                                  if (newValue != null) {
+                                    // Update last_access timestamp when category is selected
+                                    await _updateCategoryLastAccess(newValue);
+                                    _loadRandomTask(newValue);
+                                  }
+                                },
                               ),
-                            );
-                          }).toList(),
-                          onChanged: (Category? newValue) async {
-                            setState(() {
-                              _selectedCategory = newValue;
-                              _randomTask = null; // Clear the current task
-                            });
-                            if (newValue != null) {
-                              // Update last_access timestamp when category is selected
-                              await _updateCategoryLastAccess(newValue);
-                              _loadRandomTask(newValue);
-                            }
-                          },
-                        ),
                       ),
                       // Info, Share, and Edit buttons moved to bottom right
                     ],
@@ -2034,10 +2071,10 @@ class HomeScreenState extends State<HomeScreen> {
                 heroTag: 'editCategoryButton',
                 onPressed: () => _navigateToEditCategory(_selectedCategory),
                 tooltip:
-                    'Edit ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
-                backgroundColor: Colors.blue[600],
-                foregroundColor: Colors.white,
-                child: const Icon(Icons.edit),
+                    'View ${NamingUtils.tasksName(capitalize: false, plural: false)} list',
+                backgroundColor: AppButtons.goForthBg,
+                foregroundColor: AppButtons.goForthFg,
+                child: const Icon(Icons.menu),
               ),
               const SizedBox(width: 16),
             ],
