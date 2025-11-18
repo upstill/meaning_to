@@ -26,6 +26,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> needsDataReload = ValueNotifier<bool>(false);
 
   final String? initialCategoryId;
 
@@ -40,6 +41,7 @@ class HomeScreen extends StatefulWidget {
   // Method to mark that data has been modified (call from other screens)
   static void markDataModified() {
     _dataModified = true;
+    needsDataReload.value = true; // Notify listeners
   }
 
   // Method to check and reset the modified flag
@@ -76,6 +78,8 @@ class HomeScreenState extends State<HomeScreen> {
     print('HomeScreen: initState called');
     // Listen for task reload requests
     HomeScreen.needsTaskReload.addListener(_handleTaskReloadRequest);
+    // Listen for data reload requests (categories and tasks)
+    HomeScreen.needsDataReload.addListener(_handleDataReloadRequest);
 
     // Load categories after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -126,6 +130,7 @@ class HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     HomeScreen.needsTaskReload.removeListener(_handleTaskReloadRequest);
+    HomeScreen.needsDataReload.removeListener(_handleDataReloadRequest);
     super.dispose();
   }
 
@@ -407,6 +412,17 @@ class HomeScreenState extends State<HomeScreen> {
         // Select initial category if one was provided
         _selectInitialCategory();
 
+        // If there's only one category and no category is selected, select it automatically
+        if (categories.length == 1 && _selectedCategory == null) {
+          print(
+              'HomeScreen: Only one category available, selecting it automatically');
+          setState(() {
+            _selectedCategory = categories.first;
+          });
+          _loadRandomTask(categories.first);
+          _updateCategoryLastAccess(categories.first);
+        }
+
         // Show welcome dialog for new authenticated users with no categories
         if (!AuthUtils.isGuestUser() &&
             categories.isEmpty &&
@@ -457,6 +473,29 @@ class HomeScreenState extends State<HomeScreen> {
       );
       print(
         'HomeScreen: mounted: $mounted, needsTaskReload: ${HomeScreen.needsTaskReload.value}',
+      );
+    }
+  }
+
+  void _handleDataReloadRequest() {
+    print('HomeScreen: Data reload requested');
+    if (HomeScreen.needsDataReload.value && mounted) {
+      print('HomeScreen: Handling data reload request');
+      HomeScreen.needsDataReload.value = false; // Reset the flag
+
+      // Reload categories and tasks
+      _loadCategories().then((_) {
+        // After categories are loaded, reload the current task if we have a selected category
+        if (_selectedCategory != null && mounted) {
+          _loadRandomTask(_selectedCategory!);
+        }
+      });
+    } else {
+      print(
+        'HomeScreen: Data reload requested but widget not mounted or flag not set',
+      );
+      print(
+        'HomeScreen: mounted: $mounted, needsDataReload: ${HomeScreen.needsDataReload.value}',
       );
     }
   }
@@ -1112,7 +1151,7 @@ class HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               content: Text(
-                'It\'ll be a pretty empty experience in the beginning, so the first thing you\'ll want is to define some ${NamingUtils.categoriesName()} (like \'Watch a Movie\'), and then some ${NamingUtils.tasksName()} for pursuing them (like \'The Godfather\' or \'Die Hard\')',
+                'It can be a pretty empty experience in the beginning, so the first thing you\'ll want is to define some ${NamingUtils.categoriesName()} (like \'Watch a Movie\'), and then some ${NamingUtils.tasksName()} for pursuing them (like \'The Godfather\' or \'Die Hard\')',
                 style: const TextStyle(fontSize: 16),
               ),
               actions: [
@@ -1126,9 +1165,9 @@ class HomeScreenState extends State<HomeScreen> {
                     backgroundColor: Colors.deepPurple,
                     foregroundColor: Colors.white,
                   ),
-                  child: const Text(
-                    'Create Your First Pursuit',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                  child: Text(
+                    'Create Your First ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
@@ -1539,7 +1578,8 @@ class HomeScreenState extends State<HomeScreen> {
                                 onChanged: (Category? newValue) async {
                                   setState(() {
                                     _selectedCategory = newValue;
-                                    _randomTask = null; // Clear the current task
+                                    _randomTask =
+                                        null; // Clear the current task
                                   });
                                   if (newValue != null) {
                                     // Update last_access timestamp when category is selected

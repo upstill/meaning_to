@@ -4,6 +4,7 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/widgets/category_form.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 
@@ -16,11 +17,29 @@ class NewCategoryScreen extends StatefulWidget {
 
 class NewCategoryScreenState extends State<NewCategoryScreen> {
   bool _isLoading = false;
+  bool _hasCategories = true; // Assume true until we check
+  bool _isCheckingCategories = true;
 
   @override
   void initState() {
     super.initState();
     print('NewCategoryScreen: initState called');
+    _checkExistingCategories();
+  }
+
+  Future<void> _checkExistingCategories() async {
+    try {
+      final categories = await ApiClient.getCategories();
+      setState(() {
+        _hasCategories = categories.isNotEmpty;
+        _isCheckingCategories = false;
+      });
+    } catch (e) {
+      print('Error checking categories: $e');
+      setState(() {
+        _isCheckingCategories = false;
+      });
+    }
   }
 
   Future<void> _createCategory(String headline, String invitation,
@@ -90,6 +109,19 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          if (!_isCheckingCategories && !_hasCategories) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24.0),
+              child: Text(
+                'A \'${NamingUtils.categoriesName(plural: false, capitalize: false)}\' is a category of activities like \'Watch a Movie\' or \'Tackle a Project\'. If you\'d like to see what ${NamingUtils.categoriesName(plural: true, capitalize: false)} others have filed, hit the \'Shop For ${NamingUtils.categoriesName(capitalize: true)}\' button below.',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.left,
+              ),
+            ),
+          ],
           CategoryForm(
             category: null, // New category
             isEditing: true, // Always in editing mode for new categories

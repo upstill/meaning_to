@@ -727,7 +727,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
             Text(
               _searchQuery.isNotEmpty
                   ? 'No ${NamingUtils.categoriesName(plural: true)} match your search'
-                  : 'No NamingUtils.categoriesName(plural: true) found',
+                  : 'No ${NamingUtils.categoriesName(plural: true)} found',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
