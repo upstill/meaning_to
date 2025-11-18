@@ -664,44 +664,10 @@ class _TaskFormState extends State<TaskForm> {
               ),
               const SizedBox(height: 16),
 
-              // Add A List of Ideas button
-              Center(
-                child: FractionallySizedBox(
-                  widthFactor: 0.5,
-                  child: ElevatedButton.icon(
-                    onPressed: widget.isLoading
-                        ? null
-                        : () async {
-                            if (widget.selectedCategory != null) {
-                              final result = await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => AddTasksScreen(
-                                    category: widget.selectedCategory!,
-                                  ),
-                                ),
-                              );
-
-                              // If tasks were added, close this screen to return to Edit Category
-                              if (result == true && context.mounted) {
-                                Navigator.pop(context, true);
-                              }
-                            }
-                          },
-                    icon: const Icon(Icons.add_task),
-                    label: Text(
-                        'Add a List of ${NamingUtils.tasksName(plural: true)}'),
-                    style: AppButtons.goForth(),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
               // Prompt about getting ideas from other people
               Center(
                 child: Text(
-                  '** You can also get ${NamingUtils.tasksName(plural: true)} from other people! **',
+                  '** You can get ${NamingUtils.tasksName(plural: true)} from other people: **',
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.grey[600],
@@ -758,6 +724,55 @@ class _TaskFormState extends State<TaskForm> {
                     ),
                   );
                 },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Prompt about getting ideas from other people
+              Center(
+                child: Text(
+                  '** You can also add a whole list of ${NamingUtils.tasksName(plural: true)}: **',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Add A List of Ideas button
+              Center(
+                child: FractionallySizedBox(
+                  widthFactor: 0.5,
+                  child: ElevatedButton.icon(
+                    onPressed: widget.isLoading
+                        ? null
+                        : () async {
+                            if (widget.selectedCategory != null) {
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => AddTasksScreen(
+                                    category: widget.selectedCategory!,
+                                  ),
+                                ),
+                              );
+
+                              // If tasks were added, close this screen to return to Edit Category
+                              if (result == true && context.mounted) {
+                                Navigator.pop(context, true);
+                              }
+                            }
+                          },
+                    icon: const Icon(Icons.add_task),
+                    label: Text(
+                        'Add a List of ${NamingUtils.tasksName(plural: true)}'),
+                    style: AppButtons.goForth(),
+                  ),
+                ),
               ),
 
               // JustWatch import for movie/TV categories

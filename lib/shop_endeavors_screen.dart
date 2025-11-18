@@ -957,7 +957,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
         if (importedTasks == 1 && lastAddedTask != null) {
           // Single task - show dialog with the task we just added
           print(
-              'ShopEndeavorsScreen: Showing dialog for added task: "${lastAddedTask!.headline}"');
+              'ShopEndeavorsScreen: Showing dialog for added task: "${lastAddedTask.headline}"');
 
           // Show popup dialog
           final shouldGoHome = await showDialog<bool>(
@@ -1560,7 +1560,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                                                                       .spaceBetween,
                                                               children: [
                                                                 Text(
-                                                                  'Suggestions:',
+                                                                  'Suggestion(s):',
                                                                   style: Theme.of(
                                                                           context)
                                                                       .textTheme
@@ -1577,63 +1577,68 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                                                                                 4,
                                                                       ),
                                                                 ),
-                                                                Checkbox(
-                                                                  value: _areAllTasksSelected(
-                                                                          index)
-                                                                      ? true
-                                                                      : _areSomeTasksSelected(
-                                                                              index)
-                                                                          ? null
-                                                                          : false,
-                                                                  tristate:
-                                                                      true,
-                                                                  onChanged: (_) =>
-                                                                      _toggleSelectAllTasks(
-                                                                          index),
-                                                                  materialTapTargetSize:
-                                                                      MaterialTapTargetSize
-                                                                          .shrinkWrap,
-                                                                  visualDensity:
-                                                                      VisualDensity
-                                                                          .compact,
-                                                                ),
+                                                                // Only show checkbox if there are 2 or more tasks
+                                                                if (item.tasks
+                                                                        .length >=
+                                                                    2)
+                                                                  Checkbox(
+                                                                    value: _areAllTasksSelected(
+                                                                            index)
+                                                                        ? true
+                                                                        : _areSomeTasksSelected(index)
+                                                                            ? null
+                                                                            : false,
+                                                                    tristate:
+                                                                        true,
+                                                                    onChanged: (_) =>
+                                                                        _toggleSelectAllTasks(
+                                                                            index),
+                                                                    materialTapTargetSize:
+                                                                        MaterialTapTargetSize
+                                                                            .shrinkWrap,
+                                                                    visualDensity:
+                                                                        VisualDensity
+                                                                            .compact,
+                                                                  ),
                                                               ],
                                                             ),
                                                           )
-                                                        : Padding(
-                                                            padding:
-                                                                const EdgeInsets
+                                                        // Only show checkbox if there are 2 or more tasks
+                                                        : item.tasks.length >= 2
+                                                            ? Padding(
+                                                                padding: const EdgeInsets
                                                                     .symmetric(
                                                                     horizontal:
                                                                         20.0),
-                                                            child: Row(
-                                                              mainAxisAlignment:
-                                                                  MainAxisAlignment
-                                                                      .end,
-                                                              children: [
-                                                                Checkbox(
-                                                                  value: _areAllTasksSelected(
-                                                                          index)
-                                                                      ? true
-                                                                      : _areSomeTasksSelected(
+                                                                child: Row(
+                                                                  mainAxisAlignment:
+                                                                      MainAxisAlignment
+                                                                          .end,
+                                                                  children: [
+                                                                    Checkbox(
+                                                                      value: _areAllTasksSelected(
                                                                               index)
-                                                                          ? null
-                                                                          : false,
-                                                                  tristate:
-                                                                      true,
-                                                                  onChanged: (_) =>
-                                                                      _toggleSelectAllTasks(
-                                                                          index),
-                                                                  materialTapTargetSize:
-                                                                      MaterialTapTargetSize
-                                                                          .shrinkWrap,
-                                                                  visualDensity:
-                                                                      VisualDensity
-                                                                          .compact,
+                                                                          ? true
+                                                                          : _areSomeTasksSelected(index)
+                                                                              ? null
+                                                                              : false,
+                                                                      tristate:
+                                                                          true,
+                                                                      onChanged:
+                                                                          (_) =>
+                                                                              _toggleSelectAllTasks(index),
+                                                                      materialTapTargetSize:
+                                                                          MaterialTapTargetSize
+                                                                              .shrinkWrap,
+                                                                      visualDensity:
+                                                                          VisualDensity
+                                                                              .compact,
+                                                                    ),
+                                                                  ],
                                                                 ),
-                                                              ],
-                                                            ),
-                                                          ),
+                                                              )
+                                                            : const SizedBox
+                                                                .shrink(),
                                                     const SizedBox(height: 8),
                                                     ...item.tasks
                                                         .map((task) =>

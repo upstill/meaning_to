@@ -246,8 +246,8 @@ class _NewContentScreenState extends State<NewContentScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Category change button (left side, only show for task mode)
-                  if (_contentType == ContentType.task)
+                  // Category change button (left side, only show for task mode and if user has multiple categories)
+                  if (_contentType == ContentType.task && _categories.length > 1)
                     TextButton(
                       onPressed: () => _showCategoryPicker(),
                       style: TextButton.styleFrom(
