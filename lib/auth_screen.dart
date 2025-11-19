@@ -178,11 +178,11 @@ class _AuthScreenState extends State<AuthScreen> {
             } else {
               // This might be a new user with email confirmations enabled
               print(
-                  'AuthScreen: New user detected, showing email confirmation');
+                  'AuthScreen: New user detected, navigating to OTP verification');
               if (mounted) {
-                Navigator.pushReplacementNamed(
+                Navigator.pushNamed(
                   context,
-                  '/email-confirmation',
+                  '/auth/verify-otp',
                   arguments: {'email': _emailController.text.trim()},
                 );
               }
@@ -441,21 +441,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         textAlign: TextAlign.center,
                       ),
                     ],
-                    const SizedBox(height: 16),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: _isLoading ? null : _handleForgotPassword,
-                        child: const Text(
-                          'Forgot Password?',
-                          style: TextStyle(
-                            color: Colors.deepPurple,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 24),
                     Row(
                       children: [
                         Expanded(
@@ -513,7 +499,21 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _isLoading ? null : _handleForgotPassword,
+                        child: const Text(
+                          'Forgot Password?',
+                          style: TextStyle(
+                            color: Colors.deepPurple,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
 
                     // Divider
                     const Divider(
