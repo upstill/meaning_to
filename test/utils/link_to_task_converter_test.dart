@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:meaning_to/utils/link_to_task_converter.dart';
@@ -6,6 +7,9 @@ import 'package:meaning_to/utils/streaming_media_constants.dart';
 import 'package:meaning_to/models/category.dart';
 
 void main() {
+  // Test user ID used across all tests
+  const testUserId = 'test-user-123';
+
   // Load .env file before all tests
   setUpAll(() async {
     try {
@@ -24,8 +28,6 @@ void main() {
   group('LinkToTaskConverter Tests', () {
     // Note: These tests require network access and will hit actual URLs
     // In a production environment, you might want to mock the HTTP requests
-
-    const testUserId = 'test-user-123';
 
     test('should process Tidal link and extract artist/work', () async {
       const tidalUrl = 'https://tidal.com/browse/album/251380836';
@@ -232,6 +234,113 @@ void main() {
       // (This depends on successful fetching, so we just check it's not throwing errors)
     });
 
+    test('should process Spotify playlist link with query parameters', () async {
+      const spotifyUrl = 'https://open.spotify.com/playlist/60iEsOOYsvriP3l7gBdyzW?si=tk35MI51QKO6Ypk1yjRPxQ';
+
+      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+        spotifyUrl,
+        testUserId,
+      );
+
+      print('✅ ProposedTask from Spotify playlist link:');
+      print('   Headline: "${proposedTask.headline}"');
+      print('   Notes: "${proposedTask.notes}"');
+      print('   Links: ${proposedTask.links}');
+      print('   Suggested categories: ${proposedTask.suggestedCategoryOriginalIds}');
+
+      // Should extract playlist name as headline (Spotify API returns with extra space)
+      expect(proposedTask.headline, equals('Anassa  Dinner'));
+
+      // Should have null notes for playlists
+      expect(proposedTask.notes, isNull);
+
+      // Should have exactly one link with text "Anassa  Dinner on Spotify" (with extra space)
+      expect(proposedTask.links.length, 1);
+      expect(proposedTask.links[0], contains('Anassa  Dinner on Spotify'));
+
+      // Link should not contain query parameters
+      expect(proposedTask.links[0], isNot(contains('si=')));
+      expect(proposedTask.links[0], contains('href="https://open.spotify.com/playlist/60iEsOOYsvriP3l7gBdyzW"'));
+
+      // Should suggest streaming media categories with 74 as primary (first)
+      expect(proposedTask.suggestedCategoryOriginalIds, isNotEmpty);
+      expect(
+        proposedTask.suggestedCategoryOriginalIds,
+        containsAll(STREAMING_MEDIA_CATEGORY_IDS),
+      );
+      expect(proposedTask.suggestedCategoryOriginalIds.first, equals(74),
+        reason: 'Category 74 should be the primary suggestion for playlists');
+    });
+
+    test('should process Spotify album link', () async {
+      const spotifyUrl = 'https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy';
+
+      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+        spotifyUrl,
+        testUserId,
+      );
+
+      print('✅ ProposedTask from Spotify album link:');
+      print('   Headline: "${proposedTask.headline}"');
+      print('   Notes: "${proposedTask.notes}"');
+      print('   Links: ${proposedTask.links}');
+      print('   Suggested categories: ${proposedTask.suggestedCategoryOriginalIds}');
+
+      // Should extract artist as headline
+      expect(proposedTask.headline, equals('Pitbull'));
+
+      // Should extract album title as notes
+      expect(proposedTask.notes, equals('Global Warming'));
+
+      // Should have exactly one link with text "<album> on Spotify"
+      expect(proposedTask.links.length, 1);
+      expect(proposedTask.links[0], contains('Global Warming on Spotify'));
+      expect(proposedTask.links[0], contains('href="https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy"'));
+
+      // Should suggest streaming media categories
+      expect(proposedTask.suggestedCategoryOriginalIds, isNotEmpty);
+      expect(
+        proposedTask.suggestedCategoryOriginalIds,
+        containsAll(STREAMING_MEDIA_CATEGORY_IDS),
+      );
+    });
+
+    test('should process Spotify track link with query parameters', () async {
+      const spotifyUrl = 'https://open.spotify.com/track/292kifgxa7S78AuzA5NMpL?si=43b468ec44d74587';
+
+      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+        spotifyUrl,
+        testUserId,
+      );
+
+      print('✅ ProposedTask from Spotify track link:');
+      print('   Headline: "${proposedTask.headline}"');
+      print('   Notes: "${proposedTask.notes}"');
+      print('   Links: ${proposedTask.links}');
+      print('   Suggested categories: ${proposedTask.suggestedCategoryOriginalIds}');
+
+      // Should extract artist as headline
+      expect(proposedTask.headline, equals('Pitbull'));
+
+      // Should extract track name as notes (including featured artist)
+      expect(proposedTask.notes, equals('Global Warming (feat. Sensato)'));
+
+      // Should have exactly one link with text "<track> on Spotify"
+      expect(proposedTask.links.length, 1);
+      expect(proposedTask.links[0], contains('Global Warming (feat. Sensato) on Spotify'));
+
+      // Link should not contain query parameters
+      expect(proposedTask.links[0], isNot(contains('si=')));
+      expect(proposedTask.links[0], contains('href="https://open.spotify.com/track/292kifgxa7S78AuzA5NMpL"'));
+
+      // Should suggest streaming media categories
+      expect(proposedTask.suggestedCategoryOriginalIds, isNotEmpty);
+      expect(
+        proposedTask.suggestedCategoryOriginalIds,
+        containsAll(STREAMING_MEDIA_CATEGORY_IDS),
+      );
+    });
+
     test('should normalize URLs by removing tracking parameters', () async {
       const urlWithTracking = 'https://www.imdb.com/title/tt0111161/?utm_source=test&fbclid=abc123&ref=share';
 
@@ -393,6 +502,21 @@ void main() {
           'expected': STREAMING_MEDIA_CATEGORY_IDS.toList(), // Streaming categories
           'description': 'Tidal album'
         },
+        {
+          'url': 'https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy',
+          'expected': [54, 41, 74], // Streaming categories
+          'description': 'Spotify album'
+        },
+        {
+          'url': 'https://open.spotify.com/playlist/60iEsOOYsvriP3l7gBdyzW',
+          'expected': [54, 41, 74], // Streaming categories
+          'description': 'Spotify playlist'
+        },
+        {
+          'url': 'https://open.spotify.com/track/292kifgxa7S78AuzA5NMpL',
+          'expected': [54, 41, 74], // Streaming categories
+          'description': 'Spotify track'
+        },
       ];
 
       for (final testCase in testCases) {
@@ -412,6 +536,163 @@ void main() {
       }
 
       print('✅ All category suggestion tests passed!');
+    });
+  });
+
+  group('LinkToTaskConverter TSV Data Tests', () {
+    test('should process links according to TSV test data', () async {
+      // Read the TSV file
+      final tsvFile = File('test/utils/link_to_task_test_data.tsv');
+
+      if (!await tsvFile.exists()) {
+        print('⚠️  TSV test data file not found at: ${tsvFile.path}');
+        print('   Skipping TSV data tests');
+        return;
+      }
+
+      final lines = await tsvFile.readAsLines();
+
+      // Skip the header line
+      if (lines.isEmpty) {
+        print('⚠️  TSV file is empty');
+        return;
+      }
+
+      final header = lines[0].split('\t');
+      print('✅ Found TSV with headers: $header');
+
+      // Check if a specific test line was requested via --dart-define=TEST_LINE=N
+      const testLineParam = String.fromEnvironment('TEST_LINE');
+      final specificLine = testLineParam.isEmpty ? null : int.tryParse(testLineParam);
+
+      if (specificLine != null) {
+        if (specificLine < 1 || specificLine >= lines.length) {
+          print('❌ TEST_LINE=$specificLine is out of range (1-${lines.length - 1})');
+          fail('TEST_LINE out of range');
+        }
+        print('   Testing only line $specificLine...\n');
+      } else {
+        print('   Processing ${lines.length - 1} test cases...\n');
+      }
+
+      // Process each test case
+      for (int i = 1; i < lines.length; i++) {
+        // If a specific line was requested, skip all others
+        if (specificLine != null && i != specificLine) continue;
+
+        final line = lines[i].trim();
+        if (line.isEmpty) continue;
+
+        final fields = line.split('\t');
+
+        // Pad fields with empty strings if there are fewer than 7 fields
+        while (fields.length < 7) {
+          fields.add('');
+        }
+
+        final linkIn = fields[0].trim();
+        final linkOut = fields[1].trim();
+        final expectedHeadline = fields[2].trim();
+        final expectedNotes = fields[3].trim();
+        final expectedLinkText = fields[4].trim();
+        final expectedCategoryIds = fields[5].trim();
+        final expectedSynopsisStart = fields[6].trim();
+
+        print('Test case ${i}: $linkIn');
+
+        try {
+          final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+            linkIn,
+            testUserId,
+          );
+
+          // Test headline
+          expect(
+            proposedTask.headline,
+            equals(expectedHeadline),
+            reason: 'Headline mismatch for $linkIn',
+          );
+          print('  ✅ Headline: "${proposedTask.headline}"');
+
+          // Test notes (handle null and empty string)
+          if (expectedNotes.isEmpty || expectedNotes.toLowerCase() == 'null') {
+            expect(
+              proposedTask.notes,
+              isNull,
+              reason: 'Notes should be null for $linkIn',
+            );
+            print('  ✅ Notes: null');
+          } else {
+            expect(
+              proposedTask.notes,
+              equals(expectedNotes),
+              reason: 'Notes mismatch for $linkIn',
+            );
+            print('  ✅ Notes: "${proposedTask.notes}"');
+          }
+
+          // Test link text
+          expect(
+            proposedTask.links.length,
+            equals(1),
+            reason: 'Should have exactly one link for $linkIn',
+          );
+          expect(
+            proposedTask.links[0],
+            contains(expectedLinkText),
+            reason: 'Link text mismatch for $linkIn',
+          );
+          print('  ✅ Link text contains: "$expectedLinkText"');
+
+          // Test normalized link URL
+          if (linkOut.isNotEmpty) {
+            expect(
+              proposedTask.links[0],
+              contains('href="$linkOut"'),
+              reason: 'Normalized URL mismatch for $linkIn',
+            );
+            print('  ✅ Normalized URL: $linkOut');
+          }
+
+          // Test category IDs
+          if (expectedCategoryIds.isNotEmpty && expectedCategoryIds.toLowerCase() != 'null') {
+            // Remove surrounding quotes if present
+            final cleanedCategoryIds = expectedCategoryIds.replaceAll('"', '').trim();
+            final expectedIds = cleanedCategoryIds
+                .split(',')
+                .map((s) => int.parse(s.trim()))
+                .toList();
+            expect(
+              proposedTask.suggestedCategoryOriginalIds,
+              equals(expectedIds),
+              reason: 'Category IDs mismatch for $linkIn',
+            );
+            print('  ✅ Category IDs: ${proposedTask.suggestedCategoryOriginalIds}');
+          }
+
+          // Test synopsis (just check it starts with the expected value)
+          if (expectedSynopsisStart.isNotEmpty && expectedSynopsisStart.toLowerCase() != 'null') {
+            expect(
+              proposedTask.synopsis,
+              isNotNull,
+              reason: 'Synopsis should not be null for $linkIn',
+            );
+            expect(
+              proposedTask.synopsis,
+              startsWith(expectedSynopsisStart),
+              reason: 'Synopsis should start with "$expectedSynopsisStart" for $linkIn',
+            );
+            print('  ✅ Synopsis starts with: "${expectedSynopsisStart.substring(0, expectedSynopsisStart.length > 50 ? 50 : expectedSynopsisStart.length)}..."');
+          }
+
+          print('  ✅ Test case $i passed\n');
+        } catch (e) {
+          print('  ❌ Test case $i failed: $e\n');
+          rethrow;
+        }
+      }
+
+      print('✅ All TSV test cases passed!');
     });
   });
 }

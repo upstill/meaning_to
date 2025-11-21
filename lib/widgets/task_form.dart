@@ -25,6 +25,7 @@ class TaskForm extends StatefulWidget {
   final String? initialNotes;
   final List<String>? initialLinks;
   final bool categoryLocked; // If true, show category as fixed display
+  final Function(List<String> links)? onLinksChanged; // Callback for when links change
 
   const TaskForm({
     super.key,
@@ -37,6 +38,7 @@ class TaskForm extends StatefulWidget {
     this.initialNotes,
     this.initialLinks,
     this.categoryLocked = false,
+    this.onLinksChanged,
   });
 
   @override
@@ -277,6 +279,7 @@ class _TaskFormState extends State<TaskForm> {
             setState(() {
               _links.add(htmlLink);
             });
+            widget.onLinksChanged?.call(_links);
           } else if (result == 'view') {
             // TODO: Navigate to the existing task
             // For now, just show a snackbar
@@ -296,6 +299,7 @@ class _TaskFormState extends State<TaskForm> {
           setState(() {
             _links.add(htmlLink);
           });
+          widget.onLinksChanged?.call(_links);
         }
       }
 
@@ -380,6 +384,7 @@ class _TaskFormState extends State<TaskForm> {
               _synopsis = result.synopsis;
             }
           });
+          widget.onLinksChanged?.call(_links);
         } else if (dialogResult == 'view') {
           // TODO: Navigate to the existing task
           // For now, just show a snackbar
@@ -411,6 +416,7 @@ class _TaskFormState extends State<TaskForm> {
             _synopsis = result.synopsis;
           }
         });
+        widget.onLinksChanged?.call(_links);
       }
     }
   }
@@ -419,6 +425,7 @@ class _TaskFormState extends State<TaskForm> {
     setState(() {
       _links.removeAt(index);
     });
+    widget.onLinksChanged?.call(_links);
   }
 
   void _handleSave() {

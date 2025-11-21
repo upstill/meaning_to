@@ -1098,6 +1098,21 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     return '$displayTasks Available ${NamingUtils.tasksName(plural: true)}';
   }
 
+  String _buildAppBarTitle() {
+    final currentCategory = widget.category ?? _currentCategory;
+
+    if (currentCategory == null) {
+      return 'New ${NamingUtils.categoriesName(plural: false)}';
+    }
+
+    final taskCount = _tasks.length;
+    final taskWord = taskCount == 1
+        ? NamingUtils.tasksName(plural: false)
+        : NamingUtils.tasksName(plural: true);
+
+    return '${currentCategory.headline} and $taskCount $taskWord';
+  }
+
   String _buildTaskCountText() {
     // Get total tasks from cache manager (before limiting)
     final allTasks = CacheManager().currentTasks ?? [];
@@ -1287,11 +1302,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               _handleBack();
             },
           ),
-          title: Text(
-            widget.category == null
-                ? 'New ${NamingUtils.categoriesName(plural: false)}'
-                : 'Edit ${NamingUtils.categoriesName(plural: false)}',
-          ),
+          title: Text(_buildAppBarTitle()),
           actions: [
             // Refresh button for existing categories
             if (widget.category != null && !_editTasksLocal)

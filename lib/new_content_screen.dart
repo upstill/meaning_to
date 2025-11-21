@@ -10,6 +10,8 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/edit_category_screen.dart';
+import 'package:meaning_to/utils/link_to_task_converter.dart';
+import 'package:html/parser.dart' as html_parser;
 
 enum ContentType { task, category }
 
@@ -41,11 +43,18 @@ class _NewContentScreenState extends State<NewContentScreen> {
   bool _isLoading = false;
   List<Category> _categories = [];
   Category? _selectedCategoryForTask;
+  List<String> _currentLinks = []; // Track current links from the task form
 
   @override
   void initState() {
     super.initState();
     _selectedCategoryForTask = widget.selectedCategory;
+
+    // Initialize links if provided
+    if (widget.initialLinks != null) {
+      _currentLinks = List<String>.from(widget.initialLinks!);
+    }
+
     _loadCategories();
   }
 
@@ -62,9 +71,17 @@ class _NewContentScreenState extends State<NewContentScreen> {
 
       setState(() {
         _categories = categories;
-        // Set selected category to first one if none provided
-        if (_selectedCategoryForTask == null && categories.isNotEmpty) {
-          _selectedCategoryForTask = categories.first;
+
+        if (categories.isEmpty) {
+          // No categories exist - show New Category variant
+          _contentType = ContentType.category;
+        } else {
+          // Categories exist - show New Task variant
+          _contentType = ContentType.task;
+          // Set selected category to first one if none provided
+          if (_selectedCategoryForTask == null) {
+            _selectedCategoryForTask = categories.first;
+          }
         }
       });
     } catch (e) {
@@ -209,6 +226,39 @@ class _NewContentScreenState extends State<NewContentScreen> {
   }
 
   void _showCategoryPicker() {
+    // Analyze current links to get suggested category IDs
+    final suggestedIds = <int>{};
+
+    print('NewContentScreen: _showCategoryPicker - analyzing ${_currentLinks.length} links');
+
+    for (int i = 0; i < _currentLinks.length; i++) {
+      final htmlLink = _currentLinks[i];
+      print('NewContentScreen: Processing link $i: $htmlLink');
+
+      try {
+        // Extract URL from HTML link
+        final document = html_parser.parse(htmlLink);
+        final anchor = document.querySelector('a');
+        final url = anchor?.attributes['href'];
+
+        if (url != null) {
+          print('NewContentScreen: Extracted URL: $url');
+
+          // Get category suggestions for this URL
+          final suggestions = LinkToTaskConverter.analyzeLinkForCategorySuggestions(url);
+          print('NewContentScreen: Suggestions for this URL: $suggestions');
+
+          suggestedIds.addAll(suggestions);
+        } else {
+          print('NewContentScreen: No URL found in HTML link');
+        }
+      } catch (e) {
+        print('NewContentScreen: Error extracting URL from link: $e');
+      }
+    }
+
+    print('NewContentScreen: Final suggested category IDs: ${suggestedIds.toList()}');
+
     CategoryPickerDialog.show(
       context,
       title:
@@ -220,6 +270,7 @@ class _NewContentScreenState extends State<NewContentScreen> {
         });
       },
       showCreateNew: true,
+      suggestedCategoryIds: suggestedIds.toList(),
     );
   }
 
@@ -326,6 +377,12 @@ class _NewContentScreenState extends State<NewContentScreen> {
                     initialNotes: widget.initialNotes,
                     initialLinks: widget.initialLinks,
                     categoryLocked: widget.categoryLocked,
+                    onLinksChanged: (links) {
+                      setState(() {
+                        _currentLinks = links;
+                      });
+                      print('NewContentScreen: Links updated, count: ${links.length}');
+                    },
                   )
                 : ListView(
                     padding: const EdgeInsets.all(16.0),

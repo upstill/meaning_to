@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart' as foundation;
 import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/home_screen.dart';
-import 'package:meaning_to/email_confirmation_screen.dart';
 import 'package:meaning_to/forgot_password_screen.dart';
 import 'package:meaning_to/reset_password_screen.dart';
 import 'package:meaning_to/auth_verification_screen.dart';
@@ -334,7 +333,7 @@ class _MyAppState extends State<MyApp> {
         }
       }
 
-      // Handle email confirmation links
+      // Handle auth deep links (password reset)
       if (uri.scheme == 'meaningto' && uri.host == 'auth') {
         print('Processing auth deep link');
 
@@ -356,60 +355,10 @@ class _MyAppState extends State<MyApp> {
           return;
         }
 
-        // Check if this is an email confirmation link
-        if (uri.path.contains('confirm') ||
-            uri.queryParameters.containsKey('token')) {
-          print('Email confirmation link detected');
-
-          // Extract token and email from query parameters
-          final token = uri.queryParameters['token'];
-          final email = uri.queryParameters['email'];
-
-          if (token != null) {
-            print('Processing email confirmation with token');
-
-            // Try to confirm the email and sign in the user
-            try {
-              final response = await Supabase.instance.client.auth.verifyOTP(
-                email: email ?? '',
-                token: token,
-                type: OtpType.signup,
-              );
-
-              if (response.user != null && response.session != null) {
-                print('Email confirmation successful, user signed in');
-
-                // Navigate to home screen
-                if (mounted) {
-                  Navigator.pushReplacementNamed(context, '/home');
-                }
-              } else {
-                print('Email confirmation failed - no user or session');
-                // Navigate to auth screen with error
-                if (mounted) {
-                  Navigator.pushReplacementNamed(context, '/auth');
-                }
-              }
-            } catch (e) {
-              print('Error confirming email: $e');
-              // Navigate to auth screen with error
-              if (mounted) {
-                Navigator.pushReplacementNamed(context, '/auth');
-              }
-            }
-          } else {
-            print('No token found in confirmation link');
-            // Navigate to auth screen
-            if (mounted) {
-              Navigator.pushReplacementNamed(context, '/auth');
-            }
-          }
-        } else {
-          print('Auth deep link but not confirmation - navigating to auth');
-          // Navigate to auth screen
-          if (mounted) {
-            Navigator.pushReplacementNamed(context, '/auth');
-          }
+        // Unknown auth deep link - navigate to auth screen
+        print('Unknown auth deep link - navigating to auth');
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/auth');
         }
       } else {
         print('Unknown deep link format - ignoring');
@@ -590,13 +539,6 @@ class _MyAppState extends State<MyApp> {
                 builder: (context) => const SplashScreen(),
               );
 
-            case '/email-confirmation':
-              final args = settings.arguments as Map<String, dynamic>;
-              return MaterialPageRoute(
-                builder: (context) => EmailConfirmationScreen(
-                  email: args['email'] as String,
-                ),
-              );
             case '/password-reset-request':
               return MaterialPageRoute(
                 builder: (context) => const PasswordResetRequestScreen(),
