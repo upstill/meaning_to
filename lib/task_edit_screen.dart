@@ -412,23 +412,36 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
   /// Get suggested category IDs from current links
   List<int> _getSuggestedCategoryIds() {
+    print('TaskEditScreen: _getSuggestedCategoryIds called');
+    print('TaskEditScreen: Current _links count: ${_links.length}');
+
     final suggestedIds = <int>{};
 
-    for (final htmlLink in _links) {
+    for (int i = 0; i < _links.length; i++) {
+      final htmlLink = _links[i];
+      print('TaskEditScreen: Processing link $i: $htmlLink');
+
       try {
         // Extract URL from HTML link
         final urlMatch = RegExp(r'href="([^"]+)"').firstMatch(htmlLink);
         if (urlMatch != null) {
           final url = urlMatch.group(1)!;
+          print('TaskEditScreen: Extracted URL: $url');
+
           // Get suggested categories for this URL
           final suggestions = LinkToTaskConverter.analyzeLinkForCategorySuggestions(url);
+          print('TaskEditScreen: Suggestions for this URL: $suggestions');
+
           suggestedIds.addAll(suggestions);
+        } else {
+          print('TaskEditScreen: No URL match found in HTML link');
         }
       } catch (e) {
         print('TaskEditScreen: Error extracting URL from link: $e');
       }
     }
 
+    print('TaskEditScreen: Final suggested IDs: ${suggestedIds.toList()}');
     return suggestedIds.toList();
   }
 

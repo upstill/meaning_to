@@ -212,6 +212,13 @@ class _PasswordResetOtpScreenState extends State<PasswordResetOtpScreen> {
                   border: OutlineInputBorder(),
                   counterText: '',
                 ),
+                onChanged: (value) {
+                  // Auto-submit when 6 digits are entered
+                  if (value.length == 6 && RegExp(r'^\d+$').hasMatch(value)) {
+                    print('PasswordResetOTP: Auto-submitting code');
+                    _verifyOTP();
+                  }
+                },
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter the verification code';

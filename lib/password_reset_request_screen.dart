@@ -31,15 +31,14 @@ class _PasswordResetRequestScreenState
     try {
       final email = _emailController.text.trim();
 
-      print('PasswordResetRequest: Sending OTP to: $email');
+      print('PasswordResetRequest: Sending password recovery OTP to: $email');
 
       // Send OTP for password recovery
-      await Supabase.instance.client.auth.signInWithOtp(
-        email: email,
-        emailRedirectTo: null, // No redirect needed for manual token entry
+      await Supabase.instance.client.auth.resetPasswordForEmail(
+        email,
       );
 
-      print('PasswordResetRequest: OTP sent successfully');
+      print('PasswordResetRequest: Password recovery OTP sent successfully');
 
       if (mounted) {
         // Navigate to OTP verification screen

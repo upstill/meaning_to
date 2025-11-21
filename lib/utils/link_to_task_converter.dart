@@ -5,8 +5,18 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
+import 'package:meaning_to/utils/spotify_api.dart';
+import 'package:meaning_to/utils/tidal_api.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/models/task.dart';
+
+/// Normalizes whitespace in a string by replacing multiple consecutive whitespace
+/// characters with a single space and trimming leading/trailing whitespace.
+/// Returns null if input is null.
+String? _normalizeWhitespace(String? text) {
+  if (text == null) return null;
+  return text.replaceAll(RegExp(r'\s+'), ' ').trim();
+}
 
 /// Represents a proposed task created from a link
 class ProposedTask {
@@ -85,7 +95,7 @@ class LinkToTaskConverter {
     print(
         'LinkToTaskConverter: Is in streaming category: $isInStreamingCategory');
 
-    String headline;
+    String headline = _normalizeWhitespace(pageTitle) ?? pageTitle; // Default to page title, normalized
     String? notes;
     String? synopsis;
 
@@ -95,25 +105,176 @@ class LinkToTaskConverter {
             suggestedCategoryIds
                 .any((id) => STREAMING_MEDIA_CATEGORY_IDS.contains(id)))) {
       // Streaming media: extract artist and work
-      final artistWorkInfo = extractArtistAndWorkFromTidal(pageTitle);
+      ArtistWorkInfo? artistWorkInfo;
+      String? customLinkText; // For custom link text (album title for albums)
+
+      // Try Spotify API first if it's a Spotify URL
+      if (normalizedUrl.contains('spotify.com')) {
+        print('LinkToTaskConverter: Detected Spotify URL, attempting API fetch');
+        try {
+          final spotifyData =
+              await SpotifyApiService.getInfoFromUrl(normalizedUrl);
+          if (spotifyData != null) {
+            final type = spotifyData['type'];
+
+            if (type == 'album') {
+              // Album: headline = artist, link text = "album title on Spotify"
+              headline = _normalizeWhitespace(spotifyData['artist'])!;
+              notes = _normalizeWhitespace(spotifyData['album']);
+              customLinkText =
+                  '${_normalizeWhitespace(spotifyData['album'])} on Spotify'; // Link text includes " on Spotify"
+              synopsis = pageDescription;
+              print(
+                  'LinkToTaskConverter: Successfully fetched album from Spotify API - Artist: "$headline", Album: "$notes"');
+            } else if (type == 'playlist') {
+              // Playlist: headline = playlist name, link text = "playlist name on Spotify"
+              headline = _normalizeWhitespace(spotifyData['name'])!;
+              notes = null;
+              customLinkText =
+                  '${_normalizeWhitespace(spotifyData['name'])} on Spotify'; // Link text includes " on Spotify"
+              synopsis = pageDescription;
+
+              // For playlists, prioritize category 74
+              if (suggestedCategoryIds.contains(74)) {
+                suggestedCategoryIds = [
+                  74,
+                  ...suggestedCategoryIds.where((id) => id != 74)
+                ];
+              }
+
+              print(
+                  'LinkToTaskConverter: Successfully fetched playlist from Spotify API - Name: "$headline"');
+              print(
+                  'LinkToTaskConverter: Reordered categories for playlist: $suggestedCategoryIds');
+            } else if (type == 'track') {
+              // Track: headline = artist, link text = "track name on Spotify", notes = track name
+              headline = _normalizeWhitespace(spotifyData['artist'])!;
+              notes = _normalizeWhitespace(spotifyData['track']);
+              customLinkText =
+                  '${_normalizeWhitespace(spotifyData['track'])} on Spotify'; // Link text includes " on Spotify"
+              synopsis = pageDescription;
+              print(
+                  'LinkToTaskConverter: Successfully fetched track from Spotify API - Artist: "$headline", Track: "$notes"');
+            }
+          } else {
+            print(
+                'LinkToTaskConverter: Spotify API failed, trying title extraction');
+            artistWorkInfo = extractArtistAndWorkFromSpotify(pageTitle);
+          }
+        } catch (e) {
+          print('LinkToTaskConverter: Error fetching from Spotify API: $e');
+          artistWorkInfo = extractArtistAndWorkFromSpotify(pageTitle);
+        }
+      } else if (normalizedUrl.contains('tidal.com')) {
+        // Try Tidal API first if it's a Tidal URL
+        print('LinkToTaskConverter: Detected Tidal URL, attempting API fetch');
+        try {
+          final tidalData = await TidalApiService.getInfoFromUrl(normalizedUrl);
+          if (tidalData != null) {
+            final type = tidalData['type'];
+
+            if (type == 'album') {
+              // Album: headline = artist, link text = "album title on TIDAL"
+              headline = _normalizeWhitespace(tidalData['artist'])!;
+              notes = _normalizeWhitespace(tidalData['album']);
+              customLinkText =
+                  '${_normalizeWhitespace(tidalData['album'])} on TIDAL';
+              synopsis = pageDescription;
+              print(
+                  'LinkToTaskConverter: Successfully fetched album from Tidal API - Artist: "$headline", Album: "$notes"');
+            } else if (type == 'playlist') {
+              // Playlist: headline = playlist name, link text = "playlist name on TIDAL"
+              headline = _normalizeWhitespace(tidalData['name'])!;
+              notes = null;
+              customLinkText =
+                  '${_normalizeWhitespace(tidalData['name'])} on TIDAL';
+              synopsis = pageDescription;
+
+              // For playlists, prioritize category 74
+              if (suggestedCategoryIds.contains(74)) {
+                suggestedCategoryIds = [
+                  74,
+                  ...suggestedCategoryIds.where((id) => id != 74)
+                ];
+              }
+
+              print(
+                  'LinkToTaskConverter: Successfully fetched playlist from Tidal API - Name: "$headline"');
+              print(
+                  'LinkToTaskConverter: Reordered categories for playlist: $suggestedCategoryIds');
+            } else if (type == 'track') {
+              // Track: headline = artist, link text = "track name on TIDAL", notes = track name
+              headline = _normalizeWhitespace(tidalData['artist'])!;
+              notes = _normalizeWhitespace(tidalData['track']);
+              customLinkText =
+                  '${_normalizeWhitespace(tidalData['track'])} on TIDAL';
+              synopsis = pageDescription;
+              print(
+                  'LinkToTaskConverter: Successfully fetched track from Tidal API - Artist: "$headline", Track: "$notes"');
+            }
+          } else {
+            print(
+                'LinkToTaskConverter: Tidal API failed, trying title extraction');
+            artistWorkInfo = extractArtistAndWorkFromTidal(pageTitle);
+          }
+        } catch (e) {
+          print('LinkToTaskConverter: Error fetching from Tidal API: $e');
+          artistWorkInfo = extractArtistAndWorkFromTidal(pageTitle);
+        }
+      }
 
       if (artistWorkInfo != null) {
-        headline = artistWorkInfo.artist;
-        notes = artistWorkInfo.work;
+        headline = _normalizeWhitespace(artistWorkInfo.artist) ?? artistWorkInfo.artist;
+        notes = _normalizeWhitespace(artistWorkInfo.work);
         synopsis = pageDescription;
         print(
             'LinkToTaskConverter: Extracted streaming media - Artist: "$headline", Work: "$notes"');
-      } else {
-        // Fallback if extraction fails
-        headline = pageTitle;
+      } else if (customLinkText == null) {
+        // Fallback if extraction fails and we don't have custom link text
+        headline = _normalizeWhitespace(pageTitle) ?? pageTitle;
         notes = null;
         synopsis = pageDescription;
         print(
             'LinkToTaskConverter: Could not extract artist/work, using page title');
       }
+
+      // Create HTML link with custom text if available
+      if (customLinkText != null) {
+        final htmlLink = '<a href="$normalizedUrl">$customLinkText</a>';
+
+        // Check for existing task
+        final existingTaskOriginalId =
+            await _findExistingTaskOriginalId(normalizedUrl, userId);
+        print(
+            'LinkToTaskConverter: Existing task original_id: $existingTaskOriginalId');
+
+        // Get synopsis from existing task if needed
+        if (existingTaskOriginalId != null && synopsis == null) {
+          synopsis = await _getExistingTaskSynopsis(normalizedUrl, userId);
+          print('LinkToTaskConverter: Retrieved synopsis from existing task');
+        }
+
+        print('📦 LinkToTaskConverter: Creating ProposedTask with:');
+        print('   - Headline: "$headline"');
+        print('   - Notes: ${notes != null ? "\"$notes\"" : "null"}');
+        print('   - Links: ${[htmlLink].length} link(s)');
+        print(
+            '   - Synopsis: ${synopsis != null ? "${synopsis.length} chars" : "null"}');
+        print('   - Suggested categories: $suggestedCategoryIds');
+        print('   - Existing task original_id: $existingTaskOriginalId');
+
+        return ProposedTask(
+          headline: headline,
+          notes: notes,
+          links: [htmlLink],
+          synopsis: synopsis,
+          suggestedCategoryOriginalIds: suggestedCategoryIds,
+          existingTaskOriginalId: existingTaskOriginalId,
+        );
+      }
     } else if (normalizedUrl.contains('imdb.com')) {
       // IMDb: clean up title and extract plot synopsis with type information
-      headline = LinkProcessor.cleanImdbTitle(pageTitle);
+      headline = _normalizeWhitespace(LinkProcessor.cleanImdbTitle(pageTitle)) ?? LinkProcessor.cleanImdbTitle(pageTitle);
       notes = null;
 
       final imdbData = await _fetchImdbData(normalizedUrl, pageDescription);
@@ -145,13 +306,13 @@ class LinkToTaskConverter {
     } else if (normalizedUrl.contains('letterboxd.com') ||
         normalizedUrl.contains('boxd.it')) {
       // Letterboxd: special handling
-      headline = pageTitle;
+      headline = _normalizeWhitespace(pageTitle) ?? pageTitle;
       notes = null;
       synopsis = await _fetchLetterboxdSynopsis(normalizedUrl, pageDescription);
       print('LinkToTaskConverter: Letterboxd link - headline: "$headline"');
     } else {
       // General link: use page title as headline
-      headline = pageTitle;
+      headline = _normalizeWhitespace(pageTitle) ?? pageTitle;
       notes = null;
       synopsis = pageDescription;
       print('LinkToTaskConverter: General link - headline: "$headline"');
@@ -240,6 +401,33 @@ class LinkToTaskConverter {
         return result;
       }
 
+      // For Spotify URLs, remove ALL query parameters
+      // The canonical Spotify URL is: https://open.spotify.com/{type}/{id}
+      if (uri.host.contains('spotify.com')) {
+        print(
+            'LinkToTaskConverter: Normalizing Spotify URL - removing query parameters');
+
+        // Extract the type (album/playlist/track) and ID
+        final pathMatch = RegExp(r'/(album|playlist|track)/([a-zA-Z0-9]+)')
+            .firstMatch(uri.path);
+        if (pathMatch != null) {
+          final type = pathMatch.group(1);
+          final id = pathMatch.group(2);
+
+          // Rebuild the canonical Spotify URL
+          final cleanUri = Uri(
+            scheme: 'https',
+            host: 'open.spotify.com',
+            path: '/$type/$id',
+          );
+
+          String result = cleanUri.toString();
+          print('   Original: $url');
+          print('   Cleaned:  $result');
+          return result;
+        }
+      }
+
       // For other URLs, remove common tracking parameters
       final cleanParams = Map<String, String>.from(uri.queryParameters);
       final trackingParams = {
@@ -277,49 +465,68 @@ class LinkToTaskConverter {
 
   /// Analyze URL to suggest appropriate categories based on domain and path
   static List<int> analyzeLinkForCategorySuggestions(String url) {
+    print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: Input URL: $url');
+
     try {
       final uri = Uri.parse(url.toLowerCase());
       final domain = uri.host;
       final path = uri.path;
 
+      print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: Domain: $domain, Path: $path');
+
       // IMDb links -> can be either movies or TV shows
       if (domain.contains('imdb.com')) {
         // Check if we can determine the type from the path
         if (path.contains('/tv/') || path.contains('tvseries')) {
+          print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: IMDb TV detected');
           return [2, 1]; // TV first, then movie
         } else if (path.contains('/title/')) {
+          print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: IMDb movie detected');
           return [1, 2]; // Movie first, then TV (more common)
         } else {
+          print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: IMDb generic');
           return [1, 2]; // Movie first, then TV
         }
       }
 
       // Letterboxd links -> primarily movies
       if (domain.contains('letterboxd.com')) {
+        print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: Letterboxd detected');
         return [1, 2]; // Movie first (primary), TV second (occasional)
       }
 
       // JustWatch links -> depends on path
       if (domain.contains('justwatch.com')) {
         if (path.contains('/movie/')) {
+          print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: JustWatch movie detected');
           return [1]; // Just movie
         } else if (path.contains('/tv-show/')) {
+          print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: JustWatch TV detected');
           return [2]; // Just TV
         } else {
+          print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: JustWatch generic');
           return [1, 2]; // Both options
         }
       }
 
       // Tidal and other streaming services
       if (domain.contains('tidal.com')) {
+        print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: Tidal detected, returning: $STREAMING_MEDIA_CATEGORY_IDS');
         return STREAMING_MEDIA_CATEGORY_IDS.toList();
       }
 
-      // Future: Spotify, Apple Music, YouTube Music
-      // if (domain.contains('spotify.com') || domain.contains('music.apple.com')) {
+      // Spotify streaming service
+      if (domain.contains('spotify.com')) {
+        print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: Spotify detected, returning: $STREAMING_MEDIA_CATEGORY_IDS');
+        return STREAMING_MEDIA_CATEGORY_IDS.toList();
+      }
+
+      // Future: Apple Music, YouTube Music
+      // if (domain.contains('music.apple.com')) {
       //   return STREAMING_MEDIA_CATEGORY_IDS.toList();
       // }
 
+      print('LinkToTaskConverter.analyzeLinkForCategorySuggestions: No match found, returning empty list');
       return [];
     } catch (e) {
       print('LinkToTaskConverter: Error analyzing URL for categories: $e');

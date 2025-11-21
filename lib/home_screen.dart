@@ -11,7 +11,6 @@ import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/performance_monitor_screen.dart';
 import 'package:meaning_to/dialogs/task_created_dialog.dart';
-import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'dart:async';
 
 import 'package:meaning_to/utils/naming.dart';
@@ -526,87 +525,36 @@ class HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // If no category is selected, show category picker first
-    if (_selectedCategory == null) {
-      Category? pickedCategory;
-
-      await CategoryPickerDialog.show(
-        context,
-        title: 'Select Pursuit',
-        subtitle:
-            'This will be a new ${NamingUtils.tasksName(plural: false, capitalize: true)} for what ${NamingUtils.categoriesName(plural: false, capitalize: true)}?',
-        onCategorySelected: (Category selectedCategory, {bool? shouldMove}) {
-          pickedCategory = selectedCategory;
-        },
-        showCreateNew: true,
-      );
-
-      // If no category was selected, return to home screen
-      if (pickedCategory == null) {
-        print('HomeScreen: No category selected, staying on home screen');
-        return;
+    // Navigate directly to New Content screen
+    // It will show New Task variant if categories exist, or New Category variant if not
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NewContentScreen(
+          selectedCategory: _selectedCategory,
+        ),
+      ),
+    ).then((result) async {
+      if (result != null) {
+        if (result is Map<String, dynamic>) {
+          final count = result['count'] ?? 1;
+          if (count == 1) {
+            // Single task created - show popup
+            await _handleSingleTaskCreated(result);
+          } else {
+            // Multiple tasks created - go to Edit Category
+            await _handleMultipleTasksCreated(result);
+          }
+        } else if (result == true) {
+          // Category created or bulk import without specific data - reload data
+          print('HomeScreen: Content was created, reloading data');
+          _loadCategories();
+          if (_selectedCategory != null) {
+            _loadRandomTask(_selectedCategory!);
+          }
+        }
       }
-
-      // Use the picked category for navigation
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => NewContentScreen(
-            selectedCategory: pickedCategory,
-          ),
-        ),
-      ).then((result) async {
-        if (result != null) {
-          if (result is Map<String, dynamic>) {
-            final count = result['count'] ?? 1;
-            if (count == 1) {
-              // Single task created - show popup
-              await _handleSingleTaskCreated(result);
-            } else {
-              // Multiple tasks created - go to Edit Category
-              await _handleMultipleTasksCreated(result);
-            }
-          } else if (result == true) {
-            // Category created or bulk import without specific data - reload data
-            print('HomeScreen: Content was created, reloading data');
-            _loadCategories();
-            if (_selectedCategory != null) {
-              _loadRandomTask(_selectedCategory!);
-            }
-          }
-        }
-      });
-    } else {
-      // Navigate with the existing selected category
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => NewContentScreen(
-            selectedCategory: _selectedCategory,
-          ),
-        ),
-      ).then((result) async {
-        if (result != null) {
-          if (result is Map<String, dynamic>) {
-            final count = result['count'] ?? 1;
-            if (count == 1) {
-              // Single task created - show popup
-              await _handleSingleTaskCreated(result);
-            } else {
-              // Multiple tasks created - go to Edit Category
-              await _handleMultipleTasksCreated(result);
-            }
-          } else if (result == true) {
-            // Category created or bulk import without specific data - reload data
-            print('HomeScreen: Content was created, reloading data');
-            _loadCategories();
-            if (_selectedCategory != null) {
-              _loadRandomTask(_selectedCategory!);
-            }
-          }
-        }
-      });
-    }
+    });
   }
 
   Future<void> _handleSingleTaskCreated(Map<String, dynamic> result) async {

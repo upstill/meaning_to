@@ -163,6 +163,13 @@ class _AuthOtpVerificationScreenState extends State<AuthOtpVerificationScreen> {
                     letterSpacing: 12,
                     fontWeight: FontWeight.bold,
                   ),
+                  onChanged: (value) {
+                    // Auto-submit when 6 digits are entered
+                    if (value.length == 6 && RegExp(r'^\d+$').hasMatch(value)) {
+                      print('AuthOtpVerificationScreen: Auto-submitting code');
+                      _verifyOtp(email);
+                    }
+                  },
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please enter the code';
