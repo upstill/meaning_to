@@ -21,7 +21,7 @@ import 'package:meaning_to/models/icon.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
-import 'package:meaning_to/utils/link_to_task_converter.dart';
+import 'package:meaning_to/utils/synopsis_fetcher.dart';
 
 // Widget to display favicon for a domain
 class DomainFaviconWidget extends StatelessWidget {
@@ -129,7 +129,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
     print('TaskEditScreen: ============ initState CALLED ============');
     print('TaskEditScreen: Category: ${widget.category.headline}');
-    print('TaskEditScreen: Category original_id: ${widget.category.originalId}');
+    print(
+        'TaskEditScreen: Category original_id: ${widget.category.originalId}');
     print('TaskEditScreen: Is new task: ${widget.task == null}');
     print('TaskEditScreen: widget.initialHeadline: ${widget.initialHeadline}');
     print('TaskEditScreen: widget.initialNotes: ${widget.initialNotes}');
@@ -181,8 +182,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       print('TaskEditScreen: No links to initialize');
     }
 
-    print('TaskEditScreen: Final _headlineController.text: "${_headlineController.text}"');
-    print('TaskEditScreen: Final _notesController.text: "${_notesController.text}"');
+    print(
+        'TaskEditScreen: Final _headlineController.text: "${_headlineController.text}"');
+    print(
+        'TaskEditScreen: Final _notesController.text: "${_notesController.text}"');
     print('TaskEditScreen: Final _links.length: ${_links.length}');
 
     // For existing tasks, use their current shared state
@@ -258,7 +261,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   }
 
   /// Process a URL found in the headline field
-  Future<void> _processUrlInHeadline(String url, String originalHeadline) async {
+  Future<void> _processUrlInHeadline(
+      String url, String originalHeadline) async {
     if (_isProcessingUrl) {
       print('TaskEditScreen: Already processing, returning');
       return;
@@ -279,7 +283,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       final processedLink = await LinkProcessor.validateAndProcessLink(url);
       print('TaskEditScreen: Fetch complete');
       print('TaskEditScreen: Title: ${processedLink.title}');
-      print('TaskEditScreen: Description: ${processedLink.description?.substring(0, 50)}...');
+      print(
+          'TaskEditScreen: Description: ${processedLink.description?.substring(0, 50)}...');
 
       final fetchedTitle = processedLink.title;
 
@@ -297,7 +302,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       final isStreamingCategory = widget.category.originalId != null &&
           STREAMING_MEDIA_CATEGORY_IDS.contains(widget.category.originalId);
 
-      print('TaskEditScreen: Category original_id: ${widget.category.originalId}');
+      print(
+          'TaskEditScreen: Category original_id: ${widget.category.originalId}');
       print('TaskEditScreen: Is streaming category: $isStreamingCategory');
       print('TaskEditScreen: Is streaming URL: ${isStreamingMediaUrl(url)}');
 
@@ -305,12 +311,14 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         print('TaskEditScreen: === PROCESSING AS STREAMING MEDIA ===');
 
         // Try to extract artist and work from the title
-        print('TaskEditScreen: Attempting to extract artist/work from: "$fetchedTitle"');
+        print(
+            'TaskEditScreen: Attempting to extract artist/work from: "$fetchedTitle"');
         final artistWorkInfo = extractArtistAndWorkFromTidal(fetchedTitle);
         print('TaskEditScreen: Extraction result: $artistWorkInfo');
 
         if (artistWorkInfo != null) {
-          print('TaskEditScreen: Successfully extracted - artist: "${artistWorkInfo.artist}", work: "${artistWorkInfo.work}"');
+          print(
+              'TaskEditScreen: Successfully extracted - artist: "${artistWorkInfo.artist}", work: "${artistWorkInfo.work}"');
 
           // Create HTML link
           final htmlLink = '<a href="$url">$fetchedTitle</a>';
@@ -321,8 +329,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           _isProgrammaticUpdate = true;
 
           setState(() {
-            print('TaskEditScreen: Updating headline to: "${artistWorkInfo.artist}"');
-            print('TaskEditScreen: Updating notes to: "${artistWorkInfo.work}"');
+            print(
+                'TaskEditScreen: Updating headline to: "${artistWorkInfo.artist}"');
+            print(
+                'TaskEditScreen: Updating notes to: "${artistWorkInfo.work}"');
             print('TaskEditScreen: Adding link to links array');
             _headlineController.text = artistWorkInfo.artist;
             _notesController.text = artistWorkInfo.work;
@@ -333,45 +343,45 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           print('TaskEditScreen: Setting _isProgrammaticUpdate = false');
           _isProgrammaticUpdate = false;
 
-          print('TaskEditScreen: Successfully updated headline and notes with artist/work');
+          print(
+              'TaskEditScreen: Successfully updated headline and notes with artist/work');
 
           // Check for existing artist tasks (only for new tasks, not editing)
           if (_localTask == null && mounted) {
             final userId = AuthUtils.getCurrentUserId();
-            if (userId != null) {
-              final existingTask = await IncomingLinkProcessor.findTaskByArtistInStreamingCategories(
-                artistWorkInfo.artist,
-                userId,
+            final existingTask = await IncomingLinkProcessor
+                .findTaskByArtistInStreamingCategories(
+              artistWorkInfo.artist,
+              userId,
+            );
+
+            if (existingTask != null && mounted) {
+              // Show dialog asking if user wants to switch to existing task
+              final shouldSwitch = await _showExistingArtistDialog(
+                existingTask,
+                artistWorkInfo.work,
               );
 
-              if (existingTask != null && mounted) {
-                // Show dialog asking if user wants to switch to existing task
-                final shouldSwitch = await _showExistingArtistDialog(
-                  existingTask,
-                  artistWorkInfo.work,
-                );
+              if (shouldSwitch == true && mounted) {
+                // Navigate back and then to the existing task
+                Navigator.of(context).pop(); // Close current screen
 
-                if (shouldSwitch == true && mounted) {
-                  // Navigate back and then to the existing task
-                  Navigator.of(context).pop(); // Close current screen
-
-                  // Navigate to existing task edit screen
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => TaskEditScreen(
-                        category: widget.category,
-                        task: existingTask,
-                        initialNotes: existingTask.notes != null
-                            ? '${existingTask.notes}\n${artistWorkInfo.work}'
-                            : artistWorkInfo.work,
-                        initialLinks: [
-                          ...existingTask.links ?? [],
-                          htmlLink,
-                        ],
-                      ),
+                // Navigate to existing task edit screen
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => TaskEditScreen(
+                      category: widget.category,
+                      task: existingTask,
+                      initialNotes: existingTask.notes != null
+                          ? '${existingTask.notes}\n${artistWorkInfo.work}'
+                          : artistWorkInfo.work,
+                      initialLinks: [
+                        ...existingTask.links ?? [],
+                        htmlLink,
+                      ],
                     ),
-                  );
-                }
+                  ),
+                );
               }
             }
           }
@@ -412,36 +422,24 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
   /// Get suggested category IDs from current links
   List<int> _getSuggestedCategoryIds() {
-    print('TaskEditScreen: _getSuggestedCategoryIds called');
-    print('TaskEditScreen: Current _links count: ${_links.length}');
-
     final suggestedIds = <int>{};
 
-    for (int i = 0; i < _links.length; i++) {
-      final htmlLink = _links[i];
-      print('TaskEditScreen: Processing link $i: $htmlLink');
-
+    for (final htmlLink in _links) {
       try {
         // Extract URL from HTML link
         final urlMatch = RegExp(r'href="([^"]+)"').firstMatch(htmlLink);
         if (urlMatch != null) {
           final url = urlMatch.group(1)!;
-          print('TaskEditScreen: Extracted URL: $url');
-
           // Get suggested categories for this URL
-          final suggestions = LinkToTaskConverter.analyzeLinkForCategorySuggestions(url);
-          print('TaskEditScreen: Suggestions for this URL: $suggestions');
-
+          final suggestions =
+              LinkToTaskConverter.analyzeLinkForCategorySuggestions(url);
           suggestedIds.addAll(suggestions);
-        } else {
-          print('TaskEditScreen: No URL match found in HTML link');
         }
       } catch (e) {
         print('TaskEditScreen: Error extracting URL from link: $e');
       }
     }
 
-    print('TaskEditScreen: Final suggested IDs: ${suggestedIds.toList()}');
     return suggestedIds.toList();
   }
 
@@ -470,7 +468,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       title:
           'Select ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
       defaultCategory: widget.category,
-      suggestedCategoryIds: suggestedCategoryIds.isNotEmpty ? suggestedCategoryIds : null,
+      suggestedCategoryIds:
+          suggestedCategoryIds.isNotEmpty ? suggestedCategoryIds : null,
       linkUrl: linkUrl,
       onCategorySelected: (Category selectedCategory,
           {bool? shouldMove}) async {
@@ -722,7 +721,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           STREAMING_MEDIA_CATEGORY_IDS.contains(widget.category.originalId);
 
       if (!isStreamingCategory) {
-        print('TaskEditScreen: Not a streaming media category, skipping artist extraction');
+        print(
+            'TaskEditScreen: Not a streaming media category, skipping artist extraction');
         return;
       }
 
@@ -736,18 +736,21 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       final artistWorkInfo = extractArtistAndWorkFromTidal(linkTitle);
 
       if (artistWorkInfo == null) {
-        print('TaskEditScreen: Could not extract artist/work from title: $linkTitle');
+        print(
+            'TaskEditScreen: Could not extract artist/work from title: $linkTitle');
         return;
       }
 
-      print('TaskEditScreen: Extracted artist: "${artistWorkInfo.artist}", work: "${artistWorkInfo.work}"');
+      print(
+          'TaskEditScreen: Extracted artist: "${artistWorkInfo.artist}", work: "${artistWorkInfo.work}"');
 
       // Check if headline is empty before auto-populating
       if (_headlineController.text.trim().isEmpty) {
         setState(() {
           _headlineController.text = artistWorkInfo.artist;
         });
-        print('TaskEditScreen: Set headline to artist: ${artistWorkInfo.artist}');
+        print(
+            'TaskEditScreen: Set headline to artist: ${artistWorkInfo.artist}');
       }
 
       // Check if notes are empty before auto-populating
@@ -759,7 +762,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       } else {
         // If notes already have content, append the work on a new line
         setState(() {
-          _notesController.text = '${_notesController.text}\n${artistWorkInfo.work}';
+          _notesController.text =
+              '${_notesController.text}\n${artistWorkInfo.work}';
         });
         print('TaskEditScreen: Appended work to notes: ${artistWorkInfo.work}');
       }
@@ -767,40 +771,39 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // Check for existing artist tasks (only if creating a new task, not editing)
       if (_localTask == null && mounted) {
         final userId = AuthUtils.getCurrentUserId();
-        if (userId != null) {
-          final existingTask = await IncomingLinkProcessor.findTaskByArtistInStreamingCategories(
-            artistWorkInfo.artist,
-            userId,
+        final existingTask =
+            await IncomingLinkProcessor.findTaskByArtistInStreamingCategories(
+          artistWorkInfo.artist,
+          userId,
+        );
+
+        if (existingTask != null && mounted) {
+          // Show dialog asking if user wants to switch to existing task
+          final shouldSwitch = await _showExistingArtistDialog(
+            existingTask,
+            artistWorkInfo.work,
           );
 
-          if (existingTask != null && mounted) {
-            // Show dialog asking if user wants to switch to existing task
-            final shouldSwitch = await _showExistingArtistDialog(
-              existingTask,
-              artistWorkInfo.work,
-            );
+          if (shouldSwitch == true && mounted) {
+            // Navigate back and then to the existing task
+            Navigator.of(context).pop(); // Close current screen
 
-            if (shouldSwitch == true && mounted) {
-              // Navigate back and then to the existing task
-              Navigator.of(context).pop(); // Close current screen
-
-              // Navigate to existing task edit screen
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => TaskEditScreen(
-                    category: widget.category,
-                    task: existingTask,
-                    initialNotes: existingTask.notes != null
-                        ? '${existingTask.notes}\n${artistWorkInfo.work}'
-                        : artistWorkInfo.work,
-                    initialLinks: [
-                      ...existingTask.links ?? [],
-                      htmlLink,
-                    ],
-                  ),
+            // Navigate to existing task edit screen
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => TaskEditScreen(
+                  category: widget.category,
+                  task: existingTask,
+                  initialNotes: existingTask.notes != null
+                      ? '${existingTask.notes}\n${artistWorkInfo.work}'
+                      : artistWorkInfo.work,
+                  initialLinks: [
+                    ...existingTask.links ?? [],
+                    htmlLink,
+                  ],
                 ),
-              );
-            }
+              ),
+            );
           }
         }
       }
@@ -811,13 +814,14 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   }
 
   /// Show dialog when an existing artist task is found
-  Future<bool?> _showExistingArtistDialog(Task existingTask, String workTitle) async {
+  Future<bool?> _showExistingArtistDialog(
+      Task existingTask, String workTitle) async {
     return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
+        title: const Text(
           'Found Existing Artist',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -852,7 +856,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       color: Colors.grey[600],
                     ),
                   ),
-                  if (existingTask.notes != null && existingTask.notes!.isNotEmpty) ...[
+                  if (existingTask.notes != null &&
+                      existingTask.notes!.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
                       existingTask.notes!,
@@ -1104,39 +1109,133 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       print(
           'TaskEditScreen: No headline match found, checking for link matches...');
 
-      for (final task in existingTasks) {
-        print(
-            'TaskEditScreen:   Checking task: "${task.headline}" (ID: ${task.id})');
-        if (task.links != null && task.links!.isNotEmpty) {
-          print(
-              'TaskEditScreen:     Task has ${task.links!.length} links: ${task.links}');
-          // Check if any of the new task's links match any of the existing task's links
-          for (final newLink in newTaskData['links'] as List) {
-            print('TaskEditScreen:     Checking new link: $newLink');
-            for (final existingLink in task.links!) {
-              print('TaskEditScreen:     Against existing link: $existingLink');
-              // Extract URLs from HTML links for comparison
-              final newUrl = _extractUrlFromHtmlLink(newLink);
-              final existingUrl = _extractUrlFromHtmlLink(existingLink);
-              print('TaskEditScreen:     Extracted new URL: $newUrl');
-              print('TaskEditScreen:     Extracted existing URL: $existingUrl');
+      // Extract URL from the first new link and search for it in the database
+      final firstNewLink = (newTaskData['links'] as List).first as String;
+      final searchUrl = _extractUrlFromHtmlLink(firstNewLink);
 
-              if (newUrl != null &&
-                  existingUrl != null &&
-                  newUrl == existingUrl) {
-                print(
-                    'TaskEditScreen: Found existing task with matching link: "${task.headline}" (ID: ${task.id})');
-                print('TaskEditScreen:   New link: $newUrl');
-                print('TaskEditScreen:   Existing link: $existingUrl');
-                existingTask = task;
-                break;
+      if (searchUrl != null) {
+        // Escape special characters for LIKE pattern
+        final escapedUrl =
+            searchUrl.replaceAll('%', '\\%').replaceAll('_', '\\_');
+
+        print('TaskEditScreen: Searching for tasks with URL: $searchUrl');
+
+/*         
+        Query database using unnest to find tasks where links array contains the URL.
+        This uses a PostgreSQL function. Create it with:
+        CREATE OR REPLACE FUNCTION find_tasks_by_link_url(search_url_pattern TEXT)
+        RETURNS TABLE(id INTEGER, category_id INTEGER, headline TEXT, notes TEXT,
+                      synopsis TEXT, owner_id TEXT, created_at TIMESTAMPTZ,
+                      suggestible_at TIMESTAMPTZ, triggers_at TIMESTAMPTZ, deferral INTEGER,
+                      links TEXT[], processed_links JSONB, finished BOOLEAN,
+                      shared BOOLEAN, original_id INTEGER, dirty BOOLEAN) AS $$
+        BEGIN
+          RETURN QUERY
+          SELECT t.* FROM "Tasks" t
+          WHERE EXISTS (
+            SELECT 1 FROM unnest(t.links) AS link
+            WHERE link LIKE search_url_pattern
+          )
+          ORDER BY t.created_at DESC;
+        END;
+        $$ LANGUAGE plpgsql; 
+        */
+        try {
+          final linkResponse = await supabase.rpc(
+            'find_tasks_by_link_url',
+            params: {'search_url_pattern': '%$escapedUrl%'},
+          );
+
+          final tasksWithLink = (linkResponse as List)
+              .map((json) => Task.fromJson(json as Map<String, dynamic>))
+              .where((task) =>
+                  _localTask == null ||
+                  task.id != _localTask!.id) // Exclude current task if editing
+              .toList();
+
+          print(
+              'TaskEditScreen: Found ${tasksWithLink.length} task(s) with matching link');
+
+          // Find the first task with an exact URL match
+          for (final task in tasksWithLink) {
+            if (task.links != null && task.links!.isNotEmpty) {
+              for (final existingLink in task.links!) {
+                final existingUrl = _extractUrlFromHtmlLink(existingLink);
+                if (existingUrl != null && existingUrl == searchUrl) {
+                  print(
+                      'TaskEditScreen: Found existing task with matching link: "${task.headline}" (ID: ${task.id})');
+                  print('TaskEditScreen:   New link: $searchUrl');
+                  print('TaskEditScreen:   Existing link: $existingUrl');
+                  existingTask = task;
+                  break;
+                }
+              }
+              if (existingTask != null) break;
+            }
+          }
+        } catch (e) {
+          print(
+              'TaskEditScreen: Error querying tasks by link (RPC may not exist): $e');
+          print(
+              'TaskEditScreen: Using direct query with array_to_string fallback...');
+
+          // Fallback: use array_to_string to search (less efficient but works without RPC)
+          try {
+            final linkResponse = await supabase
+                .from('Tasks')
+                .select()
+                .filter('links', 'not.is', null)
+                .order('created_at', ascending: false);
+
+            final allTasks = (linkResponse as List)
+                .map((json) => Task.fromJson(json as Map<String, dynamic>))
+                .where((task) =>
+                    _localTask == null ||
+                    task.id !=
+                        _localTask!.id) // Exclude current task if editing
+                .toList();
+
+            // Filter in memory using the escaped URL
+            final tasksWithLink = allTasks.where((task) {
+              if (task.links == null || task.links!.isEmpty) return false;
+              return task.links!.any((link) => link.contains(escapedUrl));
+            }).toList();
+
+            print(
+                'TaskEditScreen: Found ${tasksWithLink.length} task(s) with matching link');
+
+            // Find the first task with an exact URL match
+            for (final task in tasksWithLink) {
+              for (final existingLink in task.links!) {
+                final existingUrl = _extractUrlFromHtmlLink(existingLink);
+                if (existingUrl != null && existingUrl == searchUrl) {
+                  print(
+                      'TaskEditScreen: Found existing task with matching link: "${task.headline}" (ID: ${task.id})');
+                  print('TaskEditScreen:   New link: $searchUrl');
+                  print('TaskEditScreen:   Existing link: $existingUrl');
+                  existingTask = task;
+                  break;
+                }
+              }
+              if (existingTask != null) break;
+            }
+          } catch (e2) {
+            print('TaskEditScreen: Error with fallback query: $e2');
+            // Final fallback to in-memory search on existingTasks
+            print('TaskEditScreen: Falling back to in-memory search...');
+            for (final task in existingTasks) {
+              if (task.links != null && task.links!.isNotEmpty) {
+                for (final existingLink in task.links!) {
+                  final existingUrl = _extractUrlFromHtmlLink(existingLink);
+                  if (existingUrl != null && existingUrl == searchUrl) {
+                    existingTask = task;
+                    break;
+                  }
+                }
+                if (existingTask != null) break;
               }
             }
-            if (existingTask != null) break;
           }
-          if (existingTask != null) break;
-        } else {
-          print('TaskEditScreen:     Task has no links');
         }
       }
     }
@@ -1398,14 +1497,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         final isStreamingCategory = widget.category.originalId != null &&
             STREAMING_MEDIA_CATEGORY_IDS.contains(widget.category.originalId);
 
-        if (isStreamingMediaUrl(cleanURL) && isStreamingCategory && fetchedTitle != null) {
-          print('TaskEditScreen: Detected streaming media link in streaming category');
+        if (isStreamingMediaUrl(cleanURL) &&
+            isStreamingCategory &&
+            fetchedTitle != null) {
+          print(
+              'TaskEditScreen: Detected streaming media link in streaming category');
 
           // Try to extract artist and work from the title
           final artistWorkInfo = extractArtistAndWorkFromTidal(fetchedTitle);
 
           if (artistWorkInfo != null) {
-            print('TaskEditScreen: Extracted artist: "${artistWorkInfo.artist}", work: "${artistWorkInfo.work}"');
+            print(
+                'TaskEditScreen: Extracted artist: "${artistWorkInfo.artist}", work: "${artistWorkInfo.work}"');
 
             // Set headline to artist name (overriding any text before/after URL)
             cleanHeadline = artistWorkInfo.artist;
@@ -1431,7 +1534,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         }
         // For Letterboxd URLs without description, try the special Letterboxd fetch
         if (fetchedNotes == null &&
-            (cleanURL.contains('letterboxd.com') || cleanURL.contains('boxd.it'))) {
+            (cleanURL.contains('letterboxd.com') ||
+                cleanURL.contains('boxd.it'))) {
           fetchedNotes = await _fetchLetterboxdNotes(cleanURL);
           if (fetchedNotes != null) {
             print('TaskEditScreen: Fetched Letterboxd notes: "$fetchedNotes"');
@@ -1563,58 +1667,31 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           print(
               'TaskEditScreen: Checking for original_id from existing tasks with same links...');
           try {
-            // Import the IncomingLinkProcessor to use its findOriginalIdForLink method
             final firstLinkUrl = _extractUrlFromHtmlLink(allLinks.first);
             if (firstLinkUrl != null) {
               print(
                   'TaskEditScreen: Searching for original_id for URL: $firstLinkUrl');
-              // We need to import IncomingLinkProcessor to use this method
-              // For now, let's implement the logic inline
-              final tasksResponse = await supabase
-                  .from('Tasks')
-                  .select()
-                  .order('created_at', ascending: true); // Oldest first
 
-              final tasksData = tasksResponse as List<dynamic>;
-              print(
-                  'TaskEditScreen: Checking ${tasksData.length} tasks for original_id');
+              // Use LinkToTaskConverter to find original_id (more efficient than loading all tasks)
+              final originalId = await LinkToTaskConverter.findExistingTaskOriginalId(
+                firstLinkUrl,
+                userId,
+              );
 
-              for (final taskData in tasksData) {
-                try {
-                  final task = Task.fromJson(taskData);
+              if (originalId != null) {
+                data['original_id'] = originalId;
+                print('TaskEditScreen: Found original_id: $originalId');
 
-                  // Check each link in the task
-                  for (final linkText in task.links ?? []) {
-                    final linkUrl = _extractUrlFromHtmlLink(linkText);
-                    if (linkUrl != null && linkUrl == firstLinkUrl) {
-                      // Found a task with this link
-                      final originalId = task.originalId ?? task.id;
-                      print(
-                          'TaskEditScreen: Found original_id: $originalId (from task: "${task.headline}", id: ${task.id}, owner: ${task.ownerId}, created: ${task.createdAt})');
-                      data['original_id'] = originalId;
-
-                      // Also copy the synopsis if the existing task has one
-                      if (task.synopsis != null && task.synopsis!.isNotEmpty) {
-                        data['synopsis'] = task.synopsis;
-                        print(
-                            'TaskEditScreen: Copying synopsis from existing task: "${task.synopsis!.substring(0, task.synopsis!.length > 100 ? 100 : task.synopsis!.length)}..."');
-                      } else {
-                        print(
-                            'TaskEditScreen: Existing task has no synopsis to copy');
-                      }
-                      break;
-                    }
+                // Try to get synopsis from existing task if we don't have one
+                if (data['synopsis'] == null || (data['synopsis'] as String).isEmpty) {
+                  final synopsis = await SynopsisFetcher.fetchSynopsisForUrl(firstLinkUrl);
+                  if (synopsis != null && synopsis.isNotEmpty) {
+                    data['synopsis'] = synopsis;
+                    print(
+                        'TaskEditScreen: Fetched synopsis from existing task: "${synopsis.substring(0, synopsis.length > 100 ? 100 : synopsis.length)}..."');
                   }
-
-                  if (data.containsKey('original_id')) break;
-                } catch (e) {
-                  print(
-                      'TaskEditScreen: Error processing task for original_id: $e');
-                  continue;
                 }
-              }
-
-              if (!data.containsKey('original_id')) {
+              } else {
                 print(
                     'TaskEditScreen: No existing task found with this link, this will be the original');
               }
@@ -1664,6 +1741,67 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // Wait longer for database transaction to commit
       await Future.delayed(const Duration(milliseconds: 500));
 
+      // Debug: Check task state before synopsis fetch
+      print('TaskEditScreen: Checking synopsis fetch conditions:');
+      print(
+          '  - Task has links: ${updatedTask.links != null && updatedTask.links!.isNotEmpty}');
+      print('  - Links count: ${updatedTask.links?.length ?? 0}');
+      print('  - Synopsis is null: ${updatedTask.synopsis == null}');
+      print('  - Synopsis is empty: ${updatedTask.synopsis?.isEmpty ?? true}');
+      print(
+          '  - Synopsis value: ${updatedTask.synopsis != null ? "\"${updatedTask.synopsis!.substring(0, updatedTask.synopsis!.length > 50 ? 50 : updatedTask.synopsis!.length)}...\"" : "null"}');
+
+      // Fetch synopsis from web if task has links and no synopsis
+      if (updatedTask.links != null &&
+          updatedTask.links!.isNotEmpty &&
+          (updatedTask.synopsis == null || updatedTask.synopsis!.isEmpty)) {
+        print(
+            'TaskEditScreen: Task has links but no synopsis, fetching synopsis...');
+        try {
+          final synopsisResult =
+              await SynopsisFetcher.fetchSynopsisForTask(updatedTask);
+          if (synopsisResult != null && synopsisResult.synopsis.isNotEmpty) {
+            print(
+                'TaskEditScreen: Fetched synopsis from ${synopsisResult.source.name}');
+            print(
+                'TaskEditScreen: Synopsis already saved to database by SynopsisFetcher');
+            // Update local task object with the synopsis
+            // SynopsisFetcher already saved it to the database
+            updatedTask = Task(
+              id: updatedTask.id,
+              categoryId: updatedTask.categoryId,
+              ownerId: updatedTask.ownerId,
+              headline: updatedTask.headline,
+              notes: updatedTask.notes,
+              synopsis: synopsisResult.synopsis,
+              createdAt: updatedTask.createdAt,
+              suggestibleAt: updatedTask.suggestibleAt,
+              triggersAt: updatedTask.triggersAt,
+              deferral: updatedTask.deferral,
+              links: updatedTask.links,
+              finished: updatedTask.finished,
+              shared: updatedTask.shared,
+              originalId: updatedTask.originalId,
+            );
+            print('TaskEditScreen: Updated local task with synopsis');
+          } else {
+            print('TaskEditScreen: No synopsis found');
+          }
+        } catch (e) {
+          print('TaskEditScreen: Error fetching synopsis: $e');
+          // Continue even if synopsis fetch fails
+        }
+      } else {
+        print('TaskEditScreen: Skipping synopsis fetch - conditions not met');
+        if (updatedTask.links == null || updatedTask.links!.isEmpty) {
+          print('  - Reason: Task has no links');
+        } else if (updatedTask.synopsis != null &&
+            updatedTask.synopsis!.isNotEmpty) {
+          print(
+              '  - Reason: Task already has synopsis: "${updatedTask.synopsis!.substring(0, updatedTask.synopsis!.length > 100 ? 100 : updatedTask.synopsis!.length)}..."');
+        }
+      }
+
       // Update the task cache using CacheManager only when saving
       print('TaskEditScreen: Updating task cache...');
       final cacheManager = CacheManager();
@@ -1686,7 +1824,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         if (cacheManager.currentCategory?.id == widget.category.id) {
           print(
               'TaskEditScreen: Updating task in cache... (new task: ${_localTask == null})');
-          await cacheManager.updateTask(updatedTask);
+          if (updatedTask != null) {
+            await cacheManager.updateTask(updatedTask);
+          }
         } else {
           print(
               'TaskEditScreen: Cache is on different category (${cacheManager.currentCategory?.id} vs ${widget.category.id}), skipping cache update');

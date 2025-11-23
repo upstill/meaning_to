@@ -74,10 +74,12 @@ class ApiClient {
       String taskId, Map<String, dynamic> updates) async {
     try {
       // Temporary: Use Supabase directly
+      // Parse taskId to int for proper database comparison
+      final taskIdInt = int.parse(taskId);
       final response = await _supabase
           .from('Tasks')
           .update(updates)
-          .eq('id', taskId)
+          .eq('id', taskIdInt)
           .select()
           .single();
 

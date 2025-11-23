@@ -6,6 +6,7 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
@@ -70,6 +71,219 @@ class HomeScreenState extends State<HomeScreen> {
 
   // Track if welcome dialog has been shown
   bool _welcomeDialogShown = false;
+
+  // Check if current user is the developer
+  bool get _isDeveloperUser {
+    final userId = AuthUtils.getCurrentUserId();
+    print('DEBUG: Current user ID: $userId');
+    final isDev = userId == 'ed1e8fd6-44cc-4fff-b717-57ffb551cb2d';
+    print('DEBUG: Is developer user: $isDev');
+    return isDev;
+  }
+
+  /// Build AppBar actions with conditional developer menu
+  List<Widget> _buildAppBarActions() {
+    final actions = <Widget>[];
+
+    // Debug button - only show in debug mode
+    if (foundation.kDebugMode) {
+      actions.add(
+        IconButton(
+          icon: const Icon(Icons.analytics),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const PerformanceMonitorScreen(),
+              ),
+            );
+          },
+          tooltip: 'Performance Monitor',
+        ),
+      );
+    }
+
+    // Developer menu - only show for developer user
+    if (_isDeveloperUser) {
+      print('DEBUG: Adding developer menu button to actions');
+      actions.add(
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: Colors.orange,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: IconButton(
+            icon: const Icon(
+              Icons.build,
+              color: Colors.white,
+              size: 24,
+            ),
+            tooltip: 'Developer Tools',
+            onPressed: () {
+              _fixRawUrlsInTasks();
+            },
+          ),
+        ),
+      );
+    }
+
+    // Logout button - always show
+    actions.add(
+      IconButton(
+        icon: const Icon(Icons.logout),
+        onPressed: () async {
+          await AuthUtils.signOut();
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/');
+          }
+        },
+        tooltip: 'Sign out',
+      ),
+    );
+
+    print('DEBUG: Total actions in AppBar: ${actions.length}');
+    return actions;
+  }
+
+  /// Debug function to fix raw URLs in task links
+  /// Converts any raw URL strings in the links array to proper HTML link format
+  /// Processes all tasks in descending ID order
+  Future<void> _fixRawUrlsInTasks() async {
+    print('DEBUG: Starting to fix raw URLs in tasks');
+
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+
+      // Fetch all tasks for this user, ordered by ID descending
+      final response = await supabase
+          .from('Tasks')
+          .select()
+          .eq('owner_id', userId)
+          .order('id', ascending: false);
+
+      final tasks = (response as List).map((json) => Task.fromJson(json)).toList();
+
+      print('DEBUG: Found ${tasks.length} total tasks to check');
+
+      int tasksModified = 0;
+      int linksFixed = 0;
+
+      for (final task in tasks) {
+        print('DEBUG: Processing task ID ${task.id}: "${task.headline}"');
+
+        // Skip tasks with no links
+        if (task.links == null || task.links!.isEmpty) {
+          print('DEBUG: Task has no links, skipping');
+          continue;
+        }
+
+        print('DEBUG: Task has ${task.links!.length} links');
+
+        bool modified = false;
+        final updatedLinks = <String>[];
+
+        for (int i = 0; i < task.links!.length; i++) {
+          final link = task.links![i];
+          print('DEBUG: Link $i: $link');
+
+          // Check if this is a raw URL (doesn't start with <a)
+          if (!link.trim().startsWith('<a')) {
+            print('DEBUG: Found raw URL, converting to HTML link');
+            print('DEBUG: Original URL: $link');
+
+            // Normalize the URL first (this handles TIDAL /u stripping, etc.)
+            final normalizedUrl = LinkToTaskConverter.normalizeUrl(link);
+            print('DEBUG: Normalized URL: $normalizedUrl');
+
+            // Process the normalized URL to create HTML link
+            final processedLink = await LinkProcessor.validateAndProcessLink(normalizedUrl);
+            final htmlLink = '<a href="${processedLink.url}">${processedLink.title ?? processedLink.url}</a>';
+
+            print('DEBUG: Converted to: $htmlLink');
+            updatedLinks.add(htmlLink);
+            modified = true;
+            linksFixed++;
+          } else {
+            print('DEBUG: Link is already HTML formatted, checking if URL needs normalization');
+
+            // Extract URL from HTML link
+            final urlMatch = RegExp(r'href="([^"]+)"').firstMatch(link);
+            if (urlMatch != null) {
+              final originalUrl = urlMatch.group(1)!;
+              print('DEBUG: Extracted URL: $originalUrl');
+
+              // Normalize the URL
+              final normalizedUrl = LinkToTaskConverter.normalizeUrl(originalUrl);
+              print('DEBUG: Normalized URL: $normalizedUrl');
+
+              // Check if URL changed after normalization
+              if (normalizedUrl != originalUrl) {
+                print('DEBUG: URL was normalized, updating link');
+
+                // Replace the old URL with normalized one in the HTML link
+                final updatedLink = link.replaceAll(originalUrl, normalizedUrl);
+                print('DEBUG: Updated link: $updatedLink');
+
+                updatedLinks.add(updatedLink);
+                modified = true;
+                linksFixed++;
+              } else {
+                print('DEBUG: URL did not need normalization');
+                updatedLinks.add(link);
+              }
+            } else {
+              print('DEBUG: Could not extract URL from HTML link');
+              updatedLinks.add(link);
+            }
+          }
+        }
+
+        if (modified) {
+          print('DEBUG: Updating task ${task.id} with fixed links');
+          print('DEBUG: Total links being saved: ${updatedLinks.length}');
+          print('DEBUG: Links: ${updatedLinks.join(", ")}');
+
+          // Update the task in the database
+          await supabase
+              .from('Tasks')
+              .update({'links': updatedLinks})
+              .eq('id', task.id);
+
+          print('DEBUG: Task ${task.id} updated successfully');
+          tasksModified++;
+        } else {
+          print('DEBUG: No raw URLs found in task ${task.id}, continuing to next task');
+        }
+      }
+
+      print('DEBUG: Finished processing tasks');
+      print('DEBUG: Total tasks modified: $tasksModified');
+      print('DEBUG: Total links fixed: $linksFixed');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fixed $linksFixed raw URLs across $tasksModified tasks'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      print('DEBUG: Error fixing raw URLs: $e');
+      print('DEBUG: Stack trace: $stackTrace');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -1338,32 +1552,7 @@ class HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('I\'ve Been Meaning To...'),
         automaticallyImplyLeading: false,
-        actions: [
-          // Debug button - only show in debug mode
-          if (foundation.kDebugMode)
-            IconButton(
-              icon: const Icon(Icons.analytics),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const PerformanceMonitorScreen(),
-                  ),
-                );
-              },
-              tooltip: 'Performance Monitor',
-            ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await AuthUtils.signOut();
-              if (mounted) {
-                Navigator.pushReplacementNamed(context, '/');
-              }
-            },
-            tooltip: 'Sign out',
-          ),
-        ],
+        actions: _buildAppBarActions(),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),

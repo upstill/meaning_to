@@ -105,39 +105,39 @@ class Task {
 
   factory Task.fromJson(Map<String, dynamic> json) {
     List<String>? parseLinks(dynamic linksData) {
-      print(
-          'Task.fromJson: parseLinks called with: $linksData (type: ${linksData.runtimeType})');
+      // print(
+      //     'Task.fromJson: parseLinks called with: $linksData (type: ${linksData.runtimeType})');
 
       if (linksData == null) {
-        print('Task.fromJson: linksData is null, returning null');
+        // print('Task.fromJson: linksData is null, returning null');
         return null;
       }
 
       // Handle PostgreSQL array (comes as List from Supabase)
       if (linksData is List) {
-        print(
-            'Task.fromJson: linksData is List with ${linksData.length} items');
+        // print(
+        //     'Task.fromJson: linksData is List with ${linksData.length} items');
         return List<String>.from(linksData);
       }
 
       // Handle legacy JSON string format (for backward compatibility)
       if (linksData is String) {
-        print('Task.fromJson: linksData is String: "$linksData"');
+        // print('Task.fromJson: linksData is String: "$linksData"');
         // Handle empty PostgreSQL array string representation
         if (linksData.trim() == '{}' || linksData.trim() == '[]') {
-          print('Task.fromJson: Empty array detected, returning empty list');
+          // print('Task.fromJson: Empty array detected, returning empty list');
           return [];
         }
         try {
           // If it's a single HTML link, return it as is
           if (linksData.trim().startsWith('<a href="')) {
-            print('Task.fromJson: Single HTML link detected');
+            // print('Task.fromJson: Single HTML link detected');
             return [linksData];
           }
           // Otherwise try to parse as JSON
           final decoded = jsonDecode(linksData) as List;
-          print(
-              'Task.fromJson: Parsed JSON string to List with ${decoded.length} items');
+          // print(
+          //     'Task.fromJson: Parsed JSON string to List with ${decoded.length} items');
           // Filter out null values and convert to strings
           final validLinks = decoded
               .where((item) => item != null)
@@ -151,13 +151,13 @@ class Task {
         }
       }
 
-      print(
-          'Task.fromJson: linksData is neither List nor String, returning null');
+      // print(
+      //     'Task.fromJson: linksData is neither List nor String, returning null');
       return null;
     }
 
     final links = parseLinks(json['links']);
-    print('Parsed links from JSON: $links');
+    // print('Parsed links from JSON: $links');
 
     // Get suggestibleAt, preserving null if it's intentionally null
     // Only default to current time for legacy tasks that don't have this field set
