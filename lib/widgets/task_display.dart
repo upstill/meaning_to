@@ -137,12 +137,15 @@ class _TaskDisplayState extends State<TaskDisplay> {
     }
   }
 
-  /// Check if we should fetch synopsis (synopsis is null or empty)
+  /// Check if we should fetch synopsis (synopsis is null or empty AND task has links)
   bool _shouldFetchNotes() {
     final synopsis = widget.task.synopsis;
+    final links = widget.task.links;
 
-    // Only fetch synopsis if it is null or empty
-    if (synopsis == null || synopsis.trim().isEmpty) {
+    // Only fetch synopsis if it is null or empty AND the task has links to fetch from
+    if ((synopsis == null || synopsis.trim().isEmpty) &&
+        links != null &&
+        links.isNotEmpty) {
       return true;
     }
 
@@ -196,7 +199,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
       _resolveMoreUrl();
     }
 
-    // If expanding and notes are null/empty/fallback, try to fetch them from links
+    // If expanding and synopsis is null/empty, try to fetch it from links
     if (_isExpanded) {
       final shouldFetch = _shouldFetchNotes();
       if (shouldFetch && _fetchedSynopsis == null && !_isFetchingSynopsis) {

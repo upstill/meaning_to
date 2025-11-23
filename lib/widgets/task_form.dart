@@ -12,6 +12,8 @@ import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/link_edit_screen.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
+import 'package:meaning_to/utils/synopsis_fetcher.dart';
+import 'package:meaning_to/models/task.dart';
 import 'package:html/parser.dart' as html_parser;
 
 class TaskForm extends StatefulWidget {
@@ -71,6 +73,12 @@ class _TaskFormState extends State<TaskForm> {
 
     if (widget.initialLinks != null) {
       _links = List<String>.from(widget.initialLinks!);
+
+      // If we have initial links (e.g., from intent), try to fetch synopsis
+      if (_links.isNotEmpty) {
+        print('TaskForm: Initial links provided, fetching synopsis...');
+        _fetchSynopsisForInitialLinks();
+      }
     }
 
     // Initialize shared state based on category's tasksArePrivate setting
@@ -85,6 +93,45 @@ class _TaskFormState extends State<TaskForm> {
     _headlineController.addListener(_onHeadlineChanged);
     print('TaskForm: Listener added successfully');
     print('TaskForm: ============ initState COMPLETE ============');
+  }
+
+  /// Fetch synopsis for initial links (when task is created via intent)
+  Future<void> _fetchSynopsisForInitialLinks() async {
+    try {
+      // Create a temporary task object with the initial links
+      final userId = AuthUtils.getCurrentUserId();
+      if (userId == null) {
+        print('TaskForm: No user ID available, cannot fetch synopsis');
+        return;
+      }
+
+      final tempTask = Task(
+        id: 0, // Temporary ID (not saved yet)
+        categoryId: widget.selectedCategory?.id ?? 0,
+        ownerId: userId,
+        headline: widget.initialHeadline ?? 'Temp',
+        links: _links,
+        createdAt: DateTime.now(),
+        finished: false,
+      );
+
+      print('TaskForm: Fetching synopsis for initial links: ${_links.length} link(s)');
+
+      // Fetch synopsis using SynopsisFetcher
+      final synopsisResult = await SynopsisFetcher.fetchSynopsisForTask(tempTask);
+
+      if (synopsisResult != null && mounted) {
+        setState(() {
+          _synopsis = synopsisResult.synopsis;
+        });
+        print('TaskForm: Synopsis fetched from ${synopsisResult.source.name}: ${_synopsis!.substring(0, _synopsis!.length > 100 ? 100 : _synopsis!.length)}...');
+      } else {
+        print('TaskForm: No synopsis could be fetched for initial links');
+      }
+    } catch (e) {
+      print('TaskForm: Error fetching synopsis for initial links: $e');
+      // Don't fail task creation if synopsis fetch fails
+    }
   }
 
   @override

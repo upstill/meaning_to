@@ -22,8 +22,8 @@ final RegExp TIDAL_TITLE_PATTERN = RegExp(r'^(.+?) by (.+?) on TIDAL$');
 /// Examples:
 ///   "Dark Side of the Moon - album by Pink Floyd | Spotify"
 ///   "The Wall | Spotify"
-final RegExp SPOTIFY_TITLE_PATTERN = RegExp(
-    r'^(.+?)(?: - (?:album|single|EP) by (.+?))? \| Spotify$');
+final RegExp SPOTIFY_TITLE_PATTERN =
+    RegExp(r'^(.+?)(?: - (?:album|single|EP) by (.+?))? \| Spotify$');
 
 /// Data class to hold extracted artist and work information from streaming links.
 class ArtistWorkInfo {
@@ -121,12 +121,17 @@ ArtistWorkInfo? extractArtistAndWorkFromYouTube(String title) {
   String cleanTitle = title.trim();
   cleanTitle = cleanTitle.replaceAll(RegExp(r'\s*-\s*YouTube$'), '').trim();
   cleanTitle = cleanTitle.replaceAll(RegExp(r'\s*\[.*?\]$'), '').trim();
-  cleanTitle = cleanTitle.replaceAll(RegExp(r'\s*\(Official.*?\)$', caseSensitive: false), '').trim();
+  cleanTitle = cleanTitle
+      .replaceAll(RegExp(r'\s*\(Official.*?\)$', caseSensitive: false), '')
+      .trim();
 
   // Pattern 1: "Track Name (feat. Featured) - Main Artist"
-  var match = RegExp(r'^(.+?)\s*\(feat\.\s*(.+?)\)\s*-\s*(.+?)$', caseSensitive: false).firstMatch(cleanTitle);
+  var match =
+      RegExp(r'^(.+?)\s*\(feat\.\s*(.+?)\)\s*-\s*(.+?)$', caseSensitive: false)
+          .firstMatch(cleanTitle);
   if (match != null) {
-    final trackName = '${match.group(1)!.trim()} (feat. ${match.group(2)!.trim()})';
+    final trackName =
+        '${match.group(1)!.trim()} (feat. ${match.group(2)!.trim()})';
     final mainArtist = match.group(3)!.trim();
     final featuredArtist = match.group(2)!.trim();
     final allArtists = '$mainArtist, $featuredArtist';
@@ -134,7 +139,9 @@ ArtistWorkInfo? extractArtistAndWorkFromYouTube(String title) {
   }
 
   // Pattern 2: "Main Artist - Track Name (feat. Featured)"
-  match = RegExp(r'^(.+?)\s*-\s*(.+?)\s*\(feat\.\s*(.+?)\)$', caseSensitive: false).firstMatch(cleanTitle);
+  match =
+      RegExp(r'^(.+?)\s*-\s*(.+?)\s*\(feat\.\s*(.+?)\)$', caseSensitive: false)
+          .firstMatch(cleanTitle);
   if (match != null) {
     final mainArtist = match.group(1)!.trim();
     final trackBase = match.group(2)!.trim();
@@ -149,7 +156,7 @@ ArtistWorkInfo? extractArtistAndWorkFromYouTube(String title) {
   if (match != null) {
     final firstPart = match.group(1)!.trim();
     final secondPart = match.group(2)!.trim();
-    
+
     // Check if first part looks like an artist name (shorter, might be capitalized differently)
     // and second part looks like a track name (longer, or has parentheses)
     // For now, assume: if second part doesn't contain " - ", then "Artist - Track"
@@ -174,10 +181,10 @@ bool isStreamingMediaUrl(String url) {
 
   final host = uri.host.toLowerCase();
 
-  return host.contains('tidal.com') || 
-         host.contains('spotify.com') ||
-         host.contains('youtube.com') ||
-         host.contains('youtu.be');
+  return host.contains('tidal.com') ||
+      host.contains('spotify.com') ||
+      host.contains('youtube.com') ||
+      host.contains('youtu.be');
   // Future additions:
   // || host.contains('music.apple.com')
 }
@@ -192,7 +199,8 @@ String? getStreamingServiceName(String url) {
 
   if (host.contains('tidal.com')) return 'Tidal';
   if (host.contains('spotify.com')) return 'Spotify';
-  if (host.contains('youtube.com') || host.contains('youtu.be')) return 'YouTube';
+  if (host.contains('youtube.com') || host.contains('youtu.be'))
+    return 'YouTube';
   // Future additions:
   // if (host.contains('music.apple.com')) return 'Apple Music';
 

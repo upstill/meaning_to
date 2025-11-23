@@ -165,31 +165,50 @@ class IncomingLinkProcessor {
         return [];
       }
 
-      // Fetch tasks for the current user across ALL categories
-      final userTasksResponse = await supabase
-          .from('Tasks')
-          .select('*, Categories!Tasks_category_id_fkey(*)')
-          .eq('owner_id', userId!);
+      // Escape URL for LIKE pattern matching
+      final escapedUrl = url.replaceAll('%', '\\%').replaceAll('_', '\\_');
 
-      final userTasksData = userTasksResponse as List<dynamic>;
-      print(
-          'IncomingLinkProcessor: Checking ${userTasksData.length} tasks across all user categories');
+      // Use RPC function to efficiently query tasks with matching links
+      try {
+        final linkResponse = await supabase.rpc(
+          'find_tasks_by_link_url',
+          params: {'search_url_pattern': '%$escapedUrl%'},
+        );
 
-      // Check user's tasks for duplicates
-      for (final taskData in userTasksData) {
-        try {
-          final task = Task.fromJson(taskData);
-          final categoryData = taskData['Categories'];
+        final tasksWithLink = (linkResponse as List)
+            .map((json) => Task.fromJson(json as Map<String, dynamic>))
+            .where((task) => task.ownerId == userId) // Filter by owner
+            .toList();
 
-          if (categoryData == null) {
+        print(
+            'IncomingLinkProcessor: Found ${tasksWithLink.length} task(s) with potentially matching link');
+
+        // Fetch categories for the matching tasks
+        final categoryIds =
+            tasksWithLink.map((t) => t.categoryId).toSet().toList();
+        // Fetch all user categories and filter in memory (still efficient)
+        final categoriesResponse =
+            await supabase.from('Categories').select().eq('owner_id', userId);
+
+        final categoriesMap = <int, Category>{};
+        for (final catData in categoriesResponse as List<dynamic>) {
+          final category = Category.fromJson(catData);
+          // Only include categories that are in our list
+          if (categoryIds.contains(category.id)) {
+            categoriesMap[category.id] = category;
+          }
+        }
+
+        // Check each task for exact URL match
+        for (final task in tasksWithLink) {
+          final category = categoriesMap[task.categoryId];
+          if (category == null) {
             print(
                 'IncomingLinkProcessor: Skipping task ${task.headline} - no category data');
             continue;
           }
 
-          final category = Category.fromJson(categoryData);
-
-          // Check each link in the task
+          // Check each link in the task for exact match
           for (final linkText in task.links ?? []) {
             final linkUrl = _extractUrlFromHtmlLink(linkText);
             if (linkUrl != null) {
@@ -209,13 +228,65 @@ class IncomingLinkProcessor {
               }
             }
           }
-        } catch (e) {
-          print('IncomingLinkProcessor: Error processing task data: $e');
-          continue;
+        }
+      } catch (e) {
+        print(
+            'IncomingLinkProcessor: Error querying tasks by link (RPC may not exist): $e');
+        print('IncomingLinkProcessor: Falling back to fetching all tasks...');
+
+        // Fallback: fetch all tasks if RPC doesn't exist
+        final userTasksResponse = await supabase
+            .from('Tasks')
+            .select('*, Categories!Tasks_category_id_fkey(*)')
+            .eq('owner_id', userId);
+
+        final userTasksData = userTasksResponse as List<dynamic>;
+        print(
+            'IncomingLinkProcessor: Checking ${userTasksData.length} tasks across all user categories');
+
+        // Check user's tasks for duplicates
+        for (final taskData in userTasksData) {
+          try {
+            final task = Task.fromJson(taskData);
+            final categoryData = taskData['Categories'];
+
+            if (categoryData == null) {
+              print(
+                  'IncomingLinkProcessor: Skipping task ${task.headline} - no category data');
+              continue;
+            }
+
+            final category = Category.fromJson(categoryData);
+
+            // Check each link in the task
+            for (final linkText in task.links ?? []) {
+              final linkUrl = _extractUrlFromHtmlLink(linkText);
+              if (linkUrl != null) {
+                final urlsMatch = _urlsMatch(url, linkUrl);
+                if (urlsMatch) {
+                  print(
+                      'IncomingLinkProcessor: Found duplicate in task "${task.headline}" in category "${category.headline}"');
+                  print('  Incoming URL: $url');
+                  print('  Existing URL: $linkUrl');
+                  duplicates.add(DuplicateMatch(
+                    task: task,
+                    category: category,
+                    matchingUrl: linkUrl,
+                    originalLinkText: linkText,
+                  ));
+                  break; // Only count each task once
+                }
+              }
+            }
+          } catch (e) {
+            print('IncomingLinkProcessor: Error processing task data: $e');
+            continue;
+          }
         }
       }
 
-      print('IncomingLinkProcessor: Found ${duplicates.length} duplicate(s) across all user categories');
+      print(
+          'IncomingLinkProcessor: Found ${duplicates.length} duplicate(s) across all user categories');
     } catch (e) {
       print('IncomingLinkProcessor: Error during duplicate check: $e');
     }
@@ -1191,9 +1262,9 @@ class IncomingLinkProcessor {
     return await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
+        title: const Text(
           'Found Existing Artist',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,

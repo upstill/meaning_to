@@ -4,6 +4,7 @@ import 'package:app_links/app_links.dart';
 import 'package:share_handler/share_handler.dart';
 import 'dart:async';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
+import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
@@ -310,7 +311,7 @@ class IntentHandler {
       if (result.duplicates.isEmpty) {
         print(
             'IntentHandler: No duplicate links found, proceeding with new task creation');
-        await _handleNewLinkCreation(url, intent, context);
+        await _handleNewLinkCreation(url, intent, context, result);
         return;
       }
 
@@ -346,8 +347,15 @@ class IntentHandler {
       }
     } catch (e) {
       print('IntentHandler: Error checking for duplicates: $e');
-      // Fallback to new task creation
-      await _handleNewLinkCreation(url, intent, context);
+      // Fallback to new task creation - fetch the result again for error case
+      try {
+        final result = await IncomingLinkProcessor.processIncomingLink(url);
+        await _handleNewLinkCreation(url, intent, context, result);
+      } catch (e2) {
+        print('IntentHandler: Error in fallback: $e2');
+        // Last resort - create task without ProposedTask data
+        await _navigateToNewContentWithLink(url, intent, context, null);
+      }
     }
   }
 
@@ -411,13 +419,13 @@ class IntentHandler {
 
   /// Handle new link creation (no duplicates found)
   Future<void> _handleNewLinkCreation(
-      String url, ProcessedIntent intent, BuildContext context) async {
+      String url, ProcessedIntent intent, BuildContext context, LinkProcessingResult result) async {
     print('IntentHandler: Creating new task for link: $url');
 
     // Dismiss processing dialog before navigating
     _dismissProcessingDialog(context);
 
-    await _navigateToNewContentWithLink(url, intent, context);
+    await _navigateToNewContentWithLink(url, intent, context, result.proposedTask);
   }
 
   /// Handle new link creation when duplicates exist (set original_id)
@@ -527,20 +535,30 @@ class IntentHandler {
 
   /// Navigate to New Content screen with preloaded link
   Future<void> _navigateToNewContentWithLink(
-      String url, ProcessedIntent intent, BuildContext context) async {
+      String url, ProcessedIntent intent, BuildContext context, ProposedTask? proposedTask) async {
     if (_navigatorKey == null) return;
 
     // Try to get intelligently suggested category first
     final suggestedCategory = await _getOrCreateSuggestedCategory(intent, context);
     final defaultCategory = suggestedCategory ?? _getCurrentCategory();
 
+    // Use ProposedTask data if available, otherwise fall back to intent data
+    final headline = proposedTask?.headline ?? intent.data['title'] as String?;
+    final synopsis = proposedTask?.synopsis;
+    final formattedLinks = proposedTask?.links ?? [url];
+
+    print('IntentHandler: Navigating to NewContent with ProposedTask data:');
+    print('  - Headline: $headline');
+    print('  - Synopsis: ${synopsis != null ? "present (${synopsis.length} chars)" : "null"}');
+    print('  - Links: ${formattedLinks.length} link(s)');
+
     _navigatorKey!.currentState?.pushNamed(
       '/new-content',
       arguments: {
         'selectedCategory': defaultCategory,
-        'initialLinks': [url],
-        'initialHeadline': intent.data['title'] as String?,
-        'initialNotes': intent.data['description'] as String?,
+        'initialLinks': formattedLinks,
+        'initialHeadline': headline,
+        'initialNotes': synopsis ?? intent.data['description'] as String?,
       },
     );
   }

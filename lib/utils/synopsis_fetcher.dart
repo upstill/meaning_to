@@ -1,13 +1,59 @@
+import 'dart:convert';
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Utility class for fetching and managing task synopses
 /// Handles database lookups and web scraping for JustWatch, Letterboxd, TED, etc.
 class SynopsisFetcher {
   static final _supabase = Supabase.instance.client;
+
+  /// Fetch synopsis for a URL without requiring a Task object
+  /// First checks database for existing synopsis, then falls back to web scraping
+  /// Does NOT save to database (caller is responsible for that)
+  /// Returns just the synopsis string
+  static Future<String?> fetchSynopsisForUrl(String url) async {
+    print('SynopsisFetcher: Fetching synopsis for URL: $url');
+
+    // First, try to find synopsis from another task in database (fast!)
+    print('SynopsisFetcher: Checking database for URL: $url');
+    String? synopsis = await _findSynopsisFromDatabaseByUrl(url);
+
+    // If not found in database, fetch from web (slow)
+    if (synopsis == null || synopsis.isEmpty) {
+      print('SynopsisFetcher: No synopsis in database, fetching from web');
+
+      if (url.contains('imdb.com')) {
+        synopsis = await _fetchImdbSynopsis(url);
+      } else if (url.contains('justwatch.com')) {
+        synopsis = await _fetchJustWatchSynopsis(url);
+      } else if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
+        synopsis = await _fetchLetterboxdSynopsis(url);
+      } else if (url.contains('ted.com')) {
+        synopsis = await _fetchGenericSynopsis(url);
+      }
+
+      // Check if this is an error message
+      if (synopsis != null && synopsis.isNotEmpty) {
+        final isErrorMessage =
+            synopsis.startsWith('Synopsis not available') ||
+                synopsis.startsWith('Description not available') ||
+                synopsis.contains('content protection');
+
+        if (isErrorMessage) {
+          print('SynopsisFetcher: Got error message, returning null');
+          return null;
+        }
+      }
+    } else {
+      print('SynopsisFetcher: Found synopsis in database from another task');
+    }
+
+    return synopsis;
+  }
 
   /// Fetch synopsis for a task from links
   /// First checks database for existing synopsis, then falls back to web scraping
@@ -36,7 +82,9 @@ class SynopsisFetcher {
       if (synopsis == null || synopsis.isEmpty) {
         print('SynopsisFetcher: No synopsis in database, fetching from web');
 
-        if (url.contains('justwatch.com')) {
+        if (url.contains('imdb.com')) {
+          synopsis = await _fetchImdbSynopsis(url);
+        } else if (url.contains('justwatch.com')) {
           synopsis = await _fetchJustWatchSynopsis(url);
         } else if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
           synopsis = await _fetchLetterboxdSynopsis(url);
@@ -83,21 +131,73 @@ class SynopsisFetcher {
     return null;
   }
 
-  /// Generate reference link patterns for a given URL
-  /// Returns a list of patterns that should appear at the END of synopses
-  /// These patterns are checked using endsWith() to ensure we only match
-  /// our appended reference links, not any links embedded in the synopsis text
-  static List<String> _generateReferenceLinkPatterns(String url) {
-    return [
-      '... <a href="$url">(more)</a>', // For truncated synopses
-      ' <a href="$url">(reference)</a>', // For short synopses
-    ];
+  /// Find synopsis from a task in the database with the same link (without excluding a task)
+  /// Searches for tasks that have this URL in their links array and have a non-empty synopsis
+  /// Searches ALL tasks (not just current user's) to maximize reuse
+  static Future<String?> _findSynopsisFromDatabaseByUrl(String url) async {
+    try {
+      print('SynopsisFetcher: Searching database for tasks with URL: $url');
+
+      // Search ALL tasks in the database (not filtered by user)
+      final response = await _supabase.from('Tasks').select();
+      final tasksData = response as List<dynamic>;
+
+      print('SynopsisFetcher: Found ${tasksData.length} total tasks to check');
+
+      int tasksWithLink = 0;
+      int tasksWithLinkAndSynopsis = 0;
+
+      for (final taskData in tasksData) {
+        final task = Task.fromJson(taskData);
+
+        // Check if this task has links
+        if (task.links == null || task.links!.isEmpty) {
+          continue;
+        }
+
+        // Check if any of the task's links contain this URL
+        bool hasMatchingLink = false;
+        for (final link in task.links!) {
+          // Extract URL from HTML link if needed
+          String? linkUrl;
+          if (link.startsWith('http://') || link.startsWith('https://')) {
+            linkUrl = link;
+          } else {
+            final regex = RegExp(r'href=["\\x27]([^"\\x27]+)["\\x27]');
+            final match = regex.firstMatch(link);
+            linkUrl = match?.group(1);
+          }
+
+          if (linkUrl == url) {
+            hasMatchingLink = true;
+            tasksWithLink++;
+            break;
+          }
+        }
+
+        // If this task has the matching link and a synopsis, return it
+        if (hasMatchingLink && task.synopsis != null && task.synopsis!.isNotEmpty) {
+          tasksWithLinkAndSynopsis++;
+          print(
+              'SynopsisFetcher: Found task #${task.id} "${task.headline}" with matching link and synopsis (owner: ${task.ownerId})');
+          print('SynopsisFetcher: Synopsis: ${task.synopsis!.substring(0, task.synopsis!.length > 100 ? 100 : task.synopsis!.length)}...');
+          print('SynopsisFetcher: Using synopsis from task #${task.id}');
+          return task.synopsis;
+        }
+      }
+
+      print(
+          'SynopsisFetcher: Search complete. Tasks with matching link: $tasksWithLink, Tasks with link and synopsis: $tasksWithLinkAndSynopsis');
+      return null;
+    } catch (e) {
+      print('SynopsisFetcher: Error finding synopsis from database: $e');
+      return null;
+    }
   }
 
   /// Find synopsis from another task in the database with the same link
-  /// Searches based on the reference link embedded in the synopsis (either "(more)" or "(reference)")
-  /// This ensures we match synopses derived from the same source link, preventing ambiguity
-  /// when tasks have multiple links. Searches ALL tasks (not just current user's) to maximize reuse
+  /// Searches for tasks that have this URL in their links array and have a non-empty synopsis
+  /// Searches ALL tasks (not just current user's) to maximize reuse
   static Future<String?> _findSynopsisFromDatabase(
       String url, int currentTaskId) async {
     try {
@@ -109,13 +209,8 @@ class SynopsisFetcher {
 
       print('SynopsisFetcher: Found ${tasksData.length} total tasks to check');
 
-      // Generate both possible reference link patterns
-      final referenceLinkPatterns = _generateReferenceLinkPatterns(url);
-      print(
-          'SynopsisFetcher: Looking for synopsis ending with either: ${referenceLinkPatterns.join(" OR ")}');
-
-      int tasksWithSynopsis = 0;
-      int tasksWithMatchingSynopsis = 0;
+      int tasksWithLink = 0;
+      int tasksWithLinkAndSynopsis = 0;
 
       for (final taskData in tasksData) {
         final task = Task.fromJson(taskData);
@@ -125,31 +220,44 @@ class SynopsisFetcher {
           continue;
         }
 
-        // Count tasks with synopsis for debugging
-        if (task.synopsis != null && task.synopsis!.isNotEmpty) {
-          tasksWithSynopsis++;
+        // Check if this task has links
+        if (task.links == null || task.links!.isEmpty) {
+          continue;
+        }
 
-          // Check if this task's synopsis ENDS WITH either reference link pattern for this URL
-          // Using endsWith() ensures we only match our appended reference link, not any
-          // links that might be embedded in the synopsis text itself
-          final hasMatchingPattern = referenceLinkPatterns.any(
-            (pattern) => task.synopsis!.endsWith(pattern),
-          );
-
-          if (hasMatchingPattern) {
-            tasksWithMatchingSynopsis++;
-            print(
-                'SynopsisFetcher: Found task #${task.id} "${task.headline}" with matching synopsis (owner: ${task.ownerId})');
-            print(
-                'SynopsisFetcher: Synopsis ends with the correct reference link for this URL');
-            print('SynopsisFetcher: Using synopsis from task #${task.id}');
-            return task.synopsis;
+        // Check if any of the task's links contain this URL
+        bool hasMatchingLink = false;
+        for (final link in task.links!) {
+          // Extract URL from HTML link if needed
+          String? linkUrl;
+          if (link.startsWith('http://') || link.startsWith('https://')) {
+            linkUrl = link;
+          } else {
+            final regex = RegExp(r'href=["\x27]([^"\x27]+)["\x27]');
+            final match = regex.firstMatch(link);
+            linkUrl = match?.group(1);
           }
+
+          if (linkUrl == url) {
+            hasMatchingLink = true;
+            tasksWithLink++;
+            break;
+          }
+        }
+
+        // If this task has the matching link and a synopsis, return it
+        if (hasMatchingLink && task.synopsis != null && task.synopsis!.isNotEmpty) {
+          tasksWithLinkAndSynopsis++;
+          print(
+              'SynopsisFetcher: Found task #${task.id} "${task.headline}" with matching link and synopsis (owner: ${task.ownerId})');
+          print('SynopsisFetcher: Synopsis: ${task.synopsis!.substring(0, task.synopsis!.length > 100 ? 100 : task.synopsis!.length)}...');
+          print('SynopsisFetcher: Using synopsis from task #${task.id}');
+          return task.synopsis;
         }
       }
 
       print(
-          'SynopsisFetcher: Search complete. Tasks with synopsis: $tasksWithSynopsis, Tasks with matching synopsis: $tasksWithMatchingSynopsis');
+          'SynopsisFetcher: Search complete. Tasks with matching link: $tasksWithLink, Tasks with link and synopsis: $tasksWithLinkAndSynopsis');
       return null;
     } catch (e) {
       print('SynopsisFetcher: Error finding synopsis from database: $e');
@@ -340,6 +448,288 @@ class SynopsisFetcher {
       print('SynopsisFetcher: Error fetching generic synopsis: $e');
       return null;
     }
+  }
+
+  /// Fetch synopsis from IMDb using OMDb API or HTML scraping
+  static Future<String?> _fetchImdbSynopsis(String url) async {
+    try {
+      print('SynopsisFetcher: Fetching from IMDb: $url');
+
+      // Extract IMDb ID from URL
+      final imdbId = _extractImdbId(url);
+      if (imdbId == null) {
+        print('SynopsisFetcher: Could not extract IMDb ID from URL: $url');
+        return null;
+      }
+
+      print('SynopsisFetcher: Extracted IMDb ID: $imdbId');
+
+      // Try OMDb API first
+      print('🔍 SynopsisFetcher: Attempting to fetch IMDb data from OMDb API...');
+      final omdbData = await _fetchFromOmdbApi(imdbId);
+      if (omdbData != null) {
+        print('✅ SynopsisFetcher: OMDb data received, building synopsis...');
+        final synopsis = _buildSynopsisFromOmdbData(omdbData);
+        print('📦 SynopsisFetcher: Returning OMDb synopsis - length: ${synopsis.length} chars');
+        return synopsis;
+      }
+
+      // Fallback to HTML scraping if API fails
+      print('⚠️  SynopsisFetcher: OMDb API returned null, falling back to HTML scraping');
+      final synopsis = await _fetchImdbSynopsisFromHtml(url);
+      print('📦 SynopsisFetcher: Returning HTML-scraped synopsis: ${synopsis != null ? "${synopsis.length} chars" : "null"}');
+      return synopsis;
+    } catch (e) {
+      print('SynopsisFetcher: Error fetching IMDb synopsis: $e');
+      return null;
+    }
+  }
+
+  /// Extract IMDb ID from URL (e.g., tt0111161 from https://www.imdb.com/title/tt0111161/)
+  static String? _extractImdbId(String url) {
+    final match = RegExp(r'/title/(tt\d+)').firstMatch(url);
+    return match?.group(1);
+  }
+
+  /// Fetch data from OMDb API
+  static Future<Map<String, dynamic>?> _fetchFromOmdbApi(String imdbId) async {
+    try {
+      // Get OMDb API key with fallback to .env for local development
+      String? apiKey;
+
+      // Priority 1: Build-time environment variable (Production)
+      const apiKeyFromBuild = String.fromEnvironment('OMDB_API_KEY');
+      if (apiKeyFromBuild.isNotEmpty) {
+        apiKey = apiKeyFromBuild;
+      } else {
+        // Priority 2: Local .env fallback (Development)
+        try {
+          final apiKeyFromDotenv = dotenv.env['OMDB_API_KEY'];
+          if (apiKeyFromDotenv != null && apiKeyFromDotenv.isNotEmpty) {
+            apiKey = apiKeyFromDotenv;
+          }
+        } catch (e) {
+          // Graceful fallback if dotenv not loaded
+        }
+      }
+
+      // Skip API call if no key is configured
+      if (apiKey == null || apiKey.isEmpty) {
+        print('❌ SynopsisFetcher: OMDb API key not configured, skipping API call');
+        return null;
+      }
+
+      print('✅ SynopsisFetcher: OMDb API key found, making API call...');
+      final omdbUrl =
+          'http://www.omdbapi.com/?i=$imdbId&plot=full&apikey=$apiKey';
+      print('🌐 SynopsisFetcher: Calling OMDb API for $imdbId');
+
+      final response = await http
+          .get(Uri.parse(omdbUrl))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+
+        if (data['Response'] == 'True') {
+          print('✅ SynopsisFetcher: OMDb API SUCCESS!');
+          print('   📝 Title: ${data['Title']}');
+          print('   🎬 Type: ${data['Type']}');
+          final plot = data['Plot']?.toString();
+          final plotPreview = plot != null
+              ? (plot.length > 100 ? plot.substring(0, 100) : plot)
+              : "N/A";
+          print('   📖 Plot: $plotPreview...');
+          print('   ⭐ Rating: ${data['Rated']} | IMDb: ${data['imdbRating']}/10');
+          print('   ⏱️  Runtime: ${data['Runtime']}');
+          print('   📅 Released: ${data['Released']}');
+          return data;
+        } else {
+          print('❌ SynopsisFetcher: OMDb API error response: ${data['Error']}');
+          return null;
+        }
+      }
+
+      print('❌ SynopsisFetcher: OMDb API returned HTTP status ${response.statusCode}');
+      return null;
+    } catch (e) {
+      print('SynopsisFetcher: Error calling OMDb API: $e');
+      return null;
+    }
+  }
+
+  /// Build synopsis from OMDb API data
+  static String _buildSynopsisFromOmdbData(Map<String, dynamic> data) {
+    final parts = <String>[];
+
+    // Add plot
+    if (data['Plot'] != null && data['Plot'] != 'N/A') {
+      parts.add(data['Plot']);
+    }
+
+    // Add rating
+    if (data['Rated'] != null && data['Rated'] != 'N/A') {
+      parts.add('Rated ${data['Rated']}');
+    }
+
+    // Add runtime
+    if (data['Runtime'] != null && data['Runtime'] != 'N/A') {
+      parts.add(data['Runtime']);
+    }
+
+    // Add release date
+    if (data['Released'] != null && data['Released'] != 'N/A') {
+      parts.add('Released ${data['Released']}');
+    }
+
+    // Add IMDb rating if available
+    if (data['imdbRating'] != null && data['imdbRating'] != 'N/A') {
+      parts.add('IMDb: ${data['imdbRating']}/10');
+    }
+
+    final synopsis = parts.join('. ');
+    print('📝 SynopsisFetcher: Built synopsis from OMDb data:');
+    print('   - Total length: ${synopsis.length} characters');
+    print('   - Preview: "${synopsis.substring(0, synopsis.length > 150 ? 150 : synopsis.length)}${synopsis.length > 150 ? "..." : ""}"');
+    return synopsis;
+  }
+
+  /// Fallback: Fetch synopsis from HTML scraping
+  static Future<String?> _fetchImdbSynopsisFromHtml(String url) async {
+    try {
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final html = response.body;
+
+        // Extract plot synopsis
+        String? plotText = _extractImdbPlot(html);
+
+        // Extract metadata (rating, runtime, release date)
+        final metadata = _extractImdbMetadata(html);
+
+        // Combine plot with metadata
+        if (plotText != null && plotText.isNotEmpty) {
+          final parts = <String>[plotText];
+
+          if (metadata['rating'] != null) {
+            parts.add('Rated ${metadata['rating']}');
+          }
+          if (metadata['runtime'] != null) {
+            parts.add(metadata['runtime']!);
+          }
+          if (metadata['releaseDate'] != null) {
+            parts.add('Released ${metadata['releaseDate']}');
+          }
+
+          final fullSynopsis = parts.join('. ');
+          print('SynopsisFetcher: Extracted IMDb synopsis from HTML: "${fullSynopsis.substring(0, fullSynopsis.length > 100 ? 100 : fullSynopsis.length)}..."');
+          return fullSynopsis;
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print('SynopsisFetcher: Error scraping HTML: $e');
+      return null;
+    }
+  }
+
+  /// Extract plot text from IMDb HTML
+  static String? _extractImdbPlot(String html) {
+    // Try to extract the plot synopsis from IMDb's HTML
+    final plotMatch = RegExp(
+            r'<span[^>]*data-testid="plot[^"]*"[^>]*>(.*?)</span>',
+            dotAll: true)
+        .firstMatch(html);
+
+    if (plotMatch != null) {
+      final plotText = plotMatch.group(1)?.trim();
+      if (plotText != null && plotText.isNotEmpty) {
+        // Remove HTML tags and decode entities
+        final cleanPlot = plotText
+            .replaceAll(RegExp(r'<[^>]*>'), '')
+            .replaceAll('&quot;', '"')
+            .replaceAll('&amp;', '&')
+            .replaceAll('&lt;', '<')
+            .replaceAll('&gt;', '>')
+            .trim();
+
+        if (cleanPlot.isNotEmpty) {
+          return cleanPlot;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Extract metadata (rating, runtime, release date) from IMDb HTML
+  static Map<String, String?> _extractImdbMetadata(String html) {
+    final result = <String, String?>{
+      'rating': null,
+      'runtime': null,
+      'releaseDate': null,
+    };
+
+    try {
+      // Find ul.ipc-metadata-list
+      final metadataListMatch = RegExp(
+        r'<ul[^>]*class="[^"]*ipc-metadata-list[^"]*"[^>]*>(.*?)</ul>',
+        dotAll: true,
+      ).firstMatch(html);
+
+      if (metadataListMatch != null) {
+        final metadataListHtml = metadataListMatch.group(1)!;
+
+        // Find the <li> that contains a nested ul.ipc-inline-list
+        final inlineListMatch = RegExp(
+          r'<li[^>]*>.*?<ul[^>]*class="[^"]*ipc-inline-list[^"]*"[^>]*>(.*?)</ul>.*?</li>',
+          dotAll: true,
+        ).firstMatch(metadataListHtml);
+
+        if (inlineListMatch != null) {
+          final inlineListHtml = inlineListMatch.group(1)!;
+
+          // Extract all <li> items from the inline list
+          final liMatches = RegExp(r'<li[^>]*>(.*?)</li>', dotAll: true)
+              .allMatches(inlineListHtml)
+              .toList();
+
+          if (liMatches.length >= 3) {
+            // First item: Rating
+            result['rating'] = _cleanHtmlText(liMatches[0].group(1) ?? '');
+
+            // Second item: Runtime
+            result['runtime'] = _cleanHtmlText(liMatches[1].group(1) ?? '');
+
+            // Third item: Release date
+            result['releaseDate'] = _cleanHtmlText(liMatches[2].group(1) ?? '');
+          }
+        }
+      }
+    } catch (e) {
+      print('SynopsisFetcher: Error extracting IMDb metadata: $e');
+    }
+
+    return result;
+  }
+
+  /// Clean HTML text by removing tags and decoding entities
+  static String _cleanHtmlText(String html) {
+    return html
+        .replaceAll(RegExp(r'<[^>]*>'), '')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 }
 
