@@ -1618,15 +1618,33 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        widget.category == null
-                            ? _buildNewCategoryTaskCountText()
-                            : _buildTaskCountText(),
-                        style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Colors.green.withOpacity(0.3),
+                              width: 1,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            widget.category == null
+                                ? _buildNewCategoryTaskCountText()
+                                : _buildTaskCountText(),
+                            style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green),
+                            softWrap: true,
+                            overflow: TextOverflow.visible,
+                          ),
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       IconButton(
                         onPressed: _createTask,
                         icon: const Icon(Icons.add),

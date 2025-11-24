@@ -504,11 +504,17 @@ class SynopsisFetcher {
       } else {
         // Priority 2: Local .env fallback (Development)
         try {
+          print('🔍 SynopsisFetcher: Attempting to read OMDB_API_KEY from dotenv...');
           final apiKeyFromDotenv = dotenv.env['OMDB_API_KEY'];
+          print('🔍 SynopsisFetcher: dotenv.env[\'OMDB_API_KEY\'] = ${apiKeyFromDotenv != null ? "***found***" : "null"}');
           if (apiKeyFromDotenv != null && apiKeyFromDotenv.isNotEmpty) {
             apiKey = apiKeyFromDotenv;
+            print('✅ SynopsisFetcher: Successfully loaded OMDb API key from dotenv');
+          } else {
+            print('⚠️  SynopsisFetcher: dotenv.env[\'OMDB_API_KEY\'] is null or empty');
           }
         } catch (e) {
+          print('❌ SynopsisFetcher: Error accessing dotenv: $e');
           // Graceful fallback if dotenv not loaded
         }
       }
