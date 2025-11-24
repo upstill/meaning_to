@@ -22,8 +22,9 @@ final RegExp TIDAL_TITLE_PATTERN = RegExp(r'^(.+?) by (.+?) on TIDAL$');
 /// Examples:
 ///   "Dark Side of the Moon - album by Pink Floyd | Spotify"
 ///   "The Wall | Spotify"
+///   "Global Warming (feat. Sensato) - song and lyrics by Pitbull, Sensato | Spotify"
 final RegExp SPOTIFY_TITLE_PATTERN =
-    RegExp(r'^(.+?)(?: - (?:album|single|EP) by (.+?))? \| Spotify$');
+    RegExp(r'^(.+?)(?: - (?:album|single|EP|song and lyrics|playlist) by (.+?))? \| Spotify$', caseSensitive: false);
 
 /// Data class to hold extracted artist and work information from streaming links.
 class ArtistWorkInfo {

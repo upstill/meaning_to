@@ -92,9 +92,15 @@ class LinkToTaskConverter {
             suggestedCategoryIds
                 .any((id) => STREAMING_MEDIA_CATEGORY_IDS.contains(id)))) {
       // Streaming media: extract artist and work
-      final artistWorkInfo = extractArtistAndWorkFromTidal(pageTitle);
+      // Try Spotify first, then TIDAL
+      var artistWorkInfo = extractArtistAndWorkFromSpotify(pageTitle);
+      if (artistWorkInfo == null) {
+        artistWorkInfo = extractArtistAndWorkFromTidal(pageTitle);
+      }
 
       if (artistWorkInfo != null) {
+        // For streaming media: headline is the artist name
+        // and notes is the work (album/track/playlist name)
         headline = artistWorkInfo.artist;
         notes = artistWorkInfo.work;
         synopsis = pageDescription;
@@ -186,6 +192,29 @@ class LinkToTaskConverter {
       // Parse and normalize
       final uri = Uri.parse(cleanUrl);
 
+      // For TIDAL URLs, remove trailing /u (user tracking parameter)
+      if (uri.host.contains('tidal.com')) {
+        String path = uri.path;
+        // Remove trailing /u or /u/
+        if (path.endsWith('/u/')) {
+          path = path.substring(0, path.length - 3);
+        } else if (path.endsWith('/u')) {
+          path = path.substring(0, path.length - 2);
+        }
+
+        final cleanUri = Uri(
+          scheme: uri.scheme,
+          userInfo: uri.userInfo,
+          host: uri.host,
+          port: uri.hasPort ? uri.port : null,
+          path: path,
+          queryParameters: uri.queryParameters.isNotEmpty ? uri.queryParameters : null,
+        );
+
+        print('LinkToTaskConverter: Normalized TIDAL URL from "$cleanUrl" to "${cleanUri.toString()}"');
+        return cleanUri.toString();
+      }
+
       // For IMDb URLs, remove ALL query parameters (they're never needed)
       // The canonical IMDb URL is just: https://www.imdb.com/title/tt1234567/
       if (uri.host.contains('imdb.com')) {
@@ -273,6 +302,10 @@ class LinkToTaskConverter {
 
       // Letterboxd links -> primarily movies
       if (domain.contains('letterboxd.com')) {
+        // If URL contains /film/, it's definitely a movie
+        if (path.contains('/film/')) {
+          return [1]; // Just movie
+        }
         return [1, 2]; // Movie first (primary), TV second (occasional)
       }
 
@@ -292,8 +325,13 @@ class LinkToTaskConverter {
         return STREAMING_MEDIA_CATEGORY_IDS.toList();
       }
 
-      // Future: Spotify, Apple Music, YouTube Music
-      // if (domain.contains('spotify.com') || domain.contains('music.apple.com')) {
+      // Spotify streaming service
+      if (domain.contains('spotify.com')) {
+        return STREAMING_MEDIA_CATEGORY_IDS.toList();
+      }
+
+      // Future: Apple Music, YouTube Music
+      // if (domain.contains('music.apple.com')) {
       //   return STREAMING_MEDIA_CATEGORY_IDS.toList();
       // }
 
