@@ -6,6 +6,7 @@ import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/task_enricher.dart';
+import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/widgets/add_task_manually_button.dart';
 import 'package:meaning_to/edit_category_screen.dart';
@@ -28,6 +29,10 @@ class AddTasksScreen extends StatefulWidget {
 class AddTasksScreenState extends State<AddTasksScreen> {
   final _textInputController = TextEditingController();
   bool _isLoading = false;
+
+  // Duplicate handling state
+  bool? _rememberDuplicateChoice; // null = ask each time, true = add link, false = create new
+  bool _applyToAllDuplicates = false;
 
   @override
   void initState() {
@@ -73,6 +78,10 @@ class AddTasksScreenState extends State<AddTasksScreen> {
   /// Process an uploaded file and create tasks
   Future<void> _processUploadedFile(XFile file) async {
     try {
+      // Reset duplicate choice state for this new import batch
+      _rememberDuplicateChoice = null;
+      _applyToAllDuplicates = false;
+
       final String contents = await file.readAsString();
       String processedContents = contents;
 
@@ -169,11 +178,20 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             existingOrUpdatedTask.id != taskToSave.id) {
           // This was a duplicate - existing task was updated
           updatedCount++;
+
+          // Update the task in our checking list so future duplicates can find the updated version
+          final index = tasksForDuplicateChecking.indexWhere((t) => t.id == existingOrUpdatedTask.id);
+          if (index != -1) {
+            tasksForDuplicateChecking[index] = existingOrUpdatedTask;
+          }
         } else {
           // No duplicate found - create new task
           final cacheManager = CacheManager();
           await cacheManager.addTask(taskToSave);
           createdCount++;
+
+          // Add the newly created task to our checking list so future tasks can find it
+          tasksForDuplicateChecking.add(taskToSave);
         }
       }
 
@@ -290,6 +308,90 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     }
   }
 
+  /// Show dialog asking user what to do with duplicate task
+  /// Returns true if link should be added to existing task, false if new task should be created
+  Future<bool?> _showDuplicateDialog(Task existingTask, Task newTask) async {
+    bool applyToAll = false;
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Duplicate Task Found'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'A task with this name already exists:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '"${existingTask.headline}"',
+                    style: const TextStyle(fontStyle: FontStyle.italic),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Would you like to:'),
+                  const SizedBox(height: 8),
+                  Text(
+                    '• Add the new link to the existing task, or',
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                  Text(
+                    '• Create a new task with the same name',
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                  const SizedBox(height: 16),
+                  CheckboxListTile(
+                    title: const Text(
+                      'Apply to other duplicate links',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    value: applyToAll,
+                    onChanged: (value) {
+                      setState(() {
+                        applyToAll = value ?? false;
+                      });
+                    },
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    if (applyToAll) {
+                      _applyToAllDuplicates = true;
+                      _rememberDuplicateChoice = false;
+                    }
+                    Navigator.of(context).pop(false); // Create new task
+                  },
+                  child: const Text('Create New Task'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (applyToAll) {
+                      _applyToAllDuplicates = true;
+                      _rememberDuplicateChoice = true;
+                    }
+                    Navigator.of(context).pop(true); // Add link
+                  },
+                  child: const Text('Add Link to Existing'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   /// Check if a task with the same headline or same link already exists and merge information if needed
   Future<Task?> _checkForDuplicateAndMerge(
       Task newTask, List<Task> existingTasks) async {
@@ -301,6 +403,12 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     for (final task in existingTasks) {
       print('  - "${task.headline}" (ID: ${task.id}, links: ${task.links})');
     }
+
+    // Define special categories that require user confirmation for duplicate headlines
+    const streamingMusicCategories = [41, 54, 74]; // Streaming media categories
+    const movieTvCategories = [1, 2]; // Movie and TV categories
+    final specialCategories = [...streamingMusicCategories, ...movieTvCategories];
+    final isSpecialCategory = specialCategories.contains(widget.category.originalId);
 
     // First, check for tasks with the same headline (case-insensitive, trimmed)
     Task? existingTask;
@@ -365,17 +473,77 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       print('Found duplicate task: "${newTask.headline}"');
       print('=== DUPLICATE DETECTION END - DUPLICATE FOUND ===');
 
-      // Check if we need to update the existing task with new information
-      bool needsUpdate = false;
-      Map<String, dynamic> updateData = {};
+      // For special categories, ask user what to do (unless they've already chosen "apply to all")
+      bool shouldAddLink = true; // Default behavior for non-special categories
 
-      // Add links if the new task has them and the existing task doesn't
-      if (newTask.links != null &&
-          newTask.links!.isNotEmpty &&
-          (existingTask.links == null || existingTask.links!.isEmpty)) {
-        updateData['links'] = newTask.links;
-        needsUpdate = true;
-        print('  -> Adding links to existing task');
+      if (isSpecialCategory && newTask.links != null && newTask.links!.isNotEmpty) {
+        // Check if user has already made a choice for all duplicates
+        if (_applyToAllDuplicates && _rememberDuplicateChoice != null) {
+          shouldAddLink = _rememberDuplicateChoice!;
+          print('Using remembered choice: ${shouldAddLink ? "add link" : "create new"}');
+        } else {
+          // Ask user what to do
+          print('Asking user what to do with duplicate...');
+          final userChoice = await _showDuplicateDialog(existingTask, newTask);
+
+          if (userChoice == null) {
+            // User cancelled - treat as create new task
+            print('User cancelled dialog - creating new task');
+            return null;
+          }
+
+          shouldAddLink = userChoice;
+          print('User chose: ${shouldAddLink ? "add link" : "create new"}');
+        }
+      }
+
+      // If user chose to create a new task, return null
+      if (!shouldAddLink) {
+        print('Creating new task as per user choice');
+        return null;
+      }
+
+      // User chose to add link (or it's not a special category) - merge information
+      Map<String, dynamic> updateData = {};
+      List<String>? updatedLinks = existingTask.links != null
+          ? List<String>.from(existingTask.links!)
+          : [];
+
+      // Add new links only if they don't already exist
+      if (newTask.links != null && newTask.links!.isNotEmpty) {
+        print('  -> Processing ${newTask.links!.length} new links for addition');
+        print('  -> Existing task currently has ${updatedLinks.length} links');
+
+        for (final newLink in newTask.links!) {
+          print('  -> Checking new link: $newLink');
+          final newUrl = _extractUrlFromHtmlLink(newLink);
+          print('  -> Extracted new URL: $newUrl');
+          bool linkExists = false;
+
+          // Check if this link already exists in the task
+          for (final existingLink in updatedLinks) {
+            final existingUrl = _extractUrlFromHtmlLink(existingLink);
+            print('  -> Comparing with existing URL: $existingUrl');
+            if (newUrl != null && existingUrl != null && newUrl == existingUrl) {
+              linkExists = true;
+              print('  -> ✗ Link already exists, skipping: $newUrl');
+              break;
+            }
+          }
+
+          if (!linkExists) {
+            updatedLinks.add(newLink);
+            print('  -> ✓ Added new link! Total links now: ${updatedLinks.length}');
+          }
+        }
+
+        // Only update if we actually added new links
+        if (updatedLinks.length > (existingTask.links?.length ?? 0)) {
+          updateData['links'] = updatedLinks;
+          print('  -> Will update database with ${updatedLinks.length} total links');
+        } else {
+          print('  -> No new links added (all were duplicates or none provided)');
+        }
       }
 
       // Add notes if the new task has them and the existing task doesn't
@@ -383,7 +551,6 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           newTask.notes!.isNotEmpty &&
           (existingTask.notes == null || existingTask.notes!.isEmpty)) {
         updateData['notes'] = newTask.notes;
-        needsUpdate = true;
         print('  -> Adding notes to existing task');
       }
 
@@ -404,18 +571,23 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         print('  -> Updated existing task and moved to top of list');
 
         // Create the updated task object
+        // IMPORTANT: Use updatedLinks directly, not updateData['links']
+        // because updateData['links'] is only set if we added NEW links,
+        // but updatedLinks always contains all links (existing + new)
         final updatedTask = Task(
           id: existingTask.id,
           categoryId: existingTask.categoryId,
           ownerId: existingTask.ownerId,
           headline: existingTask.headline,
           notes: updateData['notes'] ?? existingTask.notes,
-          links: updateData['links'] ?? existingTask.links,
+          links: updatedLinks.isNotEmpty ? updatedLinks : null,
           processedLinks: existingTask.processedLinks,
           createdAt: existingTask.createdAt,
           suggestibleAt: null, // Set to null to move to top
           finished: existingTask.finished,
         );
+
+        print('  -> Updated task object created with ${updatedTask.links?.length ?? 0} total links');
 
         // Update the cache to reflect the changes
         final cacheManager = CacheManager();
@@ -455,6 +627,14 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     return null;
   }
 
+  /// Check if a string is a URL
+  bool _isUrl(String text) {
+    final trimmed = text.trim();
+    return trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('www.');
+  }
+
   Future<void> _processTextInput() async {
     print('=== _processTextInput START ===');
     print('Input text: "${_textInputController.text}"');
@@ -470,6 +650,10 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     }
 
     try {
+      // Reset duplicate choice state for this new import batch
+      _rememberDuplicateChoice = null;
+      _applyToAllDuplicates = false;
+
       setState(() {
         _isLoading = true;
       });
@@ -619,30 +803,69 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           .toList();
 
       if (lines.length == 1) {
-        // Single line input - use TaskEnricher.processSingleLineInput
+        // Single line input
         print('Single line input detected: $trimmedText');
 
         try {
-          final enrichmentResult = await TaskEnricher.processSingleLineInput(
-            inputLine: trimmedText,
-            categoryId: widget.category.id,
-            ownerId: userId,
-          );
-          // Set shared property based on category setting
-          final newTask = Task(
-            id: enrichmentResult.enrichedTask.id,
-            categoryId: enrichmentResult.enrichedTask.categoryId,
-            headline: enrichmentResult.enrichedTask.headline,
-            notes: enrichmentResult.enrichedTask.notes,
-            ownerId: enrichmentResult.enrichedTask.ownerId,
-            createdAt: enrichmentResult.enrichedTask.createdAt,
-            suggestibleAt: null, // Set to null to appear at the beginning
-            links: enrichmentResult.enrichedTask.links,
-            processedLinks: enrichmentResult.enrichedTask.processedLinks,
-            finished: enrichmentResult.enrichedTask.finished,
-            shared: !widget.category
-                .tasksArePrivate, // Use category's tasksArePrivate setting
-          );
+          Task newTask;
+
+          // Check if this is a URL - if so, use LinkToTaskConverter
+          if (_isUrl(trimmedText)) {
+            print('Single line is a URL, using LinkToTaskConverter');
+
+            // Use LinkToTaskConverter for proper headline/notes extraction
+            final proposedTask =
+                await LinkToTaskConverter.createProposedTaskFromLink(
+              trimmedText,
+              userId,
+              currentCategory: widget.category,
+            );
+
+            print(
+                'AddTasksScreen: ProposedTask created - headline: "${proposedTask.headline}", notes: "${proposedTask.notes}"');
+
+            // Convert ProposedTask to Task
+            newTask = Task(
+              id: DateTime.now().millisecondsSinceEpoch,
+              categoryId: widget.category.id,
+              headline: proposedTask.headline,
+              notes: proposedTask.notes,
+              ownerId: userId,
+              createdAt: DateTime.now(),
+              suggestibleAt: null, // Set to null to appear at the beginning
+              links: proposedTask.links,
+              synopsis: proposedTask.synopsis,
+              originalId: proposedTask.existingTaskOriginalId,
+              finished: false,
+              shared: !widget.category
+                  .tasksArePrivate, // Use category's tasksArePrivate setting
+            );
+          } else {
+            print('Single line is not a URL, using TaskEnricher');
+
+            // Use TaskEnricher for non-URL text
+            final enrichmentResult = await TaskEnricher.processSingleLineInput(
+              inputLine: trimmedText,
+              categoryId: widget.category.id,
+              ownerId: userId,
+            );
+
+            // Set shared property based on category setting
+            newTask = Task(
+              id: enrichmentResult.enrichedTask.id,
+              categoryId: enrichmentResult.enrichedTask.categoryId,
+              headline: enrichmentResult.enrichedTask.headline,
+              notes: enrichmentResult.enrichedTask.notes,
+              ownerId: enrichmentResult.enrichedTask.ownerId,
+              createdAt: enrichmentResult.enrichedTask.createdAt,
+              suggestibleAt: null, // Set to null to appear at the beginning
+              links: enrichmentResult.enrichedTask.links,
+              processedLinks: enrichmentResult.enrichedTask.processedLinks,
+              finished: enrichmentResult.enrichedTask.finished,
+              shared: !widget.category
+                  .tasksArePrivate, // Use category's tasksArePrivate setting
+            );
+          }
 
           print(
               'AddTasksScreen: Created task with headline: "${newTask.headline}"');
@@ -715,26 +938,65 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         print('AddTasksScreen: Processing line ${i + 1}: "$line"');
 
         try {
-          final enrichmentResult = await TaskEnricher.processSingleLineInput(
-            inputLine: line,
-            categoryId: widget.category.id,
-            ownerId: userId,
-          );
-          // Set shared property based on category setting and suggestibleAt to null
-          final modifiedTask = Task(
-            id: enrichmentResult.enrichedTask.id,
-            categoryId: enrichmentResult.enrichedTask.categoryId,
-            headline: enrichmentResult.enrichedTask.headline,
-            notes: enrichmentResult.enrichedTask.notes,
-            ownerId: enrichmentResult.enrichedTask.ownerId,
-            createdAt: enrichmentResult.enrichedTask.createdAt,
-            suggestibleAt: null, // Set to null to appear at the beginning
-            links: enrichmentResult.enrichedTask.links,
-            processedLinks: enrichmentResult.enrichedTask.processedLinks,
-            finished: enrichmentResult.enrichedTask.finished,
-            shared: !widget.category
-                .tasksArePrivate, // Use category's tasksArePrivate setting
-          );
+          Task modifiedTask;
+
+          // Check if this line is a URL - if so, use LinkToTaskConverter
+          if (_isUrl(line)) {
+            print('AddTasksScreen: Line is a URL, using LinkToTaskConverter');
+
+            // Use LinkToTaskConverter for proper headline/notes extraction
+            final proposedTask =
+                await LinkToTaskConverter.createProposedTaskFromLink(
+              line,
+              userId,
+              currentCategory: widget.category,
+            );
+
+            print(
+                'AddTasksScreen: ProposedTask created - headline: "${proposedTask.headline}", notes: "${proposedTask.notes}"');
+
+            // Convert ProposedTask to Task
+            modifiedTask = Task(
+              id: DateTime.now().millisecondsSinceEpoch,
+              categoryId: widget.category.id,
+              headline: proposedTask.headline,
+              notes: proposedTask.notes,
+              ownerId: userId,
+              createdAt: DateTime.now(),
+              suggestibleAt: null, // Set to null to appear at the beginning
+              links: proposedTask.links,
+              synopsis: proposedTask.synopsis,
+              originalId: proposedTask.existingTaskOriginalId,
+              finished: false,
+              shared: !widget.category
+                  .tasksArePrivate, // Use category's tasksArePrivate setting
+            );
+          } else {
+            print('AddTasksScreen: Line is not a URL, using TaskEnricher');
+
+            // Use TaskEnricher for non-URL text
+            final enrichmentResult = await TaskEnricher.processSingleLineInput(
+              inputLine: line,
+              categoryId: widget.category.id,
+              ownerId: userId,
+            );
+
+            // Set shared property based on category setting and suggestibleAt to null
+            modifiedTask = Task(
+              id: enrichmentResult.enrichedTask.id,
+              categoryId: enrichmentResult.enrichedTask.categoryId,
+              headline: enrichmentResult.enrichedTask.headline,
+              notes: enrichmentResult.enrichedTask.notes,
+              ownerId: enrichmentResult.enrichedTask.ownerId,
+              createdAt: enrichmentResult.enrichedTask.createdAt,
+              suggestibleAt: null, // Set to null to appear at the beginning
+              links: enrichmentResult.enrichedTask.links,
+              processedLinks: enrichmentResult.enrichedTask.processedLinks,
+              finished: enrichmentResult.enrichedTask.finished,
+              shared: !widget.category
+                  .tasksArePrivate, // Use category's tasksArePrivate setting
+            );
+          }
 
           tasksToProcess.add(modifiedTask);
           print(
@@ -773,12 +1035,22 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           // This was a duplicate - existing task was updated or found
           existingTasksUpdated++;
           print('Skipped duplicate task: "${task.headline}"');
+
+          // Update the task in our checking list so future duplicates can find the updated version
+          final index = tasksForDuplicateChecking.indexWhere((t) => t.id == existingOrUpdatedTask.id);
+          if (index != -1) {
+            tasksForDuplicateChecking[index] = existingOrUpdatedTask;
+          }
         } else {
           // No duplicate found - create new task
           final cacheManager = CacheManager();
           await cacheManager.addTask(task);
           newTasksCreated++;
           print('Created new task: "${task.headline}"');
+
+          // Add the newly created task to our checking list so future tasks can find it
+          tasksForDuplicateChecking.add(task);
+          print('Added new task to duplicate checking list');
         }
       }
 
