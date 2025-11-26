@@ -150,7 +150,9 @@ class LinkProcessor {
         throw Exception('Failed to fetch URL: ${response.statusCode}');
       }
 
-      return _processHtml(url, response.body);
+      // Explicitly decode as UTF-8 to handle special characters (e.g., Björk)
+      final htmlContent = utf8.decode(response.bodyBytes, allowMalformed: true);
+      return _processHtml(url, htmlContent);
     } catch (e) {
       print('Error fetching links: $e');
       rethrow;
@@ -189,7 +191,9 @@ class LinkProcessor {
         throw Exception('Browserless request failed: ${response.statusCode}');
       }
 
-      return _processHtml(url, response.body);
+      // Explicitly decode as UTF-8 to handle special characters (e.g., Björk)
+      final htmlContent = utf8.decode(response.bodyBytes, allowMalformed: true);
+      return _processHtml(url, htmlContent);
     } catch (e) {
       print('Error fetching links from Browserless: $e');
       rethrow;
@@ -383,7 +387,9 @@ class LinkProcessor {
               'LinkProcessor: Proxy successful with ${proxyUrl.split('?')[0]}');
 
           // Parse and extract title/description
-          final document = html_parser.parse(response.body);
+          // Explicitly decode as UTF-8 to handle special characters (e.g., Björk)
+          final htmlContent = utf8.decode(response.bodyBytes, allowMalformed: true);
+          final document = html_parser.parse(htmlContent);
           final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
 
           final title = siteConfig.extractTitle(document);
@@ -572,7 +578,9 @@ class LinkProcessor {
       print(
           '🕐 LinkProcessor: Starting HTML parsing at ${htmlParseStartTime.toIso8601String()}');
 
-      final document = html_parser.parse(response.body);
+      // Explicitly decode as UTF-8 to handle special characters (e.g., Björk)
+      final htmlContent = utf8.decode(response.bodyBytes, allowMalformed: true);
+      final document = html_parser.parse(htmlContent);
 
       final htmlParseEndTime = DateTime.now();
       final htmlParseDuration = htmlParseEndTime.difference(htmlParseStartTime);
@@ -834,7 +842,9 @@ class LinkProcessor {
         return null;
       }
 
-      final document = html_parser.parse(response.body);
+      // Explicitly decode as UTF-8 to handle special characters (e.g., Björk)
+      final htmlContent = utf8.decode(response.bodyBytes, allowMalformed: true);
+      final document = html_parser.parse(htmlContent);
 
       // First priority: JustWatch-specific CSS selector
       if (url.contains('justwatch.com')) {

@@ -264,7 +264,7 @@ class _NewContentScreenState extends State<NewContentScreen> {
       title:
           'Choose ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
       defaultCategory: _selectedCategoryForTask,
-      onCategorySelected: (category, {shouldMove}) {
+      onCategorySelected: (category, {shouldMove, applyToAll}) {
         setState(() {
           _selectedCategoryForTask = category;
         });

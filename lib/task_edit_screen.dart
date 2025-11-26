@@ -472,7 +472,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           suggestedCategoryIds.isNotEmpty ? suggestedCategoryIds : null,
       linkUrl: linkUrl,
       onCategorySelected: (Category selectedCategory,
-          {bool? shouldMove}) async {
+          {bool? shouldMove, bool? applyToAll}) async {
         if (selectedCategory.id != widget.category.id) {
           if (_localTask == null) {
             // For new tasks, just change the category

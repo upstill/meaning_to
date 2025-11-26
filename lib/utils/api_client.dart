@@ -359,4 +359,161 @@ class ApiClient {
       return null;
     }
   }
+
+  /// Find duplicate task by headline or links
+  /// Only searches within categories owned by the user that match specified original_ids
+  /// Uses Postgres function for efficient filtering, then precise matching in Dart
+  static Future<Task?> findDuplicateTask({
+    required String userId,
+    required String headline,
+    List<String>? links,
+    required List<int> categoryOriginalIds,
+  }) async {
+    try {
+      print('ApiClient.findDuplicateTask:');
+      print('  userId: $userId');
+      print('  headline: "$headline"');
+      print('  links: $links');
+      print('  categoryOriginalIds: $categoryOriginalIds');
+
+      List<Task> candidates = [];
+
+      // Try to call the Postgres function first
+      try {
+        print('  Attempting to call Postgres function...');
+        final response = await _supabase.rpc(
+          'find_duplicate_tasks_by_link_or_headline',
+          params: {
+            'p_user_id': userId,
+            'p_headline': headline,
+            'p_links': links,
+            'p_category_original_ids': categoryOriginalIds,
+          },
+        );
+
+        if (response != null && (response as List).isNotEmpty) {
+          candidates = (response as List)
+              .map((data) => Task.fromJson(data as Map<String, dynamic>))
+              .toList();
+          print('  ✓ Postgres function returned ${candidates.length} candidate(s)');
+        } else {
+          print('  Postgres function returned no candidates');
+        }
+      } catch (rpcError) {
+        print('  ⚠ Postgres function call failed: $rpcError');
+        print('  Falling back to join-based query...');
+
+        // Fallback: Use join-based query
+        final response = await _supabase
+            .from('Tasks')
+            .select('*, Categories!inner(id, owner_id, original_id)')
+            .eq('Categories.owner_id', userId)
+            .inFilter('Categories.original_id', categoryOriginalIds)
+            .ilike('headline', headline.trim());
+
+        if (response != null && (response as List).isNotEmpty) {
+          candidates = (response as List).map((data) {
+            final taskData = Map<String, dynamic>.from(data);
+            taskData.remove('Categories');
+            return Task.fromJson(taskData);
+          }).toList();
+          print('  ✓ Join query returned ${candidates.length} candidate(s)');
+        }
+
+        // If no headline match and we have links, search by links
+        if (candidates.isEmpty && links != null && links.isNotEmpty) {
+          print('  Searching by links...');
+          final tasksResponse = await _supabase
+              .from('Tasks')
+              .select('*, Categories!inner(id, owner_id, original_id)')
+              .eq('Categories.owner_id', userId)
+              .inFilter('Categories.original_id', categoryOriginalIds)
+              .not('links', 'is', null);
+
+          final allTasks = (tasksResponse as List);
+          print('  Checking ${allTasks.length} tasks with links');
+
+          final searchUrls = links
+              .map((link) => _extractUrlFromLink(link)?.toLowerCase())
+              .where((url) => url != null)
+              .toSet();
+
+          for (final taskData in allTasks) {
+            final taskLinks = taskData['links'] as List<dynamic>?;
+            if (taskLinks != null) {
+              for (final taskLink in taskLinks) {
+                final taskUrl = _extractUrlFromLink(taskLink.toString())?.toLowerCase();
+                if (taskUrl != null && searchUrls.contains(taskUrl)) {
+                  final cleanTaskData = Map<String, dynamic>.from(taskData);
+                  cleanTaskData.remove('Categories');
+                  candidates.add(Task.fromJson(cleanTaskData));
+                  break;
+                }
+              }
+            }
+          }
+          print('  Found ${candidates.length} link-matching candidates');
+        }
+      }
+
+      if (candidates.isEmpty) {
+        print('  No duplicate candidates found');
+        return null;
+      }
+
+      // Now do precise matching in Dart to find the best match
+      // Priority 1: Exact headline match
+      for (final candidate in candidates) {
+        if (candidate.headline.toLowerCase().trim() ==
+            headline.toLowerCase().trim()) {
+          print('  ✓ Found exact headline match: "${candidate.headline}"');
+          return candidate;
+        }
+      }
+
+      // Priority 2: URL match with extracted URL comparison
+      if (links != null && links.isNotEmpty) {
+        final searchUrls = links
+            .map((link) => _extractUrlFromLink(link)?.toLowerCase())
+            .where((url) => url != null)
+            .toSet();
+
+        print('  Extracted ${searchUrls.length} search URLs for matching');
+
+        for (final candidate in candidates) {
+          if (candidate.links != null) {
+            for (final candidateLink in candidate.links!) {
+              final candidateUrl =
+                  _extractUrlFromLink(candidateLink)?.toLowerCase();
+              if (candidateUrl != null && searchUrls.contains(candidateUrl)) {
+                print('  ✓ Found URL match: "${candidate.headline}"');
+                print('    Matching URL: $candidateUrl');
+                return candidate;
+              }
+            }
+          }
+        }
+      }
+
+      print('  No precise match found among candidates');
+      return null;
+    } catch (e) {
+      print('Error finding duplicate task: $e');
+      print('Error details: ${e.runtimeType}');
+      return null;
+    }
+  }
+
+  /// Extract URL from HTML link or return plain URL
+  static String? _extractUrlFromLink(String linkText) {
+    // If it's already a plain URL, return it
+    if (linkText.startsWith('http://') || linkText.startsWith('https://')) {
+      return linkText;
+    }
+
+    // Otherwise, try to extract from HTML format
+    final regex = RegExp(r'href=["\x27]([^"\x27]+)["\x27]');
+    final match = regex.firstMatch(linkText);
+    return match?.group(1);
+  }
 }

@@ -57,6 +57,8 @@ class SynopsisFetcher {
 
   /// Fetch synopsis for a task from links
   /// First checks database for existing synopsis, then falls back to web scraping
+  /// ONLY fetches from sites without APIs that are known to have synopses
+  /// Currently: JustWatch (IMDb and Letterboxd have APIs, so they're skipped)
   /// Returns the synopsis and whether it was saved to database
   static Future<SynopsisResult?> fetchSynopsisForTask(Task task) async {
     if (task.links == null || task.links!.isEmpty) {
@@ -79,17 +81,17 @@ class SynopsisFetcher {
       synopsis = await _findSynopsisFromDatabase(url, task.id);
 
       // If not found in database, fetch from web (slow)
+      // ONLY fetch from sites without APIs: currently just JustWatch
       if (synopsis == null || synopsis.isEmpty) {
-        print('SynopsisFetcher: No synopsis in database, fetching from web');
+        print('SynopsisFetcher: No synopsis in database, checking if we should fetch from web');
 
-        if (url.contains('imdb.com')) {
-          synopsis = await _fetchImdbSynopsis(url);
-        } else if (url.contains('justwatch.com')) {
+        // Only fetch from JustWatch (IMDb and Letterboxd have APIs)
+        if (url.contains('justwatch.com')) {
+          print('SynopsisFetcher: JustWatch link found, fetching synopsis');
           synopsis = await _fetchJustWatchSynopsis(url);
-        } else if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
-          synopsis = await _fetchLetterboxdSynopsis(url);
-        } else if (url.contains('ted.com')) {
-          synopsis = await _fetchGenericSynopsis(url);
+        } else {
+          print('SynopsisFetcher: Skipping web fetch for URL (has API or no synopsis available): $url');
+          continue;
         }
 
         if (synopsis != null && synopsis.isNotEmpty) {
