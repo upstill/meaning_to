@@ -11,7 +11,7 @@ class CategoryPickerDialog extends StatefulWidget {
   final String title;
   final String? subtitle; // Optional guidance text shown at the top
   final Category? defaultCategory;
-  final Function(Category, {bool? shouldMove}) onCategorySelected;
+  final Function(Category, {bool? shouldMove, bool? applyToAll}) onCategorySelected;
   final bool showCreateNew;
   final Category? excludeCategory; // Category to exclude from the list
   final bool showMoveAndCopy; // Show move/copy buttons instead of create new
@@ -19,6 +19,7 @@ class CategoryPickerDialog extends StatefulWidget {
   final List<int>?
       suggestedCategoryIds; // Suggested category IDs (e.g., from LinkToTask)
   final String? linkUrl; // Optional link URL for domain-based relevance scoring
+  final bool showApplyToAllCheckbox; // Show "apply to all remaining" checkbox
 
   const CategoryPickerDialog({
     super.key,
@@ -32,6 +33,7 @@ class CategoryPickerDialog extends StatefulWidget {
     this.taskHeadline,
     this.suggestedCategoryIds,
     this.linkUrl,
+    this.showApplyToAllCheckbox = false,
   });
 
   static Future<void> show(
@@ -39,13 +41,14 @@ class CategoryPickerDialog extends StatefulWidget {
     required String title,
     String? subtitle,
     Category? defaultCategory,
-    required Function(Category, {bool? shouldMove}) onCategorySelected,
+    required Function(Category, {bool? shouldMove, bool? applyToAll}) onCategorySelected,
     bool showCreateNew = true,
     Category? excludeCategory,
     bool showMoveAndCopy = false,
     String? taskHeadline,
     List<int>? suggestedCategoryIds,
     String? linkUrl,
+    bool showApplyToAllCheckbox = false,
   }) {
     return showDialog(
       context: context,
@@ -60,6 +63,7 @@ class CategoryPickerDialog extends StatefulWidget {
         taskHeadline: taskHeadline,
         suggestedCategoryIds: suggestedCategoryIds,
         linkUrl: linkUrl,
+        showApplyToAllCheckbox: showApplyToAllCheckbox,
       ),
     );
   }
@@ -80,6 +84,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
   final _searchController = TextEditingController();
   Category? _selectedCategory;
   bool _shouldMove = true; // true = move, false = copy
+  bool _applyToAll = false; // Apply category to all remaining links
 
   @override
   void initState() {
@@ -591,6 +596,26 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
               child: _buildCategoriesList(),
             ),
 
+            // "Apply to all remaining links" checkbox (show if enabled)
+            if (widget.showApplyToAllCheckbox) ...[
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                title: const Text(
+                  'Same category for remaining links',
+                  style: TextStyle(fontSize: 14),
+                ),
+                value: _applyToAll,
+                onChanged: (value) {
+                  setState(() {
+                    _applyToAll = value ?? false;
+                  });
+                },
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+            ],
+
             // Create new category option at the bottom (show if enabled)
             if (widget.showCreateNew && !widget.showMoveAndCopy) ...[
               const SizedBox(height: 16),
@@ -832,7 +857,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     await CacheManager.addRecentCategory(category.id);
 
     Navigator.of(context).pop();
-    widget.onCategorySelected(category);
+    widget.onCategorySelected(category, applyToAll: _applyToAll);
   }
 
   void _selectCategoryForMoveOrCopy(Category category) {
@@ -851,7 +876,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     );
 
     if (result != null) {
-      widget.onCategorySelected(result);
+      widget.onCategorySelected(result, applyToAll: _applyToAll);
     }
   }
 }

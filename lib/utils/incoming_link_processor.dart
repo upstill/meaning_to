@@ -725,7 +725,7 @@ class IncomingLinkProcessor {
               result.proposedTask?.suggestedCategoryOriginalIds,
           linkUrl: result.url,
           onCategorySelected: (Category selectedCategory,
-              {bool? shouldMove}) async {
+              {bool? shouldMove, bool? applyToAll}) async {
             await Future.delayed(const Duration(milliseconds: 100));
             await _openTaskEditScreenWithArtistWork(
                 context, result, selectedCategory, artistWorkInfo);
@@ -811,7 +811,7 @@ class IncomingLinkProcessor {
               result.proposedTask?.suggestedCategoryOriginalIds,
           linkUrl: result.url,
           onCategorySelected: (Category selectedCategory,
-              {bool? shouldMove}) async {
+              {bool? shouldMove, bool? applyToAll}) async {
             await Future.delayed(const Duration(milliseconds: 100));
             await _openTaskEditScreen(context, result, selectedCategory);
           },
@@ -918,7 +918,7 @@ class IncomingLinkProcessor {
       defaultCategory: defaultCategory,
       suggestedCategoryIds: result.proposedTask?.suggestedCategoryOriginalIds,
       linkUrl: result.url,
-      onCategorySelected: (Category category, {bool? shouldMove}) async {
+      onCategorySelected: (Category category, {bool? shouldMove, bool? applyToAll}) async {
         // Use the stored root context instead of the dialog context
         // Add a small delay to ensure the dialog is fully dismissed
         await Future.delayed(const Duration(milliseconds: 100));

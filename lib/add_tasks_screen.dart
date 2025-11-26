@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/auth.dart';
+import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
@@ -11,6 +12,7 @@ import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/widgets/add_task_manually_button.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 
 class AddTasksScreen extends StatefulWidget {
   final Category category;
@@ -33,6 +35,10 @@ class AddTasksScreenState extends State<AddTasksScreen> {
   // Duplicate handling state
   bool? _rememberDuplicateChoice; // null = ask each time, true = add link, false = create new
   bool _applyToAllDuplicates = false;
+
+  // Batch duplicate handling state (for multiple links with same headline in one batch)
+  bool? _rememberBatchDuplicateChoice; // null = ask each time, true = combine, false = keep separate
+  bool _applyToAllBatchDuplicates = false;
 
   @override
   void initState() {
@@ -136,22 +142,10 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         return;
       }
 
-      // Get existing tasks for duplicate checking - query database directly
-      final response = await supabase
-          .from('Tasks')
-          .select()
-          .eq('category_id', widget.category.id)
-          .eq('owner_id', userId)
-          .order('created_at', ascending: false);
-
-      final existingTasks = (response as List)
-          .map((json) => Task.fromJson(json as Map<String, dynamic>))
-          .toList();
-
       // Process each task result for duplicate checking and database operations
+      // Note: Using query-based duplicate detection, no need to pre-load tasks
       int createdCount = 0;
       int updatedCount = 0;
-      List<Task> tasksForDuplicateChecking = List.from(existingTasks);
 
       for (final result in results) {
         // Set shared property based on category setting
@@ -170,28 +164,22 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               .tasksArePrivate, // Use category's tasksArePrivate setting
         );
 
-        // Check for duplicates and merge information if needed
-        final existingOrUpdatedTask = await _checkForDuplicateAndMerge(
-            taskToSave, tasksForDuplicateChecking);
+        // Check for duplicates and merge information if needed (query-based, efficient)
+        final existingOrUpdatedTask = await _checkForDuplicateAndMerge(taskToSave);
 
         if (existingOrUpdatedTask != null &&
             existingOrUpdatedTask.id != taskToSave.id) {
           // This was a duplicate - existing task was updated
           updatedCount++;
 
-          // Update the task in our checking list so future duplicates can find the updated version
-          final index = tasksForDuplicateChecking.indexWhere((t) => t.id == existingOrUpdatedTask.id);
-          if (index != -1) {
-            tasksForDuplicateChecking[index] = existingOrUpdatedTask;
-          }
+          // Updated task will be found by the query-based duplicate detection
         } else {
           // No duplicate found - create new task
           final cacheManager = CacheManager();
           await cacheManager.addTask(taskToSave);
           createdCount++;
 
-          // Add the newly created task to our checking list so future tasks can find it
-          tasksForDuplicateChecking.add(taskToSave);
+          // New task will be found by the query-based duplicate detection
         }
       }
 
@@ -303,15 +291,88 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         ),
       );
     } else {
-      // Fallback to just popping if no cached category
+      // No cached category - this is fine when adding tasks without selecting a category first
+      // Just pop back to the home screen without any error
+      print('AddTasksScreen: No cached category, returning to home screen');
       Navigator.pop(context, true);
     }
+  }
+
+  /// Extract the link text from an HTML link
+  /// Example: '<a href="url">Link Text</a>' -> 'Link Text'
+  String? _extractLinkText(String htmlLink) {
+    final match = RegExp(r'<a[^>]+>([^<]+)</a>').firstMatch(htmlLink);
+    return match?.group(1);
+  }
+
+  /// Show dialog to pick a category for a new task
+  /// Uses the existing CategoryPickerDialog component with smart suggestions
+  /// Returns a map with 'category' and 'applyToAll' keys
+  Future<Map<String, dynamic>?> _showCategoryPickerDialog({
+    List<int>? suggestedOriginalIds,
+    bool showApplyToAll = false,
+    String? linkUrl,
+    String? linkText,
+  }) async {
+    Category? selectedCategory;
+    bool selectedApplyToAll = false;
+
+    // Show the existing CategoryPickerDialog with optional checkbox
+    await CategoryPickerDialog.show(
+      context,
+      title: 'Choose Category',
+      subtitle: linkText != null
+          ? 'Select a category for "$linkText"'
+          : null,
+      suggestedCategoryIds: suggestedOriginalIds,
+      linkUrl: linkUrl,
+      showCreateNew: true,
+      showApplyToAllCheckbox: showApplyToAll,
+      onCategorySelected: (category, {bool? shouldMove, bool? applyToAll}) {
+        selectedCategory = category;
+        selectedApplyToAll = applyToAll ?? false;
+      },
+    );
+
+    // If user cancelled, return null
+    if (selectedCategory == null) {
+      return null;
+    }
+
+    return {
+      'category': selectedCategory,
+      'applyToAll': selectedApplyToAll,
+    };
   }
 
   /// Show dialog asking user what to do with duplicate task
   /// Returns true if link should be added to existing task, false if new task should be created
   Future<bool?> _showDuplicateDialog(Task existingTask, Task newTask) async {
     bool applyToAll = false;
+
+    // Fetch the category name for the existing task
+    final categoryName = await ApiClient.getCategoryHeadlineById(existingTask.categoryId);
+
+    // Extract the link text from the new task
+    String? newLinkText;
+    if (newTask.links != null && newTask.links!.isNotEmpty) {
+      newLinkText = _extractLinkText(newTask.links!.first);
+    }
+
+    // Check if the new link already exists in the existing task
+    bool linkAlreadyExists = false;
+    if (newTask.links != null && newTask.links!.isNotEmpty && existingTask.links != null) {
+      final newUrl = _extractUrlFromHtmlLink(newTask.links!.first);
+      if (newUrl != null) {
+        for (final existingLink in existingTask.links!) {
+          final existingUrl = _extractUrlFromHtmlLink(existingLink);
+          if (existingUrl != null && newUrl == existingUrl) {
+            linkAlreadyExists = true;
+            break;
+          }
+        }
+      }
+    }
 
     return showDialog<bool>(
       context: context,
@@ -320,30 +381,83 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Duplicate Task Found'),
+              title: Text('Duplicate ${NamingUtils.tasksName(capitalize: true, plural: false)} Found'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'A task with this name already exists:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                  Text(
+                    linkAlreadyExists
+                        ? 'The link'
+                        : 'The link',
+                    style: const TextStyle(fontSize: 13),
                   ),
                   const SizedBox(height: 8),
+                  if (newLinkText != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16.0),
+                      child: Text(
+                        newLinkText,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
                   Text(
-                    '"${existingTask.headline}"',
-                    style: const TextStyle(fontStyle: FontStyle.italic),
+                    linkAlreadyExists
+                        ? 'is already included in the existing ${NamingUtils.tasksName(capitalize: false, plural: false)}'
+                        : 'looks like it belongs in the existing ${NamingUtils.tasksName(capitalize: false, plural: false)}',
+                    style: const TextStyle(fontSize: 13),
                   ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 16.0),
+                    child: Text(
+                      existingTask.headline,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                  if (categoryName != null) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'as filed under',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16.0),
+                      child: Text(
+                        categoryName,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
-                  const Text('Would you like to:'),
+                  const Text('Would you like to:', style: TextStyle(fontSize: 13)),
                   const SizedBox(height: 8),
                   Text(
-                    '• Add the new link to the existing task, or',
-                    style: TextStyle(color: Colors.grey[700]),
+                    linkAlreadyExists
+                        ? '• Leave the existing ${NamingUtils.tasksName(capitalize: false, plural: false)} as it is, or'
+                        : '• Include this link in the existing ${NamingUtils.tasksName(capitalize: false, plural: false)}, or',
+                    style: const TextStyle(fontSize: 13),
                   ),
                   Text(
-                    '• Create a new task with the same name',
-                    style: TextStyle(color: Colors.grey[700]),
+                    '• Create a new ${NamingUtils.tasksName(capitalize: false, plural: false)} with the same name',
+                    style: const TextStyle(fontSize: 13),
                   ),
                   const SizedBox(height: 16),
                   CheckboxListTile(
@@ -364,16 +478,6 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                 ],
               ),
               actions: [
-                TextButton(
-                  onPressed: () {
-                    if (applyToAll) {
-                      _applyToAllDuplicates = true;
-                      _rememberDuplicateChoice = false;
-                    }
-                    Navigator.of(context).pop(false); // Create new task
-                  },
-                  child: const Text('Create New Task'),
-                ),
                 ElevatedButton(
                   onPressed: () {
                     if (applyToAll) {
@@ -382,7 +486,103 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                     }
                     Navigator.of(context).pop(true); // Add link
                   },
-                  child: const Text('Add Link to Existing'),
+                  child: Text('Keep Existing ${NamingUtils.tasksName(capitalize: true, plural: false)}'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    if (applyToAll) {
+                      _applyToAllDuplicates = true;
+                      _rememberDuplicateChoice = false;
+                    }
+                    Navigator.of(context).pop(false); // Create new task
+                  },
+                  child: Text('Create New ${NamingUtils.tasksName(capitalize: true, plural: false)}'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Show dialog asking user if they want to consolidate multiple links from the same artist/headline
+  /// Returns true if links should be combined, false if they should be kept separate, null if cancelled
+  Future<bool?> _showConsolidateLinksDialog(String headline, int linkCount) async {
+    bool applyToAll = false;
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Multiple Links for Same Item'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'You have multiple links for:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '"$headline"',
+                    style: const TextStyle(fontStyle: FontStyle.italic),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('Found $linkCount links with this name.'),
+                  const SizedBox(height: 16),
+                  const Text('Would you like to:'),
+                  const SizedBox(height: 8),
+                  Text(
+                    '• Combine all links into one task, or',
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                  Text(
+                    '• Keep them as separate tasks',
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                  const SizedBox(height: 16),
+                  CheckboxListTile(
+                    title: const Text(
+                      'Apply to other duplicate links in this batch',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    value: applyToAll,
+                    onChanged: (value) {
+                      setState(() {
+                        applyToAll = value ?? false;
+                      });
+                    },
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    if (applyToAll) {
+                      _applyToAllBatchDuplicates = true;
+                      _rememberBatchDuplicateChoice = false;
+                    }
+                    Navigator.of(context).pop(false); // Keep separate
+                  },
+                  child: const Text('Keep Separate'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (applyToAll) {
+                      _applyToAllBatchDuplicates = true;
+                      _rememberBatchDuplicateChoice = true;
+                    }
+                    Navigator.of(context).pop(true); // Combine
+                  },
+                  child: const Text('Combine into One Task'),
                 ),
               ],
             );
@@ -393,16 +593,11 @@ class AddTasksScreenState extends State<AddTasksScreen> {
   }
 
   /// Check if a task with the same headline or same link already exists and merge information if needed
-  Future<Task?> _checkForDuplicateAndMerge(
-      Task newTask, List<Task> existingTasks) async {
+  /// Uses efficient query-based duplicate detection instead of loading all tasks into memory
+  Future<Task?> _checkForDuplicateAndMerge(Task newTask) async {
     print('=== DUPLICATE DETECTION START ===');
     print('Checking for duplicates of: "${newTask.headline}"');
     print('New task links: ${newTask.links}');
-    print('Existing tasks count: ${existingTasks.length}');
-    print('Existing tasks:');
-    for (final task in existingTasks) {
-      print('  - "${task.headline}" (ID: ${task.id}, links: ${task.links})');
-    }
 
     // Define special categories that require user confirmation for duplicate headlines
     const streamingMusicCategories = [41, 54, 74]; // Streaming media categories
@@ -410,58 +605,15 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     final specialCategories = [...streamingMusicCategories, ...movieTvCategories];
     final isSpecialCategory = specialCategories.contains(widget.category.originalId);
 
-    // First, check for tasks with the same headline (case-insensitive, trimmed)
-    Task? existingTask;
-    for (final task in existingTasks) {
-      if (task.headline.toLowerCase().trim() ==
-          newTask.headline.toLowerCase().trim()) {
-        existingTask = task;
-        print(
-            'Found existing task with matching headline: "${task.headline}" (ID: ${task.id})');
-        break;
-      }
-    }
-
-    // If no headline match found, check for tasks with the same link
-    if (existingTask == null &&
-        newTask.links != null &&
-        newTask.links!.isNotEmpty) {
-      print('No headline match found, checking for link matches...');
-
-      for (final task in existingTasks) {
-        print('  Checking task: "${task.headline}" (ID: ${task.id})');
-        if (task.links != null && task.links!.isNotEmpty) {
-          print('    Task has ${task.links!.length} links: ${task.links}');
-          // Check if any of the new task's links match any of the existing task's links
-          for (final newLink in newTask.links!) {
-            print('    Checking new link: $newLink');
-            for (final existingLink in task.links!) {
-              print('    Against existing link: $existingLink');
-              // Extract URLs from HTML links for comparison
-              final newUrl = _extractUrlFromHtmlLink(newLink);
-              final existingUrl = _extractUrlFromHtmlLink(existingLink);
-              print('    Extracted new URL: $newUrl');
-              print('    Extracted existing URL: $existingUrl');
-
-              if (newUrl != null &&
-                  existingUrl != null &&
-                  newUrl == existingUrl) {
-                print(
-                    'Found existing task with matching link: "${task.headline}" (ID: ${task.id})');
-                print('  New link: $newUrl');
-                print('  Existing link: $existingUrl');
-                existingTask = task;
-                break;
-              }
-            }
-            if (existingTask != null) break;
-          }
-          if (existingTask != null) break;
-        } else {
-          print('    Task has no links');
-        }
-      }
-    }
+    // Use efficient query-based duplicate detection
+    // Only searches within user's categories that have matching original_ids
+    final userId = AuthUtils.getCurrentUserId();
+    final existingTask = await ApiClient.findDuplicateTask(
+      userId: userId,
+      headline: newTask.headline,
+      links: newTask.links,
+      categoryOriginalIds: specialCategories,
+    );
 
     if (existingTask != null) {
       print(
@@ -537,12 +689,12 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           }
         }
 
-        // Only update if we actually added new links
+        // Always include links in update to ensure database has complete list
+        updateData['links'] = updatedLinks.isNotEmpty ? updatedLinks : null;
         if (updatedLinks.length > (existingTask.links?.length ?? 0)) {
-          updateData['links'] = updatedLinks;
-          print('  -> Will update database with ${updatedLinks.length} total links');
+          print('  -> Added new links! Will update database with ${updatedLinks.length} total links');
         } else {
-          print('  -> No new links added (all were duplicates or none provided)');
+          print('  -> No new links added (all were duplicates), but updating database anyway');
         }
       }
 
@@ -562,13 +714,28 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         // Add suggestibleAt: null to the update data to move task to top
         updateData['suggestible_at'] = null;
 
-        await supabase
+        print('  -> About to update database with:');
+        print('     Task ID: ${existingTask.id}');
+        print('     Update data keys: ${updateData.keys.toList()}');
+        if (updateData.containsKey('links')) {
+          print('     Links to save: ${(updateData['links'] as List).length} links');
+          for (int i = 0; i < (updateData['links'] as List).length; i++) {
+            print('       Link $i: ${(updateData['links'] as List)[i]}');
+          }
+        } else {
+          print('     WARNING: No links in updateData!');
+        }
+
+        final response = await supabase
             .from('Tasks')
             .update(updateData)
             .eq('id', existingTask.id)
-            .eq('owner_id', userId);
+            .eq('owner_id', userId)
+            .select()
+            .single();
 
-        print('  -> Updated existing task and moved to top of list');
+        print('  -> Database update successful');
+        print('  -> Response links: ${response['links']}');
 
         // Create the updated task object
         // IMPORTANT: Use updatedLinks directly, not updateData['links']
@@ -660,56 +827,10 @@ class AddTasksScreenState extends State<AddTasksScreen> {
 
       final userId = AuthUtils.getCurrentUserId();
 
-      // Get existing tasks for duplicate checking - check database directly to avoid race conditions
-      print('AddTasksScreen: About to check database for existing tasks...');
-      print(
-          'AddTasksScreen: Category: ${widget.category.headline} (ID: ${widget.category.id})');
-      print('AddTasksScreen: User ID: $userId');
-
-      // Query database directly for existing tasks to avoid cache timing issues
-      final response = await supabase
-          .from('Tasks')
-          .select()
-          .eq('category_id', widget.category.id)
-          .eq('owner_id', userId)
-          .order('created_at', ascending: false);
-
-      final existingTasks = (response as List)
-          .map((json) => Task.fromJson(json as Map<String, dynamic>))
-          .toList();
-      print(
-          'AddTasksScreen: Found ${existingTasks.length} existing tasks in database');
-
-      // If we have a current task being edited, create a copy with its current state
-      // and add it to the list for duplicate checking
-      List<Task> tasksForDuplicateChecking = List.from(existingTasks);
-      if (widget.currentTask != null) {
-        print(
-            'AddTasksScreen: Including current task in duplicate checking: "${widget.currentTask!.headline}"');
-        print(
-            'AddTasksScreen: Current task links: ${widget.currentTask!.links}');
-        tasksForDuplicateChecking.add(widget.currentTask!);
-      }
-
-      print(
-          'AddTasksScreen: Existing tasks for duplicate checking: ${existingTasks.length}');
-      print(
-          'AddTasksScreen: Including current task: ${widget.currentTask != null}');
-      print(
-          'AddTasksScreen: Total tasks for duplicate checking: ${tasksForDuplicateChecking.length}');
+      // Using query-based duplicate detection - no need to load all tasks into memory
       print('AddTasksScreen: Category: ${widget.category.headline}');
       print('AddTasksScreen: User ID: $userId');
-      for (final task in tasksForDuplicateChecking) {
-        print('  - "${task.headline}" (ID: ${task.id})');
-        print('    Links: ${task.links}');
-        print('    Links type: ${task.links?.runtimeType}');
-        print('    Links length: ${task.links?.length ?? 0}');
-        if (task.links != null && task.links!.isNotEmpty) {
-          for (int i = 0; i < task.links!.length; i++) {
-            print('      Link $i: "${task.links![i]}"');
-          }
-        }
-      }
+      print('AddTasksScreen: Using query-based duplicate detection');
 
       // Check if the input is single line or multi-line
       final trimmedText = _textInputController.text.trim();
@@ -751,9 +872,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               'AddTasksScreen: Created task from link with headline: "${newTask.headline}"');
           print('AddTasksScreen: Task links: ${newTask.links}');
 
-          // Check for duplicates and merge information if needed
-          final existingOrUpdatedTask = await _checkForDuplicateAndMerge(
-              newTask, tasksForDuplicateChecking);
+          // Check for duplicates and merge information if needed (query-based, efficient)
+          final existingOrUpdatedTask = await _checkForDuplicateAndMerge(newTask);
 
           if (existingOrUpdatedTask != null &&
               existingOrUpdatedTask.id != newTask.id) {
@@ -818,16 +938,141 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                 await LinkToTaskConverter.createProposedTaskFromLink(
               trimmedText,
               userId,
-              currentCategory: widget.category,
+              currentCategory: null, // Don't pass current category, we'll pick it later
             );
 
             print(
                 'AddTasksScreen: ProposedTask created - headline: "${proposedTask.headline}", notes: "${proposedTask.notes}"');
+            print(
+                'AddTasksScreen: Suggested category IDs: ${proposedTask.suggestedCategoryOriginalIds}');
 
-            // Convert ProposedTask to Task
+            // Check for duplicates using the suggested categories
+            final existingTask = await ApiClient.findDuplicateTask(
+              userId: userId,
+              headline: proposedTask.headline,
+              links: proposedTask.links,
+              categoryOriginalIds: proposedTask.suggestedCategoryOriginalIds.isNotEmpty
+                  ? proposedTask.suggestedCategoryOriginalIds
+                  : [1, 2, 41, 54, 74], // Fallback to common categories
+            );
+
+            if (existingTask != null) {
+              print('Found duplicate task: "${existingTask.headline}"');
+
+              // Check if user has already made a choice for all duplicates
+              bool? shouldAddLink;
+              if (_applyToAllDuplicates && _rememberDuplicateChoice != null) {
+                shouldAddLink = _rememberDuplicateChoice!;
+                print('Using remembered choice for duplicate: ${shouldAddLink ? "add link" : "create new"}');
+              } else {
+                // Show "keep or add" dialog
+                shouldAddLink = await _showDuplicateDialog(
+                  existingTask,
+                  Task(
+                    id: DateTime.now().millisecondsSinceEpoch,
+                    categoryId: existingTask.categoryId,
+                    headline: proposedTask.headline,
+                    notes: proposedTask.notes,
+                    ownerId: userId,
+                    createdAt: DateTime.now(),
+                    links: proposedTask.links,
+                    synopsis: proposedTask.synopsis,
+                    finished: false,
+                  ),
+                );
+              }
+
+              if (shouldAddLink == null) {
+                // User cancelled
+                setState(() {
+                  _isLoading = false;
+                });
+                return;
+              }
+
+              if (shouldAddLink) {
+                // Add link to existing task
+                final updatedLinks = existingTask.links != null
+                    ? List<String>.from(existingTask.links!)
+                    : [];
+
+                // Add new links
+                for (final newLink in proposedTask.links) {
+                  final newUrl = _extractUrlFromHtmlLink(newLink);
+                  bool linkExists = false;
+
+                  for (final existingLink in updatedLinks) {
+                    final existingUrl = _extractUrlFromHtmlLink(existingLink);
+                    if (newUrl != null && existingUrl != null && newUrl == existingUrl) {
+                      linkExists = true;
+                      break;
+                    }
+                  }
+
+                  if (!linkExists) {
+                    updatedLinks.add(newLink);
+                  }
+                }
+
+                // Update existing task
+                await supabase
+                    .from('Tasks')
+                    .update({
+                      'links': updatedLinks,
+                      'suggestible_at': null,
+                    })
+                    .eq('id', existingTask.id)
+                    .eq('owner_id', userId);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Updated existing task: "${existingTask.headline}"'),
+                    backgroundColor: Colors.blue,
+                  ),
+                );
+
+                _textInputController.clear();
+                if (mounted) {
+                  Navigator.pop(context, true);
+                }
+                return;
+              }
+              // If shouldAddLink is false, continue to create new task with category picker
+            }
+
+            // No duplicate found (or user chose to create new) - show category picker
+            print('No duplicate found, showing category picker');
+
+            // Extract URL and text from the first link
+            String? linkUrl;
+            String? linkText;
+            if (proposedTask.links.isNotEmpty) {
+              linkUrl = LinkToTaskConverter.extractUrlFromHtmlLink(proposedTask.links.first);
+              linkText = _extractLinkText(proposedTask.links.first);
+            }
+
+            final result = await _showCategoryPickerDialog(
+              suggestedOriginalIds: proposedTask.suggestedCategoryOriginalIds,
+              showApplyToAll: false, // Single link, no need for "apply to all"
+              linkUrl: linkUrl,
+              linkText: linkText,
+            );
+
+            if (result == null) {
+              // User cancelled category selection
+              setState(() {
+                _isLoading = false;
+              });
+              return;
+            }
+
+            final selectedCategory = result['category'] as Category;
+            print('User selected category: "${selectedCategory.headline}"');
+
+            // Convert ProposedTask to Task with selected category
             newTask = Task(
               id: DateTime.now().millisecondsSinceEpoch,
-              categoryId: widget.category.id,
+              categoryId: selectedCategory.id,
               headline: proposedTask.headline,
               notes: proposedTask.notes,
               ownerId: userId,
@@ -837,8 +1082,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               synopsis: proposedTask.synopsis,
               originalId: proposedTask.existingTaskOriginalId,
               finished: false,
-              shared: !widget.category
-                  .tasksArePrivate, // Use category's tasksArePrivate setting
+              shared: !selectedCategory
+                  .tasksArePrivate, // Use selected category's tasksArePrivate setting
             );
           } else {
             print('Single line is not a URL, using TaskEnricher');
@@ -871,38 +1116,26 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               'AddTasksScreen: Created task with headline: "${newTask.headline}"');
           print('AddTasksScreen: Task links: ${newTask.links}');
 
-          // Check for duplicates and merge information if needed
-          final existingOrUpdatedTask = await _checkForDuplicateAndMerge(
-              newTask, tasksForDuplicateChecking);
-
-          if (existingOrUpdatedTask != null &&
-              existingOrUpdatedTask.id != newTask.id) {
-            // This was a duplicate - existing task was updated or found
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                    'Updated existing task: "${existingOrUpdatedTask.headline}"'),
-                backgroundColor: Colors.blue,
-              ),
-            );
-          } else {
-            // No duplicate found - create new task
-            final cacheManager = CacheManager();
-            await cacheManager.addTask(newTask);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Created task: "${newTask.headline}"'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
+          // Create new task (duplicate checking already handled above for URLs)
+          final cacheManager = CacheManager();
+          await cacheManager.addTask(newTask);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Created task: "${newTask.headline}"'),
+              backgroundColor: Colors.green,
+            ),
+          );
 
           // Clear the text input
           _textInputController.clear();
 
-          // Navigate to Edit Category screen for cached category
+          // Navigate to Edit Category screen for cached category (or pop if different category)
           if (mounted) {
-            _navigateToEditCategory();
+            if (newTask.categoryId == widget.category.id) {
+              _navigateToEditCategory();
+            } else {
+              Navigator.pop(context, true);
+            }
           }
           return;
         } catch (e) {
@@ -918,8 +1151,6 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       }
 
       // Multi-line input - process each line with TaskEnricher
-      final tasksToProcess = <Task>[];
-
       final inputText = _textInputController.text;
       print('AddTasksScreen: Multi-line input text: "$inputText"');
       print('AddTasksScreen: Text length: ${inputText.length}');
@@ -933,9 +1164,31 @@ class AddTasksScreenState extends State<AddTasksScreen> {
 
       print('AddTasksScreen: Processing ${inputLines.length} lines');
 
+      // Track category selection for URLs
+      Category? rememberedCategoryForUrls;
+      bool applyToAllRemaining = false;
+
+      // Track updated tasks (for duplicates that were merged)
+      int updatedTasksCount = 0;
+
+      // Now process each line
+      final tasksToProcess = <Task>[];
+
       for (int i = 0; i < inputLines.length; i++) {
         final line = inputLines[i];
         print('AddTasksScreen: Processing line ${i + 1}: "$line"');
+
+        // Show progress for multi-line processing at the start of each iteration
+        if (inputLines.length > 1 && mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Processing ${i + 1} of ${inputLines.length}...'),
+              duration: const Duration(seconds: 2),
+              backgroundColor: Colors.blue[700],
+            ),
+          );
+        }
 
         try {
           Task modifiedTask;
@@ -949,27 +1202,154 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                 await LinkToTaskConverter.createProposedTaskFromLink(
               line,
               userId,
-              currentCategory: widget.category,
+              currentCategory: null,
             );
 
             print(
                 'AddTasksScreen: ProposedTask created - headline: "${proposedTask.headline}", notes: "${proposedTask.notes}"');
 
-            // Convert ProposedTask to Task
+            // Check for duplicates
+            final existingTask = await ApiClient.findDuplicateTask(
+              userId: userId,
+              headline: proposedTask.headline,
+              links: proposedTask.links,
+              categoryOriginalIds: proposedTask.suggestedCategoryOriginalIds.isNotEmpty
+                  ? proposedTask.suggestedCategoryOriginalIds
+                  : [1, 2, 41, 54, 74],
+            );
+
+            if (existingTask != null) {
+              print('Found duplicate for line ${i + 1}: "${existingTask.headline}"');
+
+              // Check if user has already made a choice for all duplicates
+              bool? shouldAddLink;
+              if (_applyToAllDuplicates && _rememberDuplicateChoice != null) {
+                shouldAddLink = _rememberDuplicateChoice!;
+                print('Using remembered choice for duplicate: ${shouldAddLink ? "add link" : "create new"}');
+              } else {
+                // Show "keep or add" dialog
+                shouldAddLink = await _showDuplicateDialog(
+                  existingTask,
+                  Task(
+                    id: DateTime.now().millisecondsSinceEpoch,
+                    categoryId: existingTask.categoryId,
+                    headline: proposedTask.headline,
+                    notes: proposedTask.notes,
+                    ownerId: userId,
+                    createdAt: DateTime.now(),
+                    links: proposedTask.links,
+                    synopsis: proposedTask.synopsis,
+                    finished: false,
+                  ),
+                );
+              }
+
+              if (shouldAddLink == null) {
+                // User cancelled
+                continue;
+              }
+
+              if (!shouldAddLink) {
+                // User chose to create new task - fall through to category picker below
+              } else {
+                // Add link to existing task
+                final updatedLinks = existingTask.links != null
+                    ? List<String>.from(existingTask.links!)
+                    : [];
+
+                for (final newLink in proposedTask.links) {
+                  final newUrl = _extractUrlFromHtmlLink(newLink);
+                  bool linkExists = false;
+
+                  for (final existingLink in updatedLinks) {
+                    final existingUrl = _extractUrlFromHtmlLink(existingLink);
+                    if (newUrl != null && existingUrl != null && newUrl == existingUrl) {
+                      linkExists = true;
+                      break;
+                    }
+                  }
+
+                  if (!linkExists) {
+                    updatedLinks.add(newLink);
+                  }
+                }
+
+                // Update existing task
+                await supabase
+                    .from('Tasks')
+                    .update({
+                      'links': updatedLinks,
+                      'suggestible_at': null,
+                    })
+                    .eq('id', existingTask.id)
+                    .eq('owner_id', userId);
+
+                updatedTasksCount++;
+                print('Updated existing task with new link');
+                continue;
+              }
+            }
+
+            // No duplicate (or user chose to create new) - need a category
+            Category? selectedCategory;
+
+            if (applyToAllRemaining && rememberedCategoryForUrls != null) {
+              // Use remembered category
+              selectedCategory = rememberedCategoryForUrls;
+              print('Using remembered category: "${selectedCategory.headline}"');
+            } else {
+              // Show category picker
+              // Count remaining URLs to decide if we should show "apply to all" checkbox
+              final remainingUrlCount = inputLines.skip(i + 1).where((line) => _isUrl(line)).length;
+              final showApplyToAll = remainingUrlCount > 0;
+
+              // Extract URL and text from the first link
+              String? linkUrl;
+              String? linkText;
+              if (proposedTask.links.isNotEmpty) {
+                linkUrl = LinkToTaskConverter.extractUrlFromHtmlLink(proposedTask.links.first);
+                linkText = _extractLinkText(proposedTask.links.first);
+              }
+
+              print('Showing category picker (remaining URLs: $remainingUrlCount)');
+              final result = await _showCategoryPickerDialog(
+                suggestedOriginalIds: proposedTask.suggestedCategoryOriginalIds,
+                showApplyToAll: showApplyToAll,
+                linkUrl: linkUrl,
+                linkText: linkText,
+              );
+
+              if (result == null) {
+                // User cancelled
+                print('User cancelled category selection');
+                continue;
+              }
+
+              selectedCategory = result['category'] as Category;
+              applyToAllRemaining = result['applyToAll'] as bool;
+
+              if (applyToAllRemaining) {
+                rememberedCategoryForUrls = selectedCategory;
+                print('User selected category: "${selectedCategory.headline}" and chose to apply to all remaining');
+              } else {
+                print('User selected category: "${selectedCategory.headline}"');
+              }
+            }
+
+            // Create task with selected category
             modifiedTask = Task(
               id: DateTime.now().millisecondsSinceEpoch,
-              categoryId: widget.category.id,
+              categoryId: selectedCategory.id,
               headline: proposedTask.headline,
               notes: proposedTask.notes,
               ownerId: userId,
               createdAt: DateTime.now(),
-              suggestibleAt: null, // Set to null to appear at the beginning
+              suggestibleAt: null,
               links: proposedTask.links,
               synopsis: proposedTask.synopsis,
               originalId: proposedTask.existingTaskOriginalId,
               finished: false,
-              shared: !widget.category
-                  .tasksArePrivate, // Use category's tasksArePrivate setting
+              shared: !selectedCategory.tasksArePrivate,
             );
           } else {
             print('AddTasksScreen: Line is not a URL, using TaskEnricher');
@@ -998,6 +1378,93 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             );
           }
 
+          // Check for batch duplicates (same headline within the current batch)
+          final existingTaskInBatch = tasksToProcess.where((t) => t.headline == modifiedTask.headline).firstOrNull;
+
+          if (existingTaskInBatch != null) {
+            print('Found batch duplicate: "${modifiedTask.headline}"');
+
+            // Check if we have a remembered choice
+            bool shouldCombine;
+
+            // If user already chose to add links to existing tasks via the duplicate dialog,
+            // apply that same choice to batch duplicates
+            if (_applyToAllDuplicates && _rememberDuplicateChoice != null && _rememberDuplicateChoice == true) {
+              shouldCombine = true;
+              print('Using remembered duplicate choice (add to existing) for batch duplicate');
+            } else if (_applyToAllBatchDuplicates && _rememberBatchDuplicateChoice != null) {
+              shouldCombine = _rememberBatchDuplicateChoice!;
+              print('Using remembered batch duplicate choice: ${shouldCombine ? "combine" : "keep separate"}');
+            } else {
+              // COMMENTED OUT: Show consolidation dialog
+              // Default to combining links with the same headline
+              shouldCombine = true;
+              print('Auto-combining batch duplicate (dialog commented out)');
+
+              // // Show consolidation dialog
+              // final userChoice = await _showConsolidateLinksDialog(
+              //   modifiedTask.headline,
+              //   2, // At least 2 links (existing + new)
+              // );
+
+              // if (userChoice == null) {
+              //   // User cancelled
+              //   print('User cancelled batch consolidation');
+              //   continue;
+              // }
+
+              // shouldCombine = userChoice;
+            }
+
+            if (shouldCombine) {
+              // Combine links into the existing task
+              final List<String> updatedLinks = existingTaskInBatch.links != null
+                  ? List<String>.from(existingTaskInBatch.links!)
+                  : <String>[];
+
+              // Add new links if they don't already exist
+              for (final newLink in modifiedTask.links ?? []) {
+                final newUrl = _extractUrlFromHtmlLink(newLink);
+                bool linkExists = false;
+
+                for (final existingLink in updatedLinks) {
+                  final existingUrl = _extractUrlFromHtmlLink(existingLink);
+                  if (newUrl != null && existingUrl != null && newUrl == existingUrl) {
+                    linkExists = true;
+                    break;
+                  }
+                }
+
+                if (!linkExists) {
+                  updatedLinks.add(newLink);
+                }
+              }
+
+              // Update the existing task in the batch with the new links
+              final taskIndex = tasksToProcess.indexOf(existingTaskInBatch);
+              tasksToProcess[taskIndex] = Task(
+                id: existingTaskInBatch.id,
+                categoryId: existingTaskInBatch.categoryId,
+                headline: existingTaskInBatch.headline,
+                notes: existingTaskInBatch.notes,
+                ownerId: existingTaskInBatch.ownerId,
+                createdAt: existingTaskInBatch.createdAt,
+                suggestibleAt: existingTaskInBatch.suggestibleAt,
+                links: updatedLinks,
+                synopsis: existingTaskInBatch.synopsis ?? modifiedTask.synopsis,
+                originalId: existingTaskInBatch.originalId,
+                finished: existingTaskInBatch.finished,
+                shared: existingTaskInBatch.shared,
+              );
+
+              print('Combined ${modifiedTask.links?.length ?? 0} new link(s) into existing batch task');
+              continue; // Skip adding this as a separate task
+            } else {
+              // User chose to keep separate - add as normal
+              print('Keeping as separate task per user choice');
+            }
+          }
+
           tasksToProcess.add(modifiedTask);
           print(
               'AddTasksScreen: Successfully processed line ${i + 1}: "${modifiedTask.headline}"');
@@ -1007,68 +1474,49 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         }
       }
 
-      if (tasksToProcess.isEmpty) {
-        throw Exception('No valid tasks found in text input');
-      }
-
-      // Process tasks with duplicate checking
+      // Create all new tasks (duplicate checking already handled above for URLs)
       int newTasksCreated = 0;
-      int existingTasksUpdated = 0;
 
       for (final task in tasksToProcess) {
-        print('Processing task: "${task.headline}" (ID: ${task.id})');
+        print('Creating task: "${task.headline}" (ID: ${task.id})');
 
-        // Check for duplicates and merge information if needed
-        final existingOrUpdatedTask =
-            await _checkForDuplicateAndMerge(task, tasksForDuplicateChecking);
+        // Insert task directly into database
+        await supabase.from('Tasks').insert({
+          'category_id': task.categoryId,
+          'headline': task.headline,
+          'notes': task.notes,
+          'synopsis': task.synopsis,
+          'owner_id': task.ownerId,
+          'created_at': task.createdAt.toIso8601String(),
+          'suggestible_at': task.suggestibleAt?.toIso8601String(),
+          'triggers_at': task.triggersAt?.toIso8601String(),
+          'deferral': task.deferral,
+          'links': task.links,
+          'finished': task.finished,
+          'shared': task.shared,
+          'original_id': task.originalId,
+        });
 
-        print('Duplicate check result for "${task.headline}":');
-        print(
-            '  existingOrUpdatedTask:  [${existingOrUpdatedTask?.headline} (ID: ${existingOrUpdatedTask?.id})');
-        print('  task.id: ${task.id}');
-        print('  existingOrUpdatedTask?.id: ${existingOrUpdatedTask?.id}');
-        print(
-            '  isDuplicate: ${existingOrUpdatedTask != null && existingOrUpdatedTask.id != task.id}');
+        newTasksCreated++;
+        print('Created new task: "${task.headline}"');
+      }
 
-        if (existingOrUpdatedTask != null &&
-            existingOrUpdatedTask.id != task.id) {
-          // This was a duplicate - existing task was updated or found
-          existingTasksUpdated++;
-          print('Skipped duplicate task: "${task.headline}"');
-
-          // Update the task in our checking list so future duplicates can find the updated version
-          final index = tasksForDuplicateChecking.indexWhere((t) => t.id == existingOrUpdatedTask.id);
-          if (index != -1) {
-            tasksForDuplicateChecking[index] = existingOrUpdatedTask;
-          }
-        } else {
-          // No duplicate found - create new task
-          final cacheManager = CacheManager();
-          await cacheManager.addTask(task);
-          newTasksCreated++;
-          print('Created new task: "${task.headline}"');
-
-          // Add the newly created task to our checking list so future tasks can find it
-          tasksForDuplicateChecking.add(task);
-          print('Added new task to duplicate checking list');
-        }
+      // Check if we processed anything at all
+      if (newTasksCreated == 0 && updatedTasksCount == 0) {
+        throw Exception('No valid tasks found in text input');
       }
 
       // Wait longer for database transactions to commit, then refresh cache
       await Future.delayed(const Duration(milliseconds: 500));
 
-      // Show appropriate success message
+      // Show success message
       String message;
-      if (newTasksCreated > 0 && existingTasksUpdated > 0) {
-        message =
-            'Created $newTasksCreated new tasks and updated $existingTasksUpdated existing tasks';
+      if (newTasksCreated > 0 && updatedTasksCount > 0) {
+        message = 'Created $newTasksCreated new tasks and updated $updatedTasksCount existing tasks';
       } else if (newTasksCreated > 0) {
         message = 'Created $newTasksCreated new tasks';
-      } else if (existingTasksUpdated > 0) {
-        message =
-            'Updated $existingTasksUpdated existing tasks (no duplicates created)';
       } else {
-        message = 'No new tasks created';
+        message = 'Updated $updatedTasksCount existing tasks';
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1078,9 +1526,11 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         ),
       );
 
-      // Refresh cache after creating tasks
-      final cacheManager = CacheManager();
-      await cacheManager.initializeWithSavedCategory(widget.category, userId);
+      // Refresh cache after creating tasks (only if we have a category)
+      if (widget.category != null) {
+        final cacheManager = CacheManager();
+        await cacheManager.initializeWithSavedCategory(widget.category!, userId);
+      }
 
       // Clear the text input
       _textInputController.clear();
