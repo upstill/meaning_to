@@ -103,14 +103,16 @@ class LinkToTaskConverter {
         // and notes is the work (album/track/playlist name)
         headline = artistWorkInfo.artist;
         notes = artistWorkInfo.work;
-        synopsis = pageDescription;
+        // Don't fetch synopsis for TIDAL links
+        synopsis = normalizedUrl.contains('tidal.com') ? null : pageDescription;
         print(
             'LinkToTaskConverter: Extracted streaming media - Artist: "$headline", Work: "$notes"');
       } else {
         // Fallback if extraction fails
         headline = pageTitle;
         notes = null;
-        synopsis = pageDescription;
+        // Don't fetch synopsis for TIDAL links
+        synopsis = normalizedUrl.contains('tidal.com') ? null : pageDescription;
         print(
             'LinkToTaskConverter: Could not extract artist/work, using page title');
       }
