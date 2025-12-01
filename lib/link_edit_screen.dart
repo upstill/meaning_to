@@ -306,9 +306,22 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
           ? proposedTask.headline
           : _textController.text.trim();
 
+      // Create HTML link with custom text (preserving user's edit)
+      final customHtmlLink = '<a href="$normalizedUrl">$linkText</a>';
+
+      // Create new ProposedTask with custom link text
+      final customProposedTask = ProposedTask(
+        headline: proposedTask.headline,
+        notes: proposedTask.notes,
+        links: [customHtmlLink], // Use custom HTML link with user's text
+        synopsis: proposedTask.synopsis,
+        suggestedCategoryOriginalIds: proposedTask.suggestedCategoryOriginalIds,
+        existingTaskOriginalId: proposedTask.existingTaskOriginalId,
+      );
+
       // Return ProposedTask with metadata
       if (mounted) {
-        Navigator.pop(context, proposedTask);
+        Navigator.pop(context, customProposedTask);
       }
     } catch (e) {
       print('Error validating link: $e');
