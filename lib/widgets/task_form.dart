@@ -663,29 +663,46 @@ class _TaskFormState extends State<TaskForm> {
 
                   const SizedBox(height: 24),
 
-                  // Save button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: (_headlineController.text.trim().isNotEmpty &&
-                              widget.selectedCategory != null &&
-                              !widget.isLoading)
-                          ? _handleSave
-                          : null,
-                      icon: widget.isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.save),
-                      label: Text(widget.isLoading
-                          ? 'Creating...'
-                          : 'Create ${NamingUtils.tasksName(capitalize: false, plural: false)}'),
-                      style: AppButtons.finalize().copyWith(
-                        minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+                  // Cancel and Save buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: widget.isLoading
+                              ? null
+                              : () => Navigator.pop(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[300],
+                            foregroundColor: Colors.black,
+                            minimumSize: const Size(0, 48),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: (_headlineController.text.trim().isNotEmpty &&
+                                  widget.selectedCategory != null &&
+                                  !widget.isLoading)
+                              ? _handleSave
+                              : null,
+                          icon: widget.isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.save),
+                          label: Text(widget.isLoading
+                              ? 'Creating...'
+                              : 'Create ${NamingUtils.tasksName(capitalize: false, plural: false)}'),
+                          style: AppButtons.finalize().copyWith(
+                            minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
