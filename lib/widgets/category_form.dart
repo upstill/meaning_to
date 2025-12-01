@@ -169,36 +169,48 @@ class CategoryFormState extends State<CategoryForm> {
                 ],
                 const SizedBox(height: 24),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (widget.category != null &&
-                        widget.isEditing &&
-                        widget.onCancel != null)
-                      TextButton(
-                        onPressed: widget.onCancel,
-                        child: const Text('Cancel'),
+                    // Cancel button - show for new categories or when editing
+                    if (widget.category == null ||
+                        (widget.isEditing && widget.onCancel != null))
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: widget.isLoading
+                              ? null
+                              : (widget.onCancel ?? () => Navigator.pop(context)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[300],
+                            foregroundColor: Colors.black,
+                            minimumSize: const Size(0, 48),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
                       ),
-                    if (widget.category != null &&
-                        widget.isEditing &&
-                        widget.onCancel != null)
+                    if (widget.category == null ||
+                        (widget.isEditing && widget.onCancel != null))
                       const SizedBox(width: 16),
-                    ElevatedButton(
-                      onPressed: (widget.isLoading ||
-                              _headlineController.text.trim().isEmpty)
-                          ? null
-                          : _handleSave,
-                      style: AppButtons.finalize(),
-                      child: widget.isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(
-                              widget.category == null
-                                  ? 'Create ${NamingUtils.categoriesName(plural: false)}'
-                                  : 'Save Changes',
-                            ),
+                    // Create/Save button
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: (widget.isLoading ||
+                                _headlineController.text.trim().isEmpty)
+                            ? null
+                            : _handleSave,
+                        style: AppButtons.finalize().copyWith(
+                          minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+                        ),
+                        child: widget.isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Text(
+                                widget.category == null
+                                    ? 'Create ${NamingUtils.categoriesName(plural: false)}'
+                                    : 'Save Changes',
+                              ),
+                      ),
                     ),
                   ],
                 ),
