@@ -188,8 +188,13 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
           '<a href="$normalizedUrl">${proposedTask.headline}</a>');
 
       // Update the Link Text field with the properly cleaned title
-      if (_textController.text.trim().isEmpty && proposedTask.headline.isNotEmpty) {
-        _textController.text = proposedTask.headline;
+      // Extract link text from the HTML link in proposedTask.links (e.g., "Continuum by John Mayer on TIDAL")
+      if (_textController.text.trim().isEmpty && proposedTask.links.isNotEmpty) {
+        final htmlLink = proposedTask.links.first;
+        final (_, linkText) = LinkProcessor.parseHtmlLink(htmlLink);
+        if (linkText != null && linkText.isNotEmpty) {
+          _textController.text = linkText;
+        }
       }
 
       setState(() {
@@ -254,8 +259,13 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
           '<a href="$normalizedUrl">${proposedTask.headline}</a>');
 
       // If the text field was empty, update it with the properly cleaned title from OMDb/metadata
-      if (_textController.text.trim().isEmpty && proposedTask.headline.isNotEmpty) {
-        _textController.text = proposedTask.headline;
+      // Extract link text from the HTML link in proposedTask.links (e.g., "Continuum by John Mayer on TIDAL")
+      if (_textController.text.trim().isEmpty && proposedTask.links.isNotEmpty) {
+        final htmlLink = proposedTask.links.first;
+        final (_, linkText) = LinkProcessor.parseHtmlLink(htmlLink);
+        if (linkText != null && linkText.isNotEmpty) {
+          _textController.text = linkText;
+        }
       }
 
       setState(() {
@@ -301,10 +311,16 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
         currentCategory: widget.currentCategory,
       );
 
-      // If the text field was empty, populate it with the properly cleaned title
-      final linkText = _textController.text.trim().isEmpty
-          ? proposedTask.headline
-          : _textController.text.trim();
+      // If the text field was empty, populate it with the link text from proposedTask.links
+      // (e.g., "Continuum by John Mayer on TIDAL")
+      String linkText;
+      if (_textController.text.trim().isEmpty && proposedTask.links.isNotEmpty) {
+        final htmlLink = proposedTask.links.first;
+        final (_, extractedLinkText) = LinkProcessor.parseHtmlLink(htmlLink);
+        linkText = extractedLinkText ?? proposedTask.headline;
+      } else {
+        linkText = _textController.text.trim();
+      }
 
       // Create HTML link with custom text (preserving user's edit)
       final customHtmlLink = '<a href="$normalizedUrl">$linkText</a>';
