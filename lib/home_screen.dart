@@ -1556,9 +1556,10 @@ class HomeScreenState extends State<HomeScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             if (_isLoading)
               const Center(child: CircularProgressIndicator())
             else if (_error != null)
@@ -2220,59 +2221,71 @@ class HomeScreenState extends State<HomeScreen> {
             ],
           ],
         ),
-      ),
-      floatingActionButton: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          if (_selectedCategory != null) ...[
-            // Info and Share buttons commented out for simplified interface
-            // FloatingActionButton(
-            //   onPressed: () => _showCategoryInfo(_selectedCategory!),
-            //   tooltip: 'Show category information',
-            //   backgroundColor: Colors.orange[600],
-            //   foregroundColor: Colors.white,
-            //   child: const Icon(Icons.info_outline),
-            // ),
-            // const SizedBox(width: 16),
-            // FloatingActionButton(
-            //   onPressed: () => _shareCategory(_selectedCategory!),
-            //   tooltip: 'Share category',
-            //   backgroundColor: Colors.green[600],
-            //   foregroundColor: Colors.white,
-            //   child: const Icon(Icons.share),
-            // ),
-            // const SizedBox(width: 16),
-            // Edit category button
-            if (!AuthUtils.isGuestUser()) ...[
-              FloatingActionButton(
-                heroTag: 'editCategoryButton',
-                onPressed: () => _navigateToEditCategory(_selectedCategory),
-                tooltip:
-                    'View ${NamingUtils.tasksName(capitalize: false, plural: false)} list',
-                backgroundColor: AppButtons.goForthBg,
-                foregroundColor: AppButtons.goForthFg,
-                child: const Icon(Icons.menu),
-              ),
-              const SizedBox(width: 16),
-            ],
-          ],
-          FloatingActionButton(
-            heroTag: 'addContentButton',
-            onPressed: () {
-              if (AuthUtils.isGuestUser()) {
-                _showGuestSignupDialog(
-                    content:
-                        'Here\'s where you can add new ${NamingUtils.tasksName()} and ${NamingUtils.categoriesName()} once you\'re logged in. Sign up to add your own content!');
-              } else {
-                _navigateToNewContent();
-              }
-            },
-            tooltip: 'Add New Content',
-            backgroundColor: AppButtons.goForthBg,
-            foregroundColor: AppButtons.goForthFg,
-            child: const Icon(Icons.add),
           ),
-        ],
+        ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+              if (_selectedCategory != null && !AuthUtils.isGuestUser()) ...[
+                // Info and Share buttons commented out for simplified interface
+                // FloatingActionButton(
+                //   onPressed: () => _showCategoryInfo(_selectedCategory!),
+                //   tooltip: 'Show category information',
+                //   backgroundColor: Colors.orange[600],
+                //   foregroundColor: Colors.white,
+                //   child: const Icon(Icons.info_outline),
+                // ),
+                // const SizedBox(width: 16),
+                // FloatingActionButton(
+                //   onPressed: () => _shareCategory(_selectedCategory!),
+                //   tooltip: 'Share category',
+                //   backgroundColor: Colors.green[600],
+                //   foregroundColor: Colors.white,
+                //   child: const Icon(Icons.share),
+                // ),
+                // const SizedBox(width: 16),
+                // Edit category button
+                SizedBox(
+                  width: 88,
+                  height: 88,
+                  child: FloatingActionButton(
+                    heroTag: 'editCategoryButton',
+                    onPressed: () => _navigateToEditCategory(_selectedCategory),
+                    tooltip:
+                        'View ${NamingUtils.tasksName(capitalize: false, plural: false)} list',
+                    backgroundColor: AppButtons.goForthBg,
+                    foregroundColor: AppButtons.goForthFg,
+                    child: const Icon(Icons.menu, size: 38),
+                  ),
+                ),
+                const SizedBox(width: 200),
+              ],
+              SizedBox(
+                width: 88,
+                height: 88,
+                child: FloatingActionButton(
+                  heroTag: 'addContentButton',
+                  onPressed: () {
+                    if (AuthUtils.isGuestUser()) {
+                      _showGuestSignupDialog(
+                          content:
+                              'Here\'s where you can add new ${NamingUtils.tasksName()} and ${NamingUtils.categoriesName()} once you\'re logged in. Sign up to add your own content!');
+                    } else {
+                      _navigateToNewContent();
+                    }
+                  },
+                  tooltip: 'Add New Content',
+                  backgroundColor: AppButtons.goForthBg,
+                  foregroundColor: AppButtons.goForthFg,
+                  child: const Icon(Icons.add, size: 38),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
