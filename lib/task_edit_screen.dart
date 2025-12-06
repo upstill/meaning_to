@@ -2253,27 +2253,50 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       ],
                       _buildLinksList(),
                       const SizedBox(height: 16),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: ElevatedButton(
-                          onPressed: (_isLoading ||
-                                  _headlineController.text.trim().isEmpty)
-                              ? null
-                              : _saveTask,
-                          style: AppButtons.finalize(),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : Text(
-                                  _localTask == null
-                                      ? 'Register ${NamingUtils.tasksName(plural: false)}'
-                                      : 'Save Changes',
+                      Row(
+                        children: [
+                          // Cancel button (only show when editing existing task)
+                          if (_localTask != null) ...[
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _isLoading
+                                    ? null
+                                    : () => Navigator.pop(context),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.grey[300],
+                                  foregroundColor: Colors.black,
+                                  minimumSize: const Size(0, 48),
                                 ),
-                        ),
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                          ],
+                          // Save button
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: (_isLoading ||
+                                      _headlineController.text.trim().isEmpty)
+                                  ? null
+                                  : _saveTask,
+                              style: AppButtons.finalize().copyWith(
+                                minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : Text(
+                                      _localTask == null
+                                          ? 'Register ${NamingUtils.tasksName(plural: false)}'
+                                          : 'Save Changes',
+                                    ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

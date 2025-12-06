@@ -1620,26 +1620,47 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: ElevatedButton.icon(
-                        onPressed: _isLoading ||
-                                _textInputController.text.trim().isEmpty
-                            ? null
-                            : _processTextInput,
-                        icon: _isLoading
-                            ? const SizedBox(
-                                height: 16,
-                                width: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.add_task),
-                        label: Text(_isLoading
-                            ? 'Adding...'
-                            : 'Register ${NamingUtils.tasksName(plural: true)}'),
-                        style: AppButtons.finalize(),
-                      ),
+                    Row(
+                      children: [
+                        // Cancel button
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () => Navigator.pop(context),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.grey[300],
+                              foregroundColor: Colors.black,
+                              minimumSize: const Size(0, 48),
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // Register button
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading ||
+                                    _textInputController.text.trim().isEmpty
+                                ? null
+                                : _processTextInput,
+                            icon: _isLoading
+                                ? const SizedBox(
+                                    height: 16,
+                                    width: 16,
+                                    child:
+                                        CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.add_task),
+                            label: Text(_isLoading
+                                ? 'Adding...'
+                                : 'Register ${NamingUtils.tasksName(plural: true)}'),
+                            style: AppButtons.finalize().copyWith(
+                              minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

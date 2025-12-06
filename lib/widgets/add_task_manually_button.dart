@@ -17,7 +17,7 @@ class AddTaskManuallyButton extends StatelessWidget {
   });
 
   Future<void> _createTask(BuildContext context) async {
-    final result = await Navigator.push(
+    final result = await Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (context) => NewContentScreen(

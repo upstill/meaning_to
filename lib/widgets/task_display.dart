@@ -237,6 +237,21 @@ class _TaskDisplayState extends State<TaskDisplay> {
     );
   }
 
+  /// Preprocess notes text for HTML rendering
+  /// Converts plain text newlines to HTML <br> tags if text doesn't already contain HTML
+  String _preprocessNotesForHtml(String notes) {
+    // Check if the text already contains HTML tags
+    final hasHtmlTags = RegExp(r'<[^>]+>').hasMatch(notes);
+
+    if (hasHtmlTags) {
+      // Already has HTML, return as-is
+      return notes;
+    }
+
+    // Plain text - convert newlines to <br> tags
+    return notes.replaceAll('\n', '<br>');
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -484,7 +499,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                       widget.task.notes!.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Html(
-                      data: widget.task.notes!,
+                      data: _preprocessNotesForHtml(widget.task.notes!),
                       style: {
                         "body": Style(
                           fontSize: FontSize(
