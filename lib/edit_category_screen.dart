@@ -48,12 +48,14 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   final _formKey = GlobalKey<FormState>();
   final _headlineController = TextEditingController();
   final _invitationController = TextEditingController();
+  final _searchController = TextEditingController();
   bool _isLoading = false;
   bool _editTasksLocal = false;
   bool _isEditing = false;
   bool _categorySaved = false; // Track if category has been saved
   bool _isPrivate = false; // Private flag for categories
   bool _tasksArePrivate = true; // Tasks are private flag for categories
+  bool _isSearching = false; // Track if search is in progress
   Category?
       _currentCategory; // Track the current category (for new categories after creation)
   StreamSubscription<void>? _cacheSubscription;
@@ -82,14 +84,29 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   static const int _initialTaskCount = 12;
   static const int _batchSize = 20;
 
+  // Get unfiltered tasks count for UI decisions
+  int get _unfilteredTaskCount {
+    final allTasks = CacheManager().currentTasks ?? [];
+    final currentCategoryId = widget.category?.id ?? _currentCategory?.id;
+    return allTasks.where((task) => task.categoryId == currentCategoryId).length;
+  }
+
   // Pure UI getter for tasks from the cache
   List<Task> get _tasks {
     final allTasks = CacheManager().currentTasks ?? [];
     final currentCategoryId = widget.category?.id ?? _currentCategory?.id;
 
     // Filter tasks to only show tasks for the current category
-    final tasks =
+    var tasks =
         allTasks.where((task) => task.categoryId == currentCategoryId).toList();
+
+    // Apply search filtering if search query is not empty
+    final searchQuery = _searchController.text.trim().toLowerCase();
+    if (searchQuery.isNotEmpty) {
+      tasks = tasks.where((task) {
+        return task.headline.toLowerCase().contains(searchQuery);
+      }).toList();
+    }
 
     // Always re-sort if the task list has changed (check by length and content)
     bool shouldResort = _cachedSortedTasks == null ||
@@ -289,6 +306,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   void dispose() {
     _headlineController.dispose();
     _invitationController.dispose();
+    _searchController.dispose();
     _cacheSubscription?.cancel();
     // Clear any pending import callbacks
     EditCategoryScreen.onImportComplete = null;
@@ -1655,8 +1673,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     ],
                   ),
                   const SizedBox(height: 0),
-                  // Sorting radio buttons - only show when 5+ tasks
-                  if (_tasks.length >= 5)
+                  // Sorting radio buttons - only show when 5+ tasks (use unfiltered count)
+                  if (_unfilteredTaskCount >= 5)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
@@ -1709,6 +1727,56 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                             // const SizedBox(width: 2),
                             const Text('Age'),
                           ],
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              hintText: 'Search tasks...',
+                              prefixIcon: const Icon(Icons.search, size: 20),
+                              suffixIcon: _isSearching
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(12.0),
+                                      child: SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                    )
+                                  : _searchController.text.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(Icons.clear, size: 20),
+                                          onPressed: () {
+                                            setState(() {
+                                              _searchController.clear();
+                                              _clearTaskCache();
+                                            });
+                                          },
+                                        )
+                                      : null,
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                              border: const OutlineInputBorder(),
+                            ),
+                            onChanged: (value) {
+                              setState(() {
+                                _isSearching = true;
+                                _clearTaskCache();
+                              });
+                              // Show processing indicator briefly
+                              Future.delayed(const Duration(milliseconds: 300), () {
+                                if (mounted) {
+                                  setState(() {
+                                    _isSearching = false;
+                                  });
+                                }
+                              });
+                            },
+                          ),
                         ),
                       ],
                     ),

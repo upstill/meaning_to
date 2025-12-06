@@ -59,6 +59,7 @@ class HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
   bool _isLoadingTask = false;
   String? _error;
+  bool _isReloading = false; // Guard to prevent concurrent reloads
   // Synopsis fetching state
   bool _isFetchingSynopsis = false;
   String? _fetchedSynopsis;
@@ -368,31 +369,65 @@ class HomeScreenState extends State<HomeScreen> {
   /// Smart refresh that can skip database calls when appropriate
   Future<void> _refreshCacheIfNeeded(
       {bool forceDatabaseRefresh = false}) async {
-    final cacheManager = CacheManager();
+    // Guard: Skip if already reloading
+    if (_isReloading) {
+      print('HomeScreen: Reload already in progress, skipping _refreshCacheIfNeeded');
+      return;
+    }
 
-    if (cacheManager.currentCategory?.id != _selectedCategory!.id ||
-        cacheManager.currentTasks == null) {
-      print(
-        'HomeScreen: Refreshing cache for category ${_selectedCategory!.headline}',
-      );
-      await _loadRandomTask(_selectedCategory!);
-    } else {
-      print(
-        'HomeScreen: Cache is up to date for category ${_selectedCategory!.headline}',
-      );
+    _isReloading = true;
+    try {
+      final cacheManager = CacheManager();
+      final currentTaskId = _randomTask?.id;
 
-      if (forceDatabaseRefresh) {
-        // Force refresh from database to ensure we have the latest data
-        await cacheManager.refreshFromApi();
-        print('HomeScreen: Forced database refresh completed');
+      if (cacheManager.currentCategory?.id != _selectedCategory!.id ||
+          cacheManager.currentTasks == null) {
+        print(
+          'HomeScreen: Refreshing cache for category ${_selectedCategory!.headline}',
+        );
+        await _loadRandomTask(_selectedCategory!);
       } else {
-        // Use local cache refresh for better performance
-        cacheManager.refreshLocalCache();
-        print('HomeScreen: Local cache refresh completed');
-      }
+        print(
+          'HomeScreen: Cache is up to date for category ${_selectedCategory!.headline}',
+        );
 
-      // Reload the random task with refreshed data
-      await _loadRandomTask(_selectedCategory!);
+        if (forceDatabaseRefresh) {
+          // Force refresh from database to ensure we have the latest data
+          await cacheManager.refreshFromApi();
+          print('HomeScreen: Forced database refresh completed');
+        } else {
+          // Use local cache refresh for better performance
+          cacheManager.refreshLocalCache();
+          print('HomeScreen: Local cache refresh completed');
+        }
+
+        // Check if the current task still exists before reloading
+        if (currentTaskId != null) {
+          final currentTaskStillExists = cacheManager.currentTasks?.any(
+            (task) => task.id == currentTaskId && !task.finished,
+          ) ?? false;
+
+          if (currentTaskStillExists) {
+            // Current task still exists - just update it in case it was modified
+            final updatedTask = cacheManager.currentTasks!.firstWhere(
+              (task) => task.id == currentTaskId,
+            );
+
+            print('HomeScreen: Current task still valid, keeping it displayed');
+            if (mounted) {
+              setState(() {
+                _randomTask = updatedTask;
+              });
+            }
+            return; // Don't load a new random task
+          }
+        }
+
+        // Only reload the random task if current one doesn't exist or was finished
+        await _loadRandomTask(_selectedCategory!);
+      }
+    } finally {
+      _isReloading = false;
     }
   }
 
@@ -1125,8 +1160,7 @@ class HomeScreenState extends State<HomeScreen> {
               print('HomeScreen: Setting needsTaskReload to true');
               HomeScreen.needsTaskReload.value = true;
             });
-            print('HomeScreen: Directly calling _handleEditComplete');
-            _handleEditComplete();
+            // The listener will call _handleEditComplete(), no need to call it directly
           } else {
             print('HomeScreen: Widget not mounted in post frame callback');
           }
@@ -1193,8 +1227,7 @@ class HomeScreenState extends State<HomeScreen> {
               print('HomeScreen: Setting needsTaskReload to true');
               HomeScreen.needsTaskReload.value = true;
             });
-            print('HomeScreen: Directly calling _handleEditComplete');
-            _handleEditComplete();
+            // The listener will call _handleEditComplete(), no need to call it directly
           } else {
             print('HomeScreen: Widget not mounted in post frame callback');
           }
@@ -1242,8 +1275,7 @@ class HomeScreenState extends State<HomeScreen> {
               print('HomeScreen: Setting needsTaskReload to true');
               HomeScreen.needsTaskReload.value = true;
             });
-            print('HomeScreen: Directly calling _handleCategoryEditComplete');
-            _handleCategoryEditComplete();
+            // The listener will call _handleEditComplete(), no need to call it directly
           } else {
             print('HomeScreen: Widget not mounted in post frame callback');
           }
@@ -1370,8 +1402,17 @@ class HomeScreenState extends State<HomeScreen> {
 
   void _handleEditComplete() async {
     print('HomeScreen: Handling edit complete');
+
+    // Guard: Skip if already reloading
+    if (_isReloading) {
+      print('HomeScreen: Reload already in progress, skipping _handleEditComplete');
+      return;
+    }
+
+    _isReloading = true;
     try {
-      // Store the current selected category before reloading
+      // Store the current task ID before reloading
+      final currentTaskId = _randomTask?.id;
       final previousSelectedCategory = _selectedCategory;
 
       // Reload categories first
@@ -1395,10 +1436,8 @@ class HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      // Then reload task if we have a selected category
+      // Then check if we need to reload the task
       if (_selectedCategory != null) {
-        print('HomeScreen: Loading new random task after category edit...');
-
         // Force a cache refresh by reinitializing with the current category
         final userId = AuthUtils.getCurrentUserId();
         await _cacheManager.initializeWithSavedCategory(
@@ -1409,17 +1448,36 @@ class HomeScreenState extends State<HomeScreen> {
         // Also force refresh from API to ensure we have the latest data
         await _cacheManager.refreshFromApi();
 
-        // Always load a new random task when returning from Edit Category screen
-        // since the category or its tasks might have been modified
+        // Check if the current task still exists and is valid
+        if (currentTaskId != null) {
+          final currentTaskStillExists = _cacheManager.currentTasks?.any(
+            (task) => task.id == currentTaskId && !task.finished,
+          ) ?? false;
+
+          if (currentTaskStillExists) {
+            // Current task still exists - just update it in case it was modified
+            final updatedTask = _cacheManager.currentTasks!.firstWhere(
+              (task) => task.id == currentTaskId,
+            );
+
+            print('HomeScreen: Current task still exists, keeping it displayed');
+            if (mounted) {
+              setState(() {
+                _randomTask = updatedTask;
+              });
+            }
+            return; // Don't load a new random task
+          } else {
+            print('HomeScreen: Current task was deleted or finished, loading new task');
+          }
+        }
+
+        // Only load a new random task if the current one was deleted/finished or doesn't exist
         await _loadRandomTask(_selectedCategory!);
 
         if (mounted) {
           print(
             'HomeScreen: New random task loaded: \'${_randomTask?.headline}\'',
-          );
-          print('HomeScreen: Task finished state: ${_randomTask?.finished}');
-          print(
-            'HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}',
           );
         }
       } else {
@@ -1427,13 +1485,24 @@ class HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       print('HomeScreen: Error handling edit complete: $e');
+    } finally {
+      _isReloading = false;
     }
   }
 
   void _handleCategoryEditComplete() async {
     print('HomeScreen: Handling category edit complete');
+
+    // Guard: Skip if already reloading
+    if (_isReloading) {
+      print('HomeScreen: Reload already in progress, skipping _handleCategoryEditComplete');
+      return;
+    }
+
+    _isReloading = true;
     try {
-      // Store the current selected category before reloading
+      // Store the current task ID before reloading
+      final currentTaskId = _randomTask?.id;
       final previousSelectedCategory = _selectedCategory;
 
       // Reload categories first
@@ -1457,10 +1526,8 @@ class HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      // Then load a new random task if we have a selected category
+      // Then check if we need to reload the task
       if (_selectedCategory != null) {
-        print('HomeScreen: Loading new random task after category edit...');
-
         // Force a cache refresh by reinitializing with the current category
         final userId = AuthUtils.getCurrentUserId();
         await _cacheManager.initializeWithSavedCategory(
@@ -1471,17 +1538,36 @@ class HomeScreenState extends State<HomeScreen> {
         // Also force refresh from API to ensure we have the latest data
         await _cacheManager.refreshFromApi();
 
-        // Always load a new random task when returning from Edit Category screen
-        // since the category or its tasks might have been modified
+        // Check if the current task still exists and is valid
+        if (currentTaskId != null) {
+          final currentTaskStillExists = _cacheManager.currentTasks?.any(
+            (task) => task.id == currentTaskId && !task.finished,
+          ) ?? false;
+
+          if (currentTaskStillExists) {
+            // Current task still exists - just update it in case it was modified
+            final updatedTask = _cacheManager.currentTasks!.firstWhere(
+              (task) => task.id == currentTaskId,
+            );
+
+            print('HomeScreen: Current task still exists, keeping it displayed');
+            if (mounted) {
+              setState(() {
+                _randomTask = updatedTask;
+              });
+            }
+            return; // Don't load a new random task
+          } else {
+            print('HomeScreen: Current task was deleted or finished, loading new task');
+          }
+        }
+
+        // Only load a new random task if the current one was deleted/finished or doesn't exist
         await _loadRandomTask(_selectedCategory!);
 
         if (mounted) {
           print(
             'HomeScreen: New random task loaded: \'${_randomTask?.headline}\'',
-          );
-          print('HomeScreen: Task finished state: ${_randomTask?.finished}');
-          print(
-            'HomeScreen: Task suggestible at: ${_randomTask?.suggestibleAt}',
           );
         }
       } else {
@@ -1489,6 +1575,8 @@ class HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       print('HomeScreen: Error handling category edit complete: $e');
+    } finally {
+      _isReloading = false;
     }
   }
 
