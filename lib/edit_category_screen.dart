@@ -88,7 +88,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   int get _unfilteredTaskCount {
     final allTasks = CacheManager().currentTasks ?? [];
     final currentCategoryId = widget.category?.id ?? _currentCategory?.id;
-    return allTasks.where((task) => task.categoryId == currentCategoryId).length;
+    return allTasks
+        .where((task) => task.categoryId == currentCategoryId)
+        .length;
   }
 
   // Pure UI getter for tasks from the cache
@@ -306,7 +308,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   void dispose() {
     _headlineController.dispose();
     _invitationController.dispose();
-    _searchController.dispose();
     _cacheSubscription?.cancel();
     // Clear any pending import callbacks
     EditCategoryScreen.onImportComplete = null;
@@ -1629,40 +1630,20 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               // Task list section (only for saved categories)
               if (_categorySaved &&
                   (widget.category != null || _currentCategory != null)) ...[
-                // Only show "Current tasks:" header if there are tasks
-                if (widget.category == null
-                    ? _tasks.isNotEmpty
-                    : _tasks.isNotEmpty) ...[
+                // Only show "Current tasks:" header if there are tasks (use unfiltered count)
+                if (_unfilteredTaskCount > 0) ...[
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: Colors.green.withOpacity(0.3),
-                              width: 1,
-                            ),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            widget.category == null
-                                ? _buildNewCategoryTaskCountText()
-                                : _buildTaskCountText(),
-                            style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green),
-                            softWrap: true,
-                            overflow: TextOverflow.visible,
-                          ),
-                        ),
+                      Text(
+                        widget.category == null
+                            ? _buildNewCategoryTaskCountText()
+                            : _buildTaskCountText(),
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green),
                       ),
-                      const SizedBox(width: 8),
                       IconButton(
                         onPressed: _createTask,
                         icon: const Icon(Icons.add),
@@ -1673,11 +1654,12 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     ],
                   ),
                   const SizedBox(height: 0),
-                  // Sorting radio buttons - only show when 5+ tasks (use unfiltered count)
-                  if (_unfilteredTaskCount >= 5)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
+                  // Sorting radio buttons and search box row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: [
+                      // Sorting radio buttons - only show when 5+ tasks (use unfiltered count)
+                      if (_unfilteredTaskCount >= 5) ...[
                         const Text('Sort by: '),
                         const SizedBox(width: 4),
                         Row(
@@ -1729,61 +1711,66 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           ],
                         ),
                         const SizedBox(width: 16),
-                        Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            decoration: InputDecoration(
-                              hintText: 'Search tasks...',
-                              prefixIcon: const Icon(Icons.search, size: 20),
-                              suffixIcon: _isSearching
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(12.0),
-                                      child: SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      ),
-                                    )
-                                  : _searchController.text.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(Icons.clear, size: 20),
-                                          onPressed: () {
-                                            setState(() {
-                                              _searchController.clear();
-                                              _clearTaskCache();
-                                            });
-                                          },
-                                        )
-                                      : null,
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 8,
-                              ),
-                              border: const OutlineInputBorder(),
-                            ),
-                            onChanged: (value) {
-                              setState(() {
-                                _isSearching = true;
-                                _clearTaskCache();
-                              });
-                              // Show processing indicator briefly
-                              Future.delayed(const Duration(milliseconds: 300), () {
-                                if (mounted) {
-                                  setState(() {
-                                    _isSearching = false;
-                                  });
-                                }
-                              });
-                            },
-                          ),
-                        ),
                       ],
-                    ),
+                      // Search box - always show when there are tasks
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: 'Search tasks...',
+                            prefixIcon: const Icon(Icons.search, size: 20),
+                            suffixIcon: _isSearching
+                                ? const Padding(
+                                    padding: EdgeInsets.all(12.0),
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    ),
+                                  )
+                                : _searchController.text.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear, size: 20),
+                                        onPressed: () {
+                                          setState(() {
+                                            _searchController.clear();
+                                            _clearTaskCache();
+                                          });
+                                        },
+                                      )
+                                    : null,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 8,
+                            ),
+                            border: const OutlineInputBorder(),
+                          ),
+                          onChanged: (value) {
+                            setState(() {
+                              _isSearching = true;
+                              _clearTaskCache();
+                            });
+                            // Show processing indicator briefly
+                            Future.delayed(const Duration(milliseconds: 300),
+                                () {
+                              if (mounted) {
+                                setState(() {
+                                  _isSearching = false;
+                                });
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 0),
                 ],
                 const SizedBox(height: 8),
-                if (widget.category == null ? _tasks.isEmpty : _tasks.isEmpty)
+                // Show "No tasks yet" only if there are truly no tasks (unfiltered)
+                if (_unfilteredTaskCount == 0)
                   Center(
                     child: Column(
                       children: [
@@ -1816,6 +1803,39 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           ),
                         ],
                       ],
+                    ),
+                  )
+                // Show "No results" if search has no matches but there are tasks
+                else if (_tasks.isEmpty &&
+                    _searchController.text.trim().isNotEmpty)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          const Icon(
+                            Icons.search_off,
+                            size: 48,
+                            color: Colors.grey,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No results found',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Try a different search term',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   )
                 else

@@ -194,7 +194,7 @@ class LinkToTaskConverter {
       // Parse and normalize
       final uri = Uri.parse(cleanUrl);
 
-      // For TIDAL URLs, remove trailing /u (user tracking parameter)
+      // For TIDAL URLs, remove trailing /u (user tracking parameter) and trailing slashes
       if (uri.host.contains('tidal.com')) {
         String path = uri.path;
         // Remove trailing /u or /u/
@@ -203,6 +203,10 @@ class LinkToTaskConverter {
         } else if (path.endsWith('/u')) {
           path = path.substring(0, path.length - 2);
         }
+        // Remove trailing slash (for consistency - makes normalization idempotent)
+        if (path.endsWith('/') && path.length > 1) {
+          path = path.substring(0, path.length - 1);
+        }
 
         final cleanUri = Uri(
           scheme: uri.scheme,
@@ -210,10 +214,12 @@ class LinkToTaskConverter {
           host: uri.host,
           port: uri.hasPort ? uri.port : null,
           path: path,
-          queryParameters: uri.queryParameters.isNotEmpty ? uri.queryParameters : null,
+          queryParameters:
+              uri.queryParameters.isNotEmpty ? uri.queryParameters : null,
         );
 
-        print('LinkToTaskConverter: Normalized TIDAL URL from "$cleanUrl" to "${cleanUri.toString()}"');
+        print(
+            'LinkToTaskConverter: Normalized TIDAL URL from "$cleanUrl" to "${cleanUri.toString()}"');
         return cleanUri.toString();
       }
 

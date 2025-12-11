@@ -11,14 +11,103 @@ class TidalApiService {
   static DateTime? _tokenExpiry;
   static const String _defaultCountryCode = 'US';
 
+  /// Get TIDAL client ID from build-time env or dotenv
+  static String? get _clientId {
+    // Priority 1: Build-time environment variable (Production)
+    const clientIdFromBuild = String.fromEnvironment('TIDAL_CLIENT_ID');
+    if (clientIdFromBuild.isNotEmpty) {
+      print('TidalApi: Found clientId from build-time environment');
+      return clientIdFromBuild;
+    }
+
+    // Priority 2: Local .env fallback (Development)
+    try {
+      // Debug: Check if dotenv is loaded
+      final allKeys = dotenv.env.keys.toList();
+      print('TidalApi: dotenv loaded with ${allKeys.length} keys');
+      print('TidalApi: Available keys in dotenv: $allKeys');
+
+      // Try to access the key directly to see what happens
+      final directAccess = dotenv.env['TIDAL_CLIENT_ID'];
+      print(
+          'TidalApi: Direct access to dotenv.env[\'TIDAL_CLIENT_ID\']: ${directAccess != null ? "found (${directAccess.length} chars)" : "null"}');
+
+      print('TidalApi: Looking for TIDAL_CLIENT_ID in dotenv...');
+
+      // Check for variations of the key name
+      final clientIdFromDotenv = dotenv.env['TIDAL_CLIENT_ID'] ??
+          dotenv.env['tidal_client_id'] ??
+          dotenv.env['Tidal_Client_Id'];
+
+      if (clientIdFromDotenv != null && clientIdFromDotenv.isNotEmpty) {
+        print('TidalApi: Found clientId from dotenv');
+        return clientIdFromDotenv;
+      } else {
+        print(
+            'TidalApi: clientId not found in dotenv (value: ${clientIdFromDotenv != null ? "empty string" : "null"})');
+        // Debug: Show available keys that contain "tidal" or "client"
+        final relevantKeys = allKeys
+            .where((key) =>
+                key.toLowerCase().contains('tidal') ||
+                key.toLowerCase().contains('client'))
+            .toList();
+        if (relevantKeys.isNotEmpty) {
+          print(
+              'TidalApi: Available keys containing "tidal" or "client": $relevantKeys');
+        }
+      }
+    } catch (e) {
+      print('TidalApi: Error accessing dotenv for clientId: $e');
+      return null;
+    }
+    return null;
+  }
+
+  /// Get TIDAL client secret from build-time env or dotenv
+  static String? get _clientSecret {
+    // Priority 1: Build-time environment variable (Production)
+    const clientSecretFromBuild = String.fromEnvironment('TIDAL_CLIENT_SECRET');
+    if (clientSecretFromBuild.isNotEmpty) {
+      print('TidalApi: Found clientSecret from build-time environment');
+      return clientSecretFromBuild;
+    }
+
+    // Priority 2: Local .env fallback (Development)
+    try {
+      print('TidalApi: Looking for TIDAL_CLIENT_SECRET in dotenv...');
+
+      // Check for variations of the key name
+      final clientSecretFromDotenv = dotenv.env['TIDAL_CLIENT_SECRET'] ??
+          dotenv.env['tidal_client_secret'] ??
+          dotenv.env['Tidal_Client_Secret'];
+
+      if (clientSecretFromDotenv != null && clientSecretFromDotenv.isNotEmpty) {
+        print('TidalApi: Found clientSecret from dotenv');
+        return clientSecretFromDotenv;
+      } else {
+        print(
+            'TidalApi: clientSecret not found in dotenv (value: ${clientSecretFromDotenv != null ? "empty string" : "null"})');
+      }
+    } catch (e) {
+      print('TidalApi: Error accessing dotenv for clientSecret: $e');
+      return null;
+    }
+    return null;
+  }
+
   /// Check if Tidal API credentials are available
   static bool get isAvailable {
-    final clientId = dotenv.env['TIDAL_CLIENT_ID'];
-    final clientSecret = dotenv.env['TIDAL_CLIENT_SECRET'];
-    return clientId != null &&
+    final clientId = _clientId;
+    final clientSecret = _clientSecret;
+    final available = clientId != null &&
         clientId.isNotEmpty &&
         clientSecret != null &&
         clientSecret.isNotEmpty;
+    if (!available) {
+      print(
+          'TidalApi: Credentials check - clientId: ${clientId != null ? "present" : "null"}, clientSecret: ${clientSecret != null ? "present" : "null"}');
+    }
+    return available;
   }
 
   /// Get or refresh access token using Client Credentials flow
@@ -31,11 +120,12 @@ class TidalApiService {
     }
 
     try {
-      final clientId = dotenv.env['TIDAL_CLIENT_ID'];
-      final clientSecret = dotenv.env['TIDAL_CLIENT_SECRET'];
+      final clientId = _clientId;
+      final clientSecret = _clientSecret;
 
       if (clientId == null || clientSecret == null) {
-        print('TidalApi: Missing credentials in .env file');
+        print(
+            'TidalApi: Missing credentials (checked build-time env and dotenv)');
         return null;
       }
 
