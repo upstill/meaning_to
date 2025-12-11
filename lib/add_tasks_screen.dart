@@ -320,9 +320,9 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     // Show the existing CategoryPickerDialog with optional checkbox
     await CategoryPickerDialog.show(
       context,
-      title: 'Choose Category',
+      title: 'Choose ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
       subtitle: linkText != null
-          ? 'Select a category for "$linkText"'
+          ? 'Select a ${NamingUtils.categoriesName(capitalize: false, plural: false)} for "$linkText"'
           : null,
       suggestedCategoryIds: suggestedOriginalIds,
       linkUrl: linkUrl,

@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' as foundation;
+import 'package:flutter/services.dart';
 import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/forgot_password_screen.dart';
 import 'package:meaning_to/reset_password_screen.dart';
 import 'package:meaning_to/auth_verification_screen.dart';
-import 'package:meaning_to/auth_otp_verification_screen.dart';
 import 'package:meaning_to/password_reset_request_screen.dart';
 import 'package:meaning_to/password_reset_otp_screen.dart';
 import 'package:meaning_to/password_reset_new_screen.dart';
 import 'package:meaning_to/letterboxd_import_screen.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
+import 'dart:io';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/new_category_screen.dart';
@@ -57,10 +58,110 @@ void main() async {
 
     // Load environment variables
     try {
+      // Debug: Try to read the .env file directly first
+      try {
+        final currentDir = Directory.current;
+        print('DEBUG: Current working directory: ${currentDir.path}');
+        final envFile = File('.env');
+        final absolutePath = envFile.absolute.path;
+        print('DEBUG: Looking for .env at: $absolutePath');
+
+        if (await envFile.exists()) {
+          final contents = await envFile.readAsString();
+          final lines = contents.split('\n');
+          print('DEBUG: .env file exists, ${lines.length} total lines');
+          print('DEBUG: File size: ${contents.length} bytes');
+
+          // Show all lines that contain TIDAL or SUPABASE
+          print('DEBUG: Lines containing TIDAL or SUPABASE:');
+          for (int i = 0; i < lines.length; i++) {
+            final line = lines[i].trim();
+            if (line.contains('TIDAL') || line.contains('SUPABASE')) {
+              print('  Line ${i + 1}: $line');
+            }
+          }
+
+          // Check for TIDAL keys in raw file
+          final hasTidalId = contents.contains('TIDAL_CLIENT_ID');
+          final hasTidalSecret = contents.contains('TIDAL_CLIENT_SECRET');
+          print('DEBUG: Raw file contains TIDAL_CLIENT_ID: $hasTidalId');
+          print(
+              'DEBUG: Raw file contains TIDAL_CLIENT_SECRET: $hasTidalSecret');
+
+          // Try to manually parse TIDAL keys
+          final tidalIdMatch =
+              RegExp(r'^TIDAL_CLIENT_ID=(.+)$', multiLine: true)
+                  .firstMatch(contents);
+          final tidalSecretMatch =
+              RegExp(r'^TIDAL_CLIENT_SECRET=(.+)$', multiLine: true)
+                  .firstMatch(contents);
+          if (tidalIdMatch != null) {
+            print(
+                'DEBUG: Manually parsed TIDAL_CLIENT_ID: ${tidalIdMatch.group(1)?.trim()}');
+          }
+          if (tidalSecretMatch != null) {
+            print(
+                'DEBUG: Manually parsed TIDAL_CLIENT_SECRET: ${tidalSecretMatch.group(1)?.trim()}');
+          }
+        } else {
+          print('DEBUG: .env file does NOT exist at: $absolutePath');
+          // Try to find .env files
+          final envFiles = await currentDir
+              .list()
+              .where((entity) => entity.path.contains('.env'))
+              .toList();
+          print(
+              'DEBUG: Found .env files: ${envFiles.map((e) => e.path).toList()}');
+        }
+      } catch (e, stackTrace) {
+        print('DEBUG: Error reading .env file directly: $e');
+        print('DEBUG: Stack trace: $stackTrace');
+      }
+
+      // On web, try to read the bundled .env asset to see what's actually included
+      if (foundation.kIsWeb) {
+        try {
+          final bundledEnv = await rootBundle.loadString('.env');
+          final bundledLines = bundledEnv.split('\n');
+          print('DEBUG: Bundled .env file has ${bundledLines.length} lines');
+          print('DEBUG: Bundled .env file size: ${bundledEnv.length} bytes');
+          print('DEBUG: ALL lines in bundled .env file:');
+          for (int i = 0; i < bundledLines.length; i++) {
+            final line = bundledLines[i];
+            // Show first 100 chars of each line to avoid printing huge values
+            final preview =
+                line.length > 100 ? '${line.substring(0, 100)}...' : line;
+            print('  Line ${i + 1} (${line.length} chars): $preview');
+          }
+          // Check for TIDAL keys in bundled file
+          final hasTidalId = bundledEnv.contains('TIDAL_CLIENT_ID');
+          final hasTidalSecret = bundledEnv.contains('TIDAL_CLIENT_SECRET');
+          print('DEBUG: Bundled file contains TIDAL_CLIENT_ID: $hasTidalId');
+          print(
+              'DEBUG: Bundled file contains TIDAL_CLIENT_SECRET: $hasTidalSecret');
+        } catch (e) {
+          print('DEBUG: Error reading bundled .env asset: $e');
+        }
+      }
+
       await dotenv.load(fileName: '.env');
-      print('Environment variables loaded successfully');
-    } catch (e) {
+      final loadedKeys = dotenv.env.keys.toList();
+      print('Environment variables loaded successfully from .env');
+      print('Loaded ${loadedKeys.length} keys: $loadedKeys');
+
+      // Debug: Check for specific keys we expect
+      print('Checking for expected keys:');
+      print(
+          '  TIDAL_CLIENT_ID: ${dotenv.env['TIDAL_CLIENT_ID'] != null ? "FOUND (value length: ${dotenv.env['TIDAL_CLIENT_ID']!.length})" : "NOT FOUND"}');
+      print(
+          '  TIDAL_CLIENT_SECRET: ${dotenv.env['TIDAL_CLIENT_SECRET'] != null ? "FOUND (value length: ${dotenv.env['TIDAL_CLIENT_SECRET']!.length})" : "NOT FOUND"}');
+      print(
+          '  SPOTIFY_CLIENT_ID: ${dotenv.env['SPOTIFY_CLIENT_ID'] != null ? "FOUND" : "NOT FOUND"}');
+      print(
+          '  OMDB_API_KEY: ${dotenv.env['OMDB_API_KEY'] != null ? "FOUND" : "NOT FOUND"}');
+    } catch (e, stackTrace) {
       print('Warning: Could not load .env file: $e');
+      print('Stack trace: $stackTrace');
       // Continue without .env file - app should still work with hardcoded values
     }
 
@@ -186,6 +287,27 @@ class _MyAppState extends State<MyApp> {
       print('Data: $data');
       print('=====================\n');
     }
+
+    // Show a snackbar to report the intent to the user
+    // if (mounted) {
+    //   _scaffoldKey.currentState?.showSnackBar(
+    //     SnackBar(
+    //       content: Text('Received $type intent'),
+    //       duration: const Duration(seconds: 3),
+    //       action: SnackBarAction(
+    //         label: 'Details',
+    //         onPressed: () {
+    //           _shareHandler.showDetailsDialog(
+    //             MyApp.navigatorKey.currentContext!,
+    //             type,
+    //             data,
+    //             timestamp,
+    //           );
+    //         },
+    //       ),
+    //     ),
+    //   );
+    // }
   }
 
   @override
@@ -333,7 +455,7 @@ class _MyAppState extends State<MyApp> {
         }
       }
 
-      // Handle auth deep links (password reset)
+      // Handle email confirmation links
       if (uri.scheme == 'meaningto' && uri.host == 'auth') {
         print('Processing auth deep link');
 
@@ -355,10 +477,60 @@ class _MyAppState extends State<MyApp> {
           return;
         }
 
-        // Unknown auth deep link - navigate to auth screen
-        print('Unknown auth deep link - navigating to auth');
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/auth');
+        // Check if this is an email confirmation link
+        if (uri.path.contains('confirm') ||
+            uri.queryParameters.containsKey('token')) {
+          print('Email confirmation link detected');
+
+          // Extract token and email from query parameters
+          final token = uri.queryParameters['token'];
+          final email = uri.queryParameters['email'];
+
+          if (token != null) {
+            print('Processing email confirmation with token');
+
+            // Try to confirm the email and sign in the user
+            try {
+              final response = await Supabase.instance.client.auth.verifyOTP(
+                email: email ?? '',
+                token: token,
+                type: OtpType.signup,
+              );
+
+              if (response.user != null && response.session != null) {
+                print('Email confirmation successful, user signed in');
+
+                // Navigate to home screen
+                if (mounted) {
+                  Navigator.pushReplacementNamed(context, '/home');
+                }
+              } else {
+                print('Email confirmation failed - no user or session');
+                // Navigate to auth screen with error
+                if (mounted) {
+                  Navigator.pushReplacementNamed(context, '/auth');
+                }
+              }
+            } catch (e) {
+              print('Error confirming email: $e');
+              // Navigate to auth screen with error
+              if (mounted) {
+                Navigator.pushReplacementNamed(context, '/auth');
+              }
+            }
+          } else {
+            print('No token found in confirmation link');
+            // Navigate to auth screen
+            if (mounted) {
+              Navigator.pushReplacementNamed(context, '/auth');
+            }
+          }
+        } else {
+          print('Auth deep link but not confirmation - navigating to auth');
+          // Navigate to auth screen
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/auth');
+          }
         }
       } else {
         print('Unknown deep link format - ignoring');
@@ -526,12 +698,6 @@ class _MyAppState extends State<MyApp> {
                   redirectTo: args?['redirect_to'] as String?,
                 ),
               );
-            case '/auth/verify-otp':
-              final args = settings.arguments as Map<String, String>;
-              return MaterialPageRoute(
-                builder: (context) => const AuthOtpVerificationScreen(),
-                settings: settings,
-              );
             case '/auth/callback':
               print('Main: OAuth callback route detected');
               // Return a loading screen that will handle the OAuth callback
@@ -539,6 +705,14 @@ class _MyAppState extends State<MyApp> {
                 builder: (context) => const SplashScreen(),
               );
 
+            case '/email-confirmation':
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => AuthVerificationScreen(
+                  token: args['token'] as String?,
+                  type: args['type'] as String?,
+                ),
+              );
             case '/password-reset-request':
               return MaterialPageRoute(
                 builder: (context) => const PasswordResetRequestScreen(),

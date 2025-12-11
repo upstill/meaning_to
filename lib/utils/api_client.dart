@@ -70,6 +70,39 @@ class ApiClient {
     }
   }
 
+  /// Search tasks by headline using Postgres ILIKE for case-insensitive partial matching
+  /// Returns all tasks where the headline contains the search query (case-insensitive)
+  static Future<List<Task>> searchTasksByHeadline(String searchQuery) async {
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+
+      // Escape special ILIKE characters (% and _) in the user's query
+      // These are wildcards in ILIKE, so we need to escape them to treat them as literals
+      final escapedQuery = searchQuery
+          .replaceAll('\\', '\\\\') // Escape backslashes first
+          .replaceAll('%', '\\%') // Escape percent signs
+          .replaceAll('_', '\\_'); // Escape underscores
+
+      // Use ILIKE with wildcard pattern for partial matching
+      // %query% means "contains query" (case-insensitive)
+      final pattern = '%$escapedQuery%';
+
+      final response = await _supabase
+          .from('Tasks')
+          .select('*')
+          .eq('owner_id', userId)
+          .ilike('headline', pattern)
+          .order('created_at', ascending: false);
+
+      return (response as List)
+          .map((taskData) => Task.fromJson(taskData))
+          .toList();
+    } catch (e) {
+      print('Error searching tasks by headline: $e');
+      rethrow;
+    }
+  }
+
   static Future<Task> updateTask(
       String taskId, Map<String, dynamic> updates) async {
     try {
@@ -395,7 +428,8 @@ class ApiClient {
           candidates = (response as List)
               .map((data) => Task.fromJson(data as Map<String, dynamic>))
               .toList();
-          print('  ✓ Postgres function returned ${candidates.length} candidate(s)');
+          print(
+              '  ✓ Postgres function returned ${candidates.length} candidate(s)');
         } else {
           print('  Postgres function returned no candidates');
         }
@@ -442,7 +476,8 @@ class ApiClient {
             final taskLinks = taskData['links'] as List<dynamic>?;
             if (taskLinks != null) {
               for (final taskLink in taskLinks) {
-                final taskUrl = _extractUrlFromLink(taskLink.toString())?.toLowerCase();
+                final taskUrl =
+                    _extractUrlFromLink(taskLink.toString())?.toLowerCase();
                 if (taskUrl != null && searchUrls.contains(taskUrl)) {
                   final cleanTaskData = Map<String, dynamic>.from(taskData);
                   cleanTaskData.remove('Categories');

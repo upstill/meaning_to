@@ -11,6 +11,8 @@ import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/performance_monitor_screen.dart';
+import 'package:meaning_to/find_screen.dart';
+import 'package:meaning_to/verify_links_screen.dart';
 import 'package:meaning_to/dialogs/task_created_dialog.dart';
 import 'dart:async';
 
@@ -89,17 +91,65 @@ class HomeScreenState extends State<HomeScreen> {
     // Debug button - only show in debug mode
     if (foundation.kDebugMode) {
       actions.add(
-        IconButton(
+        PopupMenuButton<String>(
           icon: const Icon(Icons.analytics),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const PerformanceMonitorScreen(),
-              ),
-            );
+          tooltip: 'Debug Tools',
+          onSelected: (value) {
+            if (value == 'performance') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PerformanceMonitorScreen(),
+                ),
+              );
+            } else if (value == 'find') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const FindScreen(),
+                ),
+              );
+            } else if (value == 'verify_links') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const VerifyLinksScreen(),
+                ),
+              );
+            }
           },
-          tooltip: 'Performance Monitor',
+          itemBuilder: (BuildContext context) => [
+            const PopupMenuItem<String>(
+              value: 'performance',
+              child: Row(
+                children: [
+                  Icon(Icons.speed, size: 20),
+                  SizedBox(width: 8),
+                  Text('Performance Monitor'),
+                ],
+              ),
+            ),
+            const PopupMenuItem<String>(
+              value: 'find',
+              child: Row(
+                children: [
+                  Icon(Icons.search, size: 20),
+                  SizedBox(width: 8),
+                  Text('Find Tasks'),
+                ],
+              ),
+            ),
+            const PopupMenuItem<String>(
+              value: 'verify_links',
+              child: Row(
+                children: [
+                  Icon(Icons.link, size: 20),
+                  SizedBox(width: 8),
+                  Text('Verify Links'),
+                ],
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -163,7 +213,8 @@ class HomeScreenState extends State<HomeScreen> {
           .eq('owner_id', userId)
           .order('id', ascending: false);
 
-      final tasks = (response as List).map((json) => Task.fromJson(json)).toList();
+      final tasks =
+          (response as List).map((json) => Task.fromJson(json)).toList();
 
       print('DEBUG: Found ${tasks.length} total tasks to check');
 
@@ -198,15 +249,18 @@ class HomeScreenState extends State<HomeScreen> {
             print('DEBUG: Normalized URL: $normalizedUrl');
 
             // Process the normalized URL to create HTML link
-            final processedLink = await LinkProcessor.validateAndProcessLink(normalizedUrl);
-            final htmlLink = '<a href="${processedLink.url}">${processedLink.title ?? processedLink.url}</a>';
+            final processedLink =
+                await LinkProcessor.validateAndProcessLink(normalizedUrl);
+            final htmlLink =
+                '<a href="${processedLink.url}">${processedLink.title ?? processedLink.url}</a>';
 
             print('DEBUG: Converted to: $htmlLink');
             updatedLinks.add(htmlLink);
             modified = true;
             linksFixed++;
           } else {
-            print('DEBUG: Link is already HTML formatted, checking if URL needs normalization');
+            print(
+                'DEBUG: Link is already HTML formatted, checking if URL needs normalization');
 
             // Extract URL from HTML link
             final urlMatch = RegExp(r'href="([^"]+)"').firstMatch(link);
@@ -215,7 +269,8 @@ class HomeScreenState extends State<HomeScreen> {
               print('DEBUG: Extracted URL: $originalUrl');
 
               // Normalize the URL
-              final normalizedUrl = LinkToTaskConverter.normalizeUrl(originalUrl);
+              final normalizedUrl =
+                  LinkToTaskConverter.normalizeUrl(originalUrl);
               print('DEBUG: Normalized URL: $normalizedUrl');
 
               // Check if URL changed after normalization
@@ -248,13 +303,13 @@ class HomeScreenState extends State<HomeScreen> {
           // Update the task in the database
           await supabase
               .from('Tasks')
-              .update({'links': updatedLinks})
-              .eq('id', task.id);
+              .update({'links': updatedLinks}).eq('id', task.id);
 
           print('DEBUG: Task ${task.id} updated successfully');
           tasksModified++;
         } else {
-          print('DEBUG: No raw URLs found in task ${task.id}, continuing to next task');
+          print(
+              'DEBUG: No raw URLs found in task ${task.id}, continuing to next task');
         }
       }
 
@@ -265,7 +320,8 @@ class HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Fixed $linksFixed raw URLs across $tasksModified tasks'),
+            content:
+                Text('Fixed $linksFixed raw URLs across $tasksModified tasks'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 5),
           ),
@@ -371,7 +427,8 @@ class HomeScreenState extends State<HomeScreen> {
       {bool forceDatabaseRefresh = false}) async {
     // Guard: Skip if already reloading
     if (_isReloading) {
-      print('HomeScreen: Reload already in progress, skipping _refreshCacheIfNeeded');
+      print(
+          'HomeScreen: Reload already in progress, skipping _refreshCacheIfNeeded');
       return;
     }
 
@@ -404,8 +461,9 @@ class HomeScreenState extends State<HomeScreen> {
         // Check if the current task still exists before reloading
         if (currentTaskId != null) {
           final currentTaskStillExists = cacheManager.currentTasks?.any(
-            (task) => task.id == currentTaskId && !task.finished,
-          ) ?? false;
+                (task) => task.id == currentTaskId && !task.finished,
+              ) ??
+              false;
 
           if (currentTaskStillExists) {
             // Current task still exists - just update it in case it was modified
@@ -1405,7 +1463,8 @@ class HomeScreenState extends State<HomeScreen> {
 
     // Guard: Skip if already reloading
     if (_isReloading) {
-      print('HomeScreen: Reload already in progress, skipping _handleEditComplete');
+      print(
+          'HomeScreen: Reload already in progress, skipping _handleEditComplete');
       return;
     }
 
@@ -1451,8 +1510,9 @@ class HomeScreenState extends State<HomeScreen> {
         // Check if the current task still exists and is valid
         if (currentTaskId != null) {
           final currentTaskStillExists = _cacheManager.currentTasks?.any(
-            (task) => task.id == currentTaskId && !task.finished,
-          ) ?? false;
+                (task) => task.id == currentTaskId && !task.finished,
+              ) ??
+              false;
 
           if (currentTaskStillExists) {
             // Current task still exists - just update it in case it was modified
@@ -1460,7 +1520,8 @@ class HomeScreenState extends State<HomeScreen> {
               (task) => task.id == currentTaskId,
             );
 
-            print('HomeScreen: Current task still exists, keeping it displayed');
+            print(
+                'HomeScreen: Current task still exists, keeping it displayed');
             if (mounted) {
               setState(() {
                 _randomTask = updatedTask;
@@ -1468,7 +1529,8 @@ class HomeScreenState extends State<HomeScreen> {
             }
             return; // Don't load a new random task
           } else {
-            print('HomeScreen: Current task was deleted or finished, loading new task');
+            print(
+                'HomeScreen: Current task was deleted or finished, loading new task');
           }
         }
 
@@ -1495,7 +1557,8 @@ class HomeScreenState extends State<HomeScreen> {
 
     // Guard: Skip if already reloading
     if (_isReloading) {
-      print('HomeScreen: Reload already in progress, skipping _handleCategoryEditComplete');
+      print(
+          'HomeScreen: Reload already in progress, skipping _handleCategoryEditComplete');
       return;
     }
 
@@ -1541,8 +1604,9 @@ class HomeScreenState extends State<HomeScreen> {
         // Check if the current task still exists and is valid
         if (currentTaskId != null) {
           final currentTaskStillExists = _cacheManager.currentTasks?.any(
-            (task) => task.id == currentTaskId && !task.finished,
-          ) ?? false;
+                (task) => task.id == currentTaskId && !task.finished,
+              ) ??
+              false;
 
           if (currentTaskStillExists) {
             // Current task still exists - just update it in case it was modified
@@ -1550,7 +1614,8 @@ class HomeScreenState extends State<HomeScreen> {
               (task) => task.id == currentTaskId,
             );
 
-            print('HomeScreen: Current task still exists, keeping it displayed');
+            print(
+                'HomeScreen: Current task still exists, keeping it displayed');
             if (mounted) {
               setState(() {
                 _randomTask = updatedTask;
@@ -1558,7 +1623,8 @@ class HomeScreenState extends State<HomeScreen> {
             }
             return; // Don't load a new random task
           } else {
-            print('HomeScreen: Current task was deleted or finished, loading new task');
+            print(
+                'HomeScreen: Current task was deleted or finished, loading new task');
           }
         }
 
@@ -1620,6 +1686,21 @@ class HomeScreenState extends State<HomeScreen> {
         _randomTask!.links!.isNotEmpty;
   }
 
+  /// Preprocess notes text for HTML rendering
+  /// Converts plain text newlines to HTML <br> tags if text doesn't already contain HTML
+  String _preprocessNotesForHtml(String notes) {
+    // Check if the text already contains HTML tags
+    final hasHtmlTags = RegExp(r'<[^>]+>').hasMatch(notes);
+
+    if (hasHtmlTags) {
+      // Already has HTML, return as-is
+      return notes;
+    }
+
+    // Plain text - convert newlines to <br> tags
+    return notes.replaceAll('\n', '<br>');
+  }
+
   @override
   Widget build(BuildContext context) {
     // Check if data was modified after this frame completes
@@ -1648,669 +1729,683 @@ class HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-            if (_isLoading)
-              const Center(child: CircularProgressIndicator())
-            else if (_error != null)
-              Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
-                    const SizedBox(height: 16),
-                    Text(
-                      _error!,
-                      style: const TextStyle(fontSize: 16),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        _loadCategories();
-                        if (_selectedCategory != null) {
-                          _loadRandomTask(_selectedCategory!);
-                        }
-                      },
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Try Again'),
-                    ),
-                  ],
-                ),
-              )
-            else if (_categories.isEmpty)
-              Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.info_outline,
-                        size: 48, color: Colors.grey),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No ${NamingUtils.categoriesName(plural: true)} available',
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w600),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      AuthUtils.isGuestUser()
-                          ? 'Guest users can only view demo data. Sign up/in to create your own ${NamingUtils.categoriesName()}.'
-                          : '',
-                      style: const TextStyle(fontSize: 14, color: Colors.grey),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    if (AuthUtils.isGuestUser())
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.pushNamed(context, '/auth');
-                              },
-                              icon: const Icon(Icons.login),
-                              label: const Text('Sign In'),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.pushNamed(context, '/auth');
-                              },
-                              icon: const Icon(Icons.person_add),
-                              label: const Text('Sign Up'),
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      ElevatedButton.icon(
-                        onPressed: _navigateToNewCategory,
-                        icon: const Icon(Icons.add),
-                        label: Text(
-                            'Define ${NamingUtils.categoriesName(plural: false, withArticle: true)} to get started'),
-                        style: AppButtons.finalize(),
-                      ),
-                  ],
-                ),
-              )
-            else
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+              if (_isLoading)
+                const Center(child: CircularProgressIndicator())
+              else if (_error != null)
+                Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Expanded(
-                        child: _categories.length == 1
-                            ? Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 14,
-                                  horizontal: 12,
-                                ),
-                                child: Text(
-                                  '...${_categories.first.headline}',
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1A237E),
-                                  ),
-                                ),
-                              )
-                            : DropdownButtonFormField<Category>(
-                                initialValue: _selectedCategory,
-                                // Must be >= kMinInteractiveDimension (48)
-                                itemHeight: 48.0,
-                                isExpanded: true,
-                                style: const TextStyle(
-                                    fontSize:
-                                        20), // Increased by 8 points from default 12
-                                decoration: InputDecoration(
-                                  border: const OutlineInputBorder(),
-                                  hintText:
-                                      'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false, withArticle: true)}',
-                                  isDense: false,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                    horizontal: 12,
-                                  ),
-                                ),
-                                selectedItemBuilder: (context) => _categories
-                                    .map((category) => Text(
-                                          '...${category.headline}',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 18,
-                                            height: 1.0,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF1A237E),
-                                          ),
-                                        ))
-                                    .toList(),
-                                items: _categories.map((category) {
-                                  return DropdownMenuItem(
-                                    value: category,
-                                    child: Text(
-                                      '...${category.headline}',
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        height: 0.95,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1A237E),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                                onChanged: (Category? newValue) async {
-                                  setState(() {
-                                    _selectedCategory = newValue;
-                                    _randomTask =
-                                        null; // Clear the current task
-                                  });
-                                  if (newValue != null) {
-                                    // Update last_access timestamp when category is selected
-                                    await _updateCategoryLastAccess(newValue);
-                                    _loadRandomTask(newValue);
-                                  }
-                                },
-                              ),
+                      const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
+                      const SizedBox(height: 16),
+                      Text(
+                        _error!,
+                        style: const TextStyle(fontSize: 16),
+                        textAlign: TextAlign.center,
                       ),
-                      // Info, Share, and Edit buttons moved to bottom right
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          _loadCategories();
+                          if (_selectedCategory != null) {
+                            _loadRandomTask(_selectedCategory!);
+                          }
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Try Again'),
+                      ),
                     ],
                   ),
-                  if (_selectedCategory != null) ...[
-                    const SizedBox(height: 12),
-                    // Debug info (commented out)
-                    // Text('Selected Category: ${_selectedCategory!.headline}'),
-                    // Text('Loading Task: $_isLoadingTask'),
-                    // Text('Random Task: ${_randomTask?.headline ?? "null"}'),
-                    // Text('Error: ${_error ?? "none"}'),
-                    if (_isLoadingTask)
-                      const Center(child: CircularProgressIndicator())
-                    else if (_randomTask != null)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 14),
-                          SizedBox(
-                            width: MediaQuery.of(context).size.width - 32,
-                            child: Card(
-                              key: ValueKey(
-                                'task_${_randomTask!.id}_${_randomTask!.headline}',
-                              ),
-                              child: Stack(
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      16,
-                                      16,
-                                      16,
-                                      0,
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Expanded(
-                                              child: GestureDetector(
-                                                onTap: () =>
-                                                    _navigateToEditTask(
-                                                  _randomTask!,
-                                                ),
-                                                child: Text(
-                                                  _randomTask!.headline,
-                                                  style: Theme.of(context)
-                                                      .textTheme
-                                                      .bodyLarge
-                                                      ?.copyWith(
-                                                        fontSize: (Theme.of(
-                                                                        context)
-                                                                    .textTheme
-                                                                    .bodyLarge
-                                                                    ?.fontSize ??
-                                                                16) +
-                                                            10,
-                                                        fontWeight: _randomTask!
-                                                                        .suggestibleAt ==
-                                                                    null ||
-                                                                !_randomTask!
-                                                                    .suggestibleAt!
-                                                                    .isAfter(
-                                                                  DateTime
-                                                                      .now(),
-                                                                )
-                                                            ? FontWeight.bold
-                                                            : FontWeight.normal,
-                                                        color: _randomTask!
-                                                                        .suggestibleAt !=
-                                                                    null &&
-                                                                _randomTask!
-                                                                    .suggestibleAt!
-                                                                    .isAfter(
-                                                                  DateTime
-                                                                      .now(),
-                                                                )
-                                                            ? Colors.grey
-                                                            : null,
-                                                      ),
-                                                ),
-                                              ),
-                                            ),
-                                            if (!AuthUtils.isGuestUser()) ...[
-                                              const SizedBox(width: 8),
-                                              GestureDetector(
-                                                onTap: () =>
-                                                    _navigateToEditTask(
-                                                  _randomTask!,
-                                                ),
-                                                child: Icon(
-                                                  Icons.edit,
-                                                  size: 20,
-                                                  color: Theme.of(
-                                                    context,
-                                                  ).colorScheme.primary,
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                        if (_randomTask!.finished) ...[
-                                          const SizedBox(width: 8),
-                                          const Icon(
-                                            Icons.check_circle,
-                                            color: Colors.green,
-                                            size: 28,
-                                          ),
-                                        ],
-                                        // Show notes if they exist (user-entered content)
-                                        if (_randomTask!.notes != null &&
-                                            _randomTask!.notes!.isNotEmpty) ...[
-                                          const SizedBox(height: 8),
-                                          Html(
-                                            data: _randomTask!.notes!,
-                                            style: {
-                                              "body": Style(
-                                                fontSize: FontSize(
-                                                  Theme.of(context)
-                                                          .textTheme
-                                                          .bodyMedium
-                                                          ?.fontSize ??
-                                                      14,
-                                                ),
-                                                color: _randomTask!
-                                                                .suggestibleAt !=
-                                                            null &&
-                                                        _randomTask!
-                                                            .suggestibleAt!
-                                                            .isAfter(
-                                                                DateTime.now())
-                                                    ? Colors.grey
-                                                    : Theme.of(context)
-                                                        .textTheme
-                                                        .bodyMedium
-                                                        ?.color,
-                                                margin: Margins.zero,
-                                                padding: HtmlPaddings.zero,
-                                              ),
-                                              "a": Style(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .primary,
-                                                textDecoration:
-                                                    TextDecoration.underline,
-                                              ),
-                                            },
-                                            onLinkTap: (url, htmlContext,
-                                                attributes) async {
-                                              if (url != null) {
-                                                try {
-                                                  final uri = Uri.parse(url);
-                                                  if (await canLaunchUrl(uri)) {
-                                                    await launchUrl(uri,
-                                                        mode: LaunchMode
-                                                            .externalApplication);
-                                                  }
-                                                } catch (e) {
-                                                  // Error handling without verbose logging
-                                                }
-                                              }
-                                            },
-                                          ),
-                                        ],
-                                        // Show synopsis if it exists (auto-fetched or stored)
-                                        if ((_randomTask!.synopsis != null &&
-                                                _randomTask!
-                                                    .synopsis!.isNotEmpty) ||
-                                            (_fetchedSynopsis != null &&
-                                                _fetchedSynopsis!
-                                                    .isNotEmpty)) ...[
-                                          const SizedBox(height: 8),
-                                          Html(
-                                            data: _fetchedSynopsis ??
-                                                _randomTask!.synopsis ??
-                                                '',
-                                            style: {
-                                              "body": Style(
-                                                fontSize: FontSize(
-                                                  Theme.of(context)
-                                                          .textTheme
-                                                          .bodyMedium
-                                                          ?.fontSize ??
-                                                      14,
-                                                ),
-                                                fontStyle: FontStyle.italic,
-                                                color: _randomTask!
-                                                                .suggestibleAt !=
-                                                            null &&
-                                                        _randomTask!
-                                                            .suggestibleAt!
-                                                            .isAfter(
-                                                                DateTime.now())
-                                                    ? Colors.grey
-                                                    : Theme.of(context)
-                                                        .textTheme
-                                                        .bodyMedium
-                                                        ?.color,
-                                                margin: Margins.zero,
-                                                padding: HtmlPaddings.zero,
-                                              ),
-                                              "a": Style(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .primary,
-                                                textDecoration:
-                                                    TextDecoration.underline,
-                                                fontStyle: FontStyle.italic,
-                                              ),
-                                            },
-                                            onLinkTap: (url, htmlContext,
-                                                attributes) async {
-                                              if (url != null) {
-                                                try {
-                                                  final uri = Uri.parse(url);
-                                                  if (await canLaunchUrl(uri)) {
-                                                    await launchUrl(uri,
-                                                        mode: LaunchMode
-                                                            .externalApplication);
-                                                  }
-                                                } catch (e) {
-                                                  // Error handling without verbose logging
-                                                }
-                                              }
-                                            },
-                                          ),
-                                        ],
-                                        // Show loading indicator if fetching synopsis
-                                        if (_isFetchingSynopsis) ...[
-                                          const SizedBox(height: 8),
-                                          Row(
-                                            children: [
-                                              const SizedBox(
-                                                width: 16,
-                                                height: 16,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                        strokeWidth: 2),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                'Fetching description...',
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .bodySmall
-                                                    ?.copyWith(
-                                                      fontStyle:
-                                                          FontStyle.italic,
-                                                      color: Colors.grey[600],
-                                                    ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                        if (_randomTask!.links != null &&
-                                            _randomTask!.links!.isNotEmpty) ...[
-                                          /* if (_randomTask!.notes != null)
-                                            const SizedBox(height: 16)
-                                          else
-                                           */
-                                          const SizedBox(height: 14),
-                                          Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: _randomTask!.links!
-                                                .map((link) => Padding(
-                                                      padding:
-                                                          const EdgeInsets.only(
-                                                              bottom: 4),
-                                                      child: LinkDisplayWidget(
-                                                        linkText: link,
-                                                        showIcon: true,
-                                                        showTitle: true,
-                                                      ),
-                                                    ))
-                                                .toList(),
-                                          ),
-                                        ],
-                                        if (_randomTask!.triggersAt !=
-                                            null) ...[
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall,
-                                          ),
-                                        ],
-                                        if (_randomTask!.suggestibleAt !=
-                                                null &&
-                                            _randomTask!.suggestibleAt!.isAfter(
-                                              DateTime.now(),
-                                            )) ...[
-                                          const SizedBox(height: 8),
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  _randomTask!
-                                                      .getSuggestibleTimeDisplay()!,
-                                                  style: Theme.of(context)
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.copyWith(
-                                                        color: Colors.blue,
-                                                      ),
-                                                ),
-                                              ),
-                                              TextButton.icon(
-                                                onPressed: () async {
-                                                  await _reviveCurrentTask();
-                                                },
-                                                icon: const Icon(
-                                                  Icons.refresh,
-                                                  size: 16,
-                                                ),
-                                                label: const Text('Revive'),
-                                                style: TextButton.styleFrom(
-                                                  foregroundColor: Colors.blue,
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                    horizontal: 8,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                        const SizedBox(height: 2),
-                                        Center(
-                                          child: TextButton.icon(
-                                            onPressed: _finishCurrentTask,
-                                            icon: const Icon(Icons.check),
-                                            label: const Text(
-                                              'Actually, I\'m done with this',
-                                            ),
-                                            style: TextButton.styleFrom(
-                                              foregroundColor: Theme.of(
-                                                context,
-                                              ).colorScheme.primary,
-                                              padding: EdgeInsets.zero,
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Center(
-                            child: Column(
-                              children: [
-                                ElevatedButton.icon(
-                                  onPressed: () async {
-                                    try {
-                                      setState(() {
-                                        _isLoadingTask = true;
-                                        _error = null;
-                                      });
-
-                                      // First reject the current task
-                                      await _rejectCurrentTask();
-
-                                      // Then load a new random task
-                                      if (_selectedCategory != null) {
-                                        await _loadRandomTask(
-                                          _selectedCategory!,
-                                        );
-                                      }
-                                    } catch (e) {
-                                      print('Error in Hit Me Again: $e');
-                                      setState(() {
-                                        _error = e.toString();
-                                        _isLoadingTask = false;
-                                      });
-                                    }
-                                  },
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text(
-                                    'Hit Me Again',
-                                    style: TextStyle(fontSize: 18),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green,
-                                    foregroundColor: Colors.white,
-                                    minimumSize: const Size(
-                                        0, 48), // 12 points taller than default
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          if (Task.currentTaskSet != null) ...[
-                            Text(
-                              '${Task.currentTaskSet!.length} more tasks in this category',
-                              style: Theme.of(context).textTheme.bodySmall,
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                        ],
-                      )
-                    else
-                      Center(
-                        child: Column(
-                          children: [
-                            const Text(
-                              'All out of ideas!',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Tap the + button to add more ${NamingUtils.tasksName()} or explore ${NamingUtils.categoriesName()}.',
-                              style: const TextStyle(
-                                  fontSize: 14, color: Colors.grey),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
+                )
+              else if (_categories.isEmpty)
+                Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.info_outline,
+                          size: 48, color: Colors.grey),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No ${NamingUtils.categoriesName(plural: true)} available',
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w600),
+                        textAlign: TextAlign.center,
                       ),
-                  ],
-                ],
-              ),
-            // Guest mode indicator
-            if (AuthUtils.isGuestUser()) ...[
-              const SizedBox(height: 24),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.orange.withOpacity(0.3),
-                    width: 1,
+                      const SizedBox(height: 8),
+                      Text(
+                        AuthUtils.isGuestUser()
+                            ? 'Guest users can only view demo data. Sign up/in to create your own ${NamingUtils.categoriesName()}.'
+                            : '',
+                        style:
+                            const TextStyle(fontSize: 14, color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      if (AuthUtils.isGuestUser())
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pushNamed(context, '/auth');
+                                },
+                                icon: const Icon(Icons.login),
+                                label: const Text('Sign In'),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pushNamed(context, '/auth');
+                                },
+                                icon: const Icon(Icons.person_add),
+                                label: const Text('Sign Up'),
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        ElevatedButton.icon(
+                          onPressed: _navigateToNewCategory,
+                          icon: const Icon(Icons.add),
+                          label: Text(
+                              'Define ${NamingUtils.categoriesName(plural: false, withArticle: true)} to get started'),
+                          style: AppButtons.finalize(),
+                        ),
+                    ],
                   ),
-                ),
-                child: Column(
+                )
+              else
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: Colors.orange[700],
-                          size: 20,
-                        ),
-                        const SizedBox(width: 12),
                         Expanded(
-                          child: Text(
-                            'You\'re in guest mode, so you can play with demo data. Sign up/in for full access to making your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}.',
-                            style: TextStyle(
-                              color: Colors.orange[700],
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
+                          child: _categories.length == 1
+                              ? Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                    horizontal: 12,
+                                  ),
+                                  child: Text(
+                                    '...${_categories.first.headline}',
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1A237E),
+                                    ),
+                                  ),
+                                )
+                              : DropdownButtonFormField<Category>(
+                                  initialValue: _selectedCategory,
+                                  // Must be >= kMinInteractiveDimension (48)
+                                  itemHeight: 48.0,
+                                  isExpanded: true,
+                                  style: const TextStyle(
+                                      fontSize:
+                                          20), // Increased by 8 points from default 12
+                                  decoration: InputDecoration(
+                                    border: const OutlineInputBorder(),
+                                    hintText:
+                                        'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false, withArticle: true)}',
+                                    isDense: false,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                      horizontal: 12,
+                                    ),
+                                  ),
+                                  selectedItemBuilder: (context) => _categories
+                                      .map((category) => Text(
+                                            '...${category.headline}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              height: 1.0,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF1A237E),
+                                            ),
+                                          ))
+                                      .toList(),
+                                  items: _categories.map((category) {
+                                    return DropdownMenuItem(
+                                      value: category,
+                                      child: Text(
+                                        '...${category.headline}',
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          height: 0.95,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1A237E),
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (Category? newValue) async {
+                                    setState(() {
+                                      _selectedCategory = newValue;
+                                      _randomTask =
+                                          null; // Clear the current task
+                                    });
+                                    if (newValue != null) {
+                                      // Update last_access timestamp when category is selected
+                                      await _updateCategoryLastAccess(newValue);
+                                      _loadRandomTask(newValue);
+                                    }
+                                  },
+                                ),
+                        ),
+                        // Info, Share, and Edit buttons moved to bottom right
+                      ],
+                    ),
+                    if (_selectedCategory != null) ...[
+                      const SizedBox(height: 12),
+                      // Debug info (commented out)
+                      // Text('Selected Category: ${_selectedCategory!.headline}'),
+                      // Text('Loading Task: $_isLoadingTask'),
+                      // Text('Random Task: ${_randomTask?.headline ?? "null"}'),
+                      // Text('Error: ${_error ?? "none"}'),
+                      if (_isLoadingTask ||
+                          (_cacheManager.currentCategory?.id !=
+                                  _selectedCategory?.id ||
+                              _cacheManager.currentTasks == null))
+                        const Center(child: CircularProgressIndicator())
+                      else if (_randomTask != null)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              width: MediaQuery.of(context).size.width - 32,
+                              child: Card(
+                                key: ValueKey(
+                                  'task_${_randomTask!.id}_${_randomTask!.headline}',
+                                ),
+                                child: Stack(
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        16,
+                                        16,
+                                        16,
+                                        0,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Expanded(
+                                                child: GestureDetector(
+                                                  onTap: () =>
+                                                      _navigateToEditTask(
+                                                    _randomTask!,
+                                                  ),
+                                                  child: Text(
+                                                    _randomTask!.headline,
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .bodyLarge
+                                                        ?.copyWith(
+                                                          fontSize: (Theme.of(
+                                                                          context)
+                                                                      .textTheme
+                                                                      .bodyLarge
+                                                                      ?.fontSize ??
+                                                                  16) +
+                                                              10,
+                                                          fontWeight: _randomTask!
+                                                                          .suggestibleAt ==
+                                                                      null ||
+                                                                  !_randomTask!
+                                                                      .suggestibleAt!
+                                                                      .isAfter(
+                                                                    DateTime
+                                                                        .now(),
+                                                                  )
+                                                              ? FontWeight.bold
+                                                              : FontWeight
+                                                                  .normal,
+                                                          color: _randomTask!
+                                                                          .suggestibleAt !=
+                                                                      null &&
+                                                                  _randomTask!
+                                                                      .suggestibleAt!
+                                                                      .isAfter(
+                                                                    DateTime
+                                                                        .now(),
+                                                                  )
+                                                              ? Colors.grey
+                                                              : null,
+                                                        ),
+                                                  ),
+                                                ),
+                                              ),
+                                              if (!AuthUtils.isGuestUser()) ...[
+                                                const SizedBox(width: 8),
+                                                GestureDetector(
+                                                  onTap: () =>
+                                                      _navigateToEditTask(
+                                                    _randomTask!,
+                                                  ),
+                                                  child: Icon(
+                                                    Icons.edit,
+                                                    size: 20,
+                                                    color: Theme.of(
+                                                      context,
+                                                    ).colorScheme.primary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                          if (_randomTask!.finished) ...[
+                                            const SizedBox(width: 8),
+                                            const Icon(
+                                              Icons.check_circle,
+                                              color: Colors.green,
+                                              size: 28,
+                                            ),
+                                          ],
+                                          // Show notes if they exist (user-entered content)
+                                          if (_randomTask!.notes != null &&
+                                              _randomTask!
+                                                  .notes!.isNotEmpty) ...[
+                                            const SizedBox(height: 8),
+                                            Html(
+                                              data: _preprocessNotesForHtml(
+                                                  _randomTask!.notes!),
+                                              style: {
+                                                "body": Style(
+                                                  fontSize: FontSize(
+                                                    Theme.of(context)
+                                                            .textTheme
+                                                            .bodyMedium
+                                                            ?.fontSize ??
+                                                        14,
+                                                  ),
+                                                  color: _randomTask!
+                                                                  .suggestibleAt !=
+                                                              null &&
+                                                          _randomTask!
+                                                              .suggestibleAt!
+                                                              .isAfter(DateTime
+                                                                  .now())
+                                                      ? Colors.grey
+                                                      : Theme.of(context)
+                                                          .textTheme
+                                                          .bodyMedium
+                                                          ?.color,
+                                                  margin: Margins.zero,
+                                                  padding: HtmlPaddings.zero,
+                                                ),
+                                                "a": Style(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .primary,
+                                                  textDecoration:
+                                                      TextDecoration.underline,
+                                                ),
+                                              },
+                                              onLinkTap: (url, htmlContext,
+                                                  attributes) async {
+                                                if (url != null) {
+                                                  try {
+                                                    final uri = Uri.parse(url);
+                                                    if (await canLaunchUrl(
+                                                        uri)) {
+                                                      await launchUrl(uri,
+                                                          mode: LaunchMode
+                                                              .externalApplication);
+                                                    }
+                                                  } catch (e) {
+                                                    // Error handling without verbose logging
+                                                  }
+                                                }
+                                              },
+                                            ),
+                                          ],
+                                          // Show synopsis if it exists (auto-fetched or stored)
+                                          if ((_randomTask!.synopsis != null &&
+                                                  _randomTask!
+                                                      .synopsis!.isNotEmpty) ||
+                                              (_fetchedSynopsis != null &&
+                                                  _fetchedSynopsis!
+                                                      .isNotEmpty)) ...[
+                                            const SizedBox(height: 8),
+                                            Html(
+                                              data: _fetchedSynopsis ??
+                                                  _randomTask!.synopsis ??
+                                                  '',
+                                              style: {
+                                                "body": Style(
+                                                  fontSize: FontSize(
+                                                    Theme.of(context)
+                                                            .textTheme
+                                                            .bodyMedium
+                                                            ?.fontSize ??
+                                                        14,
+                                                  ),
+                                                  fontStyle: FontStyle.italic,
+                                                  color: _randomTask!
+                                                                  .suggestibleAt !=
+                                                              null &&
+                                                          _randomTask!
+                                                              .suggestibleAt!
+                                                              .isAfter(DateTime
+                                                                  .now())
+                                                      ? Colors.grey
+                                                      : Theme.of(context)
+                                                          .textTheme
+                                                          .bodyMedium
+                                                          ?.color,
+                                                  margin: Margins.zero,
+                                                  padding: HtmlPaddings.zero,
+                                                ),
+                                                "a": Style(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .primary,
+                                                  textDecoration:
+                                                      TextDecoration.underline,
+                                                  fontStyle: FontStyle.italic,
+                                                ),
+                                              },
+                                              onLinkTap: (url, htmlContext,
+                                                  attributes) async {
+                                                if (url != null) {
+                                                  try {
+                                                    final uri = Uri.parse(url);
+                                                    if (await canLaunchUrl(
+                                                        uri)) {
+                                                      await launchUrl(uri,
+                                                          mode: LaunchMode
+                                                              .externalApplication);
+                                                    }
+                                                  } catch (e) {
+                                                    // Error handling without verbose logging
+                                                  }
+                                                }
+                                              },
+                                            ),
+                                          ],
+                                          // Show loading indicator if fetching synopsis
+                                          if (_isFetchingSynopsis) ...[
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              children: [
+                                                const SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                          strokeWidth: 2),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  'Fetching description...',
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .bodySmall
+                                                      ?.copyWith(
+                                                        fontStyle:
+                                                            FontStyle.italic,
+                                                        color: Colors.grey[600],
+                                                      ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                          if (_randomTask!.links != null &&
+                                              _randomTask!
+                                                  .links!.isNotEmpty) ...[
+                                            /* if (_randomTask!.notes != null)
+                                            const SizedBox(height: 16)
+                                          else
+                                           */
+                                            const SizedBox(height: 14),
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: _randomTask!.links!
+                                                  .map((link) => Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .only(
+                                                                bottom: 4),
+                                                        child:
+                                                            LinkDisplayWidget(
+                                                          linkText: link,
+                                                          showIcon: true,
+                                                          showTitle: true,
+                                                        ),
+                                                      ))
+                                                  .toList(),
+                                            ),
+                                          ],
+                                          if (_randomTask!.triggersAt !=
+                                              null) ...[
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
+                                              style: Theme.of(
+                                                context,
+                                              ).textTheme.bodySmall,
+                                            ),
+                                          ],
+                                          if (_randomTask!.suggestibleAt !=
+                                                  null &&
+                                              _randomTask!.suggestibleAt!
+                                                  .isAfter(
+                                                DateTime.now(),
+                                              )) ...[
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    _randomTask!
+                                                        .getSuggestibleTimeDisplay()!,
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .bodySmall
+                                                        ?.copyWith(
+                                                          color: Colors.blue,
+                                                        ),
+                                                  ),
+                                                ),
+                                                TextButton.icon(
+                                                  onPressed: () async {
+                                                    await _reviveCurrentTask();
+                                                  },
+                                                  icon: const Icon(
+                                                    Icons.refresh,
+                                                    size: 16,
+                                                  ),
+                                                  label: const Text('Revive'),
+                                                  style: TextButton.styleFrom(
+                                                    foregroundColor:
+                                                        Colors.blue,
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                      horizontal: 8,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                          const SizedBox(height: 2),
+                                          Center(
+                                            child: TextButton.icon(
+                                              onPressed: _finishCurrentTask,
+                                              icon: const Icon(Icons.check),
+                                              label: const Text(
+                                                'Actually, I\'m done with this',
+                                              ),
+                                              style: TextButton.styleFrom(
+                                                foregroundColor: Theme.of(
+                                                  context,
+                                                ).colorScheme.primary,
+                                                padding: EdgeInsets.zero,
+                                                visualDensity:
+                                                    VisualDensity.compact,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            Center(
+                              child: Column(
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: () async {
+                                      try {
+                                        setState(() {
+                                          _isLoadingTask = true;
+                                          _error = null;
+                                        });
+
+                                        // First reject the current task
+                                        await _rejectCurrentTask();
+
+                                        // Then load a new random task
+                                        if (_selectedCategory != null) {
+                                          await _loadRandomTask(
+                                            _selectedCategory!,
+                                          );
+                                        }
+                                      } catch (e) {
+                                        print('Error in Hit Me Again: $e');
+                                        setState(() {
+                                          _error = e.toString();
+                                          _isLoadingTask = false;
+                                        });
+                                      }
+                                    },
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text(
+                                      'Hit Me Again',
+                                      style: TextStyle(fontSize: 18),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green,
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size(0,
+                                          48), // 12 points taller than default
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            if (Task.currentTaskSet != null) ...[
+                              Text(
+                                '${Task.currentTaskSet!.length} more tasks in this category',
+                                style: Theme.of(context).textTheme.bodySmall,
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                          ],
+                        )
+                      else
+                        Center(
+                          child: Column(
+                            children: [
+                              const Text(
+                                'All out of ideas!',
+                                style: TextStyle(fontSize: 16),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Tap the + button to add more ${NamingUtils.tasksName()} or explore ${NamingUtils.categoriesName()}.',
+                                style: const TextStyle(
+                                    fontSize: 14, color: Colors.grey),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ],
+                ),
+              // Guest mode indicator
+              if (AuthUtils.isGuestUser()) ...[
+                const SizedBox(height: 24),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.orange.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Colors.orange[700],
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'You\'re in guest mode, so you can play with demo data. Sign up/in for full access to making your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}.',
+                              style: TextStyle(
+                                color: Colors.orange[700],
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pushNamed(context, '/auth');
+                          },
+                          icon: const Icon(Icons.login, size: 18),
+                          label: const Text('Sign Up / Sign In'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange[700],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/auth');
-                        },
-                        icon: const Icon(Icons.login, size: 18),
-                        label: const Text('Sign Up / Sign In'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange[700],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
-        ),
           ),
         ),
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 16),
@@ -2318,60 +2413,60 @@ class HomeScreenState extends State<HomeScreen> {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-              if (_selectedCategory != null && !AuthUtils.isGuestUser()) ...[
-                // Info and Share buttons commented out for simplified interface
-                // FloatingActionButton(
-                //   onPressed: () => _showCategoryInfo(_selectedCategory!),
-                //   tooltip: 'Show category information',
-                //   backgroundColor: Colors.orange[600],
-                //   foregroundColor: Colors.white,
-                //   child: const Icon(Icons.info_outline),
-                // ),
-                // const SizedBox(width: 16),
-                // FloatingActionButton(
-                //   onPressed: () => _shareCategory(_selectedCategory!),
-                //   tooltip: 'Share category',
-                //   backgroundColor: Colors.green[600],
-                //   foregroundColor: Colors.white,
-                //   child: const Icon(Icons.share),
-                // ),
-                // const SizedBox(width: 16),
-                // Edit category button
-                SizedBox(
-                  width: 88,
-                  height: 88,
-                  child: FloatingActionButton(
-                    heroTag: 'editCategoryButton',
-                    onPressed: () => _navigateToEditCategory(_selectedCategory),
-                    tooltip:
-                        'View ${NamingUtils.tasksName(capitalize: false, plural: false)} list',
-                    backgroundColor: AppButtons.goForthBg,
-                    foregroundColor: AppButtons.goForthFg,
-                    child: const Icon(Icons.menu, size: 38),
-                  ),
-                ),
-                const SizedBox(width: 200),
-              ],
+            if (_selectedCategory != null && !AuthUtils.isGuestUser()) ...[
+              // Info and Share buttons commented out for simplified interface
+              // FloatingActionButton(
+              //   onPressed: () => _showCategoryInfo(_selectedCategory!),
+              //   tooltip: 'Show category information',
+              //   backgroundColor: Colors.orange[600],
+              //   foregroundColor: Colors.white,
+              //   child: const Icon(Icons.info_outline),
+              // ),
+              // const SizedBox(width: 16),
+              // FloatingActionButton(
+              //   onPressed: () => _shareCategory(_selectedCategory!),
+              //   tooltip: 'Share category',
+              //   backgroundColor: Colors.green[600],
+              //   foregroundColor: Colors.white,
+              //   child: const Icon(Icons.share),
+              // ),
+              // const SizedBox(width: 16),
+              // Edit category button
               SizedBox(
                 width: 88,
                 height: 88,
                 child: FloatingActionButton(
-                  heroTag: 'addContentButton',
-                  onPressed: () {
-                    if (AuthUtils.isGuestUser()) {
-                      _showGuestSignupDialog(
-                          content:
-                              'Here\'s where you can add new ${NamingUtils.tasksName()} and ${NamingUtils.categoriesName()} once you\'re logged in. Sign up to add your own content!');
-                    } else {
-                      _navigateToNewContent();
-                    }
-                  },
-                  tooltip: 'Add New Content',
+                  heroTag: 'editCategoryButton',
+                  onPressed: () => _navigateToEditCategory(_selectedCategory),
+                  tooltip:
+                      'View ${NamingUtils.tasksName(capitalize: false, plural: false)} list',
                   backgroundColor: AppButtons.goForthBg,
                   foregroundColor: AppButtons.goForthFg,
-                  child: const Icon(Icons.add, size: 38),
+                  child: const Icon(Icons.menu, size: 38),
                 ),
               ),
+              const SizedBox(width: 200),
+            ],
+            SizedBox(
+              width: 88,
+              height: 88,
+              child: FloatingActionButton(
+                heroTag: 'addContentButton',
+                onPressed: () {
+                  if (AuthUtils.isGuestUser()) {
+                    _showGuestSignupDialog(
+                        content:
+                            'Here\'s where you can add new ${NamingUtils.tasksName()} and ${NamingUtils.categoriesName()} once you\'re logged in. Sign up to add your own content!');
+                  } else {
+                    _navigateToNewContent();
+                  }
+                },
+                tooltip: 'Add New Content',
+                backgroundColor: AppButtons.goForthBg,
+                foregroundColor: AppButtons.goForthFg,
+                child: const Icon(Icons.add, size: 38),
+              ),
+            ),
           ],
         ),
       ),
