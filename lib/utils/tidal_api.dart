@@ -187,7 +187,7 @@ class TidalApiService {
   }
 
   /// Fetch album information from Tidal API
-  /// Returns a map with 'artist' and 'album' keys
+  /// Returns a map with 'artist', 'album', and 'artistId' keys
   static Future<Map<String, String>?> getAlbumInfo(String albumId) async {
     try {
       if (!isAvailable) {
@@ -201,14 +201,16 @@ class TidalApiService {
         return null;
       }
 
-      final response = await http.get(
-        Uri.parse(
-            'https://openapi.tidal.com/v2/albums/$albumId?countryCode=$_defaultCountryCode'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'accept': 'application/vnd.tidal.v1+json',
-        },
-      );
+      final url = Uri.parse(
+          'https://openapi.tidal.com/v2/albums/$albumId?countryCode=$_defaultCountryCode');
+      print('TidalApi: GET $url');
+
+      final response = await http.get(url, headers: {
+        'Authorization': 'Bearer $token',
+        'accept': 'application/vnd.tidal.v1+json',
+      });
+      print(
+          'TidalApi: Response ${response.statusCode} (${response.body.length} bytes)');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -219,10 +221,13 @@ class TidalApiService {
           return null;
         }
 
-        // Extract artist name (use first artist if multiple)
+        // Extract artist info (use first artist if multiple)
         final artists = resource['artists'] as List<dynamic>?;
         final artistName = artists != null && artists.isNotEmpty
             ? artists[0]['name'] as String?
+            : null;
+        final artistId = artists != null && artists.isNotEmpty
+            ? artists[0]['id'] as String?
             : null;
 
         // Extract album name
@@ -234,6 +239,7 @@ class TidalApiService {
           return {
             'artist': artistName,
             'album': albumName,
+            if (artistId != null) 'artistId': artistId,
           };
         }
 
@@ -265,14 +271,15 @@ class TidalApiService {
         return null;
       }
 
-      final response = await http.get(
-        Uri.parse(
-            'https://openapi.tidal.com/v2/tracks/$trackId?countryCode=$_defaultCountryCode'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'accept': 'application/vnd.tidal.v1+json',
-        },
-      );
+      final url = Uri.parse(
+          'https://openapi.tidal.com/v2/tracks/$trackId?countryCode=$_defaultCountryCode');
+      print('TidalApi: GET $url');
+      final response = await http.get(url, headers: {
+        'Authorization': 'Bearer $token',
+        'accept': 'application/vnd.tidal.v1+json',
+      });
+      print(
+          'TidalApi: Response ${response.statusCode} (${response.body.length} bytes)');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -329,14 +336,15 @@ class TidalApiService {
         return null;
       }
 
-      final response = await http.get(
-        Uri.parse(
-            'https://openapi.tidal.com/v2/playlists/$playlistId?countryCode=$_defaultCountryCode'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'accept': 'application/vnd.tidal.v1+json',
-        },
-      );
+      final url = Uri.parse(
+          'https://openapi.tidal.com/v2/playlists/$playlistId?countryCode=$_defaultCountryCode');
+      print('TidalApi: GET $url');
+      final response = await http.get(url, headers: {
+        'Authorization': 'Bearer $token',
+        'accept': 'application/vnd.tidal.v1+json',
+      });
+      print(
+          'TidalApi: Response ${response.statusCode} (${response.body.length} bytes)');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -373,6 +381,83 @@ class TidalApiService {
     } catch (e) {
       print('TidalApi: Error fetching playlist info: $e');
       return null;
+    }
+  }
+
+  /// Fetch all albums for an artist from Tidal API
+  /// Returns a list of album titles
+  /// Note: Handles pagination automatically (TIDAL returns max 20 items per request)
+  static Future<List<String>> getArtistAlbums(String artistId) async {
+    final albums = <String>[];
+
+    try {
+      if (!isAvailable) {
+        print('TidalApi: API credentials not configured');
+        return albums;
+      }
+
+      final token = await _getAccessToken();
+      if (token == null) {
+        print('TidalApi: Failed to get access token');
+        return albums;
+      }
+
+      String? nextCursor;
+      int pageCount = 0;
+
+      do {
+        pageCount++;
+        final url = nextCursor ??
+            'https://openapi.tidal.com/v2/artists/$artistId/albums?countryCode=$_defaultCountryCode&limit=50';
+
+        print('TidalApi: GET $url');
+        final response = await http.get(
+          Uri.parse(url),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'accept': 'application/vnd.tidal.v1+json',
+          },
+        );
+        print(
+            'TidalApi: Response ${response.statusCode} (${response.body.length} bytes)');
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          final items = data['data'] as List<dynamic>?;
+
+          if (items != null) {
+            for (final item in items) {
+              final resource = item['resource'];
+              if (resource != null) {
+                final title = resource['title'] as String?;
+                if (title != null) {
+                  albums.add(title);
+                }
+              }
+            }
+          }
+
+          // Check for next page
+          final links = data['links'] as Map<String, dynamic>?;
+          nextCursor = links?['next'] as String?;
+
+          if (nextCursor != null) {
+            print(
+                'TidalApi: Fetching page ${pageCount + 1} for artist $artistId...');
+          }
+        } else {
+          print(
+              'TidalApi: API request failed: ${response.statusCode} ${response.body}');
+          break;
+        }
+      } while (nextCursor != null);
+
+      print(
+          'TidalApi: Found ${albums.length} albums for artist $artistId (${pageCount} pages)');
+      return albums;
+    } catch (e) {
+      print('TidalApi: Error fetching artist albums: $e');
+      return albums;
     }
   }
 
