@@ -75,6 +75,9 @@ class HomeScreenState extends State<HomeScreen> {
   // Track if welcome dialog has been shown
   bool _welcomeDialogShown = false;
 
+  // Track if this is the first load (to handle initial category selection from deep link)
+  bool _isFirstLoad = true;
+
   // Check if current user is the developer
   bool get _isDeveloperUser {
     final userId = AuthUtils.getCurrentUserId();
@@ -715,18 +718,35 @@ class HomeScreenState extends State<HomeScreen> {
         });
         print('Categories loaded successfully');
 
-        // Select initial category if one was provided
-        _selectInitialCategory();
+        // Only select initial category on first load (e.g., from deep link)
+        // On subsequent reloads, preserve the user's dropdown selection
+        if (_isFirstLoad) {
+          _selectInitialCategory();
+          _isFirstLoad = false;
 
-        // If there's only one category and no category is selected, select it automatically
-        if (categories.length == 1 && _selectedCategory == null) {
-          print(
-              'HomeScreen: Only one category available, selecting it automatically');
-          setState(() {
-            _selectedCategory = categories.first;
-          });
-          _loadRandomTask(categories.first);
-          _updateCategoryLastAccess(categories.first);
+          // If there's only one category and no category is selected, select it automatically
+          if (categories.length == 1 && _selectedCategory == null) {
+            print(
+                'HomeScreen: Only one category available, selecting it automatically');
+            setState(() {
+              _selectedCategory = categories.first;
+            });
+            _loadRandomTask(categories.first);
+            _updateCategoryLastAccess(categories.first);
+          }
+        } else {
+          // On subsequent loads, update the selected category reference to the new object
+          if (_selectedCategory != null) {
+            final updatedCategory = categories.firstWhere(
+              (c) => c.id == _selectedCategory!.id,
+              orElse: () => categories.isNotEmpty ? categories.first : _selectedCategory!,
+            );
+            if (updatedCategory.id == _selectedCategory!.id) {
+              setState(() {
+                _selectedCategory = updatedCategory;
+              });
+            }
+          }
         }
 
         // Show welcome dialog for new authenticated users with no categories
