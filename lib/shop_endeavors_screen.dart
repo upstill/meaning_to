@@ -11,6 +11,9 @@ import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/home_screen.dart';
 
+// Sorting options for suggestions
+enum SortOption { alphabetical, priority, age }
+
 class ShopEndeavorsScreen extends StatefulWidget {
   final Category?
       existingCategory; // If provided, we're adding tasks to this category
@@ -137,6 +140,11 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
   final Map<String, bool> _expandedInvitations =
       {}; // Track which category invitations are expanded
 
+  // Sort and search state (for single-pursuit mode)
+  SortOption _currentSortOption = SortOption.alphabetical;
+  final _searchController = TextEditingController();
+  bool _isSearching = false;
+
   @override
   void initState() {
     super.initState();
@@ -148,6 +156,12 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     if (widget.existingCategory == null) {
       _loadUserTasksForRedundancyCheck();
     }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPublicCategories() async {
@@ -453,6 +467,67 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     setState(() {
       _shopItems[index].isExpanded = !_shopItems[index].isExpanded;
     });
+  }
+
+  /// Sort tasks based on the current sort option (for single-pursuit mode)
+  List<Task> _sortTasks(List<Task> tasks) {
+    switch (_currentSortOption) {
+      case SortOption.alphabetical:
+        return tasks
+          ..sort((a, b) =>
+              a.headline.toLowerCase().compareTo(b.headline.toLowerCase()));
+      case SortOption.priority:
+        return tasks
+          ..sort((a, b) {
+            // First, sort by finished status (unfinished first)
+            if (a.finished != b.finished) {
+              return a.finished ? 1 : -1;
+            }
+            // Then, sort by suggestibleAt (earlier first, null first)
+            if (a.suggestibleAt == null && b.suggestibleAt == null) {
+              // Both have null suggestibleAt - sort by creation date (newest first)
+              return b.createdAt.compareTo(a.createdAt);
+            }
+            if (a.suggestibleAt == null) {
+              return -1;
+            }
+            if (b.suggestibleAt == null) {
+              return 1;
+            }
+            return a.suggestibleAt!.compareTo(b.suggestibleAt!);
+          });
+      case SortOption.age:
+        return tasks
+          ..sort((a, b) {
+            // Sort by creation date (newest first)
+            return b.createdAt.compareTo(a.createdAt);
+          });
+    }
+  }
+
+  /// Filter tasks based on search query (for single-pursuit mode)
+  List<Task> _filterTasks(List<Task> tasks) {
+    final searchQuery = _searchController.text.trim().toLowerCase();
+    if (searchQuery.isEmpty) {
+      return tasks;
+    }
+
+    return tasks.where((task) {
+      return task.headline.toLowerCase().contains(searchQuery);
+    }).toList();
+  }
+
+  /// Get sorted and filtered tasks for display in single-pursuit mode
+  List<Task> _getSortedFilteredTasks(List<Task> tasks) {
+    if (widget.existingCategory == null) {
+      return tasks; // Only sort/filter in single-pursuit mode
+    }
+
+    // Apply search filter first
+    var filteredTasks = _filterTasks(tasks);
+
+    // Then apply sort
+    return _sortTasks(filteredTasks);
   }
 
   Future<void> _loadTasksForItem(int index) async {
@@ -1212,6 +1287,116 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     }
   }
 
+  Widget _buildSortAndSearchControls(int itemIndex) {
+    Widget buildSortRow(SortOption option, String label) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Radio<SortOption>(
+            value: option,
+            groupValue: _currentSortOption,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+            onChanged: (SortOption? value) {
+              if (value != null) {
+                setState(() {
+                  _currentSortOption = value;
+                });
+              }
+            },
+          ),
+          Text(label),
+        ],
+      );
+    }
+
+    final searchWidget = TextField(
+      controller: _searchController,
+      decoration: InputDecoration(
+        hintText: 'Search...',
+        prefixIcon: const Icon(Icons.search, size: 20),
+        suffixIcon: _isSearching
+            ? const Padding(
+                padding: EdgeInsets.all(12.0),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    onPressed: () {
+                      setState(() {
+                        _searchController.clear();
+                      });
+                    },
+                  )
+                : null,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 8,
+          vertical: 8,
+        ),
+        border: const OutlineInputBorder(),
+      ),
+      onChanged: (value) {
+        setState(() {
+          _isSearching = true;
+        });
+        // Show processing indicator briefly
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            setState(() {
+              _isSearching = false;
+            });
+          }
+        });
+      },
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Search field on its own line
+        searchWidget,
+        const SizedBox(height: 12),
+        // Sort options horizontally with Select All checkbox on the right
+        Row(
+          children: [
+            const Text('Sort By:'),
+            const SizedBox(width: 8),
+            buildSortRow(SortOption.priority, 'Priority'),
+            const SizedBox(width: 4),
+            buildSortRow(SortOption.alphabetical, 'A-Z'),
+            const SizedBox(width: 4),
+            buildSortRow(SortOption.age, 'Age'),
+            const Spacer(),
+            // Select All/Deselect All checkbox
+            if (_shopItems[itemIndex].tasks.length >= 2) ...[
+              Text(
+                _areAllTasksSelected(itemIndex) ? 'Deselect All' : 'Select All',
+                style: const TextStyle(fontSize: 14),
+              ),
+              Checkbox(
+                value: _areAllTasksSelected(itemIndex)
+                    ? true
+                    : _areSomeTasksSelected(itemIndex)
+                        ? null
+                        : false,
+                tristate: true,
+                onChanged: (_) => _toggleSelectAllTasks(itemIndex),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildTaskCard(Task task) {
     final isSelected = _taskImportSelections[task.id.toString()] ?? false;
     final hasLinks = task.links != null &&
@@ -1278,7 +1463,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.existingCategory != null
-            ? 'Get Suggestions to...'
+            ? 'Get Suggestions to ${widget.existingCategory!.headline}'
             : 'Shop ${NamingUtils.categoriesName(plural: true)}'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -1421,97 +1606,62 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               children: [
-                                                // Headline row with checkbox and expand functionality
-                                                widget.existingCategory != null
-                                                    ? Row(
-                                                        children: [
-                                                          Expanded(
-                                                            child: Text(
-                                                              item.headline,
-                                                              style:
-                                                                  const TextStyle(
-                                                                fontSize: 20,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                color: Colors
-                                                                    .black,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                          if (item.hasTasksAvailable ==
-                                                                  null ||
-                                                              item.hasTasksAvailable ==
-                                                                  true)
-                                                            GestureDetector(
-                                                              onTap: () =>
-                                                                  _toggleExpansion(
-                                                                      index),
-                                                              child: Icon(
-                                                                item.isExpanded
-                                                                    ? Icons
-                                                                        .expand_less
-                                                                    : Icons
-                                                                        .expand_more,
-                                                                color:
-                                                                    Colors.grey,
-                                                              ),
-                                                            ),
-                                                        ],
-                                                      )
-                                                    : Row(
-                                                        children: [
-                                                          Checkbox(
-                                                            value:
-                                                                item.isSelected,
-                                                            onChanged: (_) =>
-                                                                _toggleSelection(
-                                                                    index),
-                                                            materialTapTargetSize:
-                                                                MaterialTapTargetSize
-                                                                    .shrinkWrap,
-                                                            visualDensity:
-                                                                VisualDensity
-                                                                    .compact,
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Expanded(
-                                                            child: Text(
-                                                              item.headline,
-                                                              style:
-                                                                  const TextStyle(
-                                                                fontSize: 20,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                color: Colors
-                                                                    .black,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                          if (item.hasTasksAvailable ==
-                                                                  null ||
-                                                              item.hasTasksAvailable ==
-                                                                  true)
-                                                            GestureDetector(
-                                                              onTap: () =>
-                                                                  _toggleExpansion(
-                                                                      index),
-                                                              child: Icon(
-                                                                item.isExpanded
-                                                                    ? Icons
-                                                                        .expand_less
-                                                                    : Icons
-                                                                        .expand_more,
-                                                                color:
-                                                                    Colors.grey,
-                                                              ),
-                                                            ),
-                                                        ],
+                                                // Headline row - hide in single-pursuit mode (shown in AppBar)
+                                                if (widget.existingCategory == null)
+                                                  Row(
+                                                    children: [
+                                                      Checkbox(
+                                                        value:
+                                                            item.isSelected,
+                                                        onChanged: (_) =>
+                                                            _toggleSelection(
+                                                                index),
+                                                        materialTapTargetSize:
+                                                            MaterialTapTargetSize
+                                                                .shrinkWrap,
+                                                        visualDensity:
+                                                            VisualDensity
+                                                                .compact,
                                                       ),
-                                                // Add invitation below headline
-                                                if (_buildInvitationWidget(
+                                                      const SizedBox(
+                                                          width: 8),
+                                                      Expanded(
+                                                        child: Text(
+                                                          item.headline,
+                                                          style:
+                                                              const TextStyle(
+                                                            fontSize: 20,
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .bold,
+                                                            color: Colors
+                                                                .black,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      if (item.hasTasksAvailable ==
+                                                              null ||
+                                                          item.hasTasksAvailable ==
+                                                              true)
+                                                        GestureDetector(
+                                                          onTap: () =>
+                                                              _toggleExpansion(
+                                                                  index),
+                                                          child: Icon(
+                                                            item.isExpanded
+                                                                ? Icons
+                                                                    .expand_less
+                                                                : Icons
+                                                                    .expand_more,
+                                                            color:
+                                                                Colors.grey,
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                // Add invitation below headline (only in Shop mode)
+                                                if (widget.existingCategory == null &&
+                                                    _buildInvitationWidget(
                                                         item) !=
                                                     null)
                                                   _buildInvitationWidget(item)!,
@@ -1537,6 +1687,16 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                                           ),
                                           if (widget.existingCategory != null ||
                                               item.isExpanded) ...[
+                                            // Add Sort and Search controls for single-pursuit mode
+                                            if (widget.existingCategory != null &&
+                                                item.tasks.isNotEmpty &&
+                                                item.tasks.length >= 3) ...[
+                                              Padding(
+                                                padding: const EdgeInsets.fromLTRB(
+                                                    16.0, 12.0, 16.0, 8.0),
+                                                child: _buildSortAndSearchControls(index),
+                                              ),
+                                            ],
                                             if (item.tasks.isNotEmpty) ...[
                                               Padding(
                                                 padding:
@@ -1546,101 +1706,66 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                                                   crossAxisAlignment:
                                                       CrossAxisAlignment.start,
                                                   children: [
-                                                    widget.existingCategory ==
-                                                            null
-                                                        ? Padding(
-                                                            padding:
-                                                                const EdgeInsets
-                                                                    .symmetric(
-                                                                    horizontal:
-                                                                        20.0),
-                                                            child: Row(
-                                                              mainAxisAlignment:
-                                                                  MainAxisAlignment
-                                                                      .spaceBetween,
-                                                              children: [
-                                                                Text(
-                                                                  'Suggestion(s):',
-                                                                  style: Theme.of(
-                                                                          context)
-                                                                      .textTheme
-                                                                      .bodySmall
-                                                                      ?.copyWith(
-                                                                        fontWeight:
-                                                                            FontWeight.bold,
-                                                                        fontStyle:
-                                                                            FontStyle.italic,
-                                                                        color: Colors
-                                                                            .grey[700],
-                                                                        fontSize:
-                                                                            (Theme.of(context).textTheme.bodySmall?.fontSize ?? 12) +
-                                                                                4,
-                                                                      ),
-                                                                ),
-                                                                // Only show checkbox if there are 2 or more tasks
-                                                                if (item.tasks
-                                                                        .length >=
-                                                                    2)
-                                                                  Checkbox(
-                                                                    value: _areAllTasksSelected(
-                                                                            index)
-                                                                        ? true
-                                                                        : _areSomeTasksSelected(index)
-                                                                            ? null
-                                                                            : false,
-                                                                    tristate:
-                                                                        true,
-                                                                    onChanged: (_) =>
-                                                                        _toggleSelectAllTasks(
-                                                                            index),
-                                                                    materialTapTargetSize:
-                                                                        MaterialTapTargetSize
-                                                                            .shrinkWrap,
-                                                                    visualDensity:
-                                                                        VisualDensity
-                                                                            .compact,
+                                                    // Show "Suggestion(s):" label and checkbox only in Shop mode
+                                                    if (widget.existingCategory == null)
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal:
+                                                                    20.0),
+                                                        child: Row(
+                                                          mainAxisAlignment:
+                                                              MainAxisAlignment
+                                                                  .spaceBetween,
+                                                          children: [
+                                                            Text(
+                                                              'Suggestion(s):',
+                                                              style: Theme.of(
+                                                                      context)
+                                                                  .textTheme
+                                                                  .bodySmall
+                                                                  ?.copyWith(
+                                                                    fontWeight:
+                                                                        FontWeight.bold,
+                                                                    fontStyle:
+                                                                        FontStyle.italic,
+                                                                    color: Colors
+                                                                        .grey[700],
+                                                                    fontSize:
+                                                                        (Theme.of(context).textTheme.bodySmall?.fontSize ?? 12) +
+                                                                            4,
                                                                   ),
-                                                              ],
                                                             ),
-                                                          )
-                                                        // Only show checkbox if there are 2 or more tasks
-                                                        : item.tasks.length >= 2
-                                                            ? Padding(
-                                                                padding: const EdgeInsets
-                                                                    .symmetric(
-                                                                    horizontal:
-                                                                        20.0),
-                                                                child: Row(
-                                                                  mainAxisAlignment:
-                                                                      MainAxisAlignment
-                                                                          .end,
-                                                                  children: [
-                                                                    Checkbox(
-                                                                      value: _areAllTasksSelected(
-                                                                              index)
-                                                                          ? true
-                                                                          : _areSomeTasksSelected(index)
-                                                                              ? null
-                                                                              : false,
-                                                                      tristate:
-                                                                          true,
-                                                                      onChanged:
-                                                                          (_) =>
-                                                                              _toggleSelectAllTasks(index),
-                                                                      materialTapTargetSize:
-                                                                          MaterialTapTargetSize
-                                                                              .shrinkWrap,
-                                                                      visualDensity:
-                                                                          VisualDensity
-                                                                              .compact,
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              )
-                                                            : const SizedBox
-                                                                .shrink(),
+                                                            // Only show checkbox if there are 2 or more tasks
+                                                            if (item.tasks
+                                                                    .length >=
+                                                                2)
+                                                              Checkbox(
+                                                                value: _areAllTasksSelected(
+                                                                        index)
+                                                                    ? true
+                                                                    : _areSomeTasksSelected(index)
+                                                                        ? null
+                                                                        : false,
+                                                                tristate:
+                                                                    true,
+                                                                onChanged: (_) =>
+                                                                    _toggleSelectAllTasks(
+                                                                        index),
+                                                                materialTapTargetSize:
+                                                                    MaterialTapTargetSize
+                                                                        .shrinkWrap,
+                                                                visualDensity:
+                                                                    VisualDensity
+                                                                        .compact,
+                                                              ),
+                                                          ],
+                                                        ),
+                                                      ),
                                                     const SizedBox(height: 8),
-                                                    ...item.tasks
+                                                    // Apply sorting and filtering in single-pursuit mode
+                                                    ..._getSortedFilteredTasks(item.tasks)
                                                         .map((task) =>
                                                             _buildTaskCard(
                                                                 task))

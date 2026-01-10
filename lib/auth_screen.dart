@@ -17,6 +17,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _error;
+  bool _obscurePassword = true;
 
   // OAuth icon states
   DomainIcon? _googleIcon;
@@ -236,15 +237,19 @@ class _AuthScreenState extends State<AuthScreen> {
       // Let Supabase handle the redirect URL automatically
       // It will use the Site URL configured in Supabase dashboard
       print('AuthScreen: Starting Google OAuth sign-in');
-      print('AuthScreen: Current origin: ${Uri.base.origin}');
-      print('AuthScreen: Full URL: ${Uri.base}');
-      print(
-          'AuthScreen: Redirect URL: ${foundation.kIsWeb ? '${Uri.base.origin}/auth/callback' : null}');
+
+      // Use custom scheme for mobile, web URL for web
+      final redirectTo = foundation.kIsWeb
+          ? '${Uri.base.origin}/auth/callback'
+          : 'meaningto://auth/callback';
+
+      print('AuthScreen: Using redirect URL: $redirectTo');
 
       try {
-        // Don't specify redirectTo - let Supabase use its default
+
         await Supabase.instance.client.auth.signInWithOAuth(
           OAuthProvider.google,
+          redirectTo: redirectTo,
         );
         print('AuthScreen: OAuth sign-in initiated successfully');
       } catch (e) {
@@ -277,16 +282,18 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
-      // Let Supabase handle the redirect URL automatically
-      // It will use the Site URL configured in Supabase dashboard
       print('AuthScreen: Starting GitHub OAuth sign-in');
-      print('AuthScreen: Current origin: ${Uri.base.origin}');
-      print(
-          'AuthScreen: Redirect URL: ${foundation.kIsWeb ? '${Uri.base.origin}/auth/callback' : null}');
 
-      // Don't specify redirectTo - let Supabase use its default
+      // Use custom scheme for mobile, web URL for web
+      final redirectTo = foundation.kIsWeb
+          ? '${Uri.base.origin}/auth/callback'
+          : 'meaningto://auth/callback';
+
+      print('AuthScreen: Using redirect URL: $redirectTo');
+
       await Supabase.instance.client.auth.signInWithOAuth(
         OAuthProvider.github,
+        redirectTo: redirectTo,
       );
       print('AuthScreen: GitHub OAuth sign-in initiated successfully');
 
@@ -314,15 +321,18 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
-      // Let Supabase handle the redirect URL automatically
-      // It will use the Site URL configured in Supabase dashboard
       print('AuthScreen: Starting Apple OAuth sign-in');
-      print('AuthScreen: Current origin: ${Uri.base.origin}');
-      print('AuthScreen: Full URL: ${Uri.base}');
 
-      // Don't specify redirectTo - let Supabase use its default
+      // Use custom scheme for mobile, web URL for web
+      final redirectTo = foundation.kIsWeb
+          ? '${Uri.base.origin}/auth/callback'
+          : 'meaningto://auth/callback';
+
+      print('AuthScreen: Using redirect URL: $redirectTo');
+
       await Supabase.instance.client.auth.signInWithOAuth(
         OAuthProvider.apple,
+        redirectTo: redirectTo,
       );
       print('AuthScreen: Apple OAuth sign-in initiated successfully');
     } catch (e) {
@@ -418,11 +428,23 @@ class _AuthScreenState extends State<AuthScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _passwordController,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Password',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                        ),
                       ),
-                      obscureText: true,
+                      obscureText: _obscurePassword,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter your password';

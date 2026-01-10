@@ -182,6 +182,17 @@ class HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    // Help button - always show
+    actions.add(
+      IconButton(
+        icon: const Icon(Icons.info_outline),
+        onPressed: () {
+          Navigator.pushNamed(context, '/help');
+        },
+        tooltip: 'Help',
+      ),
+    );
+
     // Logout button - always show
     actions.add(
       IconButton(
@@ -1382,24 +1393,9 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _checkAndShowWelcomeDialog() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final userId = AuthUtils.getCurrentUserId();
-      final welcomeKey = 'welcome_dialog_shown_$userId';
-
-      final hasBeenWelcomed = prefs.getBool(welcomeKey) ?? false;
-
-      if (!hasBeenWelcomed) {
-        // Mark as welcomed before showing dialog
-        await prefs.setBool(welcomeKey, true);
-        _showWelcomeDialog();
-      }
-    } catch (e) {
-      print('Error checking welcome dialog status: $e');
-      // Fallback to showing dialog once per session
-      if (!_welcomeDialogShown) {
-        _showWelcomeDialog();
-      }
+    // Show the welcome dialog if it hasn't been shown in this session yet
+    if (!_welcomeDialogShown) {
+      _showWelcomeDialog();
     }
   }
 
@@ -1412,7 +1408,7 @@ class HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         showDialog(
           context: context,
-          barrierDismissible: false,
+          barrierDismissible: true,
           builder: (BuildContext context) {
             return AlertDialog(
               title: const Text(
@@ -1427,6 +1423,17 @@ class HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(fontSize: 16),
               ),
               actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.pushNamed(context, '/help');
+                  },
+                  child: const Text('More Info'),
+                ),
                 ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).pop();

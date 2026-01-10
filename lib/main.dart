@@ -21,6 +21,7 @@ import 'package:meaning_to/new_category_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
+import 'package:meaning_to/help_screen.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/share_handler.dart';
@@ -192,6 +193,9 @@ void main() async {
     await Supabase.initialize(
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
+      authOptions: const FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.pkce,
+      ),
     );
 
     print(
@@ -525,10 +529,36 @@ class _MyAppState extends State<MyApp> {
               Navigator.pushReplacementNamed(context, '/auth');
             }
           }
+        } else if (uri.path == '/callback' && uri.queryParameters.containsKey('code')) {
+          print('OAuth callback detected - processing authentication code');
+
+          try {
+            // Exchange the code for a session
+            final response = await Supabase.instance.client.auth.getSessionFromUrl(uri);
+
+            if (response.session != null) {
+              print('OAuth session established successfully');
+              print('User: ${response.session!.user.email}');
+
+              // Wait a moment for the Navigator to be ready, then navigate
+              await Future.delayed(const Duration(milliseconds: 100));
+
+              // Use global navigator key to navigate
+              MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
+            } else {
+              print('OAuth callback processed but no session created');
+              await Future.delayed(const Duration(milliseconds: 100));
+              MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
+            }
+          } catch (e) {
+            print('Error processing OAuth callback: $e');
+            await Future.delayed(const Duration(milliseconds: 100));
+            MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
+          }
         } else {
           print('Auth deep link but not confirmation - navigating to auth');
-          // Navigate to auth screen
-          if (mounted) {
+          // Navigate to auth screen for other auth links
+          if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
             Navigator.pushReplacementNamed(context, '/auth');
           }
         }
@@ -537,14 +567,12 @@ class _MyAppState extends State<MyApp> {
       }
     } catch (e) {
       print('Error handling deep link: $e');
-      // Navigate to auth screen on error
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/auth');
-      }
+      // Don't try to navigate on error - just log it
+    } finally {
+      // Always reset the flag so the app doesn't stay in loading state
+      print('=== End Deep Link Processing ===');
+      MyApp.isHandlingDeepLink = false;
     }
-
-    print('=== End Deep Link Processing ===');
-    MyApp.isHandlingDeepLink = false;
   }
 
   Uri? _getPendingDeepLink() {
@@ -734,6 +762,10 @@ class _MyAppState extends State<MyApp> {
             case '/home':
               return MaterialPageRoute(
                 builder: (context) => const HomeScreen(),
+              );
+            case '/help':
+              return MaterialPageRoute(
+                builder: (context) => const HelpScreen(),
               );
             case '/category':
               // Handle category deep link with ID parameter
