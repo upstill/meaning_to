@@ -349,7 +349,7 @@ class _NewContentScreenState extends State<NewContentScreen> {
                     ),
                     child: Text(
                       _contentType == ContentType.task
-                          ? 'Make a New ${NamingUtils.categoriesName(capitalize: true, plural: false)} instead'
+                          ? 'Add a Whole New ${NamingUtils.categoriesName(capitalize: true, plural: false)}'
                           : 'Make a New ${NamingUtils.tasksName(capitalize: true, plural: false)} instead',
                     ),
                   ),

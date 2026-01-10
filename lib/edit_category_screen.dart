@@ -64,6 +64,14 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   // Sorting options
   SortOption _currentSortOption = SortOption.priority;
 
+  void _setSortOption(SortOption value) {
+    if (_currentSortOption == value) return;
+    setState(() {
+      _currentSortOption = value;
+      _clearTaskCache();
+    });
+  }
+
   // Method to switch to age sorting (for use after import)
   void switchToAgeSorting() {
     if (mounted) {
@@ -1654,118 +1662,123 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     ],
                   ),
                   const SizedBox(height: 0),
-                  // Sorting radio buttons and search box row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      // Sorting radio buttons - only show when 5+ tasks (use unfiltered count)
-                      if (_unfilteredTaskCount >= 5) ...[
-                        const Text('Sort by: '),
-                        const SizedBox(width: 4),
-                        Row(
+                  // Sorting + Search (stacked to avoid horizontal overflow)
+                  Builder(builder: (context) {
+                    Widget buildSortRow(SortOption option, String label) {
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Radio<SortOption>(
+                            value: option,
+                            groupValue: _currentSortOption,
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                            onChanged: (SortOption? value) {
+                              if (value != null) _setSortOption(value);
+                            },
+                          ),
+                          Text(label),
+                        ],
+                      );
+                    }
+
+                    final sortWidget = Row(
+                      // Center "Sort By:" vertically relative to the stacked options.
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Text('Sort By:'),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Radio<SortOption>(
-                              value: SortOption.priority,
-                              groupValue: _currentSortOption,
-                              onChanged: (SortOption? value) {
-                                if (value != null) {
-                                  setState(() {
-                                    _currentSortOption = value;
-                                    _clearTaskCache();
-                                  });
-                                }
-                              },
-                            ),
-                            // const SizedBox(width: 2),
-                            const Text('Priority'),
-                            const SizedBox(width: 12),
-                            Radio<SortOption>(
-                              value: SortOption.alphabetical,
-                              groupValue: _currentSortOption,
-                              onChanged: (SortOption? value) {
-                                if (value != null) {
-                                  setState(() {
-                                    _currentSortOption = value;
-                                    _clearTaskCache();
-                                  });
-                                }
-                              },
-                            ),
-                            // const SizedBox(width: 2),
-                            const Text('A-Z'),
-                            const SizedBox(width: 12),
-                            Radio<SortOption>(
-                              value: SortOption.age,
-                              groupValue: _currentSortOption,
-                              onChanged: (SortOption? value) {
-                                if (value != null) {
-                                  setState(() {
-                                    _currentSortOption = value;
-                                    _clearTaskCache();
-                                  });
-                                }
-                              },
-                            ),
-                            // const SizedBox(width: 2),
-                            const Text('Age'),
+                            buildSortRow(SortOption.priority, 'Priority'),
+                            buildSortRow(SortOption.alphabetical, 'A-Z'),
+                            buildSortRow(SortOption.age, 'Age'),
                           ],
                         ),
-                        const SizedBox(width: 16),
                       ],
-                      // Search box - always show when there are tasks
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          decoration: InputDecoration(
-                            hintText: 'Search tasks...',
-                            prefixIcon: const Icon(Icons.search, size: 20),
-                            suffixIcon: _isSearching
-                                ? const Padding(
-                                    padding: EdgeInsets.all(12.0),
-                                    child: SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    ),
+                    );
+
+                    final searchWidget = TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Search tasks...',
+                        prefixIcon: const Icon(Icons.search, size: 20),
+                        suffixIcon: _isSearching
+                            ? const Padding(
+                                padding: EdgeInsets.all(12.0),
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                            : _searchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 20),
+                                    onPressed: () {
+                                      setState(() {
+                                        _searchController.clear();
+                                        _clearTaskCache();
+                                      });
+                                    },
                                   )
-                                : _searchController.text.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(Icons.clear, size: 20),
-                                        onPressed: () {
-                                          setState(() {
-                                            _searchController.clear();
-                                            _clearTaskCache();
-                                          });
-                                        },
-                                      )
-                                    : null,
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 8,
-                            ),
-                            border: const OutlineInputBorder(),
-                          ),
-                          onChanged: (value) {
-                            setState(() {
-                              _isSearching = true;
-                              _clearTaskCache();
-                            });
-                            // Show processing indicator briefly
-                            Future.delayed(const Duration(milliseconds: 300),
-                                () {
-                              if (mounted) {
-                                setState(() {
-                                  _isSearching = false;
-                                });
-                              }
-                            });
-                          },
+                                : null,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
                         ),
+                        border: const OutlineInputBorder(),
                       ),
-                    ],
-                  ),
+                      onChanged: (value) {
+                        setState(() {
+                          _isSearching = true;
+                          _clearTaskCache();
+                        });
+                        // Show processing indicator briefly
+                        Future.delayed(const Duration(milliseconds: 300), () {
+                          if (mounted) {
+                            setState(() {
+                              _isSearching = false;
+                            });
+                          }
+                        });
+                      },
+                    );
+
+                    return LayoutBuilder(builder: (context, constraints) {
+                      // Always keep search on the same line as sort options, but ensure the
+                      // search field's right edge is always visible. When space is tight,
+                      // the sort controls scroll within a bounded area instead of pushing
+                      // the search field off-screen.
+
+                      if (_unfilteredTaskCount < 5) {
+                        return searchWidget;
+                      }
+
+                      final sortAreaWidth =
+                          (constraints.maxWidth * 0.35).clamp(0.0, 240.0);
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: sortAreaWidth,
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: sortWidget,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(child: searchWidget),
+                        ],
+                      );
+                    });
+                  }),
                   const SizedBox(height: 0),
                 ],
                 const SizedBox(height: 8),
@@ -1808,28 +1821,28 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                 // Show "No results" if search has no matches but there are tasks
                 else if (_tasks.isEmpty &&
                     _searchController.text.trim().isNotEmpty)
-                  Center(
+                  const Center(
                     child: Padding(
-                      padding: const EdgeInsets.all(16.0),
+                      padding: EdgeInsets.all(16.0),
                       child: Column(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.search_off,
                             size: 48,
                             color: Colors.grey,
                           ),
-                          const SizedBox(height: 16),
+                          SizedBox(height: 16),
                           Text(
                             'No results found',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          SizedBox(height: 8),
                           Text(
                             'Try a different search term',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               color: Colors.grey,
                             ),

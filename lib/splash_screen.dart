@@ -4,6 +4,7 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/app_state_manager.dart';
 import 'package:meaning_to/models/task.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -15,6 +16,8 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> {
   bool _showWelcomeScreen = false;
   final bool _forceWelcomeScreen = false; // Temporary debug flag
+  String _version = '';
+  String _buildNumber = '';
 
   @override
   void initState() {
@@ -22,6 +25,9 @@ class _SplashScreenState extends State<SplashScreen> {
     print('SplashScreen: initState called');
     print(
         'SplashScreen: MyApp.isHandlingDeepLink = ${MyApp.isHandlingDeepLink}');
+
+    // Load version info
+    _loadVersionInfo();
 
     // Check if we're handling a deep link
     if (MyApp.isHandlingDeepLink) {
@@ -57,6 +63,18 @@ class _SplashScreenState extends State<SplashScreen> {
         });
       }
     });
+  }
+
+  Future<void> _loadVersionInfo() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      setState(() {
+        _version = packageInfo.version;
+        _buildNumber = packageInfo.buildNumber;
+      });
+    } catch (e) {
+      print('Error loading version info: $e');
+    }
   }
 
   void _navigateToLogin() {
@@ -279,6 +297,18 @@ class _SplashScreenState extends State<SplashScreen> {
                       ),
                     ),
                   ],
+
+                  // Version display at the bottom
+                  const Spacer(),
+                  if (_version.isNotEmpty) ...[
+                    Text(
+                      'v$_version (Build $_buildNumber)',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -297,21 +327,36 @@ class _SplashScreenState extends State<SplashScreen> {
             colors: [Colors.deepPurple, Colors.purple],
           ),
         ),
-        child: const Center(
+        child: SafeArea(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(
+              const Spacer(),
+              const CircularProgressIndicator(
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
-              SizedBox(height: 24),
-              Text(
+              const SizedBox(height: 24),
+              const Text(
                 'Loading...',
                 style: TextStyle(
                   fontSize: 18,
                   color: Colors.white,
                 ),
               ),
+              const Spacer(),
+              // Version display at the bottom
+              if (_version.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Text(
+                    'v$_version (Build $_buildNumber)',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
