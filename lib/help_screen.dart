@@ -136,7 +136,7 @@ Perfect for saving articles to read, videos to watch, or anything else you come 
 Already have a list of things you've been meaning to do? You can import them in bulk from other sources.
 
 Supported import formats:
-• Plain text files in a variety of formats (see Example formats** for details)
+• Plain text files in a variety of formats (see **Example Formats below for details)
 • JSON files (one item per line)
 • CSV files (spreadsheets exported from Excel, Google Sheets, etc.)
 • Letterboxd (for movie watchlists)
@@ -152,18 +152,20 @@ How to import:
 
 This is perfect if you're migrating from another app or have been keeping lists in spreadsheets. Import hundreds of items at once instead of entering them one by one!
 
-** Example formats:
+**Example Formats:
 • Plain text:
 Movie Title 1
 Movie Title 2
-https://www.justwatch.com/us/movie/the-matrix (Just a URL on a line; the app will automatically extract the title from the URL)
+https://www.justwatch.com/us/movie/inception
+
+(That last is just a URL on a line; the app will automatically extract the title from the page it points to)
 
 • JSON:
-{"title": "Movie 1", "link": "https://example.com/movie1"}
-{"title": "Movie 2", "link": "https://example.com/movie2"}
+{"title": "Inception", "link": "https://www.justwatch.com/us/movie/inception"}
+{"title": "The Matrix", "link": "https://www.justwatch.com/us/movie/the-matrix"}
 
 • JSON array:
-[{"title": "Movie 1"}, {"title": "Movie 2", "link": "https://example.com/movie2"}]
+[{"title": "Inception"}, {"title": "The Matrix", "link": "https://www.justwatch.com/us/movie/the-matrix"}]
 
 • Markdown links:
 [Inception](https://example.com/inception)
