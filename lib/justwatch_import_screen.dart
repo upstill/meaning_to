@@ -934,15 +934,41 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                                 fontSize: 14, color: Colors.grey),
                           ),
                           const SizedBox(height: 16),
-                          // Only show button if there are titles to import
+                          // Only show buttons if there are titles to import
                           if (_filteredTitles.isNotEmpty) ...[
-                            ElevatedButton.icon(
-                              onPressed: _isLoading ? null : _processTitles,
-                              icon: const Icon(Icons.api),
-                              label: const Text('Process All Titles'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                foregroundColor: Colors.white,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Flexible(
+                                    flex: 11,
+                                    child: OutlinedButton.icon(
+                                      onPressed: _isLoading
+                                          ? null
+                                          : () => Navigator.of(context).pop(),
+                                      icon: const Icon(Icons.cancel),
+                                      label: const Text('Never Mind'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.red,
+                                        side: const BorderSide(color: Colors.red),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    flex: 13,
+                                    child: ElevatedButton.icon(
+                                      onPressed: _isLoading ? null : _processTitles,
+                                      icon: const Icon(Icons.api),
+                                      label: const Text('Process All Titles'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
