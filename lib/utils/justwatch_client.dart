@@ -635,10 +635,10 @@ class JustWatchTitle {
       objectType: json['objectType']?.toString() ?? '',
       title: content['title']?.toString() ?? 'Unknown Title',
       fullPath: content['fullPath']?.toString() ?? '',
-      originalReleaseYear: content['originalReleaseYear'] as int?,
+      originalReleaseYear: _toInt(content['originalReleaseYear']),
       shortDescription: content['shortDescription']?.toString(),
       imdbScore: scoring['imdbScore']?.toDouble(),
-      imdbVotes: scoring['imdbVotes'] as int?,
+      imdbVotes: _toInt(scoring['imdbVotes']),
       tmdbScore: scoring['tmdbScore']?.toDouble(),
       tmdbPopularity: scoring['tmdbPopularity']?.toDouble(),
       posterUrl: content['posterUrl']?.toString(),
@@ -649,13 +649,22 @@ class JustWatchTitle {
       isReleased: content['isReleased'] as bool? ?? true,
       watchNowUrl: watchNowOffer?['standardWebURL']?.toString(),
       packageName: package?['clearName']?.toString(),
-      seenEpisodeCount: seenState['seenEpisodeCount'] as int?,
-      releasedEpisodeCount: seenState['releasedEpisodeCount'] as int?,
+      seenEpisodeCount: _toInt(seenState['seenEpisodeCount']),
+      releasedEpisodeCount: _toInt(seenState['releasedEpisodeCount']),
       progress: seenState['progress']?.toDouble(),
       caughtUp: seenState['caughtUp'] as bool?,
-      lastSeenEpisodeNumber: seenState['lastSeenEpisodeNumber'] as int?,
-      lastSeenSeasonNumber: seenState['lastSeenSeasonNumber'] as int?,
+      lastSeenEpisodeNumber: _toInt(seenState['lastSeenEpisodeNumber']),
+      lastSeenSeasonNumber: _toInt(seenState['lastSeenSeasonNumber']),
     );
+  }
+
+  /// Helper to safely convert dynamic values to int (handles both int and double)
+  static int? _toInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
   }
 
   /// Get the full JustWatch URL

@@ -761,7 +761,7 @@ class _TaskFormState extends State<TaskForm> {
                   final hasSuggestions = snapshot.data == true;
                   return Center(
                     child: FractionallySizedBox(
-                      widthFactor: 0.5,
+                      widthFactor: 0.75,
                       child: ElevatedButton.icon(
                         onPressed: (widget.isLoading ||
                                 !hasSuggestions ||
@@ -817,7 +817,7 @@ class _TaskFormState extends State<TaskForm> {
               // Add A List of Ideas button
               Center(
                 child: FractionallySizedBox(
-                  widthFactor: 0.5,
+                  widthFactor: 0.75,
                   child: ElevatedButton.icon(
                     onPressed: widget.isLoading
                         ? null
@@ -879,7 +879,7 @@ class _TaskFormState extends State<TaskForm> {
                 const SizedBox(height: 16),
                 Center(
                   child: FractionallySizedBox(
-                    widthFactor: 0.5,
+                    widthFactor: 0.75,
                     child: ElevatedButton.icon(
                       onPressed: widget.isLoading
                           ? null
@@ -936,7 +936,7 @@ class _TaskFormState extends State<TaskForm> {
                 const SizedBox(height: 16),
                 Center(
                   child: FractionallySizedBox(
-                    widthFactor: 0.5,
+                    widthFactor: 0.75,
                     child: ElevatedButton.icon(
                       onPressed: widget.isLoading
                           ? null

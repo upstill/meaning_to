@@ -408,7 +408,7 @@ class _NewContentScreenState extends State<NewContentScreen> {
                       const SizedBox(height: 16),
                       Center(
                         child: FractionallySizedBox(
-                          widthFactor: 0.5,
+                          widthFactor: 0.75,
                           child: ElevatedButton.icon(
                             onPressed: _isLoading
                                 ? null

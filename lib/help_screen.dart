@@ -42,12 +42,12 @@ class _HelpScreenState extends State<HelpScreen> {
             index: 0,
             title: 'What Is This Thing?',
             content: '''
-I've Been Meaning To helps you organize and track the ideas, goals, and interests you've been meaning to explore.
+I've Been Meaning To helps you organize and track the ideas, goals, and interests you've been meaning to pursue.
 
 Think of it as a way to keep track of all those things you say "I've been meaning to..." about - books you want to read, movies to watch, places to visit, projects to start, or anything else that catches your interest.
 
 The app helps you:
-• Keep your ideas organized, with notes reminding you where they came from and/or why they're there
+• Keep your ideas organized, with notes reminding you where they came from and/or why they're here
 • Link your ideas to external resources like movies, books, music, and more
 • Get random suggestions when you're ready to act
 • Track what you've accomplished
@@ -136,6 +136,8 @@ Perfect for saving articles to read, videos to watch, or anything else you come 
 Already have a list of things you've been meaning to do? You can import them in bulk from other sources.
 
 Supported import formats:
+• Plain text files in a variety of formats (see Example formats** for details)
+• JSON files (one item per line)
 • CSV files (spreadsheets exported from Excel, Google Sheets, etc.)
 • Letterboxd (for movie watchlists)
 • JustWatch (for streaming content)
@@ -145,10 +147,32 @@ How to import:
 1. On the home screen, select the ${NamingUtils.categoriesName(capitalize: false, plural: false)} you want to add to
 2. Hit the "+" button to add a new ${NamingUtils.tasksName(capitalize: false, plural: false)}
 3. Instead of entering a single ${NamingUtils.tasksName(capitalize: false, plural: false)}, hit the "Add a List of Ideas" button
-4. Select your data source or file
+4. Paste the list into the text box, or hit the Import button and select a data source file to upload
 5. The app will process your data and create ${NamingUtils.tasksName(capitalize: false)} automatically
 
 This is perfect if you're migrating from another app or have been keeping lists in spreadsheets. Import hundreds of items at once instead of entering them one by one!
+
+** Example formats:
+• Plain text:
+Movie Title 1
+Movie Title 2
+https://www.justwatch.com/us/movie/the-matrix (Just a URL on a line; the app will automatically extract the title from the URL)
+
+• JSON:
+{"title": "Movie 1", "link": "https://example.com/movie1"}
+{"title": "Movie 2", "link": "https://example.com/movie2"}
+
+• JSON array:
+[{"title": "Movie 1"}, {"title": "Movie 2", "link": "https://example.com/movie2"}]
+
+• Markdown links:
+[Inception](https://example.com/inception)
+[The Matrix](https://example.com/matrix)
+
+• HTML links:
+<a href="https://www.justwatch.com/us/movie/inception">Inception</a>
+<a href="https://www.justwatch.com/us/movie/the-matrix">The Matrix</a>
+
 ''',
           ),
 
@@ -177,6 +201,7 @@ This is perfect if you're migrating from another app or have been keeping lists 
     required String content,
   }) {
     return ExpansionTile(
+      key: ValueKey<String>('help_section_${index}_${_expandedIndex == index}'),
       initiallyExpanded: _expandedIndex == index,
       onExpansionChanged: (expanded) {
         setState(() {

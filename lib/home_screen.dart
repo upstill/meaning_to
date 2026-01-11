@@ -760,10 +760,10 @@ class HomeScreenState extends State<HomeScreen> {
           }
         }
 
-        // Show welcome dialog for new authenticated users with no categories
-        if (!AuthUtils.isGuestUser() &&
-            categories.isEmpty &&
-            !_welcomeDialogShown) {
+        // Show welcome dialog for authenticated users with no categories
+        // Reset flag on each category load to show dialog on each login
+        if (!AuthUtils.isGuestUser() && categories.isEmpty) {
+          _welcomeDialogShown = false; // Reset to allow showing again
           _checkAndShowWelcomeDialog();
         }
       } catch (e) {
@@ -1439,31 +1439,45 @@ class HomeScreenState extends State<HomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.pushNamed(context, '/help');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.yellow[700],
-                        foregroundColor: Colors.black,
+                    Flexible(
+                      flex: 1,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          Navigator.pushNamed(context, '/help');
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.yellow[700],
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        ),
+                        child: const Text(
+                          'More Info',
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                      child: const Text('More Info'),
                     ),
                     const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        // Navigate to create new category
-                        _navigateToNewCategory();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepPurple,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: Text(
-                        'Create Your First ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                    Flexible(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          // Navigate to create new category
+                          _navigateToNewCategory();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        ),
+                        child: Text(
+                          'Create Your First ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.visible,
+                        ),
                       ),
                     ),
                   ],
@@ -1749,6 +1763,7 @@ class HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    print('🔥🔥🔥 HOME SCREEN BUILD - NEW CODE VERSION 2026-01-11 🔥🔥🔥');
     // Check if data was modified after this frame completes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final dataModified = HomeScreen.checkAndResetDataModified();
@@ -1808,8 +1823,14 @@ class HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.info_outline,
-                          size: 48, color: Colors.grey),
+                      IconButton(
+                        icon: const Icon(Icons.info_outline,
+                            size: 48, color: Colors.grey),
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/help');
+                        },
+                        tooltip: 'Help',
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         'No ${NamingUtils.categoriesName(plural: true)} available',
