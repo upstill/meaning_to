@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/utils/naming.dart';
 
-class HelpScreen extends StatelessWidget {
+class HelpScreen extends StatefulWidget {
   const HelpScreen({super.key});
+
+  @override
+  State<HelpScreen> createState() => _HelpScreenState();
+}
+
+class _HelpScreenState extends State<HelpScreen> {
+  int? _expandedIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +39,7 @@ class HelpScreen extends StatelessWidget {
           // What Is This Thing?
           _buildHelpSection(
             context: context,
+            index: 0,
             title: 'What Is This Thing?',
             content: '''
 I've Been Meaning To helps you organize and track the ideas, goals, and interests you've been meaning to explore.
@@ -39,10 +47,11 @@ I've Been Meaning To helps you organize and track the ideas, goals, and interest
 Think of it as a way to keep track of all those things you say "I've been meaning to..." about - books you want to read, movies to watch, places to visit, projects to start, or anything else that catches your interest.
 
 The app helps you:
-• Keep all your ideas organized
+• Keep your ideas organized, with notes reminding you where they came from and/or why they're there
+• Link your ideas to external resources like movies, books, music, and more
 • Get random suggestions when you're ready to act
 • Track what you've accomplished
-• Share your interests with others
+• Get ideas from others and share yours
 ''',
           ),
 
@@ -51,6 +60,7 @@ The app helps you:
           // Compiling Pursuits
           _buildHelpSection(
             context: context,
+            index: 1,
             title: 'Compiling ${NamingUtils.categoriesName(capitalize: true)}',
             content: '''
 ${NamingUtils.categoriesName(capitalize: true)} are the main way to organize your ideas. Each ${NamingUtils.categoriesName(capitalize: false, plural: false)} represents a type of activity or interest.
@@ -73,6 +83,7 @@ You can make your ${NamingUtils.categoriesName(capitalize: false)} public to sha
           // Linking Elsewhere
           _buildHelpSection(
             context: context,
+            index: 2,
             title: 'Linking Elsewhere',
             content: '''
 You can add links to external resources for your ${NamingUtils.tasksName(capitalize: false)}. This makes it easy to jump directly to relevant content.
@@ -85,7 +96,59 @@ Supported link types:
 
 When you add a link, the app will try to automatically fetch information like titles and descriptions. For some services (like movies and music), it can even find where content is available to stream.
 
-Just paste a URL when creating or editing an ${NamingUtils.tasksName(capitalize: false, plural: false)}, and the app will handle the rest!
+Pro tip: Just paste a URL into the headline when adding a new ${NamingUtils.tasksName(capitalize: false, plural: false)}, and the app will handle the rest!
+''',
+          ),
+
+          const SizedBox(height: 8),
+
+          // Turn Shares into Ideas
+          _buildHelpSection(
+            context: context,
+            index: 3,
+            title:
+                'Turn Shares into ${NamingUtils.tasksName(capitalize: true)}',
+            content: '''
+On mobile, you can quickly capture content from other apps by using the Share feature.
+
+How it works:
+1. Find something interesting in another app (a website, article, video, etc.)
+2. Tap the Share button
+3. Select "I've Been Meaning To" from the share menu
+4. Tell the app what ${NamingUtils.categoriesName(capitalize: false, plural: false)} it pertains to
+5. The app will create a new ${NamingUtils.tasksName(capitalize: false, plural: false)} with the shared link
+
+This is a fast way to capture ideas on the go without switching apps. The shared content will be automatically added as a link to your new ${NamingUtils.tasksName(capitalize: false, plural: false)}, and you can organize it into the appropriate ${NamingUtils.categoriesName(capitalize: false, plural: false)} later.
+
+Perfect for saving articles to read, videos to watch, or anything else you come across while browsing!
+''',
+          ),
+
+          const SizedBox(height: 8),
+
+          // Import Ideas from Elsewhere
+          _buildHelpSection(
+            context: context,
+            index: 4,
+            title:
+                'Import ${NamingUtils.tasksName(capitalize: true)} from Elsewhere',
+            content: '''
+Already have a list of things you've been meaning to do? You can import them in bulk from other sources.
+
+Supported import formats:
+• CSV files (spreadsheets exported from Excel, Google Sheets, etc.)
+• Letterboxd (for movie watchlists)
+• JustWatch (for streaming content)
+• Other structured data formats
+
+How to import:
+1. On the home screen, select the ${NamingUtils.categoriesName(capitalize: false, plural: false)} you want to add to
+2. Hit the "+" button to add a new ${NamingUtils.tasksName(capitalize: false, plural: false)}
+3. Instead of entering a single ${NamingUtils.tasksName(capitalize: false, plural: false)}, hit the "Add a List of Ideas" button
+4. Select your data source or file
+5. The app will process your data and create ${NamingUtils.tasksName(capitalize: false)} automatically
+
+This is perfect if you're migrating from another app or have been keeping lists in spreadsheets. Import hundreds of items at once instead of entering them one by one!
 ''',
           ),
 
@@ -109,10 +172,17 @@ Just paste a URL when creating or editing an ${NamingUtils.tasksName(capitalize:
 
   Widget _buildHelpSection({
     required BuildContext context,
+    required int index,
     required String title,
     required String content,
   }) {
     return ExpansionTile(
+      initiallyExpanded: _expandedIndex == index,
+      onExpansionChanged: (expanded) {
+        setState(() {
+          _expandedIndex = expanded ? index : null;
+        });
+      },
       title: Text(
         title,
         style: const TextStyle(

@@ -5,6 +5,8 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/app_state_manager.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -18,6 +20,8 @@ class _SplashScreenState extends State<SplashScreen> {
   final bool _forceWelcomeScreen = false; // Temporary debug flag
   String _version = '';
   String _buildNumber = '';
+  StreamSubscription<AuthState>? _authSubscription;
+  bool _hasNavigated = false;
 
   @override
   void initState() {
@@ -29,6 +33,15 @@ class _SplashScreenState extends State<SplashScreen> {
     // Load version info
     _loadVersionInfo();
 
+    // Set up auth state listener to handle OAuth callbacks
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      print('SplashScreen: Auth state changed - event: ${data.event}, session: ${data.session != null}');
+      if (data.event == AuthChangeEvent.signedIn && data.session != null) {
+        print('SplashScreen: User signed in via OAuth');
+        _handleAuthenticatedUser(data.session!.user.id);
+      }
+    });
+
     // Check if we're handling a deep link
     if (MyApp.isHandlingDeepLink) {
       print(
@@ -38,7 +51,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
     // Add a delay to ensure everything is initialized
     Future.delayed(const Duration(seconds: 2), () async {
-      if (!mounted) return;
+      if (!mounted || _hasNavigated) return;
 
       // Check authentication status
       final currentUser = AuthUtils.getCurrentUser();
@@ -51,7 +64,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
       if (isAuthenticated) {
         print('🔥🔥🔥 SPLASH SCREEN: NEW CODE RUNNING - ATTEMPTING STATE RESTORATION 🔥🔥🔥');
-        _navigateWithStateRestoration(currentUser!.id);
+        _handleAuthenticatedUser(currentUser!.id);
       } else {
         print('SplashScreen: Showing welcome screen (user not authenticated)');
         // Clear any saved state since user is not authenticated
@@ -63,6 +76,22 @@ class _SplashScreenState extends State<SplashScreen> {
         });
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Handle authenticated user by navigating with state restoration
+  Future<void> _handleAuthenticatedUser(String userId) async {
+    if (_hasNavigated) {
+      print('SplashScreen: Already navigated, ignoring duplicate auth event');
+      return;
+    }
+    _hasNavigated = true;
+    _navigateWithStateRestoration(userId);
   }
 
   Future<void> _loadVersionInfo() async {
