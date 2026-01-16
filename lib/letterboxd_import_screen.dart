@@ -5,6 +5,7 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/home_screen.dart';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 
@@ -847,6 +848,14 @@ class _LetterboxdImportScreenState extends State<LetterboxdImportScreen> {
             backgroundColor: Colors.green,
           ),
         );
+
+        // Mark data as modified so HomeScreen knows to refresh
+        final homeScreenType = context
+            .findAncestorWidgetOfExactType<HomeScreen>();
+        if (homeScreenType != null) {
+          HomeScreen.markDataModified();
+          print('LetterboxdImport: Marked home screen data as modified');
+        }
 
         // Return the updated category
         Navigator.pop(context, widget.category);

@@ -1137,7 +1137,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
         ? NamingUtils.tasksName(plural: false)
         : NamingUtils.tasksName(plural: true);
 
-    return '${currentCategory.headline} and $taskCount $taskWord';
+    return '$taskCount $taskWord to ${currentCategory.headline}';
   }
 
   String _buildTaskCountText() {
@@ -1704,7 +1704,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     final searchWidget = TextField(
                       controller: _searchController,
                       decoration: InputDecoration(
-                        hintText: 'Search tasks...',
+                        hintText:
+                            'Search ${NamingUtils.tasksName(capitalize: true, plural: true)}...',
                         prefixIcon: const Icon(Icons.search, size: 20),
                         suffixIcon: _isSearching
                             ? const Padding(

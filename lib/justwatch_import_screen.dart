@@ -9,8 +9,10 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/edit_category_screen.dart';
+import 'package:meaning_to/home_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:url_launcher/url_launcher.dart';
 
 class JustWatchImportScreen extends StatefulWidget {
   final models.Category category;
@@ -43,6 +45,9 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
   @override
   void initState() {
     super.initState();
+    // Add listeners to update button state when text changes
+    _emailController.addListener(() => setState(() {}));
+    _passwordController.addListener(() => setState(() {}));
   }
 
   @override
@@ -342,6 +347,16 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
         print('Error refreshing cache: $e');
       }
 
+      // Mark data as modified so HomeScreen knows to refresh
+      if (mounted) {
+        final homeScreenType =
+            context.findAncestorWidgetOfExactType<HomeScreen>();
+        if (homeScreenType != null) {
+          HomeScreen.markDataModified();
+          print('JustWatchImportScreen: Marked home screen data as modified');
+        }
+      }
+
       // Return to EditCategoryScreen
       if (mounted) {
         print('Navigating back with category: ${widget.category.headline}');
@@ -390,6 +405,15 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
     }
 
     return mainMessage;
+  }
+
+  /// Validate email format
+  bool _isValidEmail(String email) {
+    if (email.isEmpty) return false;
+    // Simple email validation regex
+    final emailRegex =
+        RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    return emailRegex.hasMatch(email);
   }
 
   /// Generate the redundancy message if there are redundant titles
@@ -463,6 +487,38 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
 
     // If no specific pattern matches, provide a generic but helpful message
     return 'Login failed. Please check your JustWatch email and password and try again. If the problem persists, verify your credentials on the JustWatch website.';
+  }
+
+  /// Launch JustWatch home page
+  Future<void> _launchJustWatchHome() async {
+    final url = Uri.parse('https://www.justwatch.com');
+
+    try {
+      // JustWatch app doesn't register for web URLs (no App Links/Universal Links)
+      // So we open in browser/system default
+      final launched =
+          await launchUrl(url, mode: LaunchMode.externalApplication);
+
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Could not open JustWatch. Please visit https://www.justwatch.com in your browser.'),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      print('Error launching JustWatch URL: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Could not open JustWatch. Please visit https://www.justwatch.com in your browser.'),
+          duration: Duration(seconds: 5),
+        ),
+      );
+    }
   }
 
   /// Build a cache of existing JustWatch paths from current tasks
@@ -834,6 +890,113 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                       style: TextStyle(fontSize: 14, color: Colors.grey),
                     ),
                     const SizedBox(height: 16),
+                    // Info box for Google OAuth users
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.info_outline,
+                              color: Colors.blue.shade700, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Do you not have a password for logging in to JustWatch?',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue.shade900,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'If you log in with Google, or Apple, or otherwise don\'t use a password, you can add one by:',
+                                  style: TextStyle(
+                                    color: Colors.blue.shade800,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 8.0),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      InkWell(
+                                        onTap: _launchJustWatchHome,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              '1) Log in to JustWatch',
+                                              style: TextStyle(
+                                                color: Colors.blue.shade700,
+                                                fontSize: 12,
+                                                decoration:
+                                                    TextDecoration.underline,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Icon(Icons.open_in_new,
+                                                color: Colors.blue.shade700,
+                                                size: 12),
+                                          ],
+                                        ),
+                                      ),
+                                      Text(
+                                        '2) Tap or click the Account icon (top right)',
+                                        style: TextStyle(
+                                          color: Colors.blue.shade800,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      Text(
+                                        '3) Hit "Login Manager"',
+                                        style: TextStyle(
+                                          color: Colors.blue.shade800,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      Text(
+                                        '4) Hit "Sign in with email/password',
+                                        style: TextStyle(
+                                          color: Colors.blue.shade800,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      Text(
+                                        '5) Add a password and save it',
+                                        style: TextStyle(
+                                          color: Colors.blue.shade800,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      Text(
+                                        '6) Navigate back here and use the new password to access JustWatch',
+                                        style: TextStyle(
+                                          color: Colors.blue.shade800,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     TextField(
                       controller: _emailController,
                       decoration: const InputDecoration(
@@ -871,9 +1034,13 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: ElevatedButton.icon(
-                        onPressed: _isLoading ? null : _login,
+                        onPressed: (_isLoading ||
+                                !_isValidEmail(_emailController.text) ||
+                                _passwordController.text.isEmpty)
+                            ? null
+                            : _login,
                         icon: const Icon(Icons.login),
-                        label: const Text('Login to JustWatch'),
+                        label: const Text('Go to JustWatch to get my titles'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
@@ -937,7 +1104,8 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                           // Only show buttons if there are titles to import
                           if (_filteredTitles.isNotEmpty) ...[
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 0),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 0),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -951,7 +1119,8 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                                       label: const Text('Never Mind'),
                                       style: OutlinedButton.styleFrom(
                                         foregroundColor: Colors.red,
-                                        side: const BorderSide(color: Colors.red),
+                                        side:
+                                            const BorderSide(color: Colors.red),
                                       ),
                                     ),
                                   ),
@@ -959,7 +1128,8 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                                   Flexible(
                                     flex: 13,
                                     child: ElevatedButton.icon(
-                                      onPressed: _isLoading ? null : _processTitles,
+                                      onPressed:
+                                          _isLoading ? null : _processTitles,
                                       icon: const Icon(Icons.api),
                                       label: const Text('Process All Titles'),
                                       style: ElevatedButton.styleFrom(
