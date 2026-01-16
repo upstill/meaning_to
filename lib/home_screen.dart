@@ -193,22 +193,202 @@ class HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    // Logout button - always show
+    // Account menu - always show
     actions.add(
-      IconButton(
-        icon: const Icon(Icons.logout),
-        onPressed: () async {
-          await AuthUtils.signOut();
-          if (mounted) {
-            Navigator.pushReplacementNamed(context, '/');
+      PopupMenuButton<String>(
+        icon: const Icon(Icons.account_circle),
+        tooltip: 'Account',
+        onSelected: (String value) async {
+          if (value == 'logout') {
+            await _handleLogout();
+          } else if (value == 'delete') {
+            await _handleDeleteAccount();
           }
         },
-        tooltip: 'Sign out',
+        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+          const PopupMenuItem<String>(
+            value: 'logout',
+            child: ListTile(
+              leading: Icon(Icons.logout),
+              title: Text('Logout'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+          const PopupMenuItem<String>(
+            value: 'delete',
+            child: ListTile(
+              leading: Icon(Icons.delete_forever, color: Colors.red),
+              title: Text('Delete Account', style: TextStyle(color: Colors.red)),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ],
       ),
     );
 
     print('DEBUG: Total actions in AppBar: ${actions.length}');
     return actions;
+  }
+
+  /// Handle logout action
+  Future<void> _handleLogout() async {
+    await AuthUtils.signOut();
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/');
+    }
+  }
+
+  /// Handle delete account action
+  Future<void> _handleDeleteAccount() async {
+    // Show confirmation dialog
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning, color: Colors.red, size: 32),
+              SizedBox(width: 8),
+              Text('Delete Account'),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'WARNING: This action cannot be undone!',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                  fontSize: 16,
+                ),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Deleting your account will permanently remove:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text('• All your tasks'),
+              Text('• All your categories'),
+              Text('• Your user account'),
+              SizedBox(height: 16),
+              Text(
+                'This data cannot be recovered.',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Delete My Account'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await _deleteAccountData();
+    }
+  }
+
+  /// Delete all user data and account
+  Future<void> _deleteAccountData() async {
+    // Show loading indicator
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Deleting account...'),
+            ],
+          ),
+        );
+      },
+    );
+
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+
+      // Delete all tasks for this user
+      await supabase.from('Tasks').delete().eq('owner_id', userId);
+
+      // Delete all categories for this user
+      await supabase.from('Categories').delete().eq('owner_id', userId);
+
+      // Try to delete the user's auth account
+      // This requires either an RPC function or proper permissions
+      try {
+        // Attempt to use RPC function to delete user
+        // You'll need to create this function in Supabase:
+        // CREATE OR REPLACE FUNCTION delete_user()
+        // RETURNS void
+        // LANGUAGE plpgsql
+        // SECURITY DEFINER
+        // AS $$
+        // BEGIN
+        //   DELETE FROM auth.users WHERE id = auth.uid();
+        // END;
+        // $$;
+        await supabase.rpc('delete_user');
+      } catch (rpcError) {
+        print('Could not delete auth user via RPC: $rpcError');
+        // If RPC doesn't exist, data is still deleted
+        // User account will remain in auth.users but with no data
+      }
+
+      // Sign out
+      await AuthUtils.signOut();
+
+      // Close loading dialog and navigate to auth screen
+      if (mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
+        Navigator.pushReplacementNamed(context, '/');
+      }
+    } catch (e) {
+      // Close loading dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+
+        // Show error dialog
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('Error'),
+              content: Text('Failed to delete account: $e'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    }
   }
 
   /// Debug function to fix raw URLs in task links
@@ -757,6 +937,16 @@ class HomeScreenState extends State<HomeScreen> {
                 _selectedCategory = updatedCategory;
               });
             }
+          } else if (categories.length == 1) {
+            // Auto-select if there's only one category and none is currently selected
+            // This handles the case where a user imports their first category
+            print(
+                'HomeScreen: Only one category available on reload, selecting it automatically');
+            setState(() {
+              _selectedCategory = categories.first;
+            });
+            _loadRandomTask(categories.first);
+            _updateCategoryLastAccess(categories.first);
           }
         }
 

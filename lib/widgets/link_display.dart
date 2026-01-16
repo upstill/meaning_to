@@ -130,12 +130,31 @@ class LinkDisplay extends StatelessWidget {
   /// Centralized function to handle any URL with letterboxd protection
   /// This can be used by other widgets to ensure consistent handling
   static Future<void> handleUrl(String url, BuildContext context) async {
-    // Only show letterboxd protection on Android - web doesn't have app hijacking issues
-    if (!kIsWeb && Platform.isAndroid && (url.contains('letterboxd.com') || url.contains('boxd.it'))) {
-      print('LinkDisplay: Intercepting letterboxd/boxd.it URL on Android: $url');
-      await _resolveLinkAndLaunchWithMonitoring(url, context);
+    // Special handling on Android to prefer native apps over browsers
+    if (!kIsWeb && Platform.isAndroid) {
+      if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
+        // Letterboxd needs warning dialog due to app hijacking issues
+        print('LinkDisplay: Intercepting letterboxd/boxd.it URL on Android: $url');
+        await _resolveLinkAndLaunchWithMonitoring(url, context);
+      } else if (url.contains('justwatch.com')) {
+        // JustWatch should prefer native app over browser
+        print('LinkDisplay: Launching JustWatch URL preferring native app: $url');
+        try {
+          await launchUrl(
+            Uri.parse(url),
+            mode: LaunchMode.externalNonBrowserApplication,
+          );
+        } catch (e) {
+          print('LinkDisplay: Error launching JustWatch URL: $e');
+          // Fallback to regular launch
+          await _resolveLinkAndLaunch(url);
+        }
+      } else {
+        print('LinkDisplay: Normal URL handling: $url');
+        await _resolveLinkAndLaunch(url);
+      }
     } else {
-      print('LinkDisplay: Normal URL handling (web or non-letterboxd): $url');
+      print('LinkDisplay: Normal URL handling (web or non-Android): $url');
       await _resolveLinkAndLaunch(url);
     }
   }
@@ -256,12 +275,29 @@ class LinkDisplay extends StatelessWidget {
       print('LinkDisplay: Falling back to external launch for: $url');
     }
 
-    // Special handling for letterboxd URLs - only on Android (web doesn't have app hijacking)
-    if (!kIsWeb && Platform.isAndroid && (url.contains('letterboxd.com') || url.contains('boxd.it'))) {
-      print('LinkDisplay: Detected letterboxd/boxd.it URL on Android: $url');
-      _resolveLinkAndLaunchWithMonitoring(url, context);
+    // Special handling on Android to prefer native apps over browsers
+    if (!kIsWeb && Platform.isAndroid) {
+      if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
+        // Letterboxd needs warning dialog due to app hijacking issues
+        print('LinkDisplay: Detected letterboxd/boxd.it URL on Android: $url');
+        _resolveLinkAndLaunchWithMonitoring(url, context);
+      } else if (url.contains('justwatch.com')) {
+        // JustWatch should prefer native app over browser
+        print('LinkDisplay: Launching JustWatch URL preferring native app: $url');
+        launchUrl(
+          Uri.parse(url),
+          mode: LaunchMode.externalNonBrowserApplication,
+        ).catchError((e) {
+          print('LinkDisplay: Error launching JustWatch URL: $e');
+          // Fallback to regular launch
+          return _resolveLinkAndLaunch(url);
+        });
+      } else {
+        print('LinkDisplay: Normal URL handling: $url');
+        _resolveLinkAndLaunch(url);
+      }
     } else {
-      print('LinkDisplay: Normal URL handling (web or non-letterboxd): $url');
+      print('LinkDisplay: Normal URL handling (web or non-Android): $url');
       _resolveLinkAndLaunch(url);
     }
   }
