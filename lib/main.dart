@@ -8,6 +8,7 @@ import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/forgot_password_screen.dart';
 import 'package:meaning_to/reset_password_screen.dart';
 import 'package:meaning_to/auth_verification_screen.dart';
+import 'package:meaning_to/auth_otp_verification_screen.dart';
 import 'package:meaning_to/password_reset_request_screen.dart';
 import 'package:meaning_to/password_reset_otp_screen.dart';
 import 'package:meaning_to/password_reset_new_screen.dart';
@@ -682,6 +683,11 @@ class _MyAppState extends State<MyApp> {
                   type: args?['type'] as String?,
                   redirectTo: args?['redirect_to'] as String?,
                 ),
+              );
+            case '/auth/verify-otp':
+              return MaterialPageRoute(
+                settings: settings,
+                builder: (context) => const AuthOtpVerificationScreen(),
               );
             case '/auth/callback':
               print('Main: OAuth callback route detected');
