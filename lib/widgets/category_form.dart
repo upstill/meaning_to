@@ -7,6 +7,7 @@ class CategoryForm extends StatefulWidget {
   final Category? category;
   final bool isEditing;
   final bool isLoading;
+  final bool showPrivacyOptions;
   final Function(String headline, String invitation, bool isPrivate,
       bool tasksArePrivate) onSave;
   final VoidCallback? onEdit;
@@ -17,6 +18,7 @@ class CategoryForm extends StatefulWidget {
     this.category,
     required this.isEditing,
     required this.isLoading,
+    this.showPrivacyOptions = true,
     required this.onSave,
     this.onEdit,
     this.onCancel,
@@ -136,7 +138,7 @@ class CategoryFormState extends State<CategoryForm> {
                   maxLines: 3,
                   enabled: !widget.isLoading,
                 ),
-                if (widget.category != null) ...[
+                if (widget.category != null && widget.showPrivacyOptions) ...[
                   const SizedBox(height: 16),
                   CheckboxListTile(
                     title: const Text('Private'),
@@ -179,7 +181,8 @@ class CategoryFormState extends State<CategoryForm> {
                         child: ElevatedButton(
                           onPressed: widget.isLoading
                               ? null
-                              : (widget.onCancel ?? () => Navigator.pop(context)),
+                              : (widget.onCancel ??
+                                  () => Navigator.pop(context)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.grey[300],
                             foregroundColor: Colors.black,
@@ -199,13 +202,15 @@ class CategoryFormState extends State<CategoryForm> {
                             ? null
                             : _handleSave,
                         style: AppButtons.finalize().copyWith(
-                          minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+                          minimumSize:
+                              const WidgetStatePropertyAll(Size(0, 48)),
                         ),
                         child: widget.isLoading
                             ? const SizedBox(
                                 height: 20,
                                 width: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
                               )
                             : Text(
                                 widget.category == null

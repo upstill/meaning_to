@@ -64,6 +64,13 @@ class HomeScreenState extends State<HomeScreen> {
   final TextEditingController _taskSearchController = TextEditingController();
   HomeTaskSortOption _taskListSortOption = HomeTaskSortOption.priority;
   bool _isSearchingTasks = false;
+  bool _isTaskListSorting = false;
+  List<Task> _listModeTasks = <Task>[];
+  bool _isListModeLoading = false;
+  bool _isListProgressiveLoading = false;
+  int _visibleTaskCount = 0;
+  static const int _initialListTaskCount = 16;
+  static const int _listBatchSize = 24;
   bool _isLoading = true;
   bool _isLoadingTask = false;
   String? _error;
@@ -780,14 +787,49 @@ class HomeScreenState extends State<HomeScreen> {
       _showTaskListMode = turningOn;
     });
 
-    if (turningOn &&
-        (_cacheManager.currentCategory?.id != _selectedCategory?.id ||
-            _cacheManager.currentTasks == null)) {
-      _loadRandomTask(_selectedCategory!);
+    if (turningOn) {
+      _rebuildTaskListFromCache();
+      if (_cacheManager.currentCategory?.id != _selectedCategory?.id ||
+          _cacheManager.currentTasks == null) {
+        setState(() {
+          _isListModeLoading = true;
+        });
+        unawaited(_loadTaskListDataInBackground());
+      } else {
+        setState(() {
+          _isListModeLoading = false;
+        });
+      }
     }
   }
 
-  List<Task> _tasksForSelectedCategory() {
+  Future<void> _loadTaskListDataInBackground() async {
+    final category = _selectedCategory;
+    if (category == null) {
+      return;
+    }
+
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+      await _cacheManager.initializeWithSavedCategory(category, userId);
+
+      if (mounted && _showTaskListMode) {
+        setState(() {
+          _rebuildTaskListFromCache();
+          _isListModeLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isListModeLoading = false;
+        });
+      }
+      print('HomeScreen: Background list load failed: $e');
+    }
+  }
+
+  List<Task> _computeTasksForSelectedCategory() {
     final categoryId = _selectedCategory?.id;
     if (categoryId == null) {
       return <Task>[];
@@ -807,33 +849,110 @@ class HomeScreenState extends State<HomeScreen> {
     switch (_taskListSortOption) {
       case HomeTaskSortOption.alphabetical:
         tasks.sort(
-          (a, b) =>
-              a.headline.toLowerCase().compareTo(b.headline.toLowerCase()),
+          (a, b) => _compareTasksBySort(a, b, HomeTaskSortOption.alphabetical),
         );
         break;
       case HomeTaskSortOption.priority:
-        tasks.sort((a, b) {
-          if (a.finished != b.finished) {
-            return a.finished ? 1 : -1;
-          }
-          if (a.suggestibleAt == null && b.suggestibleAt == null) {
-            return b.createdAt.compareTo(a.createdAt);
-          }
-          if (a.suggestibleAt == null) {
-            return -1;
-          }
-          if (b.suggestibleAt == null) {
-            return 1;
-          }
-          return a.suggestibleAt!.compareTo(b.suggestibleAt!);
-        });
+        tasks.sort(
+          (a, b) => _compareTasksBySort(a, b, HomeTaskSortOption.priority),
+        );
         break;
       case HomeTaskSortOption.age:
-        tasks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        tasks.sort((a, b) => _compareTasksBySort(a, b, HomeTaskSortOption.age));
         break;
     }
 
     return tasks;
+  }
+
+  int _compareTasksBySort(Task a, Task b, HomeTaskSortOption option) {
+    switch (option) {
+      case HomeTaskSortOption.alphabetical:
+        return a.headline.toLowerCase().compareTo(b.headline.toLowerCase());
+      case HomeTaskSortOption.priority:
+        if (a.finished != b.finished) {
+          return a.finished ? 1 : -1;
+        }
+        if (a.suggestibleAt == null && b.suggestibleAt == null) {
+          return b.createdAt.compareTo(a.createdAt);
+        }
+        if (a.suggestibleAt == null) {
+          return -1;
+        }
+        if (b.suggestibleAt == null) {
+          return 1;
+        }
+        return a.suggestibleAt!.compareTo(b.suggestibleAt!);
+      case HomeTaskSortOption.age:
+        return b.createdAt.compareTo(a.createdAt);
+    }
+  }
+
+  Future<void> _applySortOptionAsync(HomeTaskSortOption option) async {
+    if (_taskListSortOption == option || _isTaskListSorting) {
+      return;
+    }
+
+    setState(() {
+      _taskListSortOption = option;
+      _isTaskListSorting = true;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 1));
+
+    final previousVisibleCount = _visibleTaskCount;
+    final sorted = List<Task>.from(_listModeTasks)
+      ..sort((a, b) => _compareTasksBySort(a, b, option));
+
+    if (!mounted) return;
+
+    setState(() {
+      _listModeTasks = sorted;
+      _visibleTaskCount = previousVisibleCount.clamp(0, sorted.length);
+      if (_visibleTaskCount == 0) {
+        _prepareVisibleTaskCount();
+      } else if (_visibleTaskCount < sorted.length &&
+          !_isListProgressiveLoading) {
+        unawaited(_loadMoreListTasksProgressively());
+      }
+      _isTaskListSorting = false;
+    });
+  }
+
+  void _rebuildTaskListFromCache() {
+    _listModeTasks = _computeTasksForSelectedCategory();
+    _prepareVisibleTaskCount();
+  }
+
+  void _prepareVisibleTaskCount() {
+    if (_listModeTasks.length > 50) {
+      _visibleTaskCount = _initialListTaskCount.clamp(0, _listModeTasks.length);
+      _isListProgressiveLoading = false;
+      unawaited(_loadMoreListTasksProgressively());
+    } else {
+      _visibleTaskCount = _listModeTasks.length;
+      _isListProgressiveLoading = false;
+    }
+  }
+
+  Future<void> _loadMoreListTasksProgressively() async {
+    if (_isListProgressiveLoading) return;
+    _isListProgressiveLoading = true;
+
+    while (mounted &&
+        _showTaskListMode &&
+        _visibleTaskCount < _listModeTasks.length) {
+      await Future.delayed(const Duration(milliseconds: 45));
+
+      if (!mounted || !_showTaskListMode) break;
+
+      setState(() {
+        _visibleTaskCount = (_visibleTaskCount + _listBatchSize)
+            .clamp(0, _listModeTasks.length);
+      });
+    }
+
+    _isListProgressiveLoading = false;
   }
 
   Future<void> _toggleTaskCompletionFromList(Task task) async {
@@ -845,7 +964,9 @@ class HomeScreenState extends State<HomeScreen> {
       }
 
       if (mounted) {
-        setState(() {});
+        setState(() {
+          _rebuildTaskListFromCache();
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -888,7 +1009,9 @@ class HomeScreenState extends State<HomeScreen> {
         _randomTask = null;
       }
       if (mounted) {
-        setState(() {});
+        setState(() {
+          _rebuildTaskListFromCache();
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -928,7 +1051,9 @@ class HomeScreenState extends State<HomeScreen> {
         _randomTask = updatedTask.markClean();
       }
       if (mounted) {
-        setState(() {});
+        setState(() {
+          _rebuildTaskListFromCache();
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -943,7 +1068,11 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTaskListModeContent() {
-    final tasks = _tasksForSelectedCategory();
+    final tasks = _listModeTasks;
+    final displayedTasks =
+        (_visibleTaskCount <= 0 || _visibleTaskCount >= tasks.length)
+            ? tasks
+            : tasks.take(_visibleTaskCount).toList();
 
     Widget buildSortRow(HomeTaskSortOption option, String label) {
       return Row(
@@ -956,9 +1085,7 @@ class HomeScreenState extends State<HomeScreen> {
             visualDensity: VisualDensity.compact,
             onChanged: (HomeTaskSortOption? value) {
               if (value == null) return;
-              setState(() {
-                _taskListSortOption = value;
-              });
+              unawaited(_applySortOptionAsync(value));
             },
           ),
           Text(label),
@@ -1004,6 +1131,7 @@ class HomeScreenState extends State<HomeScreen> {
                     onPressed: () {
                       setState(() {
                         _taskSearchController.clear();
+                        _rebuildTaskListFromCache();
                       });
                     },
                   )
@@ -1015,6 +1143,7 @@ class HomeScreenState extends State<HomeScreen> {
       onChanged: (_) {
         setState(() {
           _isSearchingTasks = true;
+          _rebuildTaskListFromCache();
         });
         Future.delayed(const Duration(milliseconds: 250), () {
           if (mounted) {
@@ -1025,6 +1154,10 @@ class HomeScreenState extends State<HomeScreen> {
         });
       },
     );
+
+    if (_isListModeLoading && tasks.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
     if (tasks.isEmpty) {
       return Center(
@@ -1066,6 +1199,18 @@ class HomeScreenState extends State<HomeScreen> {
           },
         ),
         const SizedBox(height: 8),
+        if (_isTaskListSorting) ...[
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8.0),
+            child: Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+            ),
+          ),
+        ],
         Text(
           '${tasks.length} ${NamingUtils.tasksName(plural: true, capitalize: false)}',
           style: const TextStyle(
@@ -1075,7 +1220,7 @@ class HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        ...tasks.map(
+        ...displayedTasks.map(
           (task) => TaskDisplay(
             key: ValueKey(
                 'home-task-${task.id}-${task.finished}-${task.shared}'),
@@ -1089,6 +1234,17 @@ class HomeScreenState extends State<HomeScreen> {
             isCategoryPrivate: _selectedCategory?.isPrivate ?? false,
           ),
         ),
+        if (_isListProgressiveLoading && _visibleTaskCount < tasks.length)
+          const Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -1282,6 +1438,16 @@ class HomeScreenState extends State<HomeScreen> {
           }
         }
 
+        // Ensure we always have an actively selected category when categories exist.
+        // This guarantees task selection on startup even with multiple categories.
+        if (categories.isNotEmpty && _selectedCategory == null) {
+          setState(() {
+            _selectedCategory = categories.first;
+          });
+          _loadRandomTask(categories.first);
+          _updateCategoryLastAccess(categories.first);
+        }
+
         // Show welcome dialog for authenticated users with no categories
         // Reset flag on each category load to show dialog on each login
         if (!AuthUtils.isGuestUser() && categories.isEmpty) {
@@ -1314,6 +1480,31 @@ class HomeScreenState extends State<HomeScreen> {
         _error = errorMessage;
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _handleCategorySelection(Category? newValue) async {
+    setState(() {
+      _selectedCategory = newValue;
+      _randomTask = null;
+      if (_showTaskListMode) {
+        _rebuildTaskListFromCache();
+      }
+    });
+
+    if (newValue != null) {
+      await _updateCategoryLastAccess(newValue);
+      if (_showTaskListMode) {
+        if (_cacheManager.currentCategory?.id != newValue.id ||
+            _cacheManager.currentTasks == null) {
+          setState(() {
+            _isListModeLoading = true;
+          });
+          unawaited(_loadTaskListDataInBackground());
+        }
+      } else {
+        _loadRandomTask(newValue);
+      }
     }
   }
 
@@ -2413,85 +2604,107 @@ class HomeScreenState extends State<HomeScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _categories.length == 1
-                              ? Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                    horizontal: 12,
-                                  ),
-                                  child: Text(
-                                    '...${_categories.first.headline}',
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1A237E),
-                                    ),
-                                  ),
-                                )
-                              : DropdownButtonFormField<Category>(
-                                  initialValue: _selectedCategory,
-                                  // Must be >= kMinInteractiveDimension (48)
-                                  itemHeight: 48.0,
-                                  isExpanded: true,
-                                  style: const TextStyle(
-                                      fontSize:
-                                          20), // Increased by 8 points from default 12
-                                  decoration: InputDecoration(
-                                    border: const OutlineInputBorder(),
-                                    hintText:
-                                        'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false, withArticle: true)}',
-                                    isDense: false,
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      vertical: 14,
-                                      horizontal: 12,
-                                    ),
-                                  ),
-                                  selectedItemBuilder: (context) => _categories
-                                      .map((category) => Text(
-                                            '...${category.headline}',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 18,
-                                              height: 1.0,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFF1A237E),
-                                            ),
-                                          ))
-                                      .toList(),
-                                  items: _categories.map((category) {
-                                    return DropdownMenuItem(
-                                      value: category,
-                                      child: Text(
-                                        '...${category.headline}',
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          height: 0.95,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF1A237E),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Rouse me to...',
+                                          style: TextStyle(
+                                            fontSize: 20,
+                                            fontStyle: FontStyle.italic,
+                                            color: Colors.grey,
+                                          ),
                                         ),
                                       ),
-                                    );
-                                  }).toList(),
-                                  onChanged: (Category? newValue) async {
-                                    setState(() {
-                                      _selectedCategory = newValue;
-                                      _randomTask =
-                                          null; // Clear the current task
-                                    });
-                                    if (newValue != null) {
-                                      // Update last_access timestamp when category is selected
-                                      await _updateCategoryLastAccess(newValue);
-                                      _loadRandomTask(newValue);
-                                    }
-                                  },
-                                ),
+                                      IconButton(
+                                        icon: const Icon(Icons.edit),
+                                        tooltip:
+                                            'Edit ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+                                        onPressed: () {
+                                          if (AuthUtils.isGuestUser()) {
+                                            _showGuestSignupDialog(
+                                              content:
+                                                  'Here\'s where you can edit ${NamingUtils.categoriesName(plural: false, withArticle: true)} once you\'re logged in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
+                                            );
+                                            return;
+                                          }
+                                          _navigateToEditCategory(
+                                              _selectedCategory);
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        fit: FlexFit.loose,
+                                        child: Text(
+                                          _selectedCategory?.headline ??
+                                              _categories.first.headline,
+                                          style: TextStyle(
+                                            fontSize: (Theme.of(context)
+                                                        .textTheme
+                                                        .bodyLarge
+                                                        ?.fontSize ??
+                                                    16) +
+                                                10,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF1A237E),
+                                          ),
+                                        ),
+                                      ),
+                                      PopupMenuButton<Category>(
+                                        tooltip:
+                                            'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+                                        icon: const Icon(
+                                          Icons.arrow_drop_down,
+                                          size: 32,
+                                        ),
+                                        enabled: _categories.length > 1,
+                                        onSelected: (category) {
+                                          unawaited(_handleCategorySelection(
+                                              category));
+                                        },
+                                        itemBuilder: (context) => _categories
+                                            .map(
+                                              (category) =>
+                                                  PopupMenuItem<Category>(
+                                                value: category,
+                                                child: Text(category.headline),
+                                              ),
+                                            )
+                                            .toList(),
+                                      ),
+                                    ],
+                                  ),
+                                  if ((_selectedCategory?.invitation ?? '')
+                                      .trim()
+                                      .isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      _selectedCategory!.invitation!,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        // Info, Share, and Edit buttons moved to bottom right
-                      ],
+                      ),
                     ),
                     if (_selectedCategory != null) ...[
                       const SizedBox(height: 12),
@@ -2518,6 +2731,7 @@ class HomeScreenState extends State<HomeScreen> {
                                 key: ValueKey(
                                   'task_${_randomTask!.id}_${_randomTask!.headline}',
                                 ),
+                                color: const Color(0xFF4A148C),
                                 child: Stack(
                                   children: [
                                     Padding(
@@ -2547,13 +2761,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                         .textTheme
                                                         .bodyLarge
                                                         ?.copyWith(
-                                                          fontSize: (Theme.of(
-                                                                          context)
-                                                                      .textTheme
-                                                                      .bodyLarge
-                                                                      ?.fontSize ??
-                                                                  16) +
-                                                              10,
+                                                          fontSize: 22,
                                                           fontWeight: _randomTask!
                                                                           .suggestibleAt ==
                                                                       null ||
@@ -2575,8 +2783,8 @@ class HomeScreenState extends State<HomeScreen> {
                                                                     DateTime
                                                                         .now(),
                                                                   )
-                                                              ? Colors.grey
-                                                              : null,
+                                                              ? Colors.white70
+                                                              : Colors.white,
                                                         ),
                                                   ),
                                                 ),
@@ -2591,9 +2799,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                   child: Icon(
                                                     Icons.edit,
                                                     size: 20,
-                                                    color: Theme.of(
-                                                      context,
-                                                    ).colorScheme.primary,
+                                                    color: Colors.white,
                                                   ),
                                                 ),
                                               ],
@@ -2631,18 +2837,13 @@ class HomeScreenState extends State<HomeScreen> {
                                                               .suggestibleAt!
                                                               .isAfter(DateTime
                                                                   .now())
-                                                      ? Colors.grey
-                                                      : Theme.of(context)
-                                                          .textTheme
-                                                          .bodyMedium
-                                                          ?.color,
+                                                      ? Colors.white70
+                                                      : Colors.white,
                                                   margin: Margins.zero,
                                                   padding: HtmlPaddings.zero,
                                                 ),
                                                 "a": Style(
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .primary,
+                                                  color: Colors.white,
                                                   textDecoration:
                                                       TextDecoration.underline,
                                                 ),
@@ -2694,18 +2895,13 @@ class HomeScreenState extends State<HomeScreen> {
                                                               .suggestibleAt!
                                                               .isAfter(DateTime
                                                                   .now())
-                                                      ? Colors.grey
-                                                      : Theme.of(context)
-                                                          .textTheme
-                                                          .bodyMedium
-                                                          ?.color,
+                                                      ? Colors.white70
+                                                      : Colors.white,
                                                   margin: Margins.zero,
                                                   padding: HtmlPaddings.zero,
                                                 ),
                                                 "a": Style(
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .primary,
+                                                  color: Colors.white,
                                                   textDecoration:
                                                       TextDecoration.underline,
                                                   fontStyle: FontStyle.italic,
@@ -2750,7 +2946,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                       ?.copyWith(
                                                         fontStyle:
                                                             FontStyle.italic,
-                                                        color: Colors.grey[600],
+                                                        color: Colors.white70,
                                                       ),
                                                 ),
                                               ],
@@ -2788,9 +2984,12 @@ class HomeScreenState extends State<HomeScreen> {
                                             const SizedBox(height: 8),
                                             Text(
                                               'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.bodySmall,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.copyWith(
+                                                    color: Colors.white70,
+                                                  ),
                                             ),
                                           ],
                                           if (_randomTask!.suggestibleAt !=
@@ -2810,7 +3009,8 @@ class HomeScreenState extends State<HomeScreen> {
                                                         .textTheme
                                                         .bodySmall
                                                         ?.copyWith(
-                                                          color: Colors.blue,
+                                                          color: Colors
+                                                              .lightBlueAccent,
                                                         ),
                                                   ),
                                                 ),
@@ -2825,7 +3025,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                   label: const Text('Revive'),
                                                   style: TextButton.styleFrom(
                                                     foregroundColor:
-                                                        Colors.blue,
+                                                        Colors.lightBlueAccent,
                                                     padding: const EdgeInsets
                                                         .symmetric(
                                                       horizontal: 8,
@@ -2844,9 +3044,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                 'Actually, I\'m done with this',
                                               ),
                                               style: TextButton.styleFrom(
-                                                foregroundColor: Theme.of(
-                                                  context,
-                                                ).colorScheme.primary,
+                                                foregroundColor: Colors.white,
                                                 padding: EdgeInsets.zero,
                                                 visualDensity:
                                                     VisualDensity.compact,
@@ -3033,12 +3231,11 @@ class HomeScreenState extends State<HomeScreen> {
                 child: FloatingActionButton(
                   heroTag: 'editCategoryButton',
                   onPressed: _toggleTaskListMode,
-                  tooltip:
-                      'View ${NamingUtils.tasksName(capitalize: false, plural: false)} list',
+                  tooltip: _showTaskListMode ? 'Select' : 'List',
                   backgroundColor: AppButtons.goForthBg,
                   foregroundColor: AppButtons.goForthFg,
                   child: Icon(
-                    _showTaskListMode ? Icons.view_agenda : Icons.menu,
+                    _showTaskListMode ? Icons.refresh : Icons.menu,
                     size: 38,
                   ),
                 ),

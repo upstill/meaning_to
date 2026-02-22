@@ -1567,6 +1567,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     category: widget.category,
                     isEditing: true,
                     isLoading: _isLoading,
+                    showPrivacyOptions: false,
                     onSave: _saveCategoryFromForm,
                     onCancel: () {
                       setState(() {
