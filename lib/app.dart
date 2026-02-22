@@ -30,6 +30,8 @@ class MeaningToApp extends StatelessWidget {
           return EditCategoryScreen(
             category: args?['category'] as Category?,
             tasksOnly: args?['tasksOnly'] == true,
+            startInCategoryEditorPanel:
+                args?['startInCategoryEditorPanel'] == true,
           );
         },
         '/edit-task': (context) {

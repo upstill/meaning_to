@@ -967,7 +967,7 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
                                         ),
                                       ),
                                       Text(
-                                        '4) Hit "Sign in with email/password',
+                                        '4) Hit "Sign in with email/password"',
                                         style: TextStyle(
                                           color: Colors.blue.shade800,
                                           fontSize: 12,

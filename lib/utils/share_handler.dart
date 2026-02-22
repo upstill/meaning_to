@@ -29,29 +29,43 @@ class ShareHandler {
     _navigatorKey = navigatorKey;
 
     // Listen for shared content
-    _shareSubscription = ShareHandlerPlatform.instance.sharedMediaStream.listen(
-      (SharedMedia? media) {
-        if (media?.content != null) {
-          _sharedText = media!.content;
-          _logContextAwareIntent('Text Share', media, onIntentReceived);
-        }
-      },
-      onError: (err) {
-        print('Share handler error: $err');
-        _logContextAwareIntent(
-            'Share Handler Error', err.toString(), onIntentReceived);
-      },
-    );
+    try {
+      _shareSubscription =
+          ShareHandlerPlatform.instance.sharedMediaStream.listen(
+        (SharedMedia? media) {
+          if (media?.content != null) {
+            _sharedText = media!.content;
+            _logContextAwareIntent('Text Share', media, onIntentReceived);
+          }
+        },
+        onError: (err) {
+          print('Share handler error: $err');
+          _logContextAwareIntent(
+              'Share Handler Error', err.toString(), onIntentReceived);
+        },
+      );
+    } catch (e, stackTrace) {
+      print('Share handler stream setup failed: $e');
+      print('Share handler stream stack trace: $stackTrace');
+    }
 
     // Get initial shared content if app was launched via share intent
-    ShareHandlerPlatform.instance
-        .getInitialSharedMedia()
-        .then((SharedMedia? media) {
-      if (media?.content != null) {
-        _sharedText = media!.content;
-        _logContextAwareIntent('Initial Text Share', media, onIntentReceived);
-      }
-    });
+    try {
+      ShareHandlerPlatform.instance
+          .getInitialSharedMedia()
+          .then((SharedMedia? media) {
+        if (media?.content != null) {
+          _sharedText = media!.content;
+          _logContextAwareIntent('Initial Text Share', media, onIntentReceived);
+        }
+      }).catchError((error, stackTrace) {
+        print('Share handler initial media failed: $error');
+        print('Share handler initial media stack trace: $stackTrace');
+      });
+    } catch (e, stackTrace) {
+      print('Share handler initial setup threw: $e');
+      print('Share handler initial setup stack trace: $stackTrace');
+    }
   }
 
   /// Log intent with context awareness

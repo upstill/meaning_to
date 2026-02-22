@@ -34,8 +34,10 @@ class _SplashScreenState extends State<SplashScreen> {
     _loadVersionInfo();
 
     // Set up auth state listener to handle OAuth callbacks
-    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      print('SplashScreen: Auth state changed - event: ${data.event}, session: ${data.session != null}');
+    _authSubscription =
+        Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      print(
+          'SplashScreen: Auth state changed - event: ${data.event}, session: ${data.session != null}');
       if (data.event == AuthChangeEvent.signedIn && data.session != null) {
         print('SplashScreen: User signed in via OAuth');
         _handleAuthenticatedUser(data.session!.user.id);
@@ -63,7 +65,8 @@ class _SplashScreenState extends State<SplashScreen> {
       print('SplashScreen: Is authenticated: $isAuthenticated');
 
       if (isAuthenticated) {
-        print('🔥🔥🔥 SPLASH SCREEN: NEW CODE RUNNING - ATTEMPTING STATE RESTORATION 🔥🔥🔥');
+        print(
+            '🔥🔥🔥 SPLASH SCREEN: NEW CODE RUNNING - ATTEMPTING STATE RESTORATION 🔥🔥🔥');
         _handleAuthenticatedUser(currentUser!.id);
       } else {
         print('SplashScreen: Showing welcome screen (user not authenticated)');
@@ -114,12 +117,14 @@ class _SplashScreenState extends State<SplashScreen> {
   /// Attempt to restore the user's last state and navigate accordingly
   Future<void> _navigateWithStateRestoration(String userId) async {
     try {
-      print('SplashScreen: Attempting to restore last category for user: $userId');
+      print(
+          'SplashScreen: Attempting to restore last category for user: $userId');
 
       final cacheManager = CacheManager();
       final restoredCategory = await cacheManager.restoreLastCategory(userId);
 
-      print('SplashScreen: State restoration result: ${restoredCategory?.headline ?? 'null'}');
+      print(
+          'SplashScreen: State restoration result: ${restoredCategory?.headline ?? 'null'}');
 
       // Mark state restoration as complete
       MyApp.isStateRestored = true;
@@ -128,14 +133,16 @@ class _SplashScreenState extends State<SplashScreen> {
         print('SplashScreen: State restored successfully');
         print('SplashScreen: Category ID: ${restoredCategory.id}');
         print('SplashScreen: Category headline: ${restoredCategory.headline}');
-        print('SplashScreen: Navigating to /category with ID: ${restoredCategory.id}');
+        print(
+            'SplashScreen: Navigating to /category with ID: ${restoredCategory.id}');
 
         // Navigate to home screen with the restored category
         Navigator.of(context).pushReplacementNamed('/category', arguments: {
           'categoryId': restoredCategory.id.toString(),
         });
       } else {
-        print('SplashScreen: No category to restore, navigating to normal home screen');
+        print(
+            'SplashScreen: No category to restore, navigating to normal home screen');
         Navigator.of(context).pushReplacementNamed('/home');
       }
     } catch (e, stackTrace) {
