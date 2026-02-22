@@ -8,6 +8,7 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
+import 'package:meaning_to/widgets/category_form.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
@@ -22,8 +23,14 @@ class EditCategoryScreen extends StatefulWidget {
 
   final Category? category; // null for new category, existing category for edit
   final bool tasksOnly;
+  final bool startInCategoryEditorPanel;
 
-  const EditCategoryScreen({super.key, this.category, this.tasksOnly = false});
+  const EditCategoryScreen({
+    super.key,
+    this.category,
+    this.tasksOnly = false,
+    this.startInCategoryEditorPanel = false,
+  });
 
   // Add a factory constructor to handle arguments from Navigator
   static Route routeFromArgs(RouteSettings settings) {
@@ -32,6 +39,7 @@ class EditCategoryScreen extends StatefulWidget {
       builder: (_) => EditCategoryScreen(
         category: args?['category'] as Category?,
         tasksOnly: args?['tasksOnly'] == true,
+        startInCategoryEditorPanel: args?['startInCategoryEditorPanel'] == true,
       ),
       settings: settings,
     );
@@ -56,10 +64,89 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
   bool _isPrivate = false; // Private flag for categories
   bool _tasksArePrivate = true; // Tasks are private flag for categories
   bool _isSearching = false; // Track if search is in progress
+  bool _showCategoryEditorPanel = false;
   Category?
       _currentCategory; // Track the current category (for new categories after creation)
   StreamSubscription<void>? _cacheSubscription;
   bool _ignoringCacheChanges = false;
+
+  Future<void> _toggleCategoryPrivacy() async {
+    final currentCategory = widget.category ?? _currentCategory;
+    if (currentCategory == null) {
+      return;
+    }
+
+    if (AuthUtils.isGuestUser()) {
+      _showGuestSignupDialog(
+        content:
+            'Here\'s where you can change whether your ${NamingUtils.categoriesName(plural: false, withArticle: true)} is private once you\'re logged in.',
+      );
+      return;
+    }
+
+    if (_isLoading) return;
+
+    final nextValue = !_isPrivate;
+
+    // Optimistic UI update
+    setState(() {
+      _isPrivate = nextValue;
+      if (widget.category != null) {
+        widget.category!.isPrivate = nextValue;
+      } else if (_currentCategory != null) {
+        _currentCategory!.isPrivate = nextValue;
+      }
+
+      final cached = CacheManager().currentCategory;
+      if (cached != null && cached.id == currentCategory.id) {
+        cached.isPrivate = nextValue;
+      }
+    });
+
+    try {
+      await supabase
+          .from('Categories')
+          .update({'private': nextValue})
+          .eq('id', currentCategory.id)
+          .select()
+          .single();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              nextValue ? 'Pursuit is now private.' : 'Pursuit is now public.',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      // Revert UI on error
+      if (mounted) {
+        setState(() {
+          _isPrivate = !nextValue;
+          if (widget.category != null) {
+            widget.category!.isPrivate = !nextValue;
+          } else if (_currentCategory != null) {
+            _currentCategory!.isPrivate = !nextValue;
+          }
+
+          final cached = CacheManager().currentCategory;
+          if (cached != null && cached.id == currentCategory.id) {
+            cached.isPrivate = !nextValue;
+          }
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating privacy: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   // Sorting options
   SortOption _currentSortOption = SortOption.priority;
@@ -242,6 +329,11 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     _isPrivate = widget.category?.isPrivate ?? false;
     _tasksArePrivate = widget.category?.tasksArePrivate ?? true;
     _editTasksLocal = widget.tasksOnly;
+    _showCategoryEditorPanel = widget.startInCategoryEditorPanel;
+    if (_showCategoryEditorPanel) {
+      _editTasksLocal = false;
+      _isEditing = true;
+    }
 
     // Set category as saved if it already exists
     _categorySaved = widget.category != null;
@@ -917,16 +1009,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               'No ${NamingUtils.tasksName(plural: true)} yet. Add one to get started!'));
     }
 
-    // Task list building optimized
-
-    return ListView.builder(
-      shrinkWrap: true, // Add this to ensure ListView takes minimum space
-      physics:
-          const NeverScrollableScrollPhysics(), // Disable scrolling since we're in a ListView
-      itemCount: _displayedTasks.length,
-      itemBuilder: (context, index) {
-        final task = _displayedTasks[index];
-
+    return Column(
+      children: _displayedTasks.map((task) {
         return TaskDisplay(
           key: ValueKey(
             'task-${task.id}',
@@ -944,7 +1028,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               false,
           onMakeCategoryPublic: _makeCategoryPublic,
         );
-      },
+      }).toList(),
     );
   }
 
@@ -974,13 +1058,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
               'No ${NamingUtils.tasksName(plural: true)} yet. Add one to get started!'));
     }
 
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: _displayedTasks.length,
-      itemBuilder: (context, index) {
-        final task = _displayedTasks[index];
-
+    return Column(
+      children: _displayedTasks.map((task) {
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 4),
           child: ListTile(
@@ -1002,7 +1081,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     onLinkTap: (url, _, __) async {
                       if (url != null) {
                         try {
-                          // Use Android-optimized external launch
                           bool launched = await launchUrl(
                             Uri.parse(url),
                             mode: LaunchMode.externalApplication,
@@ -1012,7 +1090,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                             ),
                           );
                           if (!launched) {
-                            // Fallback to platform default
                             await launchUrl(Uri.parse(url),
                                 mode: LaunchMode.platformDefault);
                           }
@@ -1042,7 +1119,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
             ),
           ),
         );
-      },
+      }).toList(),
     );
   }
 
@@ -1255,6 +1332,38 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     }
   }
 
+  Future<void> _saveCategoryFromForm(
+    String headline,
+    String invitation,
+    bool isPrivate,
+    bool tasksArePrivate,
+  ) async {
+    _headlineController.text = headline;
+    _invitationController.text = invitation;
+    _isPrivate = isPrivate;
+    _tasksArePrivate = tasksArePrivate;
+    await _saveCategory();
+  }
+
+  Future<void> _shopForCategories() async {
+    try {
+      final dynamic result =
+          await Navigator.pushNamed(context, '/shop-endeavors');
+      if (result == true && mounted) {
+        _handleBack();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening shop: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   // Delete category and all its tasks from database
   Future<void> _deleteCategory() async {
     if (widget.category == null) {
@@ -1396,12 +1505,29 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        widget.category!.headline,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.category!.headline,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              _isPrivate ? Icons.lock : Icons.lock_open,
+                            ),
+                            tooltip:
+                                _isPrivate ? 'Make Public' : 'Make Private',
+                            onPressed:
+                                _isLoading ? null : _toggleCategoryPrivacy,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
                       ),
                     ),
                     IconButton(
@@ -1417,6 +1543,8 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                         }
                         setState(() {
                           _editTasksLocal = false;
+                          _showCategoryEditorPanel = true;
+                          _isEditing = true;
                         });
                       },
                     ),
@@ -1434,7 +1562,47 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                 const SizedBox(height: 16),
               ] else ...[
                 // Category form section
-                if (widget.category != null) ...[
+                if (widget.category != null && _showCategoryEditorPanel) ...[
+                  CategoryForm(
+                    category: widget.category,
+                    isEditing: true,
+                    isLoading: _isLoading,
+                    onSave: _saveCategoryFromForm,
+                    onCancel: () {
+                      setState(() {
+                        _showCategoryEditorPanel = false;
+                        _editTasksLocal = true;
+                        _isEditing = false;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  const Center(
+                    child: Text(
+                      '** You can grab ideas from other people. **',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _isLoading ? null : _shopForCategories,
+                    icon: const Icon(Icons.shopping_cart),
+                    label: Text(
+                      'Shop for ${NamingUtils.categoriesName(capitalize: true)}',
+                      style: const TextStyle(fontSize: 18),
+                    ),
+                    style: AppButtons.goForth().copyWith(
+                      minimumSize: const WidgetStatePropertyAll(
+                          Size(double.infinity, 50)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ] else if (widget.category != null) ...[
                   if (_isEditing) ...[
                     // Editable form when editing
                     TextFormField(
@@ -1442,6 +1610,16 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                       decoration: InputDecoration(
                         labelText: '${NamingUtils.categoriesName()} Name',
                         border: const OutlineInputBorder(),
+                        suffixIcon: Tooltip(
+                          message: _isPrivate ? 'Make Public' : 'Make Private',
+                          child: IconButton(
+                            icon: Icon(
+                              _isPrivate ? Icons.lock : Icons.lock_open,
+                            ),
+                            onPressed:
+                                _isLoading ? null : _toggleCategoryPrivacy,
+                          ),
+                        ),
                       ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
@@ -1454,25 +1632,13 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                     TextFormField(
                       controller: _invitationController,
                       decoration: const InputDecoration(
-                        labelText: 'Invitation (optional)',
+                        labelText: 'Description',
                         border: OutlineInputBorder(),
                         hintText: 'Add a description or invitation...',
                       ),
                       maxLines: 3,
                     ),
                     const SizedBox(height: 16),
-                    CheckboxListTile(
-                      title: const Text('Private'),
-                      subtitle: Text(
-                          'I want to keep this ${NamingUtils.categoriesName(capitalize: false, plural: false)} to myself'),
-                      value: _isPrivate,
-                      onChanged: (value) {
-                        setState(() {
-                          _isPrivate = value ?? false;
-                        });
-                      },
-                      controlAffinity: ListTileControlAffinity.leading,
-                    ),
                     if (!_isPrivate) ...[
                       const SizedBox(height: 8),
                       Padding(
@@ -1502,6 +1668,9 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                               _invitationController.text =
                                   widget.category!.invitation ?? '';
                               setState(() {
+                                _isPrivate = widget.category!.isPrivate;
+                                _tasksArePrivate =
+                                    widget.category!.tasksArePrivate;
                                 _isEditing = false;
                               });
                             },
@@ -1543,12 +1712,31 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                widget.category!.headline,
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      widget.category!.headline,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(
+                                      _isPrivate ? Icons.lock : Icons.lock_open,
+                                    ),
+                                    tooltip: _isPrivate
+                                        ? 'Make Public'
+                                        : 'Make Private',
+                                    onPressed: _isLoading
+                                        ? null
+                                        : _toggleCategoryPrivacy,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ],
                               ),
                               if (widget.category!.invitation != null) ...[
                                 const SizedBox(height: 8),
@@ -1560,7 +1748,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                                   ),
                                 ),
                               ],
-                              if (widget.category!.isPrivate) ...[
+                              if (_isPrivate) ...[
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
@@ -1637,6 +1825,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
 
               // Task list section (only for saved categories)
               if (_categorySaved &&
+                  !_showCategoryEditorPanel &&
                   (widget.category != null || _currentCategory != null)) ...[
                 // Only show "Current tasks:" header if there are tasks (use unfiltered count)
                 if (_unfilteredTaskCount > 0) ...[

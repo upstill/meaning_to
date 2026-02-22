@@ -487,12 +487,14 @@ class _MyAppState extends State<MyApp> {
               Navigator.pushReplacementNamed(context, '/auth');
             }
           }
-        } else if (uri.path == '/callback' && uri.queryParameters.containsKey('code')) {
+        } else if (uri.path == '/callback' &&
+            uri.queryParameters.containsKey('code')) {
           print('OAuth callback detected - processing authentication code');
 
           try {
             // Exchange the code for a session
-            final response = await Supabase.instance.client.auth.getSessionFromUrl(uri);
+            final response =
+                await Supabase.instance.client.auth.getSessionFromUrl(uri);
 
             if (response.session != null) {
               print('OAuth session established successfully');
@@ -743,6 +745,8 @@ class _MyAppState extends State<MyApp> {
                 builder: (context) => EditCategoryScreen(
                   category: args?['category'] as Category?,
                   tasksOnly: args?['tasksOnly'] == true,
+                  startInCategoryEditorPanel:
+                      args?['startInCategoryEditorPanel'] == true,
                 ),
               );
             case '/new-category':

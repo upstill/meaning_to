@@ -21,10 +21,12 @@ import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/utils/synopsis_fetcher.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
+import 'package:meaning_to/widgets/task_display.dart';
 import 'package:clipboard/clipboard.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+enum HomeTaskSortOption { alphabetical, priority, age }
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
@@ -58,6 +60,10 @@ class HomeScreenState extends State<HomeScreen> {
   List<Category> _categories = [];
   Category? _selectedCategory;
   Task? _randomTask;
+  bool _showTaskListMode = false;
+  final TextEditingController _taskSearchController = TextEditingController();
+  HomeTaskSortOption _taskListSortOption = HomeTaskSortOption.priority;
+  bool _isSearchingTasks = false;
   bool _isLoading = true;
   bool _isLoadingTask = false;
   String? _error;
@@ -218,7 +224,8 @@ class HomeScreenState extends State<HomeScreen> {
             value: 'delete',
             child: ListTile(
               leading: Icon(Icons.delete_forever, color: Colors.red),
-              title: Text('Delete Account', style: TextStyle(color: Colors.red)),
+              title:
+                  Text('Delete Account', style: TextStyle(color: Colors.red)),
               contentPadding: EdgeInsets.zero,
             ),
           ),
@@ -595,6 +602,7 @@ class HomeScreenState extends State<HomeScreen> {
   void dispose() {
     HomeScreen.needsTaskReload.removeListener(_handleTaskReloadRequest);
     HomeScreen.needsDataReload.removeListener(_handleDataReloadRequest);
+    _taskSearchController.dispose();
     super.dispose();
   }
 
@@ -760,6 +768,329 @@ class HomeScreenState extends State<HomeScreen> {
       }
       rethrow;
     }
+  }
+
+  void _toggleTaskListMode() {
+    if (_selectedCategory == null) {
+      return;
+    }
+
+    final turningOn = !_showTaskListMode;
+    setState(() {
+      _showTaskListMode = turningOn;
+    });
+
+    if (turningOn &&
+        (_cacheManager.currentCategory?.id != _selectedCategory?.id ||
+            _cacheManager.currentTasks == null)) {
+      _loadRandomTask(_selectedCategory!);
+    }
+  }
+
+  List<Task> _tasksForSelectedCategory() {
+    final categoryId = _selectedCategory?.id;
+    if (categoryId == null) {
+      return <Task>[];
+    }
+
+    var tasks = (_cacheManager.currentTasks ?? <Task>[])
+        .where((task) => task.categoryId == categoryId)
+        .toList();
+
+    final query = _taskSearchController.text.trim().toLowerCase();
+    if (query.isNotEmpty) {
+      tasks = tasks
+          .where((task) => task.headline.toLowerCase().contains(query))
+          .toList();
+    }
+
+    switch (_taskListSortOption) {
+      case HomeTaskSortOption.alphabetical:
+        tasks.sort(
+          (a, b) =>
+              a.headline.toLowerCase().compareTo(b.headline.toLowerCase()),
+        );
+        break;
+      case HomeTaskSortOption.priority:
+        tasks.sort((a, b) {
+          if (a.finished != b.finished) {
+            return a.finished ? 1 : -1;
+          }
+          if (a.suggestibleAt == null && b.suggestibleAt == null) {
+            return b.createdAt.compareTo(a.createdAt);
+          }
+          if (a.suggestibleAt == null) {
+            return -1;
+          }
+          if (b.suggestibleAt == null) {
+            return 1;
+          }
+          return a.suggestibleAt!.compareTo(b.suggestibleAt!);
+        });
+        break;
+      case HomeTaskSortOption.age:
+        tasks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        break;
+    }
+
+    return tasks;
+  }
+
+  Future<void> _toggleTaskCompletionFromList(Task task) async {
+    try {
+      if (task.finished) {
+        await _cacheManager.unfinishTask(task.id);
+      } else {
+        await _cacheManager.finishTask(task.id);
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating task: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteTaskFromList(Task task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Task'),
+        content: Text('Are you sure you want to delete "${task.headline}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      await _cacheManager.removeTask(task.id);
+      if (_randomTask?.id == task.id) {
+        _randomTask = null;
+      }
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting task: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleTaskShareFromList(Task task, bool newSharedState) async {
+    final updatedTask = Task(
+      id: task.id,
+      categoryId: task.categoryId,
+      headline: task.headline,
+      notes: task.notes,
+      synopsis: task.synopsis,
+      ownerId: task.ownerId,
+      createdAt: task.createdAt,
+      suggestibleAt: task.suggestibleAt,
+      triggersAt: task.triggersAt,
+      deferral: task.deferral,
+      links: task.links,
+      processedLinks: task.processedLinks,
+      finished: task.finished,
+      shared: newSharedState,
+      originalId: task.originalId,
+      dirty: true,
+    );
+
+    try {
+      await _cacheManager.updateTask(updatedTask);
+      if (_randomTask?.id == task.id) {
+        _randomTask = updatedTask.markClean();
+      }
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating share state: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildTaskListModeContent() {
+    final tasks = _tasksForSelectedCategory();
+
+    Widget buildSortRow(HomeTaskSortOption option, String label) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Radio<HomeTaskSortOption>(
+            value: option,
+            groupValue: _taskListSortOption,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+            onChanged: (HomeTaskSortOption? value) {
+              if (value == null) return;
+              setState(() {
+                _taskListSortOption = value;
+              });
+            },
+          ),
+          Text(label),
+        ],
+      );
+    }
+
+    final sortWidget = Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Text('Sort By:'),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            buildSortRow(HomeTaskSortOption.priority, 'Priority'),
+            buildSortRow(HomeTaskSortOption.alphabetical, 'A-Z'),
+            buildSortRow(HomeTaskSortOption.age, 'Age'),
+          ],
+        ),
+      ],
+    );
+
+    final searchWidget = TextField(
+      controller: _taskSearchController,
+      decoration: InputDecoration(
+        hintText:
+            'Search ${NamingUtils.tasksName(capitalize: true, plural: true)}...',
+        prefixIcon: const Icon(Icons.search, size: 20),
+        suffixIcon: _isSearchingTasks
+            ? const Padding(
+                padding: EdgeInsets.all(12.0),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : _taskSearchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    onPressed: () {
+                      setState(() {
+                        _taskSearchController.clear();
+                      });
+                    },
+                  )
+                : null,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        border: const OutlineInputBorder(),
+      ),
+      onChanged: (_) {
+        setState(() {
+          _isSearchingTasks = true;
+        });
+        Future.delayed(const Duration(milliseconds: 250), () {
+          if (mounted) {
+            setState(() {
+              _isSearchingTasks = false;
+            });
+          }
+        });
+      },
+    );
+
+    if (tasks.isEmpty) {
+      return Center(
+        child: Column(
+          children: [
+            const Text('No tasks yet.', style: TextStyle(fontSize: 16)),
+            const SizedBox(height: 16),
+            Text(
+              'Tap the + button to add ${NamingUtils.tasksName(plural: true, capitalize: false)}.',
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final sortAreaWidth =
+                (constraints.maxWidth * 0.35).clamp(0.0, 240.0);
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: sortAreaWidth,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: sortWidget,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: searchWidget),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '${tasks.length} ${NamingUtils.tasksName(plural: true, capitalize: false)}',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.green,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...tasks.map(
+          (task) => TaskDisplay(
+            key: ValueKey(
+                'home-task-${task.id}-${task.finished}-${task.shared}'),
+            task: task,
+            withControls: true,
+            onEdit: () => _navigateToEditTask(task),
+            onDelete: () => _deleteTaskFromList(task),
+            onTap: () => _toggleTaskCompletionFromList(task),
+            onShareToggle: (newSharedState) =>
+                _toggleTaskShareFromList(task, newSharedState),
+            isCategoryPrivate: _selectedCategory?.isPrivate ?? false,
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> _rejectCurrentTask() async {
@@ -930,7 +1261,8 @@ class HomeScreenState extends State<HomeScreen> {
           if (_selectedCategory != null) {
             final updatedCategory = categories.firstWhere(
               (c) => c.id == _selectedCategory!.id,
-              orElse: () => categories.isNotEmpty ? categories.first : _selectedCategory!,
+              orElse: () =>
+                  categories.isNotEmpty ? categories.first : _selectedCategory!,
             );
             if (updatedCategory.id == _selectedCategory!.id) {
               setState(() {
@@ -1459,6 +1791,7 @@ class HomeScreenState extends State<HomeScreen> {
         key: ValueKey('edit_category_${category?.id ?? 'new'}'),
         category: category,
         tasksOnly: false,
+        startInCategoryEditorPanel: true,
       );
       print('HomeScreen: Created EditCategoryScreen');
 
@@ -1573,6 +1906,7 @@ class HomeScreenState extends State<HomeScreen> {
         builder: (context) => EditCategoryScreen(
           category: _selectedCategory,
           tasksOnly: false, // Changed to false to edit the category
+          startInCategoryEditorPanel: true,
         ),
       ),
     ).then((_) {
@@ -1639,7 +1973,8 @@ class HomeScreenState extends State<HomeScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.yellow[700],
                           foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
                         ),
                         child: const Text(
                           'More Info',
@@ -1659,7 +1994,8 @@ class HomeScreenState extends State<HomeScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.deepPurple,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
                         ),
                         child: Text(
                           'Create Your First ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
@@ -2164,7 +2500,9 @@ class HomeScreenState extends State<HomeScreen> {
                       // Text('Loading Task: $_isLoadingTask'),
                       // Text('Random Task: ${_randomTask?.headline ?? "null"}'),
                       // Text('Error: ${_error ?? "none"}'),
-                      if (_isLoadingTask ||
+                      if (_showTaskListMode)
+                        _buildTaskListModeContent()
+                      else if (_isLoadingTask ||
                           (_cacheManager.currentCategory?.id !=
                                   _selectedCategory?.id ||
                               _cacheManager.currentTasks == null))
@@ -2694,12 +3032,15 @@ class HomeScreenState extends State<HomeScreen> {
                 height: 88,
                 child: FloatingActionButton(
                   heroTag: 'editCategoryButton',
-                  onPressed: () => _navigateToEditCategory(_selectedCategory),
+                  onPressed: _toggleTaskListMode,
                   tooltip:
                       'View ${NamingUtils.tasksName(capitalize: false, plural: false)} list',
                   backgroundColor: AppButtons.goForthBg,
                   foregroundColor: AppButtons.goForthFg,
-                  child: const Icon(Icons.menu, size: 38),
+                  child: Icon(
+                    _showTaskListMode ? Icons.view_agenda : Icons.menu,
+                    size: 38,
+                  ),
                 ),
               ),
               const SizedBox(width: 200),

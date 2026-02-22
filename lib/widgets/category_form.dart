@@ -30,7 +30,7 @@ class CategoryFormState extends State<CategoryForm> {
   final _formKey = GlobalKey<FormState>();
   final _headlineController = TextEditingController();
   final _invitationController = TextEditingController();
-  bool _isPrivate = false;
+  bool _isPrivate = true;
   bool _tasksArePrivate = true;
 
   @override
@@ -64,7 +64,7 @@ class CategoryFormState extends State<CategoryForm> {
     } else {
       _headlineController.clear();
       _invitationController.clear();
-      _isPrivate = false;
+      _isPrivate = true;
       _tasksArePrivate = true;
     }
   }
@@ -129,43 +129,45 @@ class CategoryFormState extends State<CategoryForm> {
                 TextFormField(
                   controller: _invitationController,
                   decoration: const InputDecoration(
-                    labelText: 'Invitation (optional)',
+                    labelText: 'Description',
                     hintText: 'What would you like to say to yourself?',
                     border: OutlineInputBorder(),
                   ),
                   maxLines: 3,
                   enabled: !widget.isLoading,
                 ),
-                const SizedBox(height: 16),
-                CheckboxListTile(
-                  title: const Text('Private'),
-                  subtitle: Text(
-                      'I want to keep this ${NamingUtils.categoriesName(capitalize: false, plural: false)} to myself'),
-                  value: _isPrivate,
-                  onChanged: widget.isLoading
-                      ? null
-                      : (bool? value) {
-                          setState(() {
-                            _isPrivate = value ?? false;
-                          });
-                        },
-                  controlAffinity: ListTileControlAffinity.leading,
-                ),
-                if (!_isPrivate) ...[
-                  const SizedBox(height: 8),
+                if (widget.category != null) ...[
+                  const SizedBox(height: 16),
                   CheckboxListTile(
-                    title: Text(
-                        '${NamingUtils.tasksName(plural: true)} are private by default'),
-                    value: _tasksArePrivate,
+                    title: const Text('Private'),
+                    subtitle: Text(
+                        'I want to keep this ${NamingUtils.categoriesName(capitalize: false, plural: false)} to myself'),
+                    value: _isPrivate,
                     onChanged: widget.isLoading
                         ? null
                         : (bool? value) {
                             setState(() {
-                              _tasksArePrivate = value ?? true;
+                              _isPrivate = value ?? false;
                             });
                           },
                     controlAffinity: ListTileControlAffinity.leading,
                   ),
+                  if (!_isPrivate) ...[
+                    const SizedBox(height: 8),
+                    CheckboxListTile(
+                      title: Text(
+                          '${NamingUtils.tasksName(plural: true)} are private by default'),
+                      value: _tasksArePrivate,
+                      onChanged: widget.isLoading
+                          ? null
+                          : (bool? value) {
+                              setState(() {
+                                _tasksArePrivate = value ?? true;
+                              });
+                            },
+                      controlAffinity: ListTileControlAffinity.leading,
+                    ),
+                  ],
                 ],
                 const SizedBox(height: 24),
                 Row(

@@ -26,6 +26,10 @@ scripts/
 .env.*
 !.env.example
 
+# Apple Dev distribution certificate
+ios/distribution\ certificate.cer
+ios/Meaning_To\ Provisioning\ Profile.mobileprovision
+
 # Android signing keys - NEVER commit these!
 android/key.properties
 android/*.jks

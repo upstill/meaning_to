@@ -79,9 +79,7 @@ class _NewContentScreenState extends State<NewContentScreen> {
           // Categories exist - show New Task variant
           _contentType = ContentType.task;
           // Set selected category to first one if none provided
-          if (_selectedCategoryForTask == null) {
-            _selectedCategoryForTask = categories.first;
-          }
+          _selectedCategoryForTask ??= categories.first;
         }
       });
     } catch (e) {
@@ -171,8 +169,12 @@ class _NewContentScreenState extends State<NewContentScreen> {
     }
   }
 
-  Future<void> _createCategory(String headline, String invitation,
-      bool isPrivate, bool tasksArePrivate) async {
+  Future<void> _createCategory(
+    String headline,
+    String invitation,
+    bool _unusedIsPrivate,
+    bool _unusedTasksArePrivate,
+  ) async {
     setState(() {
       _isLoading = true;
     });
@@ -185,8 +187,8 @@ class _NewContentScreenState extends State<NewContentScreen> {
         'invitation': invitation.isEmpty ? null : invitation,
         'owner_id': userId,
         'original_id': null,
-        'private': isPrivate,
-        'tasks_are_private': tasksArePrivate,
+        'private': true,
+        'tasks_are_private': true,
       };
 
       final response =
@@ -349,7 +351,7 @@ class _NewContentScreenState extends State<NewContentScreen> {
                     ),
                     child: Text(
                       _contentType == ContentType.task
-                          ? 'Add a Whole New ${NamingUtils.categoriesName(capitalize: true, plural: false)}'
+                          ? 'Make a New ${NamingUtils.categoriesName(capitalize: true, plural: false)} instead'
                           : 'Make a New ${NamingUtils.tasksName(capitalize: true, plural: false)} instead',
                     ),
                   ),
@@ -408,7 +410,7 @@ class _NewContentScreenState extends State<NewContentScreen> {
                       const SizedBox(height: 16),
                       Center(
                         child: FractionallySizedBox(
-                          widthFactor: 0.75,
+                          widthFactor: 0.5,
                           child: ElevatedButton.icon(
                             onPressed: _isLoading
                                 ? null

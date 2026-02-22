@@ -41,12 +41,12 @@ void main() {
         'View',
         'https://example.com',
         'AB', // too short
-        'X',  // too short
+        'X', // too short
       ];
 
       for (final title in rejectedTitles) {
         expect(isUsefulTitle(title), isFalse,
-               reason: 'Should reject generic title: "$title"');
+            reason: 'Should reject generic title: "$title"');
       }
 
       // Test cases that should be accepted
@@ -62,7 +62,7 @@ void main() {
 
       for (final title in acceptedTitles) {
         expect(isUsefulTitle(title), isTrue,
-               reason: 'Should accept meaningful title: "$title"');
+            reason: 'Should accept meaningful title: "$title"');
       }
     });
 
@@ -70,32 +70,37 @@ void main() {
       // Simulate what should happen with the YouTube link
 
       // Case 1: Generic "Watch" title should be skipped
-      final htmlLinkWithGenericTitle = '<a href="https://www.youtube.com/watch?v=HGJ7-GK43lg">Watch</a>';
+      const htmlLinkWithGenericTitle =
+          '<a href="https://www.youtube.com/watch?v=HGJ7-GK43lg">Watch</a>';
 
       print('Testing generic title workflow:');
       print('HTML: $htmlLinkWithGenericTitle');
 
       // This simulates parseHtmlLink
-      final url = 'https://www.youtube.com/watch?v=HGJ7-GK43lg';
-      final linkTitle = 'Watch';
+      const url = 'https://www.youtube.com/watch?v=HGJ7-GK43lg';
+      const linkTitle = 'Watch';
 
       // This simulates _isUsefulTitle check
-      final isUseful = linkTitle != 'Watch'; // simplified check
+      const isUseful = linkTitle != 'Watch'; // simplified check
 
       print('Extracted title: "$linkTitle"');
       print('Is useful: $isUseful');
 
-      expect(isUseful, isFalse, reason: 'Generic "Watch" title should not be useful');
+      expect(isUseful, isFalse,
+          reason: 'Generic "Watch" title should not be useful');
 
       // Since title is not useful, system should proceed to fetch from webpage
       print('Would proceed to fetch title from YouTube webpage');
 
       // Case 2: Meaningful title should be used
-      final htmlLinkWithMeaningfulTitle = '<a href="https://www.youtube.com/watch?v=abc">Fleetwood Mac - Rumours</a>';
-      final meaningfulTitle = 'Fleetwood Mac - Rumours';
-      final isMeaningfulUseful = meaningfulTitle != 'Watch' && meaningfulTitle.length >= 3;
+      const htmlLinkWithMeaningfulTitle =
+          '<a href="https://www.youtube.com/watch?v=abc">Fleetwood Mac - Rumours</a>';
+      const meaningfulTitle = 'Fleetwood Mac - Rumours';
+      const isMeaningfulUseful =
+          meaningfulTitle != 'Watch' && meaningfulTitle.length >= 3;
 
-      expect(isMeaningfulUseful, isTrue, reason: 'Meaningful title should be useful');
+      expect(isMeaningfulUseful, isTrue,
+          reason: 'Meaningful title should be useful');
     });
   });
 }
