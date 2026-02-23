@@ -1,4 +1,5 @@
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/utils/category_suggestion_registry.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
@@ -291,63 +292,7 @@ class LinkToTaskConverter {
 
   /// Analyze URL to suggest appropriate categories based on domain and path
   static List<int> analyzeLinkForCategorySuggestions(String url) {
-    try {
-      final uri = Uri.parse(url.toLowerCase());
-      final domain = uri.host;
-      final path = uri.path;
-
-      // IMDb links -> can be either movies or TV shows
-      if (domain.contains('imdb.com')) {
-        // Check if we can determine the type from the path
-        if (path.contains('/tv/') || path.contains('tvseries')) {
-          return [2, 1]; // TV first, then movie
-        } else if (path.contains('/title/')) {
-          return [1, 2]; // Movie first, then TV (more common)
-        } else {
-          return [1, 2]; // Movie first, then TV
-        }
-      }
-
-      // Letterboxd links -> primarily movies
-      if (domain.contains('letterboxd.com')) {
-        // If URL contains /film/, it's definitely a movie
-        if (path.contains('/film/')) {
-          return [1]; // Just movie
-        }
-        return [1, 2]; // Movie first (primary), TV second (occasional)
-      }
-
-      // JustWatch links -> depends on path
-      if (domain.contains('justwatch.com')) {
-        if (path.contains('/movie/')) {
-          return [1]; // Just movie
-        } else if (path.contains('/tv-show/')) {
-          return [2]; // Just TV
-        } else {
-          return [1, 2]; // Both options
-        }
-      }
-
-      // Tidal and other streaming services
-      if (domain.contains('tidal.com')) {
-        return STREAMING_MEDIA_CATEGORY_IDS.toList();
-      }
-
-      // Spotify streaming service
-      if (domain.contains('spotify.com')) {
-        return STREAMING_MEDIA_CATEGORY_IDS.toList();
-      }
-
-      // Future: Apple Music, YouTube Music
-      // if (domain.contains('music.apple.com')) {
-      //   return STREAMING_MEDIA_CATEGORY_IDS.toList();
-      // }
-
-      return [];
-    } catch (e) {
-      print('LinkToTaskConverter: Error analyzing URL for categories: $e');
-      return [];
-    }
+    return CategorySuggestionRegistry.getSuggestionsForUrl(url);
   }
 
   /// Find the original_id of an existing task with this link
