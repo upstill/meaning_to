@@ -1,23 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' as foundation;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/services.dart';
 import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/home_screen.dart';
+import 'package:meaning_to/forgot_password_screen.dart';
 import 'package:meaning_to/reset_password_screen.dart';
+import 'package:meaning_to/auth_verification_screen.dart';
+import 'package:meaning_to/auth_otp_verification_screen.dart';
+import 'package:meaning_to/password_reset_request_screen.dart';
+import 'package:meaning_to/password_reset_otp_screen.dart';
+import 'package:meaning_to/password_reset_new_screen.dart';
+import 'package:meaning_to/letterboxd_import_screen.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
+import 'dart:io';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/new_category_screen.dart';
+import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
+import 'package:meaning_to/help_screen.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/share_handler.dart';
-import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:meaning_to/utils/deep_link_generator.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // Remove the instance creation since we'll use static methods
 // final _receiveSharingIntent = ReceiveSharingIntent();
@@ -47,37 +58,149 @@ void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Initialize Supabase with environment detection
-    // For web, Supabase will automatically detect environment variables
-    // For other platforms, load from .env file
-    if (!foundation.kIsWeb) {
+    // Load environment variables
+    try {
+      // Debug: Try to read the .env file directly first
+      try {
+        final currentDir = Directory.current;
+        print('DEBUG: Current working directory: ${currentDir.path}');
+        final envFile = File('.env');
+        final absolutePath = envFile.absolute.path;
+        print('DEBUG: Looking for .env at: $absolutePath');
+
+        if (await envFile.exists()) {
+          final contents = await envFile.readAsString();
+          final lines = contents.split('\n');
+          print('DEBUG: .env file exists, ${lines.length} total lines');
+          print('DEBUG: File size: ${contents.length} bytes');
+
+          // Show all lines that contain TIDAL or SUPABASE
+          print('DEBUG: Lines containing TIDAL or SUPABASE:');
+          for (int i = 0; i < lines.length; i++) {
+            final line = lines[i].trim();
+            if (line.contains('TIDAL') || line.contains('SUPABASE')) {
+              print('  Line ${i + 1}: $line');
+            }
+          }
+
+          // Check for TIDAL keys in raw file
+          final hasTidalId = contents.contains('TIDAL_CLIENT_ID');
+          final hasTidalSecret = contents.contains('TIDAL_CLIENT_SECRET');
+          print('DEBUG: Raw file contains TIDAL_CLIENT_ID: $hasTidalId');
+          print(
+              'DEBUG: Raw file contains TIDAL_CLIENT_SECRET: $hasTidalSecret');
+
+          // Try to manually parse TIDAL keys
+          final tidalIdMatch =
+              RegExp(r'^TIDAL_CLIENT_ID=(.+)$', multiLine: true)
+                  .firstMatch(contents);
+          final tidalSecretMatch =
+              RegExp(r'^TIDAL_CLIENT_SECRET=(.+)$', multiLine: true)
+                  .firstMatch(contents);
+          if (tidalIdMatch != null) {
+            print(
+                'DEBUG: Manually parsed TIDAL_CLIENT_ID: ${tidalIdMatch.group(1)?.trim()}');
+          }
+          if (tidalSecretMatch != null) {
+            print(
+                'DEBUG: Manually parsed TIDAL_CLIENT_SECRET: ${tidalSecretMatch.group(1)?.trim()}');
+          }
+        } else {
+          print('DEBUG: .env file does NOT exist at: $absolutePath');
+          // Try to find .env files
+          final envFiles = await currentDir
+              .list()
+              .where((entity) => entity.path.contains('.env'))
+              .toList();
+          print(
+              'DEBUG: Found .env files: ${envFiles.map((e) => e.path).toList()}');
+        }
+      } catch (e, stackTrace) {
+        print('DEBUG: Error reading .env file directly: $e');
+        print('DEBUG: Stack trace: $stackTrace');
+      }
+
+      // On web, try to read the bundled .env asset to see what's actually included
+      if (foundation.kIsWeb) {
+        try {
+          final bundledEnv = await rootBundle.loadString('.env');
+          final bundledLines = bundledEnv.split('\n');
+          print('DEBUG: Bundled .env file has ${bundledLines.length} lines');
+          print('DEBUG: Bundled .env file size: ${bundledEnv.length} bytes');
+          print('DEBUG: ALL lines in bundled .env file:');
+          for (int i = 0; i < bundledLines.length; i++) {
+            final line = bundledLines[i];
+            // Show first 100 chars of each line to avoid printing huge values
+            final preview =
+                line.length > 100 ? '${line.substring(0, 100)}...' : line;
+            print('  Line ${i + 1} (${line.length} chars): $preview');
+          }
+          // Check for TIDAL keys in bundled file
+          final hasTidalId = bundledEnv.contains('TIDAL_CLIENT_ID');
+          final hasTidalSecret = bundledEnv.contains('TIDAL_CLIENT_SECRET');
+          print('DEBUG: Bundled file contains TIDAL_CLIENT_ID: $hasTidalId');
+          print(
+              'DEBUG: Bundled file contains TIDAL_CLIENT_SECRET: $hasTidalSecret');
+        } catch (e) {
+          print('DEBUG: Error reading bundled .env asset: $e');
+        }
+      }
+
       await dotenv.load(fileName: '.env');
+      final loadedKeys = dotenv.env.keys.toList();
+      print('Environment variables loaded successfully from .env');
+      print('Loaded ${loadedKeys.length} keys: $loadedKeys');
+
+      // Debug: Check for specific keys we expect
+      print('Checking for expected keys:');
+      print(
+          '  TIDAL_CLIENT_ID: ${dotenv.env['TIDAL_CLIENT_ID'] != null ? "FOUND (value length: ${dotenv.env['TIDAL_CLIENT_ID']!.length})" : "NOT FOUND"}');
+      print(
+          '  TIDAL_CLIENT_SECRET: ${dotenv.env['TIDAL_CLIENT_SECRET'] != null ? "FOUND (value length: ${dotenv.env['TIDAL_CLIENT_SECRET']!.length})" : "NOT FOUND"}');
+      print(
+          '  SPOTIFY_CLIENT_ID: ${dotenv.env['SPOTIFY_CLIENT_ID'] != null ? "FOUND" : "NOT FOUND"}');
+      print(
+          '  OMDB_API_KEY: ${dotenv.env['OMDB_API_KEY'] != null ? "FOUND" : "NOT FOUND"}');
+    } catch (e, stackTrace) {
+      print('Warning: Could not load .env file: $e');
+      print('Stack trace: $stackTrace');
+      // Continue without .env file - app should still work with hardcoded values
     }
 
-    // Get environment variables securely
-    String supabaseUrl;
-    String supabaseAnonKey;
-
-    if (foundation.kIsWeb) {
-      // For web, use environment variables that will be set at build time
-      // These will be replaced by the build process
-      supabaseUrl =
-          const String.fromEnvironment('SUPABASE_URL', defaultValue: '');
-      supabaseAnonKey =
-          const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: '');
-    } else {
-      // For other platforms, load from .env file
-      supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
-      supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+    // Configure debug port for DeepLinkGenerator if running in debug mode
+    if (foundation.kDebugMode && foundation.kIsWeb) {
+      try {
+        // Try to get the current port from the URL
+        final currentUri = Uri.base;
+        if (currentUri.port != 0) {
+          DeepLinkGenerator.setDebugPort(currentUri.port);
+          print(
+              'DeepLinkGenerator: Auto-configured debug port to ${currentUri.port}');
+        }
+      } catch (e) {
+        print(
+            'DeepLinkGenerator: Could not auto-detect port, using default 8080');
+      }
     }
+
+    // Initialize Supabase with secure environment variables
+    const supabaseUrl = String.fromEnvironment('SUPABASE_URL',
+        defaultValue:
+            'https://zhpxdayfpysoixxjjqik.supabase.co'); // Fallback for local dev
+    const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY',
+        defaultValue:
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpocHhkYXlmcHlzb2l4eGpqcWlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0Mjk4MjAsImV4cCI6MjA2MTAwNTgyMH0.vWogNfl_98kZaTLFFf3sMSyddZBSjBt9D1yxTTiamVQ'); // Fallback for local dev
 
     await Supabase.initialize(
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
+      authOptions: const FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.pkce,
+      ),
     );
 
     print(
-        '🚨🚨🚨 NEW CODE RUNNING - Supabase initialized with environment detection 🚨🚨🚨');
+        '🚨🚨🚨 NEW CODE RUNNING - Using serverless API for data operations 🚨🚨🚨');
 
     runApp(const MyApp());
   } catch (e) {
@@ -85,7 +208,19 @@ void main() async {
     runApp(MaterialApp(
       home: Scaffold(
         body: Center(
-          child: Text('Error initializing app: $e'),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              Text('Error initializing app: $e'),
+              const SizedBox(height: 16),
+              const Text(
+                'Failed to initialize Supabase',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     ));
@@ -97,6 +232,8 @@ class MyApp extends StatefulWidget {
       GlobalKey<NavigatorState>();
   static bool isHandlingDeepLink =
       false; // Static flag for other widgets to check
+  static bool isStateRestored =
+      false; // Flag to track if state restoration is complete
 
   const MyApp({super.key});
 
@@ -157,75 +294,36 @@ class _MyAppState extends State<MyApp> {
     }
 
     // Show a snackbar to report the intent to the user
-    if (mounted) {
-      _scaffoldKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text('Received $type intent'),
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: 'Details',
-            onPressed: () {
-              _shareHandler.showDetailsDialog(
-                MyApp.navigatorKey.currentContext!,
-                type,
-                data,
-                timestamp,
-              );
-            },
-          ),
-        ),
-      );
-    }
+    // if (mounted) {
+    //   _scaffoldKey.currentState?.showSnackBar(
+    //     SnackBar(
+    //       content: Text('Received $type intent'),
+    //       duration: const Duration(seconds: 3),
+    //       action: SnackBarAction(
+    //         label: 'Details',
+    //         onPressed: () {
+    //           _shareHandler.showDetailsDialog(
+    //             MyApp.navigatorKey.currentContext!,
+    //             type,
+    //             data,
+    //             timestamp,
+    //           );
+    //         },
+    //       ),
+    //     ),
+    //   );
+    // }
   }
 
   @override
   void initState() {
     super.initState();
     _initDeepLinkListener();
-    _initAuthStateListener();
     _shareHandler.initialize(
       onIntentReceived: _logIntent,
       scaffoldKey: _scaffoldKey,
       navigatorKey: MyApp.navigatorKey,
     );
-  }
-
-  void _initAuthStateListener() {
-    supabase.auth.onAuthStateChange.listen((data) {
-      final event = data.event;
-      final session = data.session;
-
-      print('=== Auth State Change ===');
-      print('Event: $event');
-      print('Session: ${session != null ? 'exists' : 'null'}');
-      print('User: ${session?.user.id ?? 'null'}');
-      print('User email: ${session?.user.email ?? 'null'}');
-      print('Timestamp: ${DateTime.now().toIso8601String()}');
-
-      if (event == AuthChangeEvent.passwordRecovery) {
-        print('=== PASSWORD_RECOVERY Event Detected ===');
-        print('Navigating to reset password screen');
-
-        // Navigate to reset password screen
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          MyApp.navigatorKey.currentState?.pushReplacementNamed(
-            '/reset-password',
-            arguments: {
-              'token': '', // Will be handled by the reset password screen
-              'email': null,
-              'verified': false,
-            },
-          );
-        });
-      } else if (event == AuthChangeEvent.initialSession) {
-        print('=== INITIAL_SESSION Event Detected ===');
-        print(
-            'This is normal on app startup when user is already authenticated');
-        print('Splash screen will handle navigation after delay');
-      } else {
-        print('=== Other Auth Event: $event ===');
-      }
-    });
   }
 
   @override
@@ -239,12 +337,21 @@ class _MyAppState extends State<MyApp> {
     print('Initializing deep link listener');
     _appLinks = AppLinks();
 
+    // Supabase handles OAuth callbacks automatically with PKCE flow
+    // No manual intervention needed for web OAuth callbacks
+
     // Handle initial link
     final uri = await _appLinks.getInitialAppLink();
     if (uri != null) {
       print('Got initial app link: $uri');
       _pendingDeepLink = uri; // Store for later use
-      _handleDeepLink(uri);
+
+      // Check if this is a category deep link that should be handled immediately
+      // Only handle non-web deep links immediately to avoid conflicts with web routing
+      if (uri.path.startsWith('/category/') && !foundation.kIsWeb) {
+        print('Initial category deep link detected, handling immediately');
+        _handleDeepLink(uri);
+      }
     } else {
       print('No initial app link found');
     }
@@ -275,265 +382,157 @@ class _MyAppState extends State<MyApp> {
     print('Path: ${uri.path}');
     print('Query parameters: ${uri.queryParameters}');
 
-    // Handle our custom URL scheme
-    if (uri.scheme == 'meaningto' &&
-        uri.host == 'auth' &&
-        uri.path == '/callback') {
-      print('Processing meaningto://auth/callback');
-      try {
-        // Check for error parameters first
-        if (uri.queryParameters.containsKey('error')) {
-          final error = uri.queryParameters['error']!;
-          final errorCode = uri.queryParameters['error_code'];
-          final errorDescription = uri.queryParameters['error_description'];
+    try {
+      // Handle category deep links
+      if (uri.path.startsWith('/category/')) {
+        print('Processing category deep link');
+        final pathSegments = uri.pathSegments;
+        if (pathSegments.length >= 2 && pathSegments[0] == 'category') {
+          final categoryId = pathSegments[1];
+          print('Category ID from deep link: $categoryId');
 
-          _logIntent('Auth Error', {
-            'error': error,
-            'code': errorCode,
-            'description': errorDescription,
-          });
+          // Navigate to home screen with the specified category
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/category',
+                arguments: {'categoryId': categoryId});
+          }
+          return;
+        }
+      }
 
-          // Show error message and navigate to auth screen
-          _scaffoldKey.currentState?.showSnackBar(
-            SnackBar(
-              content:
-                  Text(errorDescription ?? 'Authentication error occurred'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 5),
-            ),
-          );
-          MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
+      // Handle custom scheme category deep links (meaningto://category/123)
+      if (uri.scheme == 'meaningto' && uri.host == 'category') {
+        print('Processing custom scheme category deep link');
+        final pathSegments = uri.pathSegments;
+        if (pathSegments.isNotEmpty) {
+          final categoryId = pathSegments[0];
+          print('Category ID from custom scheme: $categoryId');
+
+          // Navigate to home screen with the specified category
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/category',
+                arguments: {'categoryId': categoryId});
+          }
+          return;
+        }
+      }
+
+      // Handle email confirmation links
+      if (uri.scheme == 'meaningto' && uri.host == 'auth') {
+        print('Processing auth deep link');
+
+        // Check if this is a password reset link
+        if (uri.path.contains('reset-password')) {
+          print('Password reset link detected');
+
+          // Navigate to password reset screen
+          if (mounted) {
+            Navigator.pushReplacementNamed(
+              context,
+              '/auth/reset-password',
+              arguments: {
+                'token': uri.queryParameters['token'],
+                'type': uri.queryParameters['type'],
+              },
+            );
+          }
           return;
         }
 
-        // Check if this is a verification token (signup or recovery)
-        if (uri.queryParameters.containsKey('token') ||
-            uri.queryParameters.containsKey('code')) {
-          final token =
-              uri.queryParameters['token'] ?? uri.queryParameters['code']!;
-          final type = uri.queryParameters['type'];
+        // Check if this is an email confirmation link
+        if (uri.path.contains('confirm') ||
+            uri.queryParameters.containsKey('token')) {
+          print('Email confirmation link detected');
 
-          print('Processing auth callback with type: $type, token: $token');
-          print('All query parameters: ${uri.queryParameters}');
-          print('Full URI: $uri');
-          print('Token length: ${token.length}');
-          print('Token starts with: ${token.substring(0, 8)}...');
-          print('URI fragment: ${uri.fragment}');
-          print('URI has fragment: ${uri.hasFragment}');
+          // Extract token and email from query parameters
+          final token = uri.queryParameters['token'];
+          final email = uri.queryParameters['email'];
 
-          if (type == 'signup') {
-            // Handle signup verification
-            print('Handling signup verification');
-            await supabase.auth.verifyOTP(
-              token: token,
-              type: OtpType.signup,
-            );
-            MyApp.navigatorKey.currentState?.pushReplacementNamed('/');
-          } else if (type == 'recovery') {
-            // Handle password recovery
-            print('Handling password recovery with token: $token');
-            // Don't verify the token here - let the reset password screen handle it
-            // The user will need to enter their email in the reset password screen
-            print('Navigating to reset password screen with recovery token');
+          if (token != null) {
+            print('Processing email confirmation with token');
 
-            // Use a post-frame callback to ensure navigation happens after current frame
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              print('Post-frame callback: Navigating to reset password screen');
-              MyApp.navigatorKey.currentState?.pushReplacementNamed(
-                '/reset-password',
-                arguments: {
-                  'token': token,
-                  'email':
-                      uri.queryParameters['email'], // Pass email if available
-                },
-              ).then((_) {
-                // Clear the flag only after navigation is complete
-                print(
-                    'Reset password navigation complete, clearing deep link flag');
-                // Keep the flag true for a bit longer to prevent interference
-                Future.delayed(const Duration(seconds: 2), () {
-                  print('Delayed clearing of deep link flag');
-                  MyApp.isHandlingDeepLink = false;
-                });
-              });
-            });
-            return; // Exit early, don't clear flag yet
-          } else {
-            // For password recovery, Supabase might not include type=recovery
-            // Check if this looks like a recovery link (has access_token or refresh_token)
-            if (uri.queryParameters.containsKey('access_token') ||
-                uri.queryParameters.containsKey('refresh_token')) {
-              print('Detected recovery link without type parameter');
-
-              // Use a post-frame callback to ensure navigation happens after current frame
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                print(
-                    'Post-frame callback: Navigating to reset password screen');
-                MyApp.navigatorKey.currentState?.pushReplacementNamed(
-                  '/reset-password',
-                  arguments: {
-                    'token': token,
-                    'email':
-                        uri.queryParameters['email'], // Pass email if available
-                  },
-                ).then((_) {
-                  // Clear the flag only after navigation is complete
-                  print(
-                      'Reset password navigation complete, clearing deep link flag');
-                  // Keep the flag true for a bit longer to prevent interference
-                  Future.delayed(const Duration(seconds: 2), () {
-                    print('Delayed clearing of deep link flag');
-                    MyApp.isHandlingDeepLink = false;
-                  });
-                });
-              });
-              return; // Exit early, don't clear flag yet
-            } else if (uri.queryParameters.containsKey('code') &&
-                !uri.queryParameters.containsKey('type')) {
-              // Supabase password recovery links often only have 'code' parameter
-              print('Detected password recovery link with code parameter');
-
-              // Check if this is a PKCE token (starts with 'pkce_')
-              if (token.startsWith('pkce_')) {
-                print('Detected PKCE token from verify endpoint');
-                print(
-                    'This token should be used with the verify endpoint, not recovery');
-                print('Navigating to reset password screen with PKCE token');
-
-                // Navigate to reset password screen - user will need to enter email
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  print(
-                      'Post-frame callback: Navigating to reset password screen');
-                  MyApp.navigatorKey.currentState?.pushReplacementNamed(
-                    '/reset-password',
-                    arguments: {
-                      'token': token,
-                      'email': uri
-                          .queryParameters['email'], // Pass email if available
-                      'verified': false, // Mark as not verified yet
-                      'tokenType': 'pkce', // Mark as PKCE token
-                    },
-                  ).then((_) {
-                    print(
-                        'Reset password navigation complete, clearing deep link flag');
-                    Future.delayed(const Duration(seconds: 2), () {
-                      print('Delayed clearing of deep link flag');
-                      MyApp.isHandlingDeepLink = false;
-                    });
-                  });
-                });
-                return; // Exit early, don't clear flag yet
-              }
-
-              // Immediately verify the token to avoid expiration
-              print(
-                  'Immediately verifying recovery token to prevent expiration');
-              try {
-                // We need the email to verify the token, but we don't have it yet
-                // Let's try to verify without email first (some Supabase setups allow this)
-                print('Attempting immediate verification without email...');
-                print('Token: $token');
-                print('Token type: ${token.runtimeType}');
-                print('Token length: ${token.length}');
-
-                await supabase.auth.verifyOTP(
-                  token: token,
-                  type: OtpType.recovery,
-                );
-
-                // Navigate to reset password screen with verified token
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  print(
-                      'Post-frame callback: Navigating to reset password screen');
-                  MyApp.navigatorKey.currentState?.pushReplacementNamed(
-                    '/reset-password',
-                    arguments: {
-                      'token': token,
-                      'email': uri
-                          .queryParameters['email'], // Pass email if available
-                      'verified': true, // Mark as already verified
-                    },
-                  ).then((_) {
-                    print(
-                        'Reset password navigation complete, clearing deep link flag');
-                    Future.delayed(const Duration(seconds: 2), () {
-                      print('Delayed clearing of deep link flag');
-                      MyApp.isHandlingDeepLink = false;
-                    });
-                  });
-                });
-                return; // Exit early, don't clear flag yet
-              } catch (e) {
-                print('Immediate token verification failed: $e');
-                print(
-                    'Will try verification in reset password screen with user email');
-
-                // Navigate to reset password screen - user will need to enter email
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  print(
-                      'Post-frame callback: Navigating to reset password screen');
-                  MyApp.navigatorKey.currentState?.pushReplacementNamed(
-                    '/reset-password',
-                    arguments: {
-                      'token': token,
-                      'email': uri
-                          .queryParameters['email'], // Pass email if available
-                      'verified': false, // Mark as not verified yet
-                    },
-                  ).then((_) {
-                    print(
-                        'Reset password navigation complete, clearing deep link flag');
-                    Future.delayed(const Duration(seconds: 2), () {
-                      print('Delayed clearing of deep link flag');
-                      MyApp.isHandlingDeepLink = false;
-                    });
-                  });
-                });
-                return; // Exit early, don't clear flag yet
-              }
-            } else {
-              // Default to signup if no type specified and no recovery indicators
-              print('No type specified, defaulting to signup verification');
-              await supabase.auth.verifyOTP(
+            // Try to confirm the email and sign in the user
+            try {
+              final response = await Supabase.instance.client.auth.verifyOTP(
+                email: email ?? '',
                 token: token,
                 type: OtpType.signup,
               );
-              MyApp.navigatorKey.currentState?.pushReplacementNamed('/');
+
+              if (response.user != null && response.session != null) {
+                print('Email confirmation successful, user signed in');
+
+                // Navigate to home screen
+                if (mounted) {
+                  Navigator.pushReplacementNamed(context, '/home');
+                }
+              } else {
+                print('Email confirmation failed - no user or session');
+                // Navigate to auth screen with error
+                if (mounted) {
+                  Navigator.pushReplacementNamed(context, '/auth');
+                }
+              }
+            } catch (e) {
+              print('Error confirming email: $e');
+              // Navigate to auth screen with error
+              if (mounted) {
+                Navigator.pushReplacementNamed(context, '/auth');
+              }
+            }
+          } else {
+            print('No token found in confirmation link');
+            // Navigate to auth screen
+            if (mounted) {
+              Navigator.pushReplacementNamed(context, '/auth');
             }
           }
+        } else if (uri.path == '/callback' &&
+            uri.queryParameters.containsKey('code')) {
+          print('OAuth callback detected - processing authentication code');
+
+          try {
+            // Exchange the code for a session
+            final response =
+                await Supabase.instance.client.auth.getSessionFromUrl(uri);
+
+            if (response.session != null) {
+              print('OAuth session established successfully');
+              print('User: ${response.session!.user.email}');
+
+              // Wait a moment for the Navigator to be ready, then navigate
+              await Future.delayed(const Duration(milliseconds: 100));
+
+              // Use global navigator key to navigate
+              MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
+            } else {
+              print('OAuth callback processed but no session created');
+              await Future.delayed(const Duration(milliseconds: 100));
+              MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
+            }
+          } catch (e) {
+            print('Error processing OAuth callback: $e');
+            await Future.delayed(const Duration(milliseconds: 100));
+            MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
+          }
         } else {
-          print('No token or code parameter found in deep link');
+          print('Auth deep link but not confirmation - navigating to auth');
+          // Navigate to auth screen for other auth links
+          if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+            Navigator.pushReplacementNamed(context, '/auth');
+          }
         }
-      } catch (e) {
-        print('Error handling auth callback: $e');
-        _scaffoldKey.currentState?.showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-        // Only navigate to /auth if this was actually an auth-related error
-        // Otherwise, let the splash screen handle normal app startup
-        if (uri.scheme == 'meaningto' && uri.host == 'auth') {
-          MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
-        } else {
-          // Clear the deep link flag for normal app startup
-          MyApp.isHandlingDeepLink = false;
-        }
+      } else {
+        print('Unknown deep link format - ignoring');
       }
-    } else {
-      print('URI not handled:');
-      print('- Expected scheme: meaningto');
-      print('- Expected host: auth');
-      print('- Expected path: /callback');
-      print('- This is normal when app starts without a deep link');
-      // Don't navigate to /auth automatically - let the splash screen handle it
-      // Only clear the deep link flag so normal routing can proceed
+    } catch (e) {
+      print('Error handling deep link: $e');
+      // Don't try to navigate on error - just log it
+    } finally {
+      // Always reset the flag so the app doesn't stay in loading state
+      print('=== End Deep Link Processing ===');
       MyApp.isHandlingDeepLink = false;
     }
-    print('=== End Deep Link Processing ===');
-    // Note: _handlingDeepLink flag is cleared in individual navigation cases
   }
 
   Uri? _getPendingDeepLink() {
@@ -546,7 +545,7 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return WebWidthWrapper(
       child: MaterialApp(
-        title: 'Meaning To',
+        title: 'I\'ve Been Meaning To',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
@@ -564,26 +563,19 @@ class _MyAppState extends State<MyApp> {
         ],
         initialRoute: '/',
         onGenerateRoute: (settings) {
-          print('onGenerateRoute called with: ${settings.name}');
+          print('=== onGenerateRoute called ===');
+          print('Route name: ${settings.name}');
           print('Arguments: ${settings.arguments}');
           print('Handling deep link: ${MyApp.isHandlingDeepLink}');
           print(
               'Current route stack: ${MyApp.navigatorKey.currentState?.widget.runtimeType}');
+          print('Current URI: ${Uri.base}');
+          print('Current path: ${Uri.base.path}');
+          print('Current query: ${Uri.base.queryParameters}');
+          print('=== End onGenerateRoute ===');
 
           // If we're handling a deep link, don't process normal routes
           if (MyApp.isHandlingDeepLink) {
-            // Allow reset-password route to be processed even during deep link handling
-            if (settings.name == '/reset-password') {
-              print('Deep link in progress, but allowing reset-password route');
-              final args = settings.arguments as Map<String, dynamic>;
-              return MaterialPageRoute(
-                builder: (context) => ResetPasswordScreen(
-                  token: args['token'] as String,
-                  email: args['email'] as String?,
-                  verified: args['verified'] as bool? ?? false,
-                ),
-              );
-            }
             print('Deep link in progress, returning splash screen');
             return MaterialPageRoute(
               builder: (context) => const SplashScreen(),
@@ -602,6 +594,65 @@ class _MyAppState extends State<MyApp> {
                 builder: (context) => const SplashScreen(),
               );
             }
+
+            // Check if this is a web category URL
+            if (foundation.kIsWeb) {
+              final currentPath = Uri.base.path;
+              print('Web routing check - current path: $currentPath');
+              if (currentPath.startsWith('/category/')) {
+                print('Web category URL detected: $currentPath');
+                final pathSegments = currentPath.split('/');
+                print('Path segments: $pathSegments');
+                if (pathSegments.length >= 3 && pathSegments[1] == 'category') {
+                  final categoryId = pathSegments[2];
+                  print('Category ID from web URL: $categoryId');
+                  print('Creating HomeScreen with category ID: $categoryId');
+                  return MaterialPageRoute(
+                    builder: (context) =>
+                        HomeScreen(initialCategoryId: categoryId),
+                  );
+                }
+              }
+
+              // Check for Supabase authentication verification (password reset, email confirmation, etc.)
+              final queryParams = Uri.base.queryParameters;
+              final fragment = Uri.base.fragment;
+
+              if (queryParams.containsKey('token') &&
+                  queryParams.containsKey('type')) {
+                print('Supabase verification URL detected');
+                print('Query params: $queryParams');
+                print('Fragment: $fragment');
+                return MaterialPageRoute(
+                  builder: (context) => AuthVerificationScreen(
+                    token: queryParams['token'],
+                    type: queryParams['type'],
+                    redirectTo: queryParams['redirect_to'],
+                  ),
+                );
+              }
+
+              // Check for password reset URL
+              if (currentPath == '/auth/reset-password') {
+                print('Password reset URL detected');
+                return MaterialPageRoute(
+                  builder: (context) => ResetPasswordScreen(
+                    token: queryParams['token'],
+                    type: queryParams['type'],
+                  ),
+                );
+              }
+
+              // Also check for query parameter based category links
+              if (queryParams.containsKey('category')) {
+                final categoryId = queryParams['category'];
+                print('Category ID from query parameter: $categoryId');
+                return MaterialPageRoute(
+                  builder: (context) =>
+                      HomeScreen(initialCategoryId: categoryId),
+                );
+              }
+            }
           }
 
           // Normal route handling
@@ -614,18 +665,79 @@ class _MyAppState extends State<MyApp> {
               return MaterialPageRoute(
                 builder: (context) => const AuthScreen(),
               );
+            case '/forgot-password':
+              return MaterialPageRoute(
+                builder: (context) => const ForgotPasswordScreen(),
+              );
+            case '/auth/reset-password':
+              final args = settings.arguments as Map<String, dynamic>?;
+              return MaterialPageRoute(
+                builder: (context) => ResetPasswordScreen(
+                  token: args?['token'] as String?,
+                  type: args?['type'] as String?,
+                ),
+              );
+            case '/auth/verify':
+              final args = settings.arguments as Map<String, dynamic>?;
+              return MaterialPageRoute(
+                builder: (context) => AuthVerificationScreen(
+                  token: args?['token'] as String?,
+                  type: args?['type'] as String?,
+                  redirectTo: args?['redirect_to'] as String?,
+                ),
+              );
+            case '/auth/verify-otp':
+              return MaterialPageRoute(
+                settings: settings,
+                builder: (context) => const AuthOtpVerificationScreen(),
+              );
+            case '/auth/callback':
+              print('Main: OAuth callback route detected');
+              // Return a loading screen that will handle the OAuth callback
+              return MaterialPageRoute(
+                builder: (context) => const SplashScreen(),
+              );
+
+            case '/email-confirmation':
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => AuthVerificationScreen(
+                  token: args['token'] as String?,
+                  type: args['type'] as String?,
+                ),
+              );
+            case '/password-reset-request':
+              return MaterialPageRoute(
+                builder: (context) => const PasswordResetRequestScreen(),
+              );
+            case '/password-reset-otp':
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => PasswordResetOtpScreen(
+                  email: args['email'] as String,
+                ),
+              );
+            case '/password-reset-new':
+              final args = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => PasswordResetNewScreen(
+                  email: args['email'] as String,
+                ),
+              );
             case '/home':
               return MaterialPageRoute(
                 builder: (context) => const HomeScreen(),
               );
-            case '/reset-password':
-              final args = settings.arguments as Map<String, dynamic>;
+            case '/help':
               return MaterialPageRoute(
-                builder: (context) => ResetPasswordScreen(
-                  token: args['token'] as String,
-                  email: args['email'] as String?,
-                  verified: args['verified'] as bool? ?? false,
-                ),
+                builder: (context) => const HelpScreen(),
+              );
+            case '/category':
+              // Handle category deep link with ID parameter
+              final args = settings.arguments as Map<String, dynamic>?;
+              final categoryId = args?['categoryId'] as String?;
+              return MaterialPageRoute(
+                builder: (context) => HomeScreen(initialCategoryId: categoryId),
               );
             case '/edit-category':
               final args = settings.arguments as Map<String, dynamic>?;
@@ -633,11 +745,25 @@ class _MyAppState extends State<MyApp> {
                 builder: (context) => EditCategoryScreen(
                   category: args?['category'] as Category?,
                   tasksOnly: args?['tasksOnly'] == true,
+                  startInCategoryEditorPanel:
+                      args?['startInCategoryEditorPanel'] == true,
                 ),
               );
             case '/new-category':
               return MaterialPageRoute(
                 builder: (context) => const NewCategoryScreen(),
+              );
+            case '/new-content':
+              final args = settings.arguments as Map<String, dynamic>?;
+              return MaterialPageRoute(
+                builder: (context) => NewContentScreen(
+                  selectedCategory: args?['selectedCategory'] as Category?,
+                  initialLinks: args?['initialLinks'] as List<String>?,
+                  initialHeadline: args?['initialHeadline'] as String?,
+                  initialNotes: args?['initialNotes'] as String?,
+                  originalId: args?['originalId'] as String?,
+                  categoryLocked: args?['categoryLocked'] as bool? ?? false,
+                ),
               );
             case '/shop-endeavors':
               final args = settings.arguments as Map<String, dynamic>?;
@@ -656,10 +782,35 @@ class _MyAppState extends State<MyApp> {
               );
             case '/edit-task':
               final args = settings.arguments as Map<String, dynamic>;
+              final task = args['task'] as Task?;
+              final category = args['category'] as Category;
+
+              if (task == null) {
+                // New task creation - use new content screen in locked mode
+                return MaterialPageRoute(
+                  builder: (context) => NewContentScreen(
+                    selectedCategory: category,
+                    categoryLocked: true,
+                    initialLinks: args['initialLinks'] as List<String>?,
+                    initialHeadline: args['initialHeadline'] as String?,
+                    initialNotes: args['initialNotes'] as String?,
+                    originalId: args['originalId'] as String?,
+                  ),
+                );
+              } else {
+                // Existing task editing - continue using TaskEditScreen
+                return MaterialPageRoute(
+                  builder: (context) => TaskEditScreen(
+                    category: category,
+                    task: task,
+                  ),
+                );
+              }
+            case '/letterboxd-import':
+              final args = settings.arguments as Map<String, dynamic>;
               return MaterialPageRoute(
-                builder: (context) => TaskEditScreen(
+                builder: (context) => LetterboxdImportScreen(
                   category: args['category'] as Category,
-                  task: args['task'] as Task?,
                 ),
               );
             default:

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/main.dart';
 import 'package:meaning_to/utils/auth.dart';
-import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/app_state_manager.dart';
 import 'package:meaning_to/models/task.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -14,7 +17,11 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   bool _showWelcomeScreen = false;
-  bool _forceWelcomeScreen = false; // Temporary debug flag
+  final bool _forceWelcomeScreen = false; // Temporary debug flag
+  String _version = '';
+  String _buildNumber = '';
+  StreamSubscription<AuthState>? _authSubscription;
+  bool _hasNavigated = false;
 
   @override
   void initState() {
@@ -23,6 +30,20 @@ class _SplashScreenState extends State<SplashScreen> {
     print(
         'SplashScreen: MyApp.isHandlingDeepLink = ${MyApp.isHandlingDeepLink}');
 
+    // Load version info
+    _loadVersionInfo();
+
+    // Set up auth state listener to handle OAuth callbacks
+    _authSubscription =
+        Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      print(
+          'SplashScreen: Auth state changed - event: ${data.event}, session: ${data.session != null}');
+      if (data.event == AuthChangeEvent.signedIn && data.session != null) {
+        print('SplashScreen: User signed in via OAuth');
+        _handleAuthenticatedUser(data.session!.user.id);
+      }
+    });
+
     // Check if we're handling a deep link
     if (MyApp.isHandlingDeepLink) {
       print(
@@ -30,9 +51,9 @@ class _SplashScreenState extends State<SplashScreen> {
       return; // Don't navigate if deep link is being handled
     }
 
-    // Add a longer delay to ensure Supabase is fully initialized and auth events are processed
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
+    // Add a delay to ensure everything is initialized
+    Future.delayed(const Duration(seconds: 2), () async {
+      if (!mounted || _hasNavigated) return;
 
       // Check authentication status
       final currentUser = AuthUtils.getCurrentUser();
@@ -42,25 +63,17 @@ class _SplashScreenState extends State<SplashScreen> {
       print('SplashScreen: Current user: ${currentUser?.id ?? 'null'}');
       print('SplashScreen: User email: ${currentUser?.email ?? 'null'}');
       print('SplashScreen: Is authenticated: $isAuthenticated');
-      print(
-          'SplashScreen: Supabase client initialized: ${supabase.auth.currentSession != null}');
-
-      // Temporary: Force welcome screen for testing
-      if (_forceWelcomeScreen) {
-        print('SplashScreen: Force welcome screen enabled for testing');
-        setState(() {
-          _showWelcomeScreen = true;
-        });
-        return;
-      }
 
       if (isAuthenticated) {
-        // User is authenticated, proceed to home screen
-        print('SplashScreen: User is authenticated, navigating to /home');
-        Navigator.of(context).pushReplacementNamed('/home');
+        print(
+            '🔥🔥🔥 SPLASH SCREEN: NEW CODE RUNNING - ATTEMPTING STATE RESTORATION 🔥🔥🔥');
+        _handleAuthenticatedUser(currentUser!.id);
       } else {
-        // No authenticated user, show welcome screen
-        print('SplashScreen: No authenticated user, showing welcome screen');
+        print('SplashScreen: Showing welcome screen (user not authenticated)');
+        // Clear any saved state since user is not authenticated
+        await AppStateManager.clearState();
+        // Mark state restoration as complete for non-authenticated users
+        MyApp.isStateRestored = true;
         setState(() {
           _showWelcomeScreen = true;
         });
@@ -68,9 +81,79 @@ class _SplashScreenState extends State<SplashScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Handle authenticated user by navigating with state restoration
+  Future<void> _handleAuthenticatedUser(String userId) async {
+    if (_hasNavigated) {
+      print('SplashScreen: Already navigated, ignoring duplicate auth event');
+      return;
+    }
+    _hasNavigated = true;
+    _navigateWithStateRestoration(userId);
+  }
+
+  Future<void> _loadVersionInfo() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      setState(() {
+        _version = packageInfo.version;
+        _buildNumber = packageInfo.buildNumber;
+      });
+    } catch (e) {
+      print('Error loading version info: $e');
+    }
+  }
+
   void _navigateToLogin() {
     print('SplashScreen: Navigating to login screen');
     Navigator.of(context).pushReplacementNamed('/auth');
+  }
+
+  /// Attempt to restore the user's last state and navigate accordingly
+  Future<void> _navigateWithStateRestoration(String userId) async {
+    try {
+      print(
+          'SplashScreen: Attempting to restore last category for user: $userId');
+
+      final cacheManager = CacheManager();
+      final restoredCategory = await cacheManager.restoreLastCategory(userId);
+
+      print(
+          'SplashScreen: State restoration result: ${restoredCategory?.headline ?? 'null'}');
+
+      // Mark state restoration as complete
+      MyApp.isStateRestored = true;
+
+      if (restoredCategory != null) {
+        print('SplashScreen: State restored successfully');
+        print('SplashScreen: Category ID: ${restoredCategory.id}');
+        print('SplashScreen: Category headline: ${restoredCategory.headline}');
+        print(
+            'SplashScreen: Navigating to /category with ID: ${restoredCategory.id}');
+
+        // Navigate to home screen with the restored category
+        Navigator.of(context).pushReplacementNamed('/category', arguments: {
+          'categoryId': restoredCategory.id.toString(),
+        });
+      } else {
+        print(
+            'SplashScreen: No category to restore, navigating to normal home screen');
+        Navigator.of(context).pushReplacementNamed('/home');
+      }
+    } catch (e, stackTrace) {
+      print('SplashScreen: Error during state restoration: $e');
+      print('SplashScreen: Stack trace: $stackTrace');
+      // Mark state restoration as complete even if failed
+      MyApp.isStateRestored = true;
+      // Fallback to normal home screen
+      print('SplashScreen: Falling back to normal home screen');
+      Navigator.of(context).pushReplacementNamed('/home');
+    }
   }
 
   void _navigateAsGuest() async {
@@ -86,7 +169,7 @@ class _SplashScreenState extends State<SplashScreen> {
   void _signOutForTesting() async {
     print('SplashScreen: Signing out for testing');
     try {
-      await supabase.auth.signOut();
+      await AuthUtils.signOut();
       print('SplashScreen: Sign out successful');
       // Restart the app flow
       setState(() {
@@ -137,7 +220,8 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Roll the dice to pick something you\'ve been meaning to do',
+                    'Enjoy a little randomness',
+                    // 'Roll the dice to pick something you\'ve been meaning to do',
                     style: TextStyle(
                       fontSize: 16,
                       color: Colors.white70,
@@ -166,7 +250,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                   const SizedBox(height: 40),
 
-                  // Login button
+                  // Sign In/Sign Up button
                   SizedBox(
                     width: double.infinity,
                     height: 56,
@@ -181,7 +265,7 @@ class _SplashScreenState extends State<SplashScreen> {
                         elevation: 2,
                       ),
                       child: const Text(
-                        'Sign In',
+                        'Sign In/Sign Up',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -205,7 +289,7 @@ class _SplashScreenState extends State<SplashScreen> {
                         ),
                       ),
                       child: const Text(
-                        'Continue as Guest',
+                        'Continue as Guest (Read Only)',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -214,54 +298,53 @@ class _SplashScreenState extends State<SplashScreen> {
                     ),
                   ),
 
-                  // Debug section (temporary)
-                  const SizedBox(height: 40),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
+                  // Debug section (only in debug mode)
+                  if (const bool.fromEnvironment('dart.vm.product') ==
+                      false) ...[
+                    const SizedBox(height: 40),
+                    const Divider(color: Colors.white30),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Debug Options',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white70,
+                      ),
                     ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'Debug Options',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 40,
+                      child: OutlinedButton(
+                        onPressed: _signOutForTesting,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          side:
+                              const BorderSide(color: Colors.white30, width: 1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            TextButton(
-                              onPressed: _signOutForTesting,
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.white,
-                              ),
-                              child: const Text('Sign Out'),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                setState(() {
-                                  _forceWelcomeScreen = !_forceWelcomeScreen;
-                                });
-                                initState();
-                              },
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.white,
-                              ),
-                              child: Text(_forceWelcomeScreen
-                                  ? 'Disable Force'
-                                  : 'Force Welcome'),
-                            ),
-                          ],
+                        child: const Text(
+                          'Sign Out (Debug)',
+                          style: TextStyle(fontSize: 14),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
+
+                  // Version display at the bottom
+                  const Spacer(),
+                  if (_version.isNotEmpty) ...[
+                    Text(
+                      'v$_version (Build $_buildNumber)',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -270,25 +353,48 @@ class _SplashScreenState extends State<SplashScreen> {
       );
     }
 
-    // Loading screen (shown while checking authentication)
-    print('SplashScreen: Rendering loading screen');
-    return const Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.deepPurple),
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Loading...',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
+    // Loading screen
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.deepPurple, Colors.purple],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Spacer(),
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+              const Text(
+                'Loading...',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.white,
+                ),
+              ),
+              const Spacer(),
+              // Version display at the bottom
+              if (_version.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Text(
+                    'v$_version (Build $_buildNumber)',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

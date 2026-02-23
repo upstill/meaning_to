@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/task_edit_screen.dart';
-import 'package:meaning_to/utils/auth.dart';
-import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
+import 'package:meaning_to/utils/naming.dart';
+import 'package:meaning_to/new_content_screen.dart';
 
 class AddTaskManuallyButton extends StatelessWidget {
   final Category category;
@@ -17,37 +17,30 @@ class AddTaskManuallyButton extends StatelessWidget {
   });
 
   Future<void> _createTask(BuildContext context) async {
-    final result = await Navigator.pushNamed(
+    final result = await Navigator.pushReplacement(
       context,
-      '/edit-task',
-      arguments: {'category': category, 'task': null},
+      MaterialPageRoute(
+        builder: (context) => NewContentScreen(
+          selectedCategory: category,
+          categoryLocked: true,
+        ),
+      ),
     );
 
-    if (result == true) {
-      // Refresh the cache to get the new task
-      try {
-        final userId = AuthUtils.getCurrentUserId();
-        if (userId != null) {
-          await CacheManager().refreshFromDatabase();
-          print('AddTaskManuallyButton: Cache refreshed after task creation');
-        }
-      } catch (e) {
-        print('AddTaskManuallyButton: Error refreshing cache: $e');
-      }
-
-      // Call the callback if provided
-      if (onTaskAdded != null) {
-        onTaskAdded!();
-      }
+    // If a task was created, call the callback
+    if (result != null && onTaskAdded != null) {
+      onTaskAdded!();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
+    return ElevatedButton.icon(
       onPressed: isLoading ? null : () => _createTask(context),
       icon: const Icon(Icons.add),
-      label: const Text('Add a Task Manually'),
+      label: Text(
+          'Add ${NamingUtils.tasksName(capitalize: true, plural: false, withArticle: true)} manually'),
+      style: AppButtons.goForth(),
     );
   }
 }

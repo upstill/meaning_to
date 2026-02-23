@@ -2,11 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/models/shop_item.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/widgets/link_display.dart';
+import 'package:meaning_to/home_screen.dart';
+
+// Sorting options for suggestions
+enum SortOption { alphabetical, priority, age }
 
 class ShopEndeavorsScreen extends StatefulWidget {
   final Category?
@@ -16,6 +22,105 @@ class ShopEndeavorsScreen extends StatefulWidget {
     super.key,
     this.existingCategory,
   });
+
+  /// Check if there are any public suggestions available
+  /// This is a lightweight check used by callers to pre-toggle UI
+  static Future<bool> hasAnyPublicSuggestions() async {
+    try {
+      // Check if there are any public categories with tasks
+      final response = await supabase
+          .from('Categories')
+          .select('id, private')
+          .eq('private', false)
+          .limit(1);
+
+      if (response.isNotEmpty) {
+        // Check if any of these public categories have tasks
+        final categoryIds = response.map((json) => json['id'] as int).toList();
+        final tasksResponse = await supabase
+            .from('Tasks')
+            .select('id, original_id')
+            .inFilter('category_id', categoryIds)
+            .limit(10); // Get more tasks to check filtering
+
+        if (tasksResponse.isNotEmpty) {
+          // Filter to only show original tasks (where id equals original_id)
+          final originalTasks = tasksResponse.where((task) {
+            final taskId = task['id'] as int;
+            final originalId = task['original_id'] as int?;
+            return originalId != null && taskId == originalId;
+          }).toList();
+
+          return originalTasks.isNotEmpty;
+        }
+      }
+      return false;
+    } catch (e) {
+      // On error, return true to avoid disabling UX unnecessarily
+      print('Error checking for public suggestions: $e');
+      return true;
+    }
+  }
+
+  /// Check if there are any public suggestions available for a specific category
+  /// This is used by Task Edit screen to check if suggestions exist for the current category
+  static Future<bool> hasAnyPublicSuggestionsForCategory(
+      Category category) async {
+    try {
+      if (category.originalId == null) {
+        return false; // No original_id means no suggestions
+      }
+
+      // Get all categories with the same original_id
+      final categoriesResponse = await supabase
+          .from('Categories')
+          .select('id')
+          .eq('original_id', category.originalId!);
+
+      if (categoriesResponse.isEmpty) {
+        return false;
+      }
+
+      // If there's only one category with this original_id (the current one), no suggestions
+      if (categoriesResponse.length == 1) {
+        return false;
+      }
+
+      // Extract category IDs, excluding the current category
+      final categoryIds = (categoriesResponse as List)
+          .map((json) => json['id'] as int)
+          .where((id) => id != category.id) // Exclude current category
+          .toList();
+
+      if (categoryIds.isEmpty) {
+        return false; // No other categories with same original_id
+      }
+
+      // Get tasks from other categories with the same original_id
+      final tasksResponse = await supabase
+          .from('Tasks')
+          .select('id, original_id')
+          .inFilter('category_id', categoryIds)
+          .limit(100); // Get more tasks to check filtering
+
+      if (tasksResponse.isNotEmpty) {
+        // Filter to only show original tasks (where id equals original_id)
+        final originalTasks = tasksResponse.where((task) {
+          final taskId = task['id'] as int;
+          final originalId = task['original_id'] as int?;
+          return originalId != null && taskId == originalId;
+        }).toList();
+
+        // If there are original tasks in other categories, we have suggestions
+        return originalTasks.isNotEmpty;
+      }
+      return false;
+    } catch (e) {
+      // On error, return true to avoid disabling UX unnecessarily
+      print('Error checking for public suggestions for category: $e');
+      return true;
+    }
+  }
 
   @override
   State<ShopEndeavorsScreen> createState() => _ShopEndeavorsScreenState();
@@ -32,10 +137,20 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       {}; // Cache for redundant task checks
   final Set<int> _userTaskOriginalIds =
       {}; // Store user's task original_ids for redundancy checking
+  final Map<String, bool> _expandedInvitations =
+      {}; // Track which category invitations are expanded
+
+  // Sort and search state (for single-pursuit mode)
+  SortOption _currentSortOption = SortOption.alphabetical;
+  final _searchController = TextEditingController();
+  bool _isSearching = false;
 
   @override
   void initState() {
     super.initState();
+    print('ShopEndeavorsScreen: initState called');
+    print(
+        'ShopEndeavorsScreen: existingCategory: ${widget.existingCategory?.headline}');
     _loadPublicCategories();
     // If we're in Shop Endeavors mode (not "Get Suggestions to..." mode), load user tasks for redundancy checking
     if (widget.existingCategory == null) {
@@ -43,90 +158,267 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadPublicCategories() async {
+    print('ShopEndeavorsScreen: _loadPublicCategories called');
     try {
       setState(() {
         _isLoading = true;
         _error = null;
       });
 
+      // If we have an existing category, only show that category
+      if (widget.existingCategory != null) {
+        print(
+            'ShopEndeavorsScreen: Loading only existing category: ${widget.existingCategory!.headline}');
+
+        // Create a single shop item for the existing category
+        final items = [
+          ShopItem(
+            originalId: widget.existingCategory!.originalId?.toString() ?? '',
+            headline: widget.existingCategory!.headline,
+            invitation: widget.existingCategory!.invitation,
+            categoryIds: [widget.existingCategory!.id.toString()],
+            isSelected: true,
+            isExpanded: true, // Auto-expand since this is the only category
+          ),
+        ];
+
+        setState(() {
+          _shopItems = items;
+          _isLoading = false;
+        });
+
+        // Load tasks for the existing category
+        if (items.isNotEmpty) {
+          await _loadTasksForItem(0);
+        }
+
+        print('Loaded 1 category for existing category mode');
+        return;
+      }
+
       // Get current user ID
       final userId = AuthUtils.getCurrentUserId();
+      final isGuest = AuthUtils.isGuestUser();
 
-      // Build the query based on mode
-      var query = supabase
-          .from('Categories')
-          .select('id, headline, invitation, original_id')
-          .eq('private', false)
-          .neq('owner_id', userId);
+      print('ShopEndeavorsScreen: Loading public categories');
+      print('ShopEndeavorsScreen: User ID: $userId');
+      print('ShopEndeavorsScreen: Is guest: $isGuest');
 
-      // If we have an existing category, only show categories with the same original_id
-      if (widget.existingCategory != null &&
-          widget.existingCategory!.originalId != null) {
-        query = query.eq(
-            'original_id', widget.existingCategory!.originalId.toString());
-      }
+      // Use API client to get all categories and filter for public ones
+      print('ShopEndeavorsScreen: Using API client to get all categories');
 
-      final response = await query.order('headline');
+      try {
+        // Get all categories from Supabase directly
+        print(
+            'ShopEndeavorsScreen: About to query Supabase for all categories');
+        print(
+            'ShopEndeavorsScreen: Supabase client auth state: ${supabase.auth.currentUser?.id ?? 'no user'}');
 
-      // Group categories by original_id
-      final Map<String, List<Map<String, dynamic>>> groupedCategories = {};
+        // Try to get all categories (this will be blocked by RLS if policies are restrictive)
+        final allCategories = await supabase.from('Categories').select('*');
+        print(
+            'ShopEndeavorsScreen: Raw API returned ${allCategories.length} categories');
 
-      for (final json in response as List) {
-        final categoryData = json as Map<String, dynamic>;
-        final originalId = categoryData['original_id']?.toString() ?? '';
-        final categoryId = categoryData['id'].toString();
-
-        if (!groupedCategories.containsKey(originalId)) {
-          groupedCategories[originalId] = [];
+        // Let's also try a simple query to see if we can access the table at all
+        try {
+          final testResult =
+              await supabase.from('Categories').select('id').limit(1);
+          print(
+              'ShopEndeavorsScreen: Test query result: ${testResult.length} rows');
+        } catch (e) {
+          print('ShopEndeavorsScreen: Test query failed: $e');
         }
-        groupedCategories[originalId]!.add(categoryData);
-      }
 
-      // Create ShopItem objects from grouped categories
-      final List<ShopItem> items = [];
+        // Convert to Category objects
+        final categories = (allCategories as List)
+            .map((json) => Category.fromJson(json as Map<String, dynamic>))
+            .toList();
 
-      for (final entry in groupedCategories.entries) {
-        final originalId = entry.key;
-        final categories = entry.value;
+        print(
+            'ShopEndeavorsScreen: Converted to ${categories.length} Category objects');
 
-        if (categories.isNotEmpty) {
-          // Use the first category's data for headline and invitation
-          final firstCategory = categories.first;
-          final categoryIds =
-              categories.map((c) => c['id'].toString()).toList();
+        // Get user's existing categories to check for original_id conflicts
+        final userCategories = await ApiClient.getCategories();
+        final userOriginalIds = userCategories
+            .where((cat) => cat.originalId != null)
+            .map((cat) => cat.originalId!)
+            .toSet();
 
-          // If we have an existing category, automatically select this item
-          final isSelected = widget.existingCategory != null;
+        // Filter to only show public categories that don't belong to the current user
+        // AND don't have an original_id that the user already has
+        final publicCategories = categories.where((category) {
+          final isPublic = !category.isPrivate;
+          final isNotOwnedByUser = category.ownerId != userId;
+          final userDoesntHaveOriginalId = category.originalId == null ||
+              !userOriginalIds.contains(category.originalId);
 
-          items.add(ShopItem(
-            originalId: originalId,
-            headline: firstCategory['headline'] as String,
-            invitation: firstCategory['invitation'] as String?,
-            categoryIds: categoryIds,
-            isSelected: isSelected,
-            isExpanded: isSelected, // Auto-expand if selected
-          ));
+          print(
+              'ShopEndeavorsScreen: Category ${category.headline} - isPublic: $isPublic, isNotOwnedByUser: $isNotOwnedByUser, userDoesntHaveOriginalId: $userDoesntHaveOriginalId (owner: ${category.ownerId}, user: $userId, original_id: ${category.originalId})');
+
+          return isPublic &&
+              (isGuest || isNotOwnedByUser) &&
+              userDoesntHaveOriginalId;
+        }).toList();
+
+        print(
+            'ShopEndeavorsScreen: Filtered to ${publicCategories.length} public categories');
+        for (final category in publicCategories) {
+          print(
+              'ShopEndeavorsScreen: Public category: ${category.headline} (owner: ${category.ownerId})');
         }
+
+        // Group categories by original_id
+        final Map<String, List<Category>> groupedCategories = {};
+
+        for (final category in publicCategories) {
+          final originalId = category.originalId?.toString() ?? '';
+          if (!groupedCategories.containsKey(originalId)) {
+            groupedCategories[originalId] = [];
+          }
+          groupedCategories[originalId]!.add(category);
+        }
+
+        // Create ShopItem objects from grouped categories
+        final List<ShopItem> items = [];
+
+        for (final entry in groupedCategories.entries) {
+          final originalId = entry.key;
+          final categories = entry.value;
+
+          if (categories.isNotEmpty) {
+            // Use the first category's data for headline and invitation
+            final firstCategory = categories.first;
+            final categoryIds = categories.map((c) => c.id.toString()).toList();
+
+            items.add(ShopItem(
+              originalId: originalId,
+              headline: firstCategory.headline,
+              invitation: firstCategory.invitation,
+              categoryIds: categoryIds,
+              isSelected: false,
+              isExpanded: false,
+              tasksLoaded:
+                  true, // Tasks are loaded on-demand when expanded, not preloaded
+            ));
+          }
+        }
+
+        setState(() {
+          _shopItems = items;
+          _isLoading = false;
+        });
+
+        print('Loaded ${items.length} public categories for shop');
+
+        // If no categories available, navigate to new category screen
+        if (items.isEmpty && mounted) {
+          print(
+              'ShopEndeavorsScreen: No public categories available, navigating to new category screen');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              Navigator.pushReplacementNamed(context, '/new-category');
+            }
+          });
+          return;
+        }
+
+        // Check which categories have tasks available
+        _checkTaskAvailability();
+      } catch (e) {
+        print('ShopEndeavorsScreen: Error getting categories from API: $e');
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
       }
-
-      setState(() {
-        _shopItems = items;
-        _isLoading = false;
-      });
-
-      // If we have an existing category, load tasks for the pre-selected item
-      if (widget.existingCategory != null && items.isNotEmpty) {
-        await _loadTasksForItem(0); // Load tasks for the first (and only) item
-      }
-
-      print('Loaded ${items.length} public categories for shop');
     } catch (e) {
       print('Error loading public categories: $e');
       setState(() {
         _error = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _checkTaskAvailability() async {
+    print('ShopEndeavorsScreen: Checking task availability for categories');
+
+    for (int i = 0; i < _shopItems.length; i++) {
+      final item = _shopItems[i];
+
+      try {
+        if (widget.existingCategory != null) {
+          // In "Get Suggestions to..." mode
+          final originalId = widget.existingCategory!.originalId;
+
+          if (originalId == null) {
+            setState(() {
+              _shopItems[i].hasTasksAvailable = false;
+            });
+            continue;
+          }
+
+          // Get all categories with the same original_id
+          final categoriesResponse = await supabase
+              .from('Categories')
+              .select('id')
+              .eq('original_id', originalId);
+
+          if (categoriesResponse.isEmpty) {
+            setState(() {
+              _shopItems[i].hasTasksAvailable = false;
+            });
+            continue;
+          }
+
+          final categoryIds = (categoriesResponse as List)
+              .map((json) => json['id'] as int)
+              .toList();
+
+          // Count tasks - just check if any exist
+          final tasksResponse = await supabase
+              .from('Tasks')
+              .select('id')
+              .inFilter('category_id', categoryIds)
+              .limit(1);
+
+          final count = (tasksResponse as List).length;
+
+          setState(() {
+            _shopItems[i].hasTasksAvailable = count > 0;
+          });
+
+          print(
+              'ShopEndeavorsScreen: Category ${item.headline} has $count tasks');
+        } else {
+          // In "Shop Endeavors" mode - just check if any tasks exist
+          final tasksResponse = await supabase
+              .from('Tasks')
+              .select('id')
+              .inFilter('category_id', item.categoryIds)
+              .limit(1);
+
+          final count = (tasksResponse as List).length;
+
+          setState(() {
+            _shopItems[i].hasTasksAvailable = count > 0;
+          });
+
+          print(
+              'ShopEndeavorsScreen: Category ${item.headline} has $count tasks');
+        }
+      } catch (e) {
+        print(
+            'ShopEndeavorsScreen: Error checking task availability for item $i: $e');
+        // Leave hasTasksAvailable as null to show expand icon (fail-safe)
+      }
     }
   }
 
@@ -146,11 +438,11 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     }
 
     // If category is being selected and not already expanded, expand it
-    if (!wasSelected && !_shopItems[index].isExpanded) {
+    if (willBeSelected && !_shopItems[index].isExpanded) {
       await _toggleExpansion(index);
 
-      // Show prompt if this is the first time selecting a category
-      if (!_hasShownPrompt) {
+      // Show prompt if this is the first time selecting a category AND it has tasks
+      if (!_hasShownPrompt && _shopItems[index].tasks.isNotEmpty) {
         _hasShownPrompt = true;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -177,42 +469,213 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     });
   }
 
+  /// Sort tasks based on the current sort option (for single-pursuit mode)
+  List<Task> _sortTasks(List<Task> tasks) {
+    switch (_currentSortOption) {
+      case SortOption.alphabetical:
+        return tasks
+          ..sort((a, b) =>
+              a.headline.toLowerCase().compareTo(b.headline.toLowerCase()));
+      case SortOption.priority:
+        return tasks
+          ..sort((a, b) {
+            // First, sort by finished status (unfinished first)
+            if (a.finished != b.finished) {
+              return a.finished ? 1 : -1;
+            }
+            // Then, sort by suggestibleAt (earlier first, null first)
+            if (a.suggestibleAt == null && b.suggestibleAt == null) {
+              // Both have null suggestibleAt - sort by creation date (newest first)
+              return b.createdAt.compareTo(a.createdAt);
+            }
+            if (a.suggestibleAt == null) {
+              return -1;
+            }
+            if (b.suggestibleAt == null) {
+              return 1;
+            }
+            return a.suggestibleAt!.compareTo(b.suggestibleAt!);
+          });
+      case SortOption.age:
+        return tasks
+          ..sort((a, b) {
+            // Sort by creation date (newest first)
+            return b.createdAt.compareTo(a.createdAt);
+          });
+    }
+  }
+
+  /// Filter tasks based on search query (for single-pursuit mode)
+  List<Task> _filterTasks(List<Task> tasks) {
+    final searchQuery = _searchController.text.trim().toLowerCase();
+    if (searchQuery.isEmpty) {
+      return tasks;
+    }
+
+    return tasks.where((task) {
+      return task.headline.toLowerCase().contains(searchQuery);
+    }).toList();
+  }
+
+  /// Get sorted and filtered tasks for display in single-pursuit mode
+  List<Task> _getSortedFilteredTasks(List<Task> tasks) {
+    if (widget.existingCategory == null) {
+      return tasks; // Only sort/filter in single-pursuit mode
+    }
+
+    // Apply search filter first
+    var filteredTasks = _filterTasks(tasks);
+
+    // Then apply sort
+    return _sortTasks(filteredTasks);
+  }
+
   Future<void> _loadTasksForItem(int index) async {
     try {
       final item = _shopItems[index];
 
-      // Fetch tasks for all categories with this original_id
-      final response = await supabase
-          .from('Tasks')
-          .select('*')
-          .inFilter('category_id', item.categoryIds);
+      // Use direct Supabase query to get tasks
+      if (widget.existingCategory != null) {
+        // In "Get Suggestions to..." mode, get tasks from all categories with the same original_id
+        final originalId = widget.existingCategory!.originalId;
+        print(
+            'ShopEndeavorsScreen: Loading tasks for categories with original_id: $originalId');
 
-      // Filter to only show original tasks (where id equals original_id)
-      final List<Task> allTasks = (response as List)
-          .map((json) => Task.fromJson(json as Map<String, dynamic>))
-          .toList();
-
-      final List<Task> allOriginalTasks =
-          allTasks.where((task) => task.id == task.originalId).toList();
-
-      // Filter out redundant tasks (only in Shop Endeavors mode, not "Get Suggestions to..." mode)
-      final List<Task> tasks = widget.existingCategory == null
-          ? allOriginalTasks.where((task) => !_isTaskRedundant(task)).toList()
-          : allOriginalTasks;
-
-      setState(() {
-        _shopItems[index].tasks = tasks;
-        // Initialize import selections for new tasks
-        // If the category is selected, select all tasks by default
-        final shouldSelectAll = _shopItems[index].isSelected;
-        for (final task in tasks) {
-          _taskImportSelections[task.id.toString()] = shouldSelectAll;
+        if (originalId == null) {
+          print('ShopEndeavorsScreen: No original_id for existing category');
+          setState(() {
+            _shopItems[index].tasks = [];
+            _shopItems[index].tasksLoaded = true;
+            _shopItems[index].isExpanded = false;
+          });
+          return;
         }
-        // Clear redundant task cache when tasks are reloaded
-        _redundantTaskCache.clear();
-      });
 
-      print('Loaded ${tasks.length} tasks for original_id: ${item.originalId}');
+        // First, get all categories with the same original_id
+        final categoriesResponse = await supabase
+            .from('Categories')
+            .select('id')
+            .eq('original_id', originalId);
+
+        print(
+            'ShopEndeavorsScreen: Found ${categoriesResponse.length} categories with same original_id');
+
+        if (categoriesResponse.isEmpty) {
+          print(
+              'ShopEndeavorsScreen: No categories found with same original_id');
+          setState(() {
+            _shopItems[index].tasks = [];
+            _shopItems[index].tasksLoaded = true;
+            _shopItems[index].isExpanded = false;
+          });
+          return;
+        }
+
+        // Extract category IDs
+        final categoryIds = (categoriesResponse as List)
+            .map((json) => json['id'] as int)
+            .toList();
+
+        print('ShopEndeavorsScreen: Category IDs: $categoryIds');
+
+        // Get tasks from all these categories
+        final tasksResponse = await supabase
+            .from('Tasks')
+            .select('*')
+            .inFilter('category_id', categoryIds);
+
+        print(
+            'ShopEndeavorsScreen: Raw tasks response: ${tasksResponse.length} tasks');
+
+        // Convert to Task objects
+        final List<Task> allTasks = (tasksResponse as List)
+            .map((json) => Task.fromJson(json as Map<String, dynamic>))
+            .toList();
+
+        // Filter to only show original tasks (where id equals original_id)
+        final List<Task> allOriginalTasks =
+            allTasks.where((task) => task.id == task.originalId).toList();
+
+        print(
+            'ShopEndeavorsScreen: Original tasks: ${allOriginalTasks.length}');
+
+        // Filter out redundant tasks (tasks that already exist in the current category)
+        final List<Task> filteredTasks =
+            allOriginalTasks.where((task) => !_isTaskRedundant(task)).toList();
+
+        print('ShopEndeavorsScreen: Filtered tasks: ${filteredTasks.length}');
+
+        setState(() {
+          _shopItems[index].tasks = filteredTasks;
+          _shopItems[index].tasksLoaded = true;
+          // If no tasks found, collapse the item
+          if (filteredTasks.isEmpty) {
+            _shopItems[index].isExpanded = false;
+          }
+          // Initialize import selections for new tasks
+          // If the category is selected, select all tasks by default
+          final shouldSelectAll = _shopItems[index].isSelected;
+          for (final task in filteredTasks) {
+            _taskImportSelections[task.id.toString()] = shouldSelectAll;
+          }
+          // Clear redundant task cache when tasks are reloaded
+          _redundantTaskCache.clear();
+        });
+
+        print(
+            'Loaded ${filteredTasks.length} tasks for original_id: $originalId');
+        return;
+      } else {
+        // In "Shop Endeavors" mode, get tasks from all categories with this original_id
+        print(
+            'ShopEndeavorsScreen: Loading tasks for categories: ${item.categoryIds}');
+
+        final tasksResponse = await supabase
+            .from('Tasks')
+            .select('*')
+            .inFilter('category_id', item.categoryIds);
+
+        print(
+            'ShopEndeavorsScreen: Raw tasks response: ${tasksResponse.length} tasks');
+
+        // Convert to Task objects
+        final List<Task> allTasks = (tasksResponse as List)
+            .map((json) => Task.fromJson(json as Map<String, dynamic>))
+            .toList();
+
+        // Filter to only show original tasks (where id equals original_id)
+        final List<Task> allOriginalTasks =
+            allTasks.where((task) => task.id == task.originalId).toList();
+
+        print(
+            'ShopEndeavorsScreen: Original tasks: ${allOriginalTasks.length}');
+
+        // Filter out redundant tasks (only in Shop Endeavors mode)
+        final List<Task> filteredTasks =
+            allOriginalTasks.where((task) => !_isTaskRedundant(task)).toList();
+
+        print('ShopEndeavorsScreen: Filtered tasks: ${filteredTasks.length}');
+
+        setState(() {
+          _shopItems[index].tasks = filteredTasks;
+          _shopItems[index].tasksLoaded = true;
+          // If no tasks found, collapse the item
+          if (filteredTasks.isEmpty) {
+            _shopItems[index].isExpanded = false;
+          }
+          // Initialize import selections for new tasks
+          // If the category is selected, select all tasks by default
+          final shouldSelectAll = _shopItems[index].isSelected;
+          for (final task in filteredTasks) {
+            _taskImportSelections[task.id.toString()] = shouldSelectAll;
+          }
+          // Clear redundant task cache when tasks are reloaded
+          _redundantTaskCache.clear();
+        });
+
+        print(
+            'Loaded ${filteredTasks.length} tasks for original_id: ${item.originalId}');
+      }
     } catch (e) {
       print('Error loading tasks for item $index: $e');
       // Don't show error to user, just log it
@@ -222,7 +685,107 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
   void _toggleTaskImportSelection(String taskId) {
     setState(() {
       _taskImportSelections[taskId] = !(_taskImportSelections[taskId] ?? false);
+
+      // If a task is being selected, automatically select its category
+      if (_taskImportSelections[taskId] == true) {
+        // Find the category that contains this task
+        for (int i = 0; i < _shopItems.length; i++) {
+          final item = _shopItems[i];
+          if (item.tasks.any((task) => task.id.toString() == taskId)) {
+            _shopItems[i].isSelected = true;
+            break;
+          }
+        }
+      }
     });
+  }
+
+  void _toggleSelectAllTasks(int itemIndex) {
+    final item = _shopItems[itemIndex];
+    final bool allTasksSelected = _areAllTasksSelected(itemIndex);
+
+    // If all tasks are selected, deselect all. Otherwise, select all.
+    final bool shouldSelectAll = !allTasksSelected;
+
+    setState(() {
+      for (final task in item.tasks) {
+        _taskImportSelections[task.id.toString()] = shouldSelectAll;
+      }
+      // If selecting tasks, ensure category is selected
+      // If deselecting tasks, keep category selected (user can manually deselect category if desired)
+      if (shouldSelectAll) {
+        _shopItems[itemIndex].isSelected = true;
+      }
+      // Note: We don't automatically deselect the category when deselecting all tasks
+    });
+  }
+
+  bool _areAllTasksSelected(int itemIndex) {
+    final item = _shopItems[itemIndex];
+    if (item.tasks.isEmpty) return false;
+
+    return item.tasks
+        .every((task) => _taskImportSelections[task.id.toString()] == true);
+  }
+
+  bool _areSomeTasksSelected(int itemIndex) {
+    final item = _shopItems[itemIndex];
+    if (item.tasks.isEmpty) return false;
+
+    return item.tasks
+        .any((task) => _taskImportSelections[task.id.toString()] == true);
+  }
+
+  void _toggleInvitationExpansion(String itemId) {
+    setState(() {
+      _expandedInvitations[itemId] = !(_expandedInvitations[itemId] ?? false);
+    });
+  }
+
+  Widget? _buildInvitationWidget(ShopItem item) {
+    if (item.invitation == null || item.invitation!.isEmpty) {
+      return null;
+    }
+
+    const int maxLength = 200;
+    final bool isExpanded = _expandedInvitations[item.originalId] ?? false;
+    final bool needsTruncation = item.invitation!.length > maxLength;
+
+    final String displayText = needsTruncation && !isExpanded
+        ? '${item.invitation!.substring(0, maxLength)}...'
+        : item.invitation!;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 0.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            displayText,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
+          ),
+          if (needsTruncation)
+            TextButton(
+              onPressed: () => _toggleInvitationExpansion(item.originalId),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                isExpanded ? '(Less)' : '(More)',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   /// Check if a task is redundant (has same original_id as existing task)
@@ -259,20 +822,86 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     return isRedundant;
   }
 
+  /// Check if we should show the "Nothing Found!" alert
+  bool _shouldShowNoSuggestionsAlert() {
+    // Only show this alert in "Get Suggestions to..." mode when there are no tasks
+    if (widget.existingCategory == null) return false;
+
+    // Check if any shop item has tasks
+    for (final item in _shopItems) {
+      if (item.tasks.isNotEmpty) {
+        return false; // Found tasks, don't show alert
+      }
+      // Don't show alert if tasks haven't been loaded yet
+      if (!item.tasksLoaded) {
+        return false; // Still loading tasks, don't show alert yet
+      }
+    }
+
+    return true; // No tasks found and all tasks loaded, show alert
+  }
+
+  /// Get filtered tasks for a given original_id and owner_id
+  /// This method encapsulates the query logic used by _loadTasksForItem
+  static Future<List<Task>> getFilteredTasksForOriginalId(
+    int originalId,
+    String ownerId,
+  ) async {
+    try {
+      // First, get all categories with the same original_id
+      final categoriesResponse = await supabase
+          .from('Categories')
+          .select('id')
+          .eq('original_id', originalId);
+
+      if (categoriesResponse.isEmpty) {
+        return [];
+      }
+
+      // Extract category IDs
+      final categoryIds = (categoriesResponse as List)
+          .map((json) => json['id'] as int)
+          .toList();
+
+      // Get tasks from all these categories
+      final tasksResponse = await supabase
+          .from('Tasks')
+          .select('*')
+          .inFilter('category_id', categoryIds);
+
+      // Convert to Task objects
+      final List<Task> allTasks = (tasksResponse as List)
+          .map((json) => Task.fromJson(json as Map<String, dynamic>))
+          .toList();
+
+      // Filter to only show original tasks (where id equals original_id)
+      final List<Task> allOriginalTasks =
+          allTasks.where((task) => task.id == task.originalId).toList();
+
+      // Filter out tasks that belong to the current owner (to avoid showing their own tasks)
+      final List<Task> filteredTasks =
+          allOriginalTasks.where((task) => task.ownerId != ownerId).toList();
+
+      return filteredTasks;
+    } catch (e) {
+      print('Error getting filtered tasks for original_id $originalId: $e');
+      return [];
+    }
+  }
+
   /// Load user's task original_ids for redundancy checking in Shop Endeavors mode
   Future<void> _loadUserTasksForRedundancyCheck() async {
     try {
       final userId = AuthUtils.getCurrentUserId();
 
-      // Query all tasks owned by the current user and get their original_ids
-      final response = await supabase
-          .from('Tasks')
-          .select('original_id')
-          .eq('owner_id', userId)
-          .not('original_id', 'is', null);
+      // Use API client to get all tasks owned by the current user
+      final tasks = await ApiClient.getTasks();
 
-      final originalIds =
-          (response as List).map((json) => json['original_id'] as int).toSet();
+      // Extract original_ids from tasks
+      final originalIds = tasks
+          .where((task) => task.originalId != null)
+          .map((task) => task.originalId!)
+          .toSet();
 
       setState(() {
         _userTaskOriginalIds.clear();
@@ -319,6 +948,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
       int importedTasks = 0;
       int skippedTasks = 0;
+      Task? lastAddedTask; // Track the last task we actually added
 
       // Initialize cache manager for the current category only if not already loaded
       final cacheManager = CacheManager();
@@ -382,6 +1012,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
               task.originalId, // Copy the original_id from the source task
         );
 
+        // Store the task we're about to add
+        lastAddedTask = newTask;
+
         // Use CacheManager to add the task (saves to database and updates cache)
         await cacheManager.addTask(newTask);
         importedTasks++;
@@ -394,27 +1027,107 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       print(
           'ShopEndeavorsScreen: Added $importedTasks tasks to cache and database (skipped $skippedTasks duplicates)');
 
-      // Show success message
+      // Navigate back with appropriate result based on number of tasks added
       if (mounted) {
-        String message;
-        if (skippedTasks > 0) {
-          message =
-              'Added $importedTasks tasks to ${widget.existingCategory!.headline}! (Skipped $skippedTasks duplicates, copied links)';
+        if (importedTasks == 1 && lastAddedTask != null) {
+          // Single task - show dialog with the task we just added
+          print(
+              'ShopEndeavorsScreen: Showing dialog for added task: "${lastAddedTask.headline}"');
+
+          // Show popup dialog
+          final shouldGoHome = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (BuildContext dialogContext) {
+              return AlertDialog(
+                title: Text(
+                  '${NamingUtils.tasksName(capitalize: true, plural: false)} Added!',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Successfully added:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      lastAddedTask!.headline,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'What would you like to do?',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    style: AppButtons.goForthOutlined(),
+                    child: Text(
+                        'Add More ${NamingUtils.tasksName(capitalize: true)}'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    style: AppButtons.finalize(),
+                    child: const Text('Go to Home Screen'),
+                  ),
+                ],
+              );
+            },
+          );
+
+          // Mark that data has been modified so HomeScreen will refresh
+          HomeScreen.markDataModified();
+
+          // Navigate based on user choice
+          if (shouldGoHome == true && mounted) {
+            // Pop all the way back to home screen (first route)
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          } else if (mounted) {
+            // Just pop this screen to go back to New Content screen
+            Navigator.pop(context);
+          }
         } else {
-          message =
-              'Successfully added $importedTasks tasks to ${widget.existingCategory!.headline}!';
+          // Multiple tasks - show SnackBar with success message
+          String message;
+          if (skippedTasks > 0) {
+            message =
+                'Added $importedTasks tasks to ${widget.existingCategory!.headline}! (Skipped $skippedTasks duplicates, copied links)';
+          } else {
+            message =
+                'Successfully added $importedTasks tasks to ${widget.existingCategory!.headline}!';
+          }
+
+          // Mark that data has been modified so HomeScreen will refresh
+          HomeScreen.markDataModified();
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+
+            // Return simple true for multiple tasks
+            Navigator.pop(context, true);
+          }
         }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-
-        // Navigate back with result indicating tasks were added
-        Navigator.pop(context, true);
       }
     } catch (e) {
       print('Error adding tasks to category: $e');
@@ -458,42 +1171,20 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       int importedTasks = 0;
 
       for (final item in selectedItems) {
-        // Check if user already has a category with this original_id
-        final existingCategoryResponse = await supabase
-            .from('Categories')
-            .select('id')
-            .eq('owner_id', userId)
-            .eq('original_id', item.originalId)
-            .maybeSingle();
+        // Create new category (since we filtered out existing ones)
+        final newCategoryData = {
+          'headline': item.headline,
+          'invitation': item.invitation,
+          'owner_id': userId,
+          'original_id': item.originalId,
+          'private': false, // Default to public
+        };
 
-        String categoryId;
-
-        if (existingCategoryResponse != null) {
-          // Use existing category
-          categoryId = existingCategoryResponse['id'].toString();
-          print(
-              'Using existing category $categoryId for original_id ${item.originalId}');
-        } else {
-          // Create new category
-          final newCategoryData = {
-            'headline': item.headline,
-            'invitation': item.invitation,
-            'owner_id': userId,
-            'original_id': item.originalId,
-            'private': false, // Default to public
-          };
-
-          final newCategoryResponse = await supabase
-              .from('Categories')
-              .insert(newCategoryData)
-              .select()
-              .single();
-
-          categoryId = newCategoryResponse['id'].toString();
-          importedCategories++;
-          print(
-              'Created new category $categoryId for original_id ${item.originalId}');
-        }
+        final newCategory = await ApiClient.createCategory(newCategoryData);
+        final categoryId = newCategory.id.toString();
+        importedCategories++;
+        print(
+            'Created new category $categoryId for original_id ${item.originalId}');
 
         // Import selected tasks for this category
         final selectedTaskIds = item.tasks
@@ -502,19 +1193,25 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
             .toList();
 
         if (selectedTaskIds.isNotEmpty) {
-          // Fetch the original tasks
-          final originalTasksResponse = await supabase
-              .from('Tasks')
-              .select('*')
-              .inFilter('id', selectedTaskIds);
+          // Get the specific tasks by ID (they belong to other users, so can't use getTasks())
+          final originalTasks = <Task>[];
+          for (final taskId in selectedTaskIds) {
+            try {
+              final task = await ApiClient.getTask(taskId);
+              if (task != null) {
+                originalTasks.add(task);
+              } else {
+                print('ShopEndeavorsScreen: Task $taskId not found');
+              }
+            } catch (e) {
+              print('ShopEndeavorsScreen: Error fetching task $taskId: $e');
+            }
+          }
 
           // Track original_ids to prevent duplicates within this import
           final importedOriginalIds = <int>{};
 
-          for (final taskData in originalTasksResponse as List) {
-            final originalTask =
-                Task.fromJson(taskData as Map<String, dynamic>);
-
+          for (final originalTask in originalTasks) {
             // Check for duplicate original_id within this import
             if (originalTask.originalId != null &&
                 importedOriginalIds.contains(originalTask.originalId)) {
@@ -537,7 +1234,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                   .originalId, // Copy the original_id from the source task
             };
 
-            await supabase.from('Tasks').insert(newTaskData);
+            await ApiClient.createTask(newTaskData);
 
             // Track this original_id to prevent future duplicates
             if (originalTask.originalId != null) {
@@ -553,6 +1250,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
         _isLoading = false;
       });
 
+      // Mark that data has been modified so HomeScreen will refresh
+      HomeScreen.markDataModified();
+
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -565,8 +1265,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           ),
         );
 
-        // Navigate back to home screen with result indicating categories were imported
-        Navigator.of(context).pop(true);
+        // Return to previous screen with success result
+        // The calling screen (NewCategoryScreen) will handle further navigation
+        Navigator.pop(context, true);
       }
     } catch (e) {
       print('Error importing categories: $e');
@@ -584,6 +1285,116 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
         );
       }
     }
+  }
+
+  Widget _buildSortAndSearchControls(int itemIndex) {
+    Widget buildSortRow(SortOption option, String label) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Radio<SortOption>(
+            value: option,
+            groupValue: _currentSortOption,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+            onChanged: (SortOption? value) {
+              if (value != null) {
+                setState(() {
+                  _currentSortOption = value;
+                });
+              }
+            },
+          ),
+          Text(label),
+        ],
+      );
+    }
+
+    final searchWidget = TextField(
+      controller: _searchController,
+      decoration: InputDecoration(
+        hintText: 'Search...',
+        prefixIcon: const Icon(Icons.search, size: 20),
+        suffixIcon: _isSearching
+            ? const Padding(
+                padding: EdgeInsets.all(12.0),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    onPressed: () {
+                      setState(() {
+                        _searchController.clear();
+                      });
+                    },
+                  )
+                : null,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 8,
+          vertical: 8,
+        ),
+        border: const OutlineInputBorder(),
+      ),
+      onChanged: (value) {
+        setState(() {
+          _isSearching = true;
+        });
+        // Show processing indicator briefly
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            setState(() {
+              _isSearching = false;
+            });
+          }
+        });
+      },
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Search field on its own line
+        searchWidget,
+        const SizedBox(height: 12),
+        // Sort options horizontally with Select All checkbox on the right
+        Row(
+          children: [
+            const Text('Sort By:'),
+            const SizedBox(width: 8),
+            buildSortRow(SortOption.priority, 'Priority'),
+            const SizedBox(width: 4),
+            buildSortRow(SortOption.alphabetical, 'A-Z'),
+            const SizedBox(width: 4),
+            buildSortRow(SortOption.age, 'Age'),
+            const Spacer(),
+            // Select All/Deselect All checkbox
+            if (_shopItems[itemIndex].tasks.length >= 2) ...[
+              Text(
+                _areAllTasksSelected(itemIndex) ? 'Deselect All' : 'Select All',
+                style: const TextStyle(fontSize: 14),
+              ),
+              Checkbox(
+                value: _areAllTasksSelected(itemIndex)
+                    ? true
+                    : _areSomeTasksSelected(itemIndex)
+                        ? null
+                        : false,
+                tristate: true,
+                onChanged: (_) => _toggleSelectAllTasks(itemIndex),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
   }
 
   Widget _buildTaskCard(Task task) {
@@ -652,7 +1463,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.existingCategory != null
-            ? 'Get Suggestions to...'
+            ? 'Get Suggestions to ${widget.existingCategory!.headline}'
             : 'Shop ${NamingUtils.categoriesName(plural: true)}'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -686,147 +1497,296 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                     ],
                   ),
                 )
-              : _shopItems.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.shopping_cart_outlined,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'No public categories available',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Check back later for new ${NamingUtils.categoriesName(plural: true)}!',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
+              : _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16.0),
-                      itemCount: _shopItems.length,
-                      itemBuilder: (context, index) {
-                        final item = _shopItems[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8.0),
+                  : _shopItems.isEmpty
+                      ? Center(
                           child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              ListTile(
-                                leading: widget.existingCategory == null
-                                    ? Checkbox(
-                                        value: item.isSelected,
-                                        onChanged: (_) =>
-                                            _toggleSelection(index),
-                                      )
-                                    : null,
-                                title: GestureDetector(
-                                  onTap: () => _toggleExpansion(index),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          widget.existingCategory != null
-                                              ? "...${item.headline}"
-                                              : item.headline,
-                                          style: const TextStyle(
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.black,
-                                          ),
-                                        ),
-                                      ),
-                                      if (widget.existingCategory == null)
-                                        Icon(
-                                          item.isExpanded
-                                              ? Icons.expand_less
-                                              : Icons.expand_more,
-                                          color: Colors.grey,
-                                        ),
-                                    ],
-                                  ),
+                              const Icon(
+                                Icons.shopping_cart_outlined,
+                                size: 64,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No public ${NamingUtils.categoriesName(plural: true)} available',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              if (item.isExpanded) ...[
-                                if (widget.existingCategory == null) ...[
-                                  if (item.invitation != null)
-                                    Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                          16.0, 0.0, 16.0, 8.0),
-                                      child: Text(
-                                        item.invitation!,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.copyWith(
-                                              color: Colors.grey[600],
-                                              fontStyle: FontStyle.italic,
-                                            ),
-                                      ),
-                                    ),
-                                ],
-                                if (item.tasks.isNotEmpty) ...[
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        16.0, 0.0, 16.0, 16.0),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        if (widget.existingCategory == null)
-                                          Text(
-                                            'Suggestions',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.grey[700],
-                                                ),
-                                          ),
-                                        if (widget.existingCategory == null)
-                                          const SizedBox(height: 8),
-                                        ...item.tasks
-                                            .map((task) => _buildTaskCard(task))
-                                            .toList(),
-                                      ],
-                                    ),
-                                  ),
-                                ] else if (item.isExpanded)
-                                  const Padding(
-                                    padding: EdgeInsets.fromLTRB(
-                                        16.0, 0.0, 16.0, 16.0),
-                                    child: Text(
-                                      'No suggestions',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey,
-                                        fontStyle: FontStyle.italic,
-                                      ),
-                                    ),
-                                  ),
-                              ],
+                              const SizedBox(height: 8),
+                              Text(
+                                'Check back later for new ${NamingUtils.categoriesName(plural: true)}!',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
+                              ),
                             ],
                           ),
-                        );
-                      },
-                    ),
-      floatingActionButton: _shopItems.isNotEmpty
+                        )
+                      : _shopItems.any((item) => !item.tasksLoaded)
+                          ? const Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  CircularProgressIndicator(),
+                                  SizedBox(height: 16),
+                                  Text('Loading available tasks...'),
+                                ],
+                              ),
+                            )
+                          : _shouldShowNoSuggestionsAlert()
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(
+                                        Icons.search_off,
+                                        size: 64,
+                                        color: Colors.grey,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        'Nothing Found!',
+                                        style: TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      const Text(
+                                        'You\'ve already taken on all the suggestions there are.',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.grey,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 24),
+                                      ElevatedButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.blue,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 24,
+                                            vertical: 12,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'Return',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      16.0, 16.0, 16.0, 80.0),
+                                  itemCount: _shopItems.length,
+                                  itemBuilder: (context, index) {
+                                    final item = _shopItems[index];
+                                    return Card(
+                                      margin:
+                                          const EdgeInsets.only(bottom: 8.0),
+                                      child: Column(
+                                        children: [
+                                          ListTile(
+                                            title: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                // Headline row - hide in single-pursuit mode (shown in AppBar)
+                                                if (widget.existingCategory == null)
+                                                  Row(
+                                                    children: [
+                                                      Checkbox(
+                                                        value:
+                                                            item.isSelected,
+                                                        onChanged: (_) =>
+                                                            _toggleSelection(
+                                                                index),
+                                                        materialTapTargetSize:
+                                                            MaterialTapTargetSize
+                                                                .shrinkWrap,
+                                                        visualDensity:
+                                                            VisualDensity
+                                                                .compact,
+                                                      ),
+                                                      const SizedBox(
+                                                          width: 8),
+                                                      Expanded(
+                                                        child: Text(
+                                                          item.headline,
+                                                          style:
+                                                              const TextStyle(
+                                                            fontSize: 20,
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .bold,
+                                                            color: Colors
+                                                                .black,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      if (item.hasTasksAvailable ==
+                                                              null ||
+                                                          item.hasTasksAvailable ==
+                                                              true)
+                                                        GestureDetector(
+                                                          onTap: () =>
+                                                              _toggleExpansion(
+                                                                  index),
+                                                          child: Icon(
+                                                            item.isExpanded
+                                                                ? Icons
+                                                                    .expand_less
+                                                                : Icons
+                                                                    .expand_more,
+                                                            color:
+                                                                Colors.grey,
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                // Add invitation below headline (only in Shop mode)
+                                                if (widget.existingCategory == null &&
+                                                    _buildInvitationWidget(
+                                                        item) !=
+                                                    null)
+                                                  _buildInvitationWidget(item)!,
+                                                // Show "No suggestions" text immediately if no tasks available
+                                                if (item.hasTasksAvailable ==
+                                                    false)
+                                                  Padding(
+                                                    padding: const EdgeInsets
+                                                        .fromLTRB(
+                                                        16.0, 8.0, 16.0, 0.0),
+                                                    child: Text(
+                                                      '(Your ${NamingUtils.tasksName()} here)',
+                                                      style: const TextStyle(
+                                                        fontSize: 14,
+                                                        color: Colors.grey,
+                                                        fontStyle:
+                                                            FontStyle.italic,
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                          if (widget.existingCategory != null ||
+                                              item.isExpanded) ...[
+                                            // Add Sort and Search controls for single-pursuit mode
+                                            if (widget.existingCategory != null &&
+                                                item.tasks.isNotEmpty &&
+                                                item.tasks.length >= 3) ...[
+                                              Padding(
+                                                padding: const EdgeInsets.fromLTRB(
+                                                    16.0, 12.0, 16.0, 8.0),
+                                                child: _buildSortAndSearchControls(index),
+                                              ),
+                                            ],
+                                            if (item.tasks.isNotEmpty) ...[
+                                              Padding(
+                                                padding:
+                                                    const EdgeInsets.fromLTRB(
+                                                        16.0, 0.0, 16.0, 16.0),
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    // Show "Suggestion(s):" label and checkbox only in Shop mode
+                                                    if (widget.existingCategory == null)
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal:
+                                                                    20.0),
+                                                        child: Row(
+                                                          mainAxisAlignment:
+                                                              MainAxisAlignment
+                                                                  .spaceBetween,
+                                                          children: [
+                                                            Text(
+                                                              'Suggestion(s):',
+                                                              style: Theme.of(
+                                                                      context)
+                                                                  .textTheme
+                                                                  .bodySmall
+                                                                  ?.copyWith(
+                                                                    fontWeight:
+                                                                        FontWeight.bold,
+                                                                    fontStyle:
+                                                                        FontStyle.italic,
+                                                                    color: Colors
+                                                                        .grey[700],
+                                                                    fontSize:
+                                                                        (Theme.of(context).textTheme.bodySmall?.fontSize ?? 12) +
+                                                                            4,
+                                                                  ),
+                                                            ),
+                                                            // Only show checkbox if there are 2 or more tasks
+                                                            if (item.tasks
+                                                                    .length >=
+                                                                2)
+                                                              Checkbox(
+                                                                value: _areAllTasksSelected(
+                                                                        index)
+                                                                    ? true
+                                                                    : _areSomeTasksSelected(index)
+                                                                        ? null
+                                                                        : false,
+                                                                tristate:
+                                                                    true,
+                                                                onChanged: (_) =>
+                                                                    _toggleSelectAllTasks(
+                                                                        index),
+                                                                materialTapTargetSize:
+                                                                    MaterialTapTargetSize
+                                                                        .shrinkWrap,
+                                                                visualDensity:
+                                                                    VisualDensity
+                                                                        .compact,
+                                                              ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    const SizedBox(height: 8),
+                                                    // Apply sorting and filtering in single-pursuit mode
+                                                    ..._getSortedFilteredTasks(item.tasks)
+                                                        .map((task) =>
+                                                            _buildTaskCard(
+                                                                task))
+                                                        .toList(),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+      floatingActionButton: _shopItems.isNotEmpty &&
+              !_shouldShowNoSuggestionsAlert() &&
+              _shopItems.any((item) => item.isSelected)
           ? SizedBox(
               height: 40, // Reduced from default 56 to 44 (12 points shorter)
               child: FloatingActionButton.extended(
+                heroTag: 'importButton',
                 onPressed: _isLoading
                     ? null
                     : (widget.existingCategory != null

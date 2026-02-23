@@ -1,12 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:async';
-import 'package:flutter/services.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/link_processor.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:meaning_to/models/link.dart';
 
 /// Represents an item that can be imported from text data
@@ -45,10 +41,12 @@ class ImportItem {
       ownerId: ownerId,
       headline: title,
       notes: description,
-      links: link != null ? [link!] : null,
+      links: link != null ? [link!] : <String>[],
       createdAt: now,
       suggestibleAt: now,
       finished: false,
+      shared:
+          !category.tasksArePrivate, // Use category's tasksArePrivate setting
     );
   }
 
@@ -86,9 +84,30 @@ class TextImporter {
     print('=== TextImporter._parseTextData ===');
     print('Input text: "$text"');
     print('Text length: ${text.length}');
+    print('Text bytes: ${text.codeUnits}');
+    print('Contains \\r: ${text.contains('\r')}');
+    print('Contains \\n: ${text.contains('\n')}');
 
-    final lines = text.split('\n');
+    // Handle various line break formats including literal ^M characters
+    List<String> lines;
+    if (text.contains('\r') || text.contains('\n')) {
+      // Split on actual line breaks
+      lines = text
+          .split('\r')
+          .expand((line) => line.split('\n'))
+          .where((line) => line.isNotEmpty)
+          .toList();
+    } else if (text.contains('^M')) {
+      // Handle literal ^M characters (carriage return representation)
+      lines = text.split('^M').where((line) => line.isNotEmpty).toList();
+    } else {
+      // No line breaks found, treat as single line
+      lines = [text];
+    }
     print('Split into ${lines.length} lines');
+    for (int i = 0; i < lines.length; i++) {
+      print('  Line $i: "${lines[i]}" (length: ${lines[i].length})');
+    }
 
     final items = <ImportItem?>[];
 
@@ -161,7 +180,7 @@ class TextImporter {
     for (final item in items) {
       if (item == null) continue;
       final tempId = now.millisecondsSinceEpoch;
-      final links = item.link != null ? [item.link!] : null;
+      final links = item.link != null ? [item.link!] : <String>[];
       yield Task(
         id: tempId,
         categoryId: category.id,
@@ -188,7 +207,7 @@ class TextImporter {
     for (final item in items) {
       if (item == null) continue;
       final tempId = now.millisecondsSinceEpoch;
-      final links = item.link != null ? [item.link!] : null;
+      final links = item.link != null ? [item.link!] : <String>[];
       yield Task(
         id: tempId,
         categoryId: category.id,
@@ -341,13 +360,31 @@ class TextImporter {
         !text.trim().startsWith('{') &&
         !text.trim().startsWith('[')) {
       final title = text.substring(0, colonIndex).trim();
-      final description = text.substring(colonIndex + 1).trim();
+      String description = text.substring(colonIndex + 1).trim();
       print(
           '    -> Found colon separator - title: "$title", description: "$description"');
 
-      if (title.isNotEmpty) {
+      // Check for parentheses in the title and move them to description if description is empty
+      String cleanTitle = title;
+      if (description.isEmpty) {
+        final parenthesesMatch = RegExp(r'\(([^)]+)\)').firstMatch(title);
+        if (parenthesesMatch != null) {
+          final parenthesesContent = parenthesesMatch.group(1)?.trim();
+          if (parenthesesContent != null && parenthesesContent.isNotEmpty) {
+            description = '($parenthesesContent)';
+            // Remove the parentheses and their content from the title
+            cleanTitle =
+                title.replaceAll(RegExp(r'\s*\([^)]+\)\s*'), ' ').trim();
+            print(
+                '    -> Moved parentheses from title to description: "$description"');
+            print('    -> Cleaned title: "$cleanTitle"');
+          }
+        }
+      }
+
+      if (cleanTitle.isNotEmpty) {
         final item = ImportItem(
-          title: title,
+          title: cleanTitle,
           description: description.isNotEmpty ? description : null,
           link: extractedURL,
           metadata: {
@@ -402,10 +439,30 @@ class TextImporter {
       return item;
     }
 
+    // Check for parentheses in the text and move them to notes if no existing notes
+    final trimmedText = text.trim();
+    String? notesFromParentheses;
+    String cleanTitle = trimmedText;
+
+    // Look for parentheses content and extract it
+    final parenthesesMatch = RegExp(r'\(([^)]+)\)').firstMatch(trimmedText);
+    if (parenthesesMatch != null) {
+      final parenthesesContent = parenthesesMatch.group(1)?.trim();
+      if (parenthesesContent != null && parenthesesContent.isNotEmpty) {
+        notesFromParentheses = '($parenthesesContent)';
+        // Remove the parentheses and their content from the title
+        cleanTitle =
+            trimmedText.replaceAll(RegExp(r'\s*\([^)]+\)\s*'), ' ').trim();
+        print('    -> Found parentheses content: $notesFromParentheses');
+        print('    -> Cleaned title: "$cleanTitle"');
+      }
+    }
+
     // Treat as plain text
-    print('    -> Treating as plain text: "${text.trim()}"');
+    print('    -> Treating as plain text: "$cleanTitle"');
     final item = ImportItem(
-      title: text.trim(),
+      title: cleanTitle,
+      description: notesFromParentheses,
       metadata: {'source': 'plain_text'},
     );
     print('    -> Created ImportItem from plain text: "${item.title}"');
@@ -423,7 +480,7 @@ class TextImporter {
     }
 
     final now = DateTime.now();
-    final links = item.link != null ? [item.link!] : null;
+    final links = item.link != null ? [item.link!] : <String>[];
 
     return Task(
       id: now.millisecondsSinceEpoch,

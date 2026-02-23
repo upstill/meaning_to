@@ -1,55 +1,40 @@
-# Flutter/Dart specific
+# Ignore source files - we only need the built web app and API
+android/
+ios/
+linux/
+macos/
+windows/
+test/
+lib/
 .dart_tool/
+.idea/
+.vscode/
+*.log
+*.iml
 .flutter-plugins
 .flutter-plugins-dependencies
 .packages
-.pub-cache/
-.pub/
+pubspec.lock
+pubspec.yaml
+
+# Ignore build artifacts except web output
 build/
-coverage/
-*.lock
 
-# Android
-android/
-*.apk
-*.aab
+# Ignore docs and config
+docs/
+documents/
+supabase/
+*.sql
+*.md
+*.sh
+*.p8
 
-# iOS
-ios/
-*.ipa
-
-# macOS
-macos/
-
-# Linux
-linux/
-
-# Windows
-windows/
-
-# IDE
-.vscode/
-.idea/
-*.iml
+# Node modules
+node_modules/
 
 # Git
 .git/
-.gitignore
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Test files
-test/
-*.test.dart
-*_test.dart
-
-# Documentation
-docs/
-*.md
-!README.md
-
-# Temporary files
-*.tmp
-*.temp 
+# Keep these:
+!web/
+!api/

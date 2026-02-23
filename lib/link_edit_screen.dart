@@ -1,17 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
-
-/// Result of duplicate checking
-enum DuplicateCheckResult {
-  noDuplicate,
-  currentTaskDuplicate,
-  categoryDuplicate,
-}
+import 'package:meaning_to/utils/app_buttons.dart';
 
 class LinkEditScreen extends StatefulWidget {
   final String? initialLink; // HTML link to edit, or null for new link
@@ -40,10 +35,8 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
   String? _testedUrl;
   String? _testedIcon;
   bool _hasUrlText = false; // Add state for URL text presence
-  String?
-      _duplicateTaskName; // Store the name of the task that has the duplicate link
-  DuplicateCheckResult?
-      _lastDuplicateResult; // Store the last duplicate check result
+  String? _lastAutoVerifiedUrl; // Track which URL we last auto-verified
+  bool _isAutoVerifying = false; // Track if we're currently auto-verifying
 
   @override
   void initState() {
@@ -90,16 +83,136 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
   }
 
   void _updateUrlTextState() {
-    final hasText = _urlController.text.trim().isNotEmpty;
-    print('URL text changed: "${_urlController.text}" -> hasText: $hasText');
+    final inputText = _urlController.text.trim();
+    final hasText = inputText.isNotEmpty;
+    print('URL text changed: "$inputText" -> hasText: $hasText');
+
+    // Check if input looks like an HTML link
+    if (hasText && inputText.startsWith('<a href="') && inputText.contains('">')) {
+      _parseHtmlLinkInput(inputText);
+      return; // HTML link parsing handles verification
+    }
+
     if (hasText != _hasUrlText) {
       print('Updating _hasUrlText from $_hasUrlText to $hasText');
       setState(() {
         _hasUrlText = hasText;
-        // Clear duplicate task name when URL changes
-        _duplicateTaskName = null;
-        _lastDuplicateResult = null;
         _error = null;
+      });
+    }
+
+    // Auto-verify if we have a valid URL that we haven't verified yet
+    if (hasText &&
+        LinkProcessor.isValidUrl(inputText) &&
+        inputText != _lastAutoVerifiedUrl &&
+        !_isLoading &&
+        !_isAutoVerifying) {
+      print('LinkEditScreen: Auto-verifying URL: $inputText');
+      _autoVerifyLink(inputText);
+    }
+  }
+
+  void _parseHtmlLinkInput(String htmlInput) {
+    print('LinkEditScreen: Detected HTML link input: "$htmlInput"');
+
+    // Fix common malformed HTML patterns (similar to TaskEnricher and TaskEditScreen)
+    String htmlToProcess = htmlInput;
+    if (htmlToProcess.endsWith('<a>')) {
+      htmlToProcess = htmlToProcess.replaceAll(RegExp(r'<a>$'), '</a>');
+      print('LinkEditScreen: Fixed malformed HTML link - changed <a> to </a>');
+    } else if (!htmlToProcess.endsWith('</a>')) {
+      if (htmlToProcess.contains('<a>')) {
+        htmlToProcess = htmlToProcess.replaceAll('<a>', '</a>');
+        print('LinkEditScreen: Fixed malformed HTML link - changed <a> to </a>');
+      } else {
+        htmlToProcess = htmlToProcess + '</a>';
+        print('LinkEditScreen: Added missing closing tag </a>');
+      }
+    }
+
+    final (url, title) = LinkProcessor.parseHtmlLink(htmlToProcess);
+
+    if (url.isNotEmpty && url != htmlInput) {
+      print('LinkEditScreen: Parsed HTML - URL: "$url", title: "$title"');
+
+      // Update both fields without triggering infinite loops
+      _urlController.removeListener(_updateUrlTextState);
+
+      _urlController.text = url;
+      if (title != null && title.isNotEmpty) {
+        _textController.text = title;
+      }
+
+      _urlController.addListener(_updateUrlTextState);
+
+      // Update state
+      setState(() {
+        _hasUrlText = true;
+        _error = null;
+      });
+    }
+  }
+
+  /// Automatically verify a link when it's pasted into the URL field
+  Future<void> _autoVerifyLink(String url) async {
+    setState(() {
+      _isAutoVerifying = true;
+      _isLoading = true;
+      _error = null;
+      _testedUrl = null;
+      _testedIcon = null;
+    });
+
+    try {
+      print('LinkEditScreen: Auto-verifying URL: $url');
+
+      // Normalize the URL first (remove query parameters, etc.)
+      final normalizedUrl = LinkToTaskConverter.normalizeUrl(url);
+      print('LinkEditScreen: Normalized URL: $normalizedUrl');
+
+      // Update the URL field with the normalized URL (without triggering listener)
+      _urlController.removeListener(_updateUrlTextState);
+      _urlController.text = normalizedUrl;
+      _urlController.addListener(_updateUrlTextState);
+
+      // Use LinkToTaskConverter to properly extract metadata with OMDb API for IMDb links
+      final userId = AuthUtils.getCurrentUserId();
+      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+        normalizedUrl,
+        userId,
+        currentCategory: widget.currentCategory,
+      );
+
+      // Also get the processed link for favicon display
+      final processedLink = await LinkProcessor.processLinkForDisplay(
+          '<a href="$normalizedUrl">${proposedTask.headline}</a>');
+
+      // Update the Link Text field with the properly cleaned title
+      // Extract link text from the HTML link in proposedTask.links (e.g., "Continuum by John Mayer on TIDAL")
+      if (_textController.text.trim().isEmpty && proposedTask.links.isNotEmpty) {
+        final htmlLink = proposedTask.links.first;
+        final (_, linkText) = LinkProcessor.parseHtmlLink(htmlLink);
+        if (linkText != null && linkText.isNotEmpty) {
+          _textController.text = linkText;
+        }
+      }
+
+      setState(() {
+        _testedUrl = processedLink.url;
+        _testedIcon = processedLink.favicon;
+        _lastAutoVerifiedUrl = normalizedUrl; // Use normalized URL
+        _isAutoVerifying = false;
+        _isLoading = false;
+      });
+
+      print('LinkEditScreen: Auto-verification complete for: $normalizedUrl');
+    } catch (e) {
+      print('LinkEditScreen: Error during auto-verification: $e');
+      setState(() {
+        _error = 'Failed to verify URL: ${e.toString()}';
+        _lastAutoVerifiedUrl = url; // Mark as attempted to avoid retry loops
+        _isAutoVerifying = false;
+        _isLoading = false;
       });
     }
   }
@@ -124,14 +237,35 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
         return;
       }
 
-      // Test the link by processing it
-      final processedLink = await LinkProcessor.processLinkForDisplay(
-          '<a href="$url">${_textController.text.trim()}</a>');
+      // Normalize the URL first (remove query parameters, etc.)
+      final normalizedUrl = LinkToTaskConverter.normalizeUrl(url);
+      print('LinkEditScreen: Test Link - Normalized URL: $normalizedUrl');
 
-      // If we got a title from the webpage and the text field was empty,
-      // update the text field with the fetched title
-      if (_textController.text.trim().isEmpty && processedLink.title != null) {
-        _textController.text = processedLink.title!;
+      // Update the URL field with the normalized URL (without triggering listener)
+      _urlController.removeListener(_updateUrlTextState);
+      _urlController.text = normalizedUrl;
+      _urlController.addListener(_updateUrlTextState);
+
+      // Use LinkToTaskConverter to properly extract metadata with OMDb API for IMDb links
+      final userId = AuthUtils.getCurrentUserId();
+      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+        normalizedUrl,
+        userId,
+        currentCategory: widget.currentCategory,
+      );
+
+      // Also get the processed link for favicon display
+      final processedLink = await LinkProcessor.processLinkForDisplay(
+          '<a href="$normalizedUrl">${proposedTask.headline}</a>');
+
+      // If the text field was empty, update it with the properly cleaned title from OMDb/metadata
+      // Extract link text from the HTML link in proposedTask.links (e.g., "Continuum by John Mayer on TIDAL")
+      if (_textController.text.trim().isEmpty && proposedTask.links.isNotEmpty) {
+        final htmlLink = proposedTask.links.first;
+        final (_, linkText) = LinkProcessor.parseHtmlLink(htmlLink);
+        if (linkText != null && linkText.isNotEmpty) {
+          _textController.text = linkText;
+        }
       }
 
       setState(() {
@@ -164,45 +298,46 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
 
     try {
       final url = _urlController.text.trim();
-      final processedLink = await LinkProcessor.validateAndProcessLink(
-        url,
-        linkText: _textController.text.trim(),
+
+      // Normalize the URL (remove query parameters, etc.)
+      final normalizedUrl = LinkToTaskConverter.normalizeUrl(url);
+      print('LinkEditScreen: Save Link - Normalized URL: $normalizedUrl');
+
+      // Use LinkToTaskConverter to get properly cleaned metadata (including OMDb for IMDb)
+      final userId = AuthUtils.getCurrentUserId();
+      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+        normalizedUrl,
+        userId,
+        currentCategory: widget.currentCategory,
       );
 
-      // If we got a title from the webpage and the text field was empty,
-      // update the text field with the fetched title
-      if (_textController.text.trim().isEmpty) {
-        _textController.text = processedLink.title!;
+      // If the text field was empty, populate it with the link text from proposedTask.links
+      // (e.g., "Continuum by John Mayer on TIDAL")
+      String linkText;
+      if (_textController.text.trim().isEmpty && proposedTask.links.isNotEmpty) {
+        final htmlLink = proposedTask.links.first;
+        final (_, extractedLinkText) = LinkProcessor.parseHtmlLink(htmlLink);
+        linkText = extractedLinkText ?? proposedTask.headline;
+      } else {
+        linkText = _textController.text.trim();
       }
 
-      // Create HTML link
-      final htmlLink = '<a href="$url">${_textController.text.trim()}</a>';
+      // Create HTML link with custom text (preserving user's edit)
+      final customHtmlLink = '<a href="$normalizedUrl">$linkText</a>';
 
-      // Two-tier duplicate checking
-      final duplicateCheckResult = await _checkForDuplicates(htmlLink);
-      _lastDuplicateResult = duplicateCheckResult;
+      // Create new ProposedTask with custom link text
+      final customProposedTask = ProposedTask(
+        headline: proposedTask.headline,
+        notes: proposedTask.notes,
+        links: [customHtmlLink], // Use custom HTML link with user's text
+        synopsis: proposedTask.synopsis,
+        suggestedCategoryOriginalIds: proposedTask.suggestedCategoryOriginalIds,
+        existingTaskOriginalId: proposedTask.existingTaskOriginalId,
+      );
 
-      if (duplicateCheckResult == DuplicateCheckResult.currentTaskDuplicate) {
-        // First tier: Link already exists in current task
-        setState(() {
-          _error = 'This link is already in the current task';
-          _isLoading = false;
-        });
-        return;
-      } else if (duplicateCheckResult ==
-          DuplicateCheckResult.categoryDuplicate) {
-        // Second tier: Link exists in another task in the current category
-        setState(() {
-          _error =
-              'This link already exists in task "${_duplicateTaskName}" in this category';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // No duplicates found
+      // Return ProposedTask with metadata
       if (mounted) {
-        Navigator.pop(context, htmlLink);
+        Navigator.pop(context, customProposedTask);
       }
     } catch (e) {
       print('Error validating link: $e');
@@ -213,78 +348,6 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
     }
   }
 
-  Future<void> _saveLinkAnyway() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_urlController.text.trim().isEmpty) {
-      setState(() {
-        _error = 'Please enter a URL';
-      });
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      final url = _urlController.text.trim();
-      final processedLink = await LinkProcessor.validateAndProcessLink(
-        url,
-        linkText: _textController.text.trim(),
-      );
-
-      // If we got a title from the webpage and the text field was empty,
-      // update the text field with the fetched title
-      if (_textController.text.trim().isEmpty) {
-        _textController.text = processedLink.title!;
-      }
-
-      // Create HTML link and return (bypassing duplicate checks)
-      final htmlLink = '<a href="$url">${_textController.text.trim()}</a>';
-      if (mounted) {
-        Navigator.pop(context, htmlLink);
-      }
-    } catch (e) {
-      print('Error saving link anyway: $e');
-      setState(() {
-        _error = 'Failed to save link: ${e.toString()}';
-        _isLoading = false;
-      });
-    }
-  }
-
-  /// Checks for duplicates in current task and across all tasks
-  Future<DuplicateCheckResult> _checkForDuplicates(String htmlLink) async {
-    print('LinkEditScreen: _checkForDuplicates called for: $htmlLink');
-    print('LinkEditScreen: currentTask: ${widget.currentTask?.headline}');
-    print(
-        'LinkEditScreen: currentCategory: ${widget.currentCategory?.headline}');
-
-    // First check: current task duplicate
-    if (widget.currentTask != null) {
-      print('LinkEditScreen: Checking current task for duplicates...');
-      if (widget.currentTask!.hasLink(htmlLink)) {
-        print('LinkEditScreen: Found duplicate in current task');
-        return DuplicateCheckResult.currentTaskDuplicate;
-      }
-    }
-
-    // Second check: check across tasks in the current category
-    print(
-        'LinkEditScreen: Checking tasks in current category for duplicates...');
-    final duplicateTask = await _checkForDuplicateInCurrentCategory(htmlLink);
-
-    if (duplicateTask != null) {
-      print(
-          'LinkEditScreen: Found duplicate in task: ${duplicateTask.headline}');
-      _duplicateTaskName = duplicateTask.headline;
-      return DuplicateCheckResult.categoryDuplicate;
-    }
-
-    print('LinkEditScreen: No duplicates found');
-    return DuplicateCheckResult.noDuplicate;
-  }
 
   /// Check for duplicate link across tasks in the current category
   Future<Task?> _checkForDuplicateInCurrentCategory(String htmlLink) async {
@@ -439,29 +502,6 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
     return null;
   }
 
-  /// Shows confirmation dialog for duplicate links
-  Future<bool> _showDuplicateConfirmationDialog() async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Duplicate Link Found'),
-            content: Text(
-                'This link already exists in task "${_duplicateTaskName}" in this category. '
-                'Do you want to add it anyway?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Add Anyway'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -485,32 +525,9 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.red.withOpacity(0.3)),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _error!,
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                    if (_lastDuplicateResult ==
-                        DuplicateCheckResult.categoryDuplicate) ...[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _isLoading ? null : _saveLinkAnyway,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red),
-                              ),
-                              child: const Text('Save Anyway'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.red),
                 ),
               ),
               const SizedBox(height: 8),
@@ -577,10 +594,7 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: _isLoading || !_hasUrlText ? null : _saveLink,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    ),
+                    style: AppButtons.finalize(),
                     child: const Text('Save Link'),
                   ),
                 ),

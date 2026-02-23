@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Add internet permission for url_launcher -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Add storage permissions -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -9,10 +11,11 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <application
-        android:label="Meaning To"
+        android:label="I've Been Meaning To"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:enableOnBackInvokedCallback="true">
+        android:enableOnBackInvokedCallback="true"
+        android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -39,6 +42,20 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="meaningto" android:host="auth" android:path="/callback" />
             </intent-filter>
+            <!-- Category deep link intent filter -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="meaningto" android:host="category" />
+            </intent-filter>
+            <!-- Universal link for web - more specific to avoid interfering with external URLs -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="meaning-to.me" android:pathPrefix="/" />
+            </intent-filter>
             <!-- Add this intent-filter for sharing text and files -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -59,6 +76,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <meta-data
+            android:name="io.flutter.plugins.urllauncher.WebViewActivity.Theme"
+            android:value="@android:style/Theme.NoDisplay" />
+        <meta-data
+            android:name="io.flutter.plugins.urllauncher.enableWebView"
+            android:value="false" />
+        <meta-data
+            android:name="io.flutter.plugins.urllauncher.enableCustomTabs"
+            android:value="false" />
+
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -70,5 +97,6 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Removed HTTPS/HTTP queries to prevent app from being treated as a browser -->
     </queries>
 </manifest>

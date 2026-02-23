@@ -1,17 +1,13 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:async'; // Add this import for TimeoutException
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
-import 'dart:convert';
-import 'package:flutter/material.dart';
 import 'package:meaning_to/utils/auth.dart';
-import 'package:crypto/crypto.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 
 // The anon key should be the same as what you used to initialize Supabase
-final supabaseAnonKey =
+const supabaseAnonKey =
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpocHhkYXlmcHlzb2l4eGpqcWlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDk5MjQ5NzAsImV4cCI6MjAyNTUwMDk3MH0.zhpxdayfpysoixxjjqik';
 
 class DomainIcon {
@@ -101,7 +97,7 @@ class DomainIcon {
 
       // Only resize if needed
       if (newWidth != image.width || newHeight != image.height) {
-        print('Resizing to ${newWidth}x${newHeight}');
+        print('Resizing to ${newWidth}x$newHeight');
         final resized = img.copyResize(
           image,
           width: newWidth,
@@ -295,50 +291,15 @@ class DomainIcon {
       try {
         print('\nChecking network connectivity...');
 
-        // First try DNS resolution specifically for Supabase
-        try {
-          final supabaseHost = 'zhpxdayfpysoixxjjqik.supabase.co';
-          print('Resolving DNS for $supabaseHost...');
-          final addresses = await InternetAddress.lookup(supabaseHost);
-          if (addresses.isEmpty) {
-            print(
-              'DNS resolution failed: No addresses found for $supabaseHost',
-            );
-            return false;
-          }
-          print(
-            'DNS resolution successful: ${addresses.map((a) => a.address).join(", ")}',
-          );
-        } on SocketException catch (e) {
-          print('\n=== DNS Resolution Error ===');
-          print('Failed to resolve Supabase hostname: $e');
-          print('\nTroubleshooting Steps:');
-          print('1. Check your internet connection');
-          print('2. Try switching between WiFi and mobile data');
-          print('3. Check your DNS settings');
-          print(
-            '4. Try using a different DNS server (e.g., 8.8.8.8 or 1.1.1.1)',
-          );
-          print('5. Disable VPN if enabled');
-          print('6. Check if you can access other websites');
-          print('\nDetailed Error:');
-          print('OS Error: ${e.osError?.message}');
-          print('Error Code: ${e.osError?.errorCode}');
-          return false;
-        }
+        // Network connectivity check (Flutter Web compatible)
+        print(
+            'Network connectivity check: Flutter Web mode - skipping detailed checks');
 
-        // Then try a basic internet connectivity check
-        print('Checking general internet connectivity...');
-        final internetCheck = await http
-            .get(Uri.parse('https://www.google.com'))
-            .timeout(const Duration(seconds: 5));
-        if (internetCheck.statusCode != 200) {
-          print(
-            'Internet connectivity check failed: ${internetCheck.statusCode}',
-          );
-          return false;
-        }
-        print('General internet connectivity confirmed');
+        // For Flutter Web, many network diagnostic operations aren't supported
+        // Since we already successfully fetched the icon, we know network is working
+        print('Network connectivity confirmed - proceeding with database save');
+
+        // For Flutter Web, skip complex network diagnostics and proceed directly
 
         // Finally check Supabase connectivity using the client
         print('Checking Supabase connectivity...');

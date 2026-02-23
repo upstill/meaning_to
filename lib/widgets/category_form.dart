@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/utils/naming.dart';
 
 class CategoryForm extends StatefulWidget {
   final Category? category;
   final bool isEditing;
   final bool isLoading;
+  final bool showPrivacyOptions;
   final Function(String headline, String invitation, bool isPrivate,
       bool tasksArePrivate) onSave;
   final VoidCallback? onEdit;
@@ -16,6 +18,7 @@ class CategoryForm extends StatefulWidget {
     this.category,
     required this.isEditing,
     required this.isLoading,
+    this.showPrivacyOptions = true,
     required this.onSave,
     this.onEdit,
     this.onCancel,
@@ -29,7 +32,7 @@ class CategoryFormState extends State<CategoryForm> {
   final _formKey = GlobalKey<FormState>();
   final _headlineController = TextEditingController();
   final _invitationController = TextEditingController();
-  bool _isPrivate = false;
+  bool _isPrivate = true;
   bool _tasksArePrivate = true;
 
   @override
@@ -63,7 +66,7 @@ class CategoryFormState extends State<CategoryForm> {
     } else {
       _headlineController.clear();
       _invitationController.clear();
-      _isPrivate = false;
+      _isPrivate = true;
       _tasksArePrivate = true;
     }
   }
@@ -88,6 +91,16 @@ class CategoryFormState extends State<CategoryForm> {
   @override
   Widget build(BuildContext context) {
     return Card(
+      elevation: 10,
+      color: Colors.grey[50],
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: Colors.blue.withOpacity(0.2),
+          width: 2,
+        ),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -101,10 +114,10 @@ class CategoryFormState extends State<CategoryForm> {
               if (widget.isEditing || widget.category == null) ...[
                 TextFormField(
                   controller: _headlineController,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Name (required)',
                     hintText: 'What have you been meaning to do?',
-                    border: const OutlineInputBorder(),
+                    border: OutlineInputBorder(),
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
@@ -118,77 +131,93 @@ class CategoryFormState extends State<CategoryForm> {
                 TextFormField(
                   controller: _invitationController,
                   decoration: const InputDecoration(
-                    labelText: 'Invitation (optional)',
+                    labelText: 'Description',
                     hintText: 'What would you like to say to yourself?',
                     border: OutlineInputBorder(),
                   ),
                   maxLines: 3,
                   enabled: !widget.isLoading,
                 ),
-                const SizedBox(height: 16),
-                CheckboxListTile(
-                  title: const Text('Private'),
-                  subtitle: Text(
-                      'I want to keep this ${NamingUtils.categoriesName(capitalize: false, plural: false)} to myself'),
-                  value: _isPrivate,
-                  onChanged: widget.isLoading
-                      ? null
-                      : (bool? value) {
-                          setState(() {
-                            _isPrivate = value ?? false;
-                          });
-                        },
-                  controlAffinity: ListTileControlAffinity.leading,
-                ),
-                if (!_isPrivate) ...[
-                  const SizedBox(height: 8),
+                if (widget.category != null && widget.showPrivacyOptions) ...[
+                  const SizedBox(height: 16),
                   CheckboxListTile(
-                    title: Text(
-                        '${NamingUtils.tasksName(plural: true)} are private'),
+                    title: const Text('Private'),
                     subtitle: Text(
-                        'Share only the ${NamingUtils.categoriesName(capitalize: false, plural: false)}, not the ${NamingUtils.tasksName(plural: true)}'),
-                    value: _tasksArePrivate,
+                        'I want to keep this ${NamingUtils.categoriesName(capitalize: false, plural: false)} to myself'),
+                    value: _isPrivate,
                     onChanged: widget.isLoading
                         ? null
                         : (bool? value) {
                             setState(() {
-                              _tasksArePrivate = value ?? true;
+                              _isPrivate = value ?? false;
                             });
                           },
                     controlAffinity: ListTileControlAffinity.leading,
                   ),
+                  if (!_isPrivate) ...[
+                    const SizedBox(height: 8),
+                    CheckboxListTile(
+                      title: Text(
+                          '${NamingUtils.tasksName(plural: true)} are private by default'),
+                      value: _tasksArePrivate,
+                      onChanged: widget.isLoading
+                          ? null
+                          : (bool? value) {
+                              setState(() {
+                                _tasksArePrivate = value ?? true;
+                              });
+                            },
+                      controlAffinity: ListTileControlAffinity.leading,
+                    ),
+                  ],
                 ],
                 const SizedBox(height: 24),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (widget.category != null &&
-                        widget.isEditing &&
-                        widget.onCancel != null)
-                      TextButton(
-                        onPressed: widget.onCancel,
-                        child: const Text('Cancel'),
+                    // Cancel button - show for new categories or when editing
+                    if (widget.category == null ||
+                        (widget.isEditing && widget.onCancel != null))
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: widget.isLoading
+                              ? null
+                              : (widget.onCancel ??
+                                  () => Navigator.pop(context)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[300],
+                            foregroundColor: Colors.black,
+                            minimumSize: const Size(0, 48),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
                       ),
-                    if (widget.category != null &&
-                        widget.isEditing &&
-                        widget.onCancel != null)
+                    if (widget.category == null ||
+                        (widget.isEditing && widget.onCancel != null))
                       const SizedBox(width: 16),
-                    ElevatedButton(
-                      onPressed: (widget.isLoading ||
-                              _headlineController.text.trim().isEmpty)
-                          ? null
-                          : _handleSave,
-                      child: widget.isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(
-                              widget.category == null
-                                  ? 'Create ${NamingUtils.categoriesName()}'
-                                  : 'Save Changes',
-                            ),
+                    // Create/Save button
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: (widget.isLoading ||
+                                _headlineController.text.trim().isEmpty)
+                            ? null
+                            : _handleSave,
+                        style: AppButtons.finalize().copyWith(
+                          minimumSize:
+                              const WidgetStatePropertyAll(Size(0, 48)),
+                        ),
+                        child: widget.isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Text(
+                                widget.category == null
+                                    ? 'Create ${NamingUtils.categoriesName(plural: false)}'
+                                    : 'Save Changes',
+                              ),
+                      ),
                     ),
                   ],
                 ),

@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/auth.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/synopsis_fetcher.dart';
+import 'package:flutter_html/flutter_html.dart';
 
 class TaskDisplay extends StatefulWidget {
   final Task task;
@@ -11,6 +14,9 @@ class TaskDisplay extends StatefulWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onTap;
   final Function(DateTime)? onUpdateSuggestibleAt;
+  final Function(bool)? onShareToggle;
+  final bool? isCategoryPrivate;
+  final VoidCallback? onMakeCategoryPublic;
 
   const TaskDisplay({
     super.key,
@@ -20,6 +26,9 @@ class TaskDisplay extends StatefulWidget {
     this.onDelete,
     this.onTap,
     this.onUpdateSuggestibleAt,
+    this.onShareToggle,
+    this.isCategoryPrivate,
+    this.onMakeCategoryPublic,
   });
 
   /// Builds a widget to display a task, with optional controls.
@@ -33,6 +42,9 @@ class TaskDisplay extends StatefulWidget {
     VoidCallback? onDelete,
     VoidCallback? onTap,
     Function(DateTime)? onUpdateSuggestibleAt,
+    Function(bool)? onShareToggle,
+    bool? isCategoryPrivate,
+    VoidCallback? onMakeCategoryPublic,
   }) {
     return TaskDisplay(
       task: task,
@@ -41,6 +53,9 @@ class TaskDisplay extends StatefulWidget {
       onDelete: onDelete,
       onTap: onTap,
       onUpdateSuggestibleAt: onUpdateSuggestibleAt,
+      onShareToggle: onShareToggle,
+      isCategoryPrivate: isCategoryPrivate,
+      onMakeCategoryPublic: onMakeCategoryPublic,
     );
   }
 
@@ -50,34 +65,191 @@ class TaskDisplay extends StatefulWidget {
 
 class _TaskDisplayState extends State<TaskDisplay> {
   bool _isExpanded = false;
+  bool _isFetchingSynopsis = false;
+  String? _fetchedSynopsis;
+  String? _resolvedMoreUrl; // Store resolved URL for (more) link
+
+  /// Simple method to extract URL from first link (no complex resolution)
+  Future<void> _resolveMoreUrl() async {
+    if (widget.task.links == null || widget.task.links!.isEmpty) {
+      return;
+    }
+
+    for (final link in widget.task.links!) {
+      // Extract URL from HTML link or return plain URL
+      String? url;
+      if (link.startsWith('http://') || link.startsWith('https://')) {
+        url = link;
+      } else {
+        final regex = RegExp(r'href=["\x27]([^"\x27]+)["\x27]');
+        final match = regex.firstMatch(link);
+        url = match?.group(1);
+      }
+
+      if (url != null) {
+        if (mounted) {
+          setState(() {
+            _resolvedMoreUrl = url!; // Use original URL, no resolution
+          });
+        }
+        break;
+      }
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    print('\n=== TaskDisplay initState for "${widget.task.headline}" ===');
-    print('Task links: ${widget.task.links}');
-    print('Task links type: ${widget.task.links?.runtimeType}');
-    print('Task links length: ${widget.task.links?.length ?? 0}');
-    print('Task links is null? ${widget.task.links == null}');
-    print('Task links is empty? ${widget.task.links?.isEmpty}');
-    if (widget.task.links?.isNotEmpty == true) {
-      print('First link: ${widget.task.links!.first}');
-      print('First link type: ${widget.task.links!.first.runtimeType}');
-      print(
-          'First link contains href: ${widget.task.links!.first.contains('href="')}');
-      print(
-          'First link contains justwatch: ${widget.task.links!.first.contains('justwatch.com')}');
+  }
+
+  /// Fetch synopsis from task links using the SynopsisFetcher utility
+  Future<void> _fetchSynopsisFromLinks() async {
+    print(
+        'TaskDisplay: _fetchSynopsisFromLinks called for task: ${widget.task.headline}');
+
+    // Skip if already fetching
+    if (_isFetchingSynopsis) {
+      print('TaskDisplay: Skipping fetch - already fetching');
+      return;
     }
-    print('=== End TaskDisplay initState ===\n');
+
+    setState(() {
+      _isFetchingSynopsis = true;
+    });
+
+    try {
+      final result = await SynopsisFetcher.fetchSynopsisForTask(widget.task);
+
+      if (result != null && mounted) {
+        setState(() {
+          _fetchedSynopsis = result.synopsis;
+        });
+        print('TaskDisplay: Synopsis fetched from ${result.source.name}');
+      }
+    } catch (e) {
+      print('TaskDisplay: Error fetching synopsis: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFetchingSynopsis = false;
+        });
+      }
+    }
+  }
+
+  /// Check if we should fetch synopsis (synopsis is null or empty AND task has links)
+  bool _shouldFetchNotes() {
+    final synopsis = widget.task.synopsis;
+    final links = widget.task.links;
+
+    // Only fetch synopsis if it is null or empty AND the task has links to fetch from
+    if ((synopsis == null || synopsis.trim().isEmpty) &&
+        links != null &&
+        links.isNotEmpty) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /// Clear fallback notes (for web users with old imported tasks)
+  Future<void> _clearFallbackNotes() async {
+    try {
+      final updatedTask = Task(
+        id: widget.task.id,
+        categoryId: widget.task.categoryId,
+        headline: widget.task.headline,
+        notes: null, // Clear the notes
+        ownerId: widget.task.ownerId,
+        createdAt: widget.task.createdAt,
+        suggestibleAt: widget.task.suggestibleAt,
+        triggersAt: widget.task.triggersAt,
+        deferral: widget.task.deferral,
+        links: widget.task.links,
+        processedLinks: widget.task.processedLinks,
+        finished: widget.task.finished,
+        shared: widget.task.shared,
+        originalId: widget.task.originalId,
+        dirty: true, // Mark as dirty to trigger database update
+      );
+
+      await CacheManager().updateTask(updatedTask);
+
+      if (mounted) {
+        setState(() {
+          // This will cause the widget to rebuild with null notes
+        });
+
+        // On non-web platforms, trigger fetching after clearing
+        if (!kIsWeb) {
+          _fetchSynopsisFromLinks();
+        }
+      }
+    } catch (e) {}
   }
 
   void _toggleExpanded() {
-    if (!mounted) return; // Safety check
+    if (!mounted) return;
     setState(() {
       _isExpanded = !_isExpanded;
     });
-    print(
-        'TaskDisplay: Toggled expanded state to $_isExpanded for ${widget.task.headline}');
+
+    // If expanding, extract URL from first link
+    if (_isExpanded && _resolvedMoreUrl == null) {
+      _resolveMoreUrl();
+    }
+
+    // If expanding and synopsis is null/empty, try to fetch it from links
+    if (_isExpanded) {
+      final shouldFetch = _shouldFetchNotes();
+      if (shouldFetch && _fetchedSynopsis == null && !_isFetchingSynopsis) {
+        _fetchSynopsisFromLinks();
+      }
+    }
+  }
+
+  void _showPrivateCategoryDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Private Pursuit'),
+          content: const Text(
+            'This pursuit is private, so ideas aren\'t being shared. Would you like to make the pursuit public so you can share them?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                if (widget.onMakeCategoryPublic != null) {
+                  widget.onMakeCategoryPublic!();
+                }
+              },
+              child: const Text('Yes, please share'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Preprocess notes text for HTML rendering
+  /// Converts plain text newlines to HTML <br> tags if text doesn't already contain HTML
+  String _preprocessNotesForHtml(String notes) {
+    // Check if the text already contains HTML tags
+    final hasHtmlTags = RegExp(r'<[^>]+>').hasMatch(notes);
+
+    if (hasHtmlTags) {
+      // Already has HTML, return as-is
+      return notes;
+    }
+
+    // Plain text - convert newlines to <br> tags
+    return notes.replaceAll('\n', '<br>');
   }
 
   @override
@@ -85,42 +257,12 @@ class _TaskDisplayState extends State<TaskDisplay> {
     final theme = Theme.of(context);
 
     // Use the new method from Task class for consistent evaluation
-    final isDeferred = widget.task.isDeferred;
-    print('TaskDisplay: "${widget.task.headline}" - isDeferred: $isDeferred');
-    print(
-        'TaskDisplay: "${widget.task.headline}" - current time: ${DateTime.now()}');
+    // final isDeferred = widget.task.isDeferred; // Not currently used
 
-    // SUPER detailed debug logging for link detection
-    print('\n=== TaskDisplay build for "${widget.task.headline}" ===');
-    print('Raw links data: ${widget.task.links}');
-    print('Links type: ${widget.task.links?.runtimeType}');
-    print('Links is null? ${widget.task.links == null}');
-    print('Links is empty? ${widget.task.links?.isEmpty}');
-    print('Links length: ${widget.task.links?.length ?? 0}');
-    if (widget.task.links?.isNotEmpty == true) {
-      print('First link: ${widget.task.links!.first}');
-      print('First link type: ${widget.task.links!.first.runtimeType}');
-      print(
-          'First link contains href: ${widget.task.links!.first.contains('href="')}');
-      print(
-          'First link contains justwatch: ${widget.task.links!.first.contains('justwatch.com')}');
-      print('First link toString: ${widget.task.links!.first.toString()}');
-    }
+    // Optimized hasLinks check - avoid complex operations during build
+    final hasLinks = widget.task.links?.isNotEmpty == true;
 
-    // Fix hasLinks check to handle List<String> of HTML links
-    final hasLinks = widget.task.links != null &&
-        widget.task.links!.isNotEmpty &&
-        widget.task.links!.first.contains('href="') && // Only check for href
-        widget.task.links!.first !=
-            '{}'; // Exclude empty PostgreSQL array string representation
-    print('\nhasLinks check:');
-    print('  links != null: ${widget.task.links != null}');
-    print('  links isNotEmpty: ${widget.task.links?.isNotEmpty}');
-    print(
-        '  first link contains href: ${widget.task.links?.firstOrNull?.toString().contains('href="')}');
-    print('  FINAL hasLinks: $hasLinks');
-    print('  withControls: ${widget.withControls}');
-    print('=== End TaskDisplay build ===\n');
+    // Links available for display
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -136,7 +278,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                 // Task headline and controls
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Title with flexible width - clickable to toggle expanded state, with arrow
                     Expanded(
@@ -145,9 +287,9 @@ class _TaskDisplayState extends State<TaskDisplay> {
                           _toggleExpanded();
                         },
                         child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Flexible(
+                            Expanded(
                               child: Builder(
                                 builder: (context) {
                                   // Use gray for deferred or finished tasks, black for available tasks
@@ -163,14 +305,18 @@ class _TaskDisplayState extends State<TaskDisplay> {
                                       fontWeight: FontWeight.bold,
                                       color: textColor,
                                     ),
-                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: true,
+                                    maxLines: null,
                                   );
                                 },
                               ),
                             ),
                             if (hasLinks ||
                                 (widget.task.notes != null &&
-                                    widget.task.notes!.isNotEmpty))
+                                    widget.task.notes!.isNotEmpty) ||
+                                (widget.task.synopsis != null &&
+                                    widget.task.synopsis!.isNotEmpty) ||
+                                _shouldFetchNotes())
                               Padding(
                                 padding: const EdgeInsets.only(left: 4.0),
                                 child: Text(
@@ -189,8 +335,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
                         // Finished checkbox
                         Builder(
                           builder: (context) {
-                            print(
-                                'TaskDisplay: Rendering checkbox for "${widget.task.headline}"');
                             return Container(
                               /* decoration: BoxDecoration(
                                 color: Colors.green.withOpacity(0.3),
@@ -210,12 +354,59 @@ class _TaskDisplayState extends State<TaskDisplay> {
                             );
                           },
                         ),
+                        // Share control
+                        Builder(
+                          builder: (context) {
+                            return Container(
+                              child: SizedBox(
+                                width: 30,
+                                height: 30,
+                                child: IconButton(
+                                  icon: Icon(
+                                    // If category is private, always show as unshared
+                                    (widget.isCategoryPrivate == true ||
+                                            !widget.task.shared)
+                                        ? Icons.share_outlined
+                                        : Icons.share_sharp,
+                                    size:
+                                        18, // Slightly larger for better visibility
+                                    color: (widget.isCategoryPrivate == true ||
+                                            !widget.task.shared)
+                                        ? Colors.grey
+                                            .shade400 // Medium gray for unshared state
+                                        : Colors.green.shade700,
+                                  ),
+                                  onPressed: () {
+                                    // If category is private and user is trying to share, show dialog
+                                    if (widget.isCategoryPrivate == true &&
+                                        !widget.task.shared) {
+                                      _showPrivateCategoryDialog(context);
+                                    } else if (widget.onShareToggle != null) {
+                                      widget.onShareToggle!(
+                                        !widget.task.shared,
+                                      );
+                                    }
+                                  },
+                                  tooltip: (widget.isCategoryPrivate == true ||
+                                          !widget.task.shared)
+                                      ? 'Share task'
+                                      : 'Unshare task',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 30,
+                                    minHeight: 30,
+                                    maxWidth: 30,
+                                    maxHeight: 30,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                         // Edit and Delete buttons grouped tightly together
                         if (widget.withControls) ...[
                           Builder(
                             builder: (context) {
-                              print(
-                                  'TaskDisplay: Rendering edit button for "${widget.task.headline}"');
                               return Container(
                                 /* decoration: BoxDecoration(
                                   color: Colors.blue.withOpacity(0.3),
@@ -244,8 +435,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
                           if (!AuthUtils.isGuestUser()) ...[
                             Builder(
                               builder: (context) {
-                                print(
-                                    'TaskDisplay: Rendering delete button for "${widget.task.headline}" (authenticated user)');
                                 return Container(
                                   /*                                   decoration: BoxDecoration(
                                     color: Colors.orange.withOpacity(0.3),
@@ -277,77 +466,220 @@ class _TaskDisplayState extends State<TaskDisplay> {
                     ),
                   ],
                 ),
-                // Show suggestible time for deferred tasks
-                if (widget.task.isDeferred &&
-                    widget.task.suggestibleAt != null &&
-                    widget.task.suggestibleAt!.isAfter(DateTime.now())) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.schedule,
-                        size: 14,
-                        color: Colors.grey[600],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Available again in ${_formatSuggestibleTime(widget.task.suggestibleAt!.toLocal())}  ',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                      if (widget.onUpdateSuggestibleAt != null) ...[
-                        ElevatedButton(
-                          onPressed: () {
-                            print(
-                                'TaskDisplay: "Make Available Now" button pressed for "${widget.task.headline}"');
-                            print(
-                                'TaskDisplay: Calling onUpdateSuggestibleAt callback');
-                            widget.onUpdateSuggestibleAt!(DateTime.now());
-                            print(
-                                'TaskDisplay: onUpdateSuggestibleAt callback completed');
-                          },
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            minimumSize: const Size(0, 28),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            textStyle: theme.textTheme.bodySmall
-                                ?.copyWith(fontWeight: FontWeight.w500),
+                // Show notes if expanded and present (either existing or fetched)
+                if (_isExpanded) ...[
+                  // Show loading indicator if fetching notes
+                  if (_isFetchingSynopsis) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              theme.colorScheme.primary,
+                            ),
                           ),
-                          child: const Text('Make Available Now'),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Fetching description...',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontStyle: FontStyle.italic,
+                            color: Colors.grey[600],
+                          ),
                         ),
                       ],
-                    ],
-                  ),
-                ] else ...[
-                  // Debug logging for when button doesn't show
-                  Builder(
-                    builder: (context) {
-                      print(
-                          'TaskDisplay: "${widget.task.headline}" - isDeferred: ${widget.task.isDeferred}');
-                      print(
-                          'TaskDisplay: "${widget.task.headline}" - current time: ${DateTime.now()}');
-                      print(
-                          'TaskDisplay: "${widget.task.headline}" - onUpdateSuggestibleAt != null: ${widget.onUpdateSuggestibleAt != null}');
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                ],
-                // Show notes if expanded and present
-                if (_isExpanded &&
-                    widget.task.notes != null &&
-                    widget.task.notes!.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.task.notes!,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontStyle: FontStyle.italic,
-                      color: theme.textTheme.bodySmall?.color,
                     ),
-                  ),
+                  ]
+                  // Show notes if available (user-entered content)
+                  else if (widget.task.notes != null &&
+                      widget.task.notes!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Html(
+                      data: _preprocessNotesForHtml(widget.task.notes!),
+                      style: {
+                        "body": Style(
+                          fontSize: FontSize(
+                            theme.textTheme.bodyMedium?.fontSize ?? 14,
+                          ),
+                          color: theme.textTheme.bodySmall?.color,
+                          margin: Margins.zero,
+                          padding: HtmlPaddings.zero,
+                        ),
+                        "a": Style(
+                          color: theme.colorScheme.primary,
+                          textDecoration: TextDecoration.underline,
+                        ),
+                      },
+                      onLinkTap: (url, htmlContext, attributes) async {
+                        if (url != null) {
+                          try {
+                            await LinkDisplay.handleUrl(url, context);
+                          } catch (e) {
+                            // Error handling without verbose logging
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                  // Show synopsis if available (auto-fetched or stored)
+                  if (_isExpanded &&
+                      ((_fetchedSynopsis != null &&
+                              _fetchedSynopsis!.isNotEmpty) ||
+                          (widget.task.synopsis != null &&
+                              widget.task.synopsis!.isNotEmpty))) ...[
+                    const SizedBox(height: 8),
+                    Builder(
+                      builder: (context) {
+                        final htmlData =
+                            _fetchedSynopsis ?? widget.task.synopsis ?? '';
+
+                        // Check if this is a Letterboxd or JustWatch task with a (more) link
+                        final isLetterboxdTask = htmlData.contains('boxd.it') ||
+                            htmlData.contains('letterboxd.com');
+                        final isJustWatchTask = htmlData.contains(
+                          'justwatch.com',
+                        );
+                        final hasMoreLink = htmlData.contains('(more)');
+
+                        if ((isLetterboxdTask || isJustWatchTask) &&
+                            hasMoreLink) {
+                          // Parse the HTML manually for better link handling
+                          final parts = htmlData.split('<a href="');
+                          if (parts.length >= 2) {
+                            final beforeLink = parts[0];
+                            final linkPart = parts[1];
+                            final urlEndIndex = linkPart.indexOf('"');
+                            if (urlEndIndex > 0) {
+                              final url = linkPart.substring(0, urlEndIndex);
+                              final afterUrl = linkPart.substring(urlEndIndex);
+                              final linkTextMatch = RegExp(
+                                r'>([^<]+)</a>',
+                              ).firstMatch(afterUrl);
+                              final linkText =
+                                  linkTextMatch?.group(1) ?? '(more)';
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    beforeLink,
+                                    style: TextStyle(
+                                      fontSize: theme
+                                              .textTheme.bodyMedium?.fontSize ??
+                                          14,
+                                      fontStyle: FontStyle.italic,
+                                      color: theme.textTheme.bodySmall?.color,
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () async {
+                                      final urlToLaunch =
+                                          _resolvedMoreUrl ?? url;
+                                      try {
+                                        await LinkDisplay.handleUrl(
+                                            urlToLaunch, context);
+                                      } catch (e) {
+                                        print('Error launching URL: $e');
+                                      }
+                                    },
+                                    child: Text(
+                                      linkText,
+                                      style: TextStyle(
+                                        fontSize: theme.textTheme.bodyMedium
+                                                ?.fontSize ??
+                                            14,
+                                        fontStyle: FontStyle.italic,
+                                        color: theme.colorScheme.primary,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }
+                          }
+                        }
+
+                        // Fallback to HTML widget for other cases
+                        return Html(
+                          data: htmlData,
+                          style: {
+                            "body": Style(
+                              fontSize: FontSize(
+                                theme.textTheme.bodyMedium?.fontSize ?? 14,
+                              ),
+                              fontStyle: FontStyle.italic,
+                              color: theme.textTheme.bodySmall?.color,
+                              margin: Margins.zero,
+                              padding: HtmlPaddings.zero,
+                            ),
+                            "a": Style(
+                              color: theme.colorScheme.primary,
+                              textDecoration: TextDecoration.underline,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          },
+                          onLinkTap: (url, htmlContext, attributes) async {
+                            if (url != null) {
+                              try {
+                                // Use resolved URL if available, otherwise use original
+                                final urlToLaunch = _resolvedMoreUrl ?? url;
+
+                                // Use centralized URL handling with letterboxd protection
+                                await LinkDisplay.handleUrl(
+                                    urlToLaunch, context);
+                              } catch (e) {
+                                // Error handling without verbose logging
+                              }
+                            }
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                  // Show suggestible time for deferred tasks (after synopsis)
+                  if (widget.task.isDeferred &&
+                      widget.task.suggestibleAt != null &&
+                      widget.task.suggestibleAt!.isAfter(DateTime.now())) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(Icons.schedule, size: 14, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Available again in ${_formatSuggestibleTime(widget.task.suggestibleAt!.toLocal())}  ',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                        if (widget.onUpdateSuggestibleAt != null) ...[
+                          ElevatedButton(
+                            onPressed: () {
+                              widget.onUpdateSuggestibleAt!(DateTime.now());
+                            },
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              minimumSize: const Size(0, 28),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              textStyle: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            child: const Text('Make Available Now'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
                 ],
                 // Show links if expanded and present
                 if (_isExpanded && hasLinks) ...[
@@ -355,14 +687,16 @@ class _TaskDisplayState extends State<TaskDisplay> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ...widget.task.links!.map((link) => Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: LinkDisplay(
-                              linkText: link,
-                              showIcon: true,
-                              showTitle: true,
-                            ),
-                          )),
+                      ...widget.task.links!.map(
+                        (link) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: LinkDisplay(
+                            linkText: link,
+                            showIcon: true,
+                            showTitle: true,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -372,26 +706,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
         ],
       ),
     );
-  }
-
-  /// Format a date for display
-  static String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays == 0) {
-      if (difference.inHours == 0) {
-        if (difference.inMinutes == 0) {
-          return 'just now';
-        }
-        return '${difference.inMinutes}m ago';
-      }
-      return '${difference.inHours}h ago';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
-    } else {
-      return '${date.month}/${date.day}/${date.year}';
-    }
   }
 
   /// Format a suggestible time for display

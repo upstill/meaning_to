@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/edit_category_screen.dart';
+import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/widgets/category_form.dart';
+import 'package:meaning_to/utils/app_buttons.dart';
 
 class NewCategoryScreen extends StatefulWidget {
   const NewCategoryScreen({super.key});
@@ -17,9 +17,37 @@ class NewCategoryScreen extends StatefulWidget {
 
 class NewCategoryScreenState extends State<NewCategoryScreen> {
   bool _isLoading = false;
+  bool _hasCategories = true; // Assume true until we check
+  bool _isCheckingCategories = true;
 
-  Future<void> _createCategory(String headline, String invitation,
-      bool isPrivate, bool tasksArePrivate) async {
+  @override
+  void initState() {
+    super.initState();
+    print('NewCategoryScreen: initState called');
+    _checkExistingCategories();
+  }
+
+  Future<void> _checkExistingCategories() async {
+    try {
+      final categories = await ApiClient.getCategories();
+      setState(() {
+        _hasCategories = categories.isNotEmpty;
+        _isCheckingCategories = false;
+      });
+    } catch (e) {
+      print('Error checking categories: $e');
+      setState(() {
+        _isCheckingCategories = false;
+      });
+    }
+  }
+
+  Future<void> _createCategory(
+    String headline,
+    String invitation,
+    bool _unusedIsPrivate,
+    bool _unusedTasksArePrivate,
+  ) async {
     setState(() {
       _isLoading = true;
     });
@@ -32,8 +60,8 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
         'invitation': invitation.isEmpty ? null : invitation,
         'owner_id': userId,
         'original_id': null, // Custom categories should have null original_id
-        'private': isPrivate,
-        'tasks_are_private': tasksArePrivate,
+        'private': true,
+        'tasks_are_private': true,
       };
 
       // Create new category
@@ -50,14 +78,9 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
       print(
           'CacheManager initialized with new category: ${newCategory.headline}');
 
-      // Navigate to Edit Category screen with the new category
+      // Return the created category to the caller
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => EditCategoryScreen(category: newCategory),
-          ),
-        );
+        Navigator.pop(context, newCategory);
       }
     } catch (e) {
       print('Error creating category: $e');
@@ -90,6 +113,19 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          if (!_isCheckingCategories && !_hasCategories) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24.0),
+              child: Text(
+                'A \'${NamingUtils.categoriesName(plural: false, capitalize: false)}\' is a category of activities like \'Watch a Movie\' or \'Tackle a Project\'. If you\'d like to see what ${NamingUtils.categoriesName(plural: true, capitalize: false)} others have filed, hit the \'Shop For ${NamingUtils.categoriesName(capitalize: true)}\' button below.',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.left,
+              ),
+            ),
+          ],
           CategoryForm(
             category: null, // New category
             isEditing: true, // Always in editing mode for new categories
@@ -111,22 +147,32 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: () async {
-              final result =
-                  await Navigator.pushNamed(context, '/shop-endeavors');
-              // If categories were imported, pass the result back to the calling screen
-              if (result == true && mounted) {
-                Navigator.pop(context, true);
+              print('NewCategoryScreen: Shop for Ideas button pressed');
+              try {
+                final dynamic result =
+                    await Navigator.pushNamed(context, '/shop-endeavors');
+                print(
+                    'NewCategoryScreen: Navigation returned with result: $result (type: ${result.runtimeType})');
+                // ShopEndeavorsScreen returns true when categories/tasks are imported
+                if (result == true && mounted) {
+                  // Categories were imported successfully, navigate back to Home
+                  // Pass true so HomeScreen knows to refresh
+                  print(
+                      'NewCategoryScreen: Categories were imported successfully, returning to Home');
+                  Navigator.pop(context, true);
+                }
+              } catch (e) {
+                print('NewCategoryScreen: Navigation error: $e');
               }
             },
             icon: const Icon(Icons.shopping_cart),
-            label: const Text(
-              'Shop for Ideas',
-              style: TextStyle(fontSize: 18),
+            label: Text(
+              'Shop for ${NamingUtils.categoriesName(capitalize: true)}',
+              style: const TextStyle(fontSize: 18),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
+            style: AppButtons.goForth().copyWith(
+              minimumSize:
+                  const WidgetStatePropertyAll(Size(double.infinity, 50)),
             ),
           ),
         ],

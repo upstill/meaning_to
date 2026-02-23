@@ -3,6 +3,8 @@
 *.log
 *.pyc
 *.swp
+*.sql
+
 .DS_Store
 .atom/
 .build/
@@ -11,6 +13,7 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+scripts/
 
 # IntelliJ related
 *.iml
@@ -20,6 +23,17 @@ migrate_working_dir/
 
 # .env file for Supabase credentials
 .env
+.env.*
+!.env.example
+
+# Apple Dev distribution certificate
+ios/distribution\ certificate.cer
+ios/Meaning_To\ Provisioning\ Profile.mobileprovision
+
+# Android signing keys - NEVER commit these!
+android/key.properties
+android/*.jks
+android/*.keystore
 
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
@@ -35,6 +49,19 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 
+# Build related
+build/
+**/build/
+*.dll
+*.so
+*.dylib
+*.exe
+*.app
+*.apk
+*.ipa
+*.aab
+deploy_to_vercel.sh
+
 # Symbolication related
 app.*.symbols
 
@@ -45,3 +72,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+.vercel
+AuthKey_6L983MM3BW.p8
+.gitignore

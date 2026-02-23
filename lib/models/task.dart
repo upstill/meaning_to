@@ -1,17 +1,18 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/models/link.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/guest_user_manager.dart';
 
 class Task {
   final int id;
   final int categoryId;
   final String headline;
   final String? notes;
+  final String?
+      synopsis; // Auto-fetched description from links (JustWatch, etc.)
   final String ownerId;
   final DateTime createdAt;
   final DateTime? suggestibleAt;
@@ -20,7 +21,9 @@ class Task {
   final List<String>? links; // PostgreSQL array of link strings
   List<ProcessedLink>? processedLinks;
   final bool finished;
+  final bool shared;
   final int? originalId;
+  final bool dirty; // Track if task needs database update
 
   // Global cache manager instance
   static final CacheManager _cacheManager = CacheManager();
@@ -42,6 +45,7 @@ class Task {
     required this.categoryId,
     required this.headline,
     this.notes,
+    this.synopsis,
     required this.ownerId,
     required this.createdAt,
     this.suggestibleAt,
@@ -50,44 +54,90 @@ class Task {
     this.links,
     this.processedLinks,
     required this.finished,
+    this.shared = false,
     this.originalId,
+    this.dirty = false, // Initialize as not dirty
   });
+
+  /// Create a copy of this task with the dirty flag set to true
+  Task markDirty() {
+    return Task(
+      id: id,
+      categoryId: categoryId,
+      headline: headline,
+      notes: notes,
+      synopsis: synopsis,
+      ownerId: ownerId,
+      createdAt: createdAt,
+      suggestibleAt: suggestibleAt,
+      triggersAt: triggersAt,
+      deferral: deferral,
+      links: links,
+      processedLinks: processedLinks,
+      finished: finished,
+      shared: shared,
+      originalId: originalId,
+      dirty: true, // Mark as dirty
+    );
+  }
+
+  /// Create a copy of this task with the dirty flag set to false
+  Task markClean() {
+    return Task(
+      id: id,
+      categoryId: categoryId,
+      headline: headline,
+      notes: notes,
+      synopsis: synopsis,
+      ownerId: ownerId,
+      createdAt: createdAt,
+      suggestibleAt: suggestibleAt,
+      triggersAt: triggersAt,
+      deferral: deferral,
+      links: links,
+      processedLinks: processedLinks,
+      finished: finished,
+      shared: shared,
+      originalId: originalId,
+      dirty: false, // Mark as clean
+    );
+  }
 
   factory Task.fromJson(Map<String, dynamic> json) {
     List<String>? parseLinks(dynamic linksData) {
-      print(
-          'Task.fromJson: parseLinks called with: $linksData (type: ${linksData.runtimeType})');
+      // print(
+      //     'Task.fromJson: parseLinks called with: $linksData (type: ${linksData.runtimeType})');
 
       if (linksData == null) {
-        print('Task.fromJson: linksData is null, returning null');
+        // print('Task.fromJson: linksData is null, returning null');
         return null;
       }
 
       // Handle PostgreSQL array (comes as List from Supabase)
       if (linksData is List) {
-        print(
-            'Task.fromJson: linksData is List with ${linksData.length} items');
+        // print(
+        //     'Task.fromJson: linksData is List with ${linksData.length} items');
         return List<String>.from(linksData);
       }
 
       // Handle legacy JSON string format (for backward compatibility)
       if (linksData is String) {
-        print('Task.fromJson: linksData is String: "$linksData"');
+        // print('Task.fromJson: linksData is String: "$linksData"');
         // Handle empty PostgreSQL array string representation
         if (linksData.trim() == '{}' || linksData.trim() == '[]') {
-          print('Task.fromJson: Empty array detected, returning empty list');
+          // print('Task.fromJson: Empty array detected, returning empty list');
           return [];
         }
         try {
           // If it's a single HTML link, return it as is
           if (linksData.trim().startsWith('<a href="')) {
-            print('Task.fromJson: Single HTML link detected');
+            // print('Task.fromJson: Single HTML link detected');
             return [linksData];
           }
           // Otherwise try to parse as JSON
           final decoded = jsonDecode(linksData) as List;
-          print(
-              'Task.fromJson: Parsed JSON string to List with ${decoded.length} items');
+          // print(
+          //     'Task.fromJson: Parsed JSON string to List with ${decoded.length} items');
           // Filter out null values and convert to strings
           final validLinks = decoded
               .where((item) => item != null)
@@ -101,13 +151,13 @@ class Task {
         }
       }
 
-      print(
-          'Task.fromJson: linksData is neither List nor String, returning null');
+      // print(
+      //     'Task.fromJson: linksData is neither List nor String, returning null');
       return null;
     }
 
     final links = parseLinks(json['links']);
-    print('Parsed links from JSON: $links');
+    // print('Parsed links from JSON: $links');
 
     // Get suggestibleAt, preserving null if it's intentionally null
     // Only default to current time for legacy tasks that don't have this field set
@@ -115,20 +165,10 @@ class Task {
     if (json['suggestible_at'] != null) {
       suggestibleAt = DateTime.parse(json['suggestible_at'] as String);
     } else {
-      // Only set to current time for very old tasks (created before suggestible_at was introduced)
-      // For newer tasks, preserve null to allow them to appear at the top
-      final createdAt = DateTime.parse(json['created_at'] as String);
-      final cutoffDate =
-          DateTime(2024, 1, 1); // Arbitrary cutoff for "old" tasks
-
-      if (createdAt.isBefore(cutoffDate)) {
-        suggestibleAt = DateTime.now();
-        print(
-            'Setting suggestible_at to now for legacy task ${json['headline']}');
-      } else {
-        suggestibleAt = null;
-        print('Preserving null suggestible_at for task ${json['headline']}');
-      }
+      // For tasks with null suggestible_at, preserve the null value
+      // This allows new tasks to appear at the top of the list
+      suggestibleAt = null;
+      print('Preserving null suggestible_at for task ${json['headline']}');
     }
 
     // Create the task with the links
@@ -136,7 +176,8 @@ class Task {
       id: json['id'] as int,
       categoryId: json['category_id'] as int,
       headline: json['headline'] as String? ?? 'Untitled Task',
-      notes: json['notes'] as String? ?? '',
+      notes: json['notes'] as String?,
+      synopsis: json['synopsis'] as String?,
       ownerId: json['owner_id'] as String? ?? '',
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
@@ -149,19 +190,16 @@ class Task {
       links: links,
       processedLinks: null, // Will be processed when needed
       finished: json['finished'] as bool? ?? false,
+      shared: json['shared'] as bool? ?? false,
       originalId: json['original_id'] as int?,
+      dirty: false, // Tasks loaded from database are not dirty
     );
 
     // Only update database for legacy tasks that needed suggestible_at set
     if (json['suggestible_at'] == null && suggestibleAt != null) {
       print('Updating suggestible_at to now for legacy task ${task.headline}');
-      supabase
-          .from('Tasks')
-          .update({'suggestible_at': suggestibleAt.toIso8601String()})
-          .eq('id', task.id)
-          .eq('owner_id', task.ownerId)
-          .then((_) => print('Updated suggestible_at in database'))
-          .catchError((e) => print('Error updating suggestible_at: $e'));
+      ApiClient.updateTaskSuggestibleAt(
+          task.id, suggestibleAt.toIso8601String());
     }
 
     return task;
@@ -173,6 +211,7 @@ class Task {
       'category_id': categoryId,
       'headline': headline,
       'notes': notes,
+      'synopsis': synopsis,
       'owner_id': ownerId,
       'created_at': createdAt.toIso8601String(),
       'suggestible_at': suggestibleAt?.toIso8601String(),
@@ -180,7 +219,9 @@ class Task {
       'deferral': deferral,
       'links': links, // PostgreSQL array - no JSON encoding needed
       'finished': finished,
+      'shared': shared,
       'original_id': originalId,
+      'dirty': dirty, // Include dirty flag in JSON
     };
   }
 
@@ -230,15 +271,11 @@ class Task {
       _currentTask = null; // Clear current task when changing context
 
       // Query tasks from the database
-      final response = await supabase
-          .from('Tasks')
-          .select()
-          .eq('category_id', category.id)
-          .eq('owner_id', userId)
-          .order('created_at', ascending: false);
+      final response =
+          await ApiClient.getTasksByCategoryAndUser(category.id, userId);
 
       print(
-          'Task response fields: ${response.isNotEmpty ? response.first.keys.toList() : 'No tasks found'}');
+          'Task response fields: ${response.isNotEmpty ? 'Tasks found' : 'No tasks found'}');
 
       if (response.isEmpty) {
         print('No tasks found for category ${category.id}');
@@ -315,13 +352,8 @@ class Task {
       await _currentTask!.ensureLinksProcessed();
 
       // Update only the suggestible_at field in the database for the selected task
-      await supabase
-          .from('Tasks')
-          .update({
-            'suggestible_at': _currentTask!.suggestibleAt?.toIso8601String()
-          })
-          .eq('id', _currentTask!.id)
-          .eq('owner_id', _currentTask!.ownerId);
+      await ApiClient.updateTaskSuggestibleAt(
+          _currentTask!.id, _currentTask!.suggestibleAt?.toIso8601String());
       return _currentTask;
     } catch (e, stackTrace) {
       print('Error loading random task: $e');
@@ -344,12 +376,7 @@ class Task {
       print(
           '[finishCurrentTask] Attempting to update task id: \\${currentTask.id}, owner_id: \\$currentUserId');
       // Update in database
-      final response = await supabase
-          .from('Tasks')
-          .update({'finished': true})
-          .eq('id', currentTask.id)
-          .eq('owner_id', currentUserId);
-      print('[finishCurrentTask] Update response: \\${response.toString()}');
+      await ApiClient.updateTaskFinished(currentTask.id, true);
 
       // Update cache
       final updatedTask = Task(
@@ -357,6 +384,7 @@ class Task {
         categoryId: currentTask.categoryId,
         headline: currentTask.headline,
         notes: currentTask.notes,
+        synopsis: currentTask.synopsis,
         ownerId: currentTask.ownerId,
         createdAt: currentTask.createdAt,
         suggestibleAt: currentTask.suggestibleAt,
@@ -410,14 +438,9 @@ class Task {
       final newSuggestibleAt = now.add(Duration(minutes: currentDeferral));
 
       // Update in database
-      await supabase
-          .from('Tasks')
-          .update({
-            'suggestible_at': newSuggestibleAt.toIso8601String(),
-            'deferral': newDeferral,
-          })
-          .eq('id', currentTask.id)
-          .eq('owner_id', currentUserId);
+      await ApiClient.updateTaskSuggestibleAt(
+          currentTask.id, newSuggestibleAt.toIso8601String());
+      await ApiClient.updateTaskDeferral(currentTask.id, newDeferral);
 
       // Update cache
       final updatedTask = Task(
@@ -425,6 +448,7 @@ class Task {
         categoryId: currentTask.categoryId,
         headline: currentTask.headline,
         notes: currentTask.notes,
+        synopsis: currentTask.synopsis,
         ownerId: currentTask.ownerId,
         createdAt: currentTask.createdAt,
         suggestibleAt: newSuggestibleAt,
@@ -612,7 +636,7 @@ class Task {
   /// Returns true if the link is already present, false otherwise.
   /// This method handles both HTML links and plain URLs.
   bool hasLink(String link) {
-    print('Task.hasLink: Checking if task "${headline}" has link: $link');
+    print('Task.hasLink: Checking if task "$headline" has link: $link');
     print('Task.hasLink: Task links: $links');
 
     // Extract URL from the link to check
@@ -692,16 +716,8 @@ class Task {
         'Task.checkForDuplicateLinkInCategory: Checking for URL: $extractedUrl');
 
     // Get existing tasks for the current category
-    final response = await supabase
-        .from('Tasks')
-        .select()
-        .eq('category_id', categoryId)
-        .eq('owner_id', userId)
-        .order('created_at', ascending: false);
-
-    final existingTasks = (response as List)
-        .map((json) => Task.fromJson(json as Map<String, dynamic>))
-        .toList();
+    final existingTasks =
+        await ApiClient.getTasksByCategoryAndUser(categoryId, userId);
 
     print(
         'Task.checkForDuplicateLinkInCategory: Checking against ${existingTasks.length} existing tasks');
@@ -732,11 +748,7 @@ class Task {
 
       // Update in database
       print('Task.reviveTask(): Updating database for task ${task.id}');
-      await supabase
-          .from('Tasks')
-          .update({'suggestible_at': now.toIso8601String()})
-          .eq('id', task.id)
-          .eq('owner_id', userId);
+      await ApiClient.updateTaskSuggestibleAt(task.id, now.toIso8601String());
       print('Task.reviveTask(): Database update completed');
 
       // Update cache
@@ -745,6 +757,7 @@ class Task {
         categoryId: task.categoryId,
         headline: task.headline,
         notes: task.notes,
+        synopsis: task.synopsis,
         ownerId: task.ownerId,
         createdAt: task.createdAt,
         suggestibleAt: now, // Set to current time
@@ -792,12 +805,7 @@ class Task {
     // Compare UTC times directly to avoid timezone conversion issues
     final now = DateTime.now().toUtc();
 
-    // Debug logging
-    print('Task.isSuggestible for "$headline":');
-    print('  suggestibleAt (UTC): $suggestibleAt');
-    print('  now (UTC): $now');
-    print('  isAfter: ${suggestibleAt!.isAfter(now)}');
-    print('  result: ${!suggestibleAt!.isAfter(now)}');
+    // Compare UTC times to avoid timezone issues
 
     return !suggestibleAt!.isAfter(now);
   }
@@ -826,18 +834,14 @@ class Task {
   static Future<void> resetGuestTasks() async {
     try {
       print('Task.resetGuestTasks(): Resetting guest tasks...');
-      const guestUserId =
-          '35ed4d18-84b4-481d-96f4-1405c2f2f1ae'; // Guest user ID
+
+      // Use the centralized guest user ID
+      const guestUserId = GuestUserManager.guestUserId;
 
       // Update all tasks owned by the guest user
-      final response = await supabase.from('Tasks').update({
-        'suggestible_at': null,
-        'deferral': null,
-        'finished': false,
-      }).eq('owner_id', guestUserId);
+      await ApiClient.updateGuestTasks(guestUserId);
 
       print('Task.resetGuestTasks(): Guest tasks reset successfully');
-      print('Task.resetGuestTasks(): Reset response: $response');
 
       // Clear the cache since we've modified the database
       clearCache();
