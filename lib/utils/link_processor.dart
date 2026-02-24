@@ -7,8 +7,10 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/site_configurations.dart';
+import 'package:meaning_to/utils/site_table.dart';
 import 'package:meaning_to/utils/youtube_api.dart';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
@@ -329,6 +331,94 @@ class LinkProcessor {
     return finalTitle;
   }
 
+  // ── site_table.dart helpers ───────────────────────────────────────────────
+
+  /// Determine the current [FetchContext] based on the runtime environment.
+  static FetchContext _getFetchContext() {
+    if (kIsWeb) return FetchContext.web;
+    bool isTest = false;
+    try {
+      isTest = Platform.environment.containsKey('FLUTTER_TEST');
+    } catch (_) {}
+    return isTest ? FetchContext.test : FetchContext.native;
+  }
+
+  /// Build the URL to GET for a given [FetchMethod].
+  /// Returns null for [FetchMethod.youtubeApi] (handled separately).
+  static String? _buildFetchUrl(FetchMethod method, String url) {
+    switch (method) {
+      case FetchMethod.direct:
+        return url;
+      case FetchMethod.allorigins:
+        return 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
+      case FetchMethod.corsproxy:
+        return 'https://corsproxy.io/?${Uri.encodeComponent(url)}';
+      case FetchMethod.corsanywhere:
+        return 'https://cors-anywhere.herokuapp.com/$url';
+      case FetchMethod.youtubeApi:
+        return null;
+    }
+  }
+
+  /// Extract a title from [document] using the ordered [strategies].
+  /// Returns the first non-empty result, skipping [TitleSource.youtubeApi]
+  /// (which must be resolved before HTML parsing).
+  static String? _extractTitleFromStrategies(
+      dom.Document document, List<TitleStrategy> strategies) {
+    for (final strategy in strategies) {
+      if (strategy.source == TitleSource.youtubeApi) continue;
+      String? title;
+      try {
+        switch (strategy.source) {
+          case TitleSource.metaName:
+            title = document
+                .querySelector('meta[name="${strategy.selector}"]')
+                ?.attributes['content']
+                ?.trim();
+          case TitleSource.metaProperty:
+            title = document
+                .querySelector('meta[property="${strategy.selector}"]')
+                ?.attributes['content']
+                ?.trim();
+          case TitleSource.cssText:
+            title = document.querySelector(strategy.selector!)?.text.trim();
+          case TitleSource.cssDirectText:
+            final el = document.querySelector(strategy.selector!);
+            if (el != null) {
+              final buf = StringBuffer();
+              for (final node in el.nodes) {
+                if (node.nodeType == 3) buf.write(node.text ?? '');
+              }
+              title = buf.toString().trim();
+            }
+          case TitleSource.htmlTitle:
+            title = document.querySelector('title')?.text.trim();
+          case TitleSource.h1:
+            title = document.querySelector('h1')?.text.trim();
+          case TitleSource.youtubeApi:
+            break; // unreachable
+        }
+      } catch (e) {
+        print('LinkProcessor: Title strategy ${strategy.source} failed: $e');
+      }
+      if (title != null && title.isNotEmpty) return title;
+    }
+    return null;
+  }
+
+  /// Apply a list of regex strip-suffix patterns to [title],
+  /// case-insensitively, in order.
+  static String _applyStripSuffixes(String title, List<String> patterns) {
+    String result = title;
+    for (final pattern in patterns) {
+      result =
+          result.replaceFirst(RegExp(pattern, caseSensitive: false), '').trim();
+    }
+    return result;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   /// Fetches both title and description from a webpage in one request
   static Future<WebpageContent?> fetchWebpageContent(String url) async {
     try {
@@ -360,275 +450,107 @@ class LinkProcessor {
     }
   }
 
-  /// Try proxy fallback when direct request fails on web
-  static Future<WebpageContent?> _tryProxyFallback(String url) async {
-    print('LinkProcessor: Trying proxy fallback for: $url');
-
-    final proxyUrls = [
-      'https://corsproxy.io/?${Uri.encodeComponent(url)}',
-      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}',
-      'https://cors-anywhere.herokuapp.com/$url',
-    ];
-
-    for (final proxyUrl in proxyUrls) {
-      try {
-        print('LinkProcessor: Attempting proxy: ${proxyUrl.split('?')[0]}...');
-
-        final response = await http.get(
-          Uri.parse(proxyUrl),
-          headers: {
-            'User-Agent':
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-          },
-        ).timeout(const Duration(seconds: 10));
-
-        if (response.statusCode == 200 && response.body.length > 500) {
-          print(
-              'LinkProcessor: Proxy successful with ${proxyUrl.split('?')[0]}');
-
-          // Parse and extract title/description
-          // Explicitly decode as UTF-8 to handle special characters (e.g., Björk)
-          final htmlContent = utf8.decode(response.bodyBytes, allowMalformed: true);
-          final document = html_parser.parse(htmlContent);
-          final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
-
-          final title = siteConfig.extractTitle(document);
-          final description = siteConfig.extractDescription(document);
-
-          if (title != null && title.isNotEmpty) {
-            final content =
-                WebpageContent(title: title, description: description);
-            _cacheContent(url, content);
-            return content;
-          }
-        }
-      } catch (e) {
-        print('LinkProcessor: Proxy ${proxyUrl.split('?')[0]} failed: $e');
-        continue;
-      }
-    }
-
-    print('LinkProcessor: All proxy attempts failed');
-    return null;
-  }
-
-  /// Internal method to perform the actual webpage content fetch
+  /// Internal method to perform the actual webpage content fetch.
+  ///
+  /// Uses [SiteTable] to determine the ordered [FetchMethod] list for the
+  /// current [FetchContext], then tries each method in turn.  The first that
+  /// yields a non-empty title wins.  Description extraction still uses the
+  /// legacy [SiteConfigRegistry] (descriptions are not yet in site_table).
   static Future<WebpageContent?> _performWebpageContentFetch(String url) async {
     try {
-      // Try direct request first
-      http.Response? response;
-      try {
-        final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
+      final fetchContext = _getFetchContext();
+      final entry = SiteTable.entryForUrl(url);
+      final methods = SiteTable.fetchMethodsFor(url, fetchContext);
 
-        // For YouTube with API available, try API first without fetching HTML
-        if (url.contains('youtube.com') && YouTubeApiService.isAvailable) {
-          print('LinkProcessor: Attempting YouTube API extraction first');
+      if (methods.isEmpty) {
+        print(
+            'LinkProcessor: No fetch methods for $url in context $fetchContext');
+        return null;
+      }
+
+      print(
+          'LinkProcessor: ${entry.displayName} — methods $methods (context: $fetchContext)');
+
+      for (final method in methods) {
+        // ── YouTube API ──────────────────────────────────────────────────
+        if (method == FetchMethod.youtubeApi) {
+          if (!YouTubeApiService.isAvailable) continue;
+          print('LinkProcessor: Attempting YouTube API extraction');
           try {
             final videoInfo = await YouTubeApiService.getVideoInfoFromUrl(url);
             if (videoInfo != null) {
-              String title = videoInfo.title;
-              // Apply title processing from site config
-              if (siteConfig.customSettings?['truncateTitle'] == true) {
-                final pattern = siteConfig
-                    .customSettings?['titleTruncationPattern'] as String?;
-                if (pattern != null) {
-                  title = title.replaceFirst(RegExp(pattern), '').trim();
-                }
-              }
-              print(
-                  'LinkProcessor: Successfully extracted title via YouTube API: "$title"');
-              final content = WebpageContent(
-                  title: title, description: videoInfo.description);
+              final title =
+                  _applyStripSuffixes(videoInfo.title, entry.stripSuffixes);
+              print('LinkProcessor: YouTube API title: "$title"');
+              final content =
+                  WebpageContent(title: title, description: videoInfo.description);
               _cacheContent(url, content);
               return content;
             }
           } catch (e) {
-            print('LinkProcessor: YouTube API extraction failed: $e');
+            print('LinkProcessor: YouTube API failed: $e');
           }
-          print(
-              'LinkProcessor: YouTube API failed, falling back to web scraping with proxy');
+          continue;
         }
 
-        // Check if we need to use proxy for web based on site configuration or API fallback
-        if (kIsWeb &&
-            (SiteConfigRegistry.shouldUseProxy(url) ||
-                siteConfig.needsProxyForFallback())) {
-          print(
-              'LinkProcessor: Web environment detected, using CORS proxy for: $url');
+        // ── HTTP fetch ───────────────────────────────────────────────────
+        final fetchUrl = _buildFetchUrl(method, url);
+        if (fetchUrl == null) continue;
 
-          // Try multiple proxy services for better reliability
-          // Order matters: corsproxy.io works best for YouTube
-          final proxyUrls = [
-            'https://corsproxy.io/?${Uri.encodeComponent(url)}',
-            'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}',
-            'https://cors-anywhere.herokuapp.com/$url',
-          ];
+        try {
+          final t0 = DateTime.now();
+          print('🕐 LinkProcessor: Starting $method fetch');
 
-          bool proxySuccess = false;
-
-          for (final proxyUrl in proxyUrls) {
-            try {
-              print(
-                  'LinkProcessor: Attempting proxy: ${proxyUrl.split('?')[0]}...');
-
-              final httpRequestStartTime = DateTime.now();
-              print(
-                  '🕐 LinkProcessor: Starting HTTP GET (proxy) at ${httpRequestStartTime.toIso8601String()}');
-
-              response = await http.get(
-                Uri.parse(proxyUrl),
-                headers: {
-                  'User-Agent':
-                      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-                },
-              ).timeout(const Duration(seconds: 10));
-
-              final httpRequestEndTime = DateTime.now();
-              final httpRequestDuration =
-                  httpRequestEndTime.difference(httpRequestStartTime);
-              print(
-                  '🕐 LinkProcessor: HTTP GET (proxy) completed in ${httpRequestDuration.inMilliseconds}ms');
-
-              if (response.statusCode == 200 && response.body.length > 1000) {
-                // For YouTube, validate that we actually got YouTube content
-                bool isValidYouTubeContent = true;
-                if (url.contains('youtube.com')) {
-                  // Check for basic YouTube indicators in the content
-                  final hasYouTubeContent =
-                      response.body.contains('ytInitialData') ||
-                          response.body.contains('watch?v=') ||
-                          response.body.contains('<title>') ||
-                          response.body.contains('meta name="title"');
-                  isValidYouTubeContent = hasYouTubeContent;
-                  print(
-                      'LinkProcessor: YouTube content validation: $isValidYouTubeContent');
-                }
-
-                if (isValidYouTubeContent) {
-                  print(
-                      'LinkProcessor: Proxy successful with ${proxyUrl.split('?')[0]}');
-                  proxySuccess = true;
-                  break;
-                } else {
-                  print(
-                      'LinkProcessor: Proxy returned invalid YouTube content');
-                }
-              } else {
-                print(
-                    'LinkProcessor: Proxy returned status ${response.statusCode}, body length: ${response.body.length}');
-              }
-            } catch (e) {
-              print(
-                  'LinkProcessor: Proxy ${proxyUrl.split('?')[0]} failed: $e');
-              continue;
-            }
-          }
-
-          if (!proxySuccess) {
-            print(
-                'LinkProcessor: All proxy attempts failed, unable to fetch content');
-            return null;
-          }
-        } else {
-          // Direct fetch for mobile or non-proxied sites
-          final httpRequestStartTime = DateTime.now();
-          print(
-              '🕐 LinkProcessor: Starting HTTP GET (direct) at ${httpRequestStartTime.toIso8601String()}');
-
-          response = await http.get(
-            Uri.parse(url),
+          final response = await http.get(
+            Uri.parse(fetchUrl),
             headers: {
               'User-Agent':
                   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
             },
-          );
+          ).timeout(const Duration(seconds: 10));
 
-          final httpRequestEndTime = DateTime.now();
-          final httpRequestDuration =
-              httpRequestEndTime.difference(httpRequestStartTime);
           print(
-              '🕐 LinkProcessor: HTTP GET (direct) completed in ${httpRequestDuration.inMilliseconds}ms');
-        }
+              '🕐 LinkProcessor: $method completed in ${DateTime.now().difference(t0).inMilliseconds}ms');
 
-        if (response == null || response.statusCode != 200) {
-          print(
-              'LinkProcessor: HTTP ${response?.statusCode ?? 'null'} for $url');
-
-          // On web, if direct request failed, try proxies as fallback
-          if (kIsWeb) {
+          if (response.statusCode != 200 || response.body.length < 500) {
             print(
-                'LinkProcessor: Direct request failed on web, trying proxy fallback...');
-            return await _tryProxyFallback(url);
+                'LinkProcessor: $method → HTTP ${response.statusCode}, ${response.body.length} bytes — skipping');
+            continue;
           }
-          return null;
-        }
-      } catch (e) {
-        print('LinkProcessor: Direct request failed: $e');
 
-        // On web, if direct request failed, try proxies as fallback
-        if (kIsWeb) {
-          print(
-              'LinkProcessor: Direct request failed on web, trying proxy fallback...');
-          return await _tryProxyFallback(url);
+          // Explicitly decode as UTF-8 to handle special characters (e.g., Björk)
+          final htmlContent =
+              utf8.decode(response.bodyBytes, allowMalformed: true);
+          final document = html_parser.parse(htmlContent);
+
+          final rawTitle =
+              _extractTitleFromStrategies(document, entry.title);
+          if (rawTitle == null || rawTitle.isEmpty) {
+            print(
+                'LinkProcessor: $method fetched OK but title extraction failed — trying next method');
+            continue;
+          }
+
+          final title = _applyStripSuffixes(rawTitle, entry.stripSuffixes);
+          print('LinkProcessor: $method title: "$title"');
+
+          // Description still uses the legacy SiteConfig system (not yet in site_table)
+          final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
+          final description = siteConfig.extractDescription(document);
+
+          final content = WebpageContent(title: title, description: description);
+          _cacheContent(url, content);
+          return content;
+        } catch (e) {
+          print('LinkProcessor: $method failed: $e');
+          continue;
         }
-        return null;
       }
 
-      final htmlParseStartTime = DateTime.now();
-      print(
-          '🕐 LinkProcessor: Starting HTML parsing at ${htmlParseStartTime.toIso8601String()}');
-
-      // Explicitly decode as UTF-8 to handle special characters (e.g., Björk)
-      final htmlContent = utf8.decode(response.bodyBytes, allowMalformed: true);
-      final document = html_parser.parse(htmlContent);
-
-      final htmlParseEndTime = DateTime.now();
-      final htmlParseDuration = htmlParseEndTime.difference(htmlParseStartTime);
-      print(
-          '🕐 LinkProcessor: HTML parsing completed in ${htmlParseDuration.inMilliseconds}ms');
-
-      String? title;
-      String? description;
-
-      // Extract title and description using site configuration
-      final titleExtractStartTime = DateTime.now();
-      print(
-          '🕐 LinkProcessor: Starting title/description extraction at ${titleExtractStartTime.toIso8601String()}');
-
-      final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
-      print(
-          'LinkProcessor: Using site configuration for ${siteConfig.displayName}');
-
-      // Use HTML parsing for title extraction (API was already tried above for YouTube)
-      title = siteConfig.extractTitle(document);
-
-      // Extract description using traditional HTML parsing
-      description = siteConfig.extractDescription(document);
-
-      final titleExtractEndTime = DateTime.now();
-      final titleExtractDuration =
-          titleExtractEndTime.difference(titleExtractStartTime);
-      print(
-          '🕐 LinkProcessor: Title/description extraction completed in ${titleExtractDuration.inMilliseconds}ms');
-
-      if (title != null && title.isNotEmpty) {
-        print('🕐 LinkProcessor: Successfully extracted title: "$title"');
-        if (description != null) {
-          print(
-              '🕐 LinkProcessor: Successfully extracted description length: ${description.length} chars');
-        }
-        final content = WebpageContent(title: title, description: description);
-
-        // Cache the result for future use
-        _cacheContent(url, content);
-
-        return content;
-      }
-
-      print('🕐 LinkProcessor: Failed to extract title from webpage');
+      print('LinkProcessor: All fetch methods exhausted for $url');
       return null;
     } catch (e) {
-      print('LinkProcessor: Error fetching content: $e');
+      print('LinkProcessor: Error in _performWebpageContentFetch: $e');
       return null;
     }
   }
@@ -664,57 +586,6 @@ class LinkProcessor {
   static void clearWebpageContentCache() {
     _webpageContentCache.clear();
     _cacheTimestamps.clear();
-  }
-
-  // JustWatch-specific extraction methods removed - now handled by SiteConfig system
-
-  /// Extract title from parsed document using generic methods
-  static String? _extractTitle(dom.Document document, String url) {
-    // Try different title extraction methods in priority order
-    String? title;
-
-    // Second priority: <title> tag
-    title = document.querySelector('title')?.text.trim();
-    if (title != null && title.isNotEmpty) {
-      // Site-specific processing now handled by SiteConfig system
-      return title;
-    }
-
-    // Third priority: Open Graph title
-    title = document
-        .querySelector('meta[property="og:title"]')
-        ?.attributes['content']
-        ?.trim();
-    if (title != null && title.isNotEmpty) {
-      if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
-        title = _truncateLetterboxdTitle(title);
-      } else if (url.contains('justwatch.com')) {
-        title = _truncateJustWatchTitle(title);
-      }
-      return title;
-    }
-
-    // Fourth priority: Twitter Card title
-    title = document
-        .querySelector('meta[name="twitter:title"]')
-        ?.attributes['content']
-        ?.trim();
-    if (title != null && title.isNotEmpty) {
-      if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
-        title = _truncateLetterboxdTitle(title);
-      } else if (url.contains('justwatch.com')) {
-        title = _truncateJustWatchTitle(title);
-      }
-      return title;
-    }
-
-    // Fifth priority: First h1 tag
-    title = document.querySelector('h1')?.text.trim();
-    if (title != null && title.isNotEmpty) {
-      return title;
-    }
-
-    return null;
   }
 
   static Future<String?> fetchWebpageTitle(String url) async {
@@ -1204,9 +1075,7 @@ class LinkProcessor {
     String? description;
 
     // Determine if we should fetch webpage content
-    final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
-    final shouldFetchContent =
-        _shouldFetchWebpageContent(url, linkText, siteConfig);
+    final shouldFetchContent = _shouldFetchWebpageContent(url, linkText);
 
     if (shouldFetchContent) {
       if (linkText == null || linkText.isEmpty) {
@@ -1353,25 +1222,17 @@ class LinkProcessor {
     return processedLink;
   }
 
-  /// Determines whether webpage content should be fetched for a given URL
-  static bool _shouldFetchWebpageContent(
-      String url, String? linkText, SiteConfig siteConfig) {
-    // Always fetch for specifically registered sites (JustWatch, Letterboxd, etc.)
-    if (siteConfig.domain != '*') {
-      return true;
-    }
+  /// Determines whether webpage content should be fetched for a given URL.
+  ///
+  /// Always fetches for sites with a specific [SiteTable] entry.  For the
+  /// generic fallback (empty domain), only fetches when no descriptive
+  /// [linkText] is available.
+  static bool _shouldFetchWebpageContent(String url, String? linkText) {
+    // Always fetch for specifically registered sites
+    if (SiteTable.entryForUrl(url).domain.isNotEmpty) return true;
 
-    // For unregistered sites using default config, fetch if:
-    // 1. No linkText provided (need to extract title)
-    // 2. LinkText is empty or just a URL (need better title)
-    if (linkText == null || linkText.isEmpty || linkText == url) {
-      return true;
-    }
-
-    // Don't fetch for unregistered sites when we already have descriptive linkText
-    // This avoids unnecessary requests while still allowing default config to work
-    // when content extraction is actually needed
-    return false;
+    // For generic/unregistered sites, fetch only if we need a title
+    return linkText == null || linkText.isEmpty || linkText == url;
   }
 }
 
