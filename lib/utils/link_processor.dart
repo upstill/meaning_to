@@ -454,8 +454,8 @@ class LinkProcessor {
   ///
   /// Uses [SiteTable] to determine the ordered [FetchMethod] list for the
   /// current [FetchContext], then tries each method in turn.  The first that
-  /// yields a non-empty title wins.  Description extraction still uses the
-  /// legacy [SiteConfigRegistry] (descriptions are not yet in site_table).
+  /// yields a non-empty title wins.  Description extraction uses the same
+  /// [SiteEntry.description] strategy list from [SiteTable].
   static Future<WebpageContent?> _performWebpageContentFetch(String url) async {
     try {
       final fetchContext = _getFetchContext();
@@ -534,9 +534,8 @@ class LinkProcessor {
           final title = _applyStripSuffixes(rawTitle, entry.stripSuffixes);
           print('LinkProcessor: $method title: "$title"');
 
-          // Description still uses the legacy SiteConfig system (not yet in site_table)
-          final siteConfig = SiteConfigRegistry.getConfigForUrl(url);
-          final description = siteConfig.extractDescription(document);
+          final description =
+              _extractTitleFromStrategies(document, entry.description);
 
           final content = WebpageContent(title: title, description: description);
           _cacheContent(url, content);

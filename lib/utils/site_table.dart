@@ -1,11 +1,9 @@
-/// Table-driven site configuration: fetch strategies and title extraction.
+/// Table-driven site configuration: fetch strategies, title extraction,
+/// and description extraction.
 ///
 /// [kSiteTable] is the single source of truth.  Entries are evaluated
 /// top-to-bottom; the first whose [SiteEntry.domain] the URL host contains
 /// wins.  The final entry (domain: '') is the default fallback.
-///
-/// Wiring to link_processor.dart is a follow-on task — this file is pure
-/// constants and introduces no runtime dependencies.
 
 // ── Enums ─────────────────────────────────────────────────────────────────
 
@@ -24,7 +22,8 @@ enum FetchMethod {
   youtubeApi, // YouTube Data API v3 (YouTube domain only)
 }
 
-/// How to locate the title text within the fetched HTML document.
+/// How to locate text within the fetched HTML document.
+/// Used for both title and description strategies.
 enum TitleSource {
   metaName, // <meta name="X" content="...">   — selector = name value
   metaProperty, // <meta property="X" content="..."> — selector = property value
@@ -79,6 +78,10 @@ class SiteEntry {
   /// First strategy that yields a non-empty string wins.
   final List<TitleStrategy> title;
 
+  /// Ordered description extraction strategies.
+  /// First strategy that yields a non-empty string wins.
+  final List<TitleStrategy> description;
+
   /// Regex patterns applied in sequence to strip suffixes from the title.
   /// Each is matched case-insensitively and replaced with ''.
   final List<String> stripSuffixes;
@@ -88,6 +91,7 @@ class SiteEntry {
     required this.displayName,
     required this.fetch,
     required this.title,
+    this.description = const [],
     this.stripSuffixes = const [],
   });
 }
@@ -109,6 +113,9 @@ const List<SiteEntry> kSiteTable = [
       TitleStrategy.cssDirectText('h1.title-detail-hero__details__title'),
       TitleStrategy.h1(),
     ],
+    description: [
+      TitleStrategy.css('div#synopsis p'),
+    ],
     stripSuffixes: [
       r'\s*\(\d{4}\).*$', // remove year and trailing text
       r'\s*streaming:?\s*where to watch.*$', // remove streaming footer text
@@ -127,6 +134,9 @@ const List<SiteEntry> kSiteTable = [
       TitleStrategy.css('h1.headline-1'),
       TitleStrategy.h1(),
     ],
+    description: [
+      TitleStrategy.css('.review .body-text p'),
+    ],
     stripSuffixes: [r'\s*\(\d{4}\).*$'],
   ),
 
@@ -141,6 +151,9 @@ const List<SiteEntry> kSiteTable = [
     title: [
       TitleStrategy.css('h1.headline-1'),
       TitleStrategy.h1(),
+    ],
+    description: [
+      TitleStrategy.css('.review .body-text p'),
     ],
     stripSuffixes: [r'\s*\(\d{4}\).*$'],
   ),
@@ -162,6 +175,11 @@ const List<SiteEntry> kSiteTable = [
       TitleStrategy.metaName('title'),
       TitleStrategy.htmlTitle(),
     ],
+    description: [
+      // youtubeApi description is captured directly in link_processor
+      TitleStrategy.metaName('description'),
+      TitleStrategy.metaProperty('og:description'),
+    ],
     stripSuffixes: [r'\s*-\s*YouTube\s*$'],
   ),
 
@@ -177,6 +195,10 @@ const List<SiteEntry> kSiteTable = [
       TitleStrategy.metaName('title'),
       TitleStrategy.metaProperty('og:title'),
     ],
+    description: [
+      TitleStrategy.metaName('description'),
+      TitleStrategy.metaProperty('og:description'),
+    ],
   ),
 
   SiteEntry(
@@ -191,6 +213,10 @@ const List<SiteEntry> kSiteTable = [
       TitleStrategy.css('h2.wave-text-title-bold'),
       TitleStrategy.htmlTitle(),
     ],
+    description: [
+      TitleStrategy.css('div[data-test="biography"]'),
+      TitleStrategy.metaProperty('og:description'),
+    ],
   ),
 
   SiteEntry(
@@ -204,6 +230,10 @@ const List<SiteEntry> kSiteTable = [
     title: [
       TitleStrategy.htmlTitle(), // "The Shawshank Redemption (1994) - IMDb"
       TitleStrategy.metaProperty('og:title'),
+    ],
+    description: [
+      TitleStrategy.metaName('description'),
+      TitleStrategy.metaProperty('og:description'),
     ],
     stripSuffixes: [r'\s*\(.*$'], // strips "(1994) - IMDb" and everything after
   ),
@@ -222,6 +252,10 @@ const List<SiteEntry> kSiteTable = [
       TitleStrategy.metaName('title'),
       TitleStrategy.metaProperty('og:title'),
     ],
+    description: [
+      TitleStrategy.metaName('description'),
+      TitleStrategy.metaProperty('og:description'),
+    ],
   ),
 
   // ── Default (must be last) ───────────────────────────────────────────────
@@ -238,6 +272,10 @@ const List<SiteEntry> kSiteTable = [
       TitleStrategy.metaName('title'),
       TitleStrategy.htmlTitle(),
       TitleStrategy.h1(),
+    ],
+    description: [
+      TitleStrategy.metaName('description'),
+      TitleStrategy.metaProperty('og:description'),
     ],
   ),
 ];
