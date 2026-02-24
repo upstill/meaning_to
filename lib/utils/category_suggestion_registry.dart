@@ -37,7 +37,11 @@ class CategorySuggestionRegistry {
     // boxd.it (Letterboxd short links)
     CategorySuggestionRule(domain: 'boxd.it', categoryIds: [1, 2]),
 
-    // Streaming music services
+    // YouTube — watch URLs suggest movies/shows
+    CategorySuggestionRule(domain: 'youtube.com', pathPattern: '/watch', categoryIds: [1]),
+
+    // Streaming music services — path-specific first, domain fallback last
+    CategorySuggestionRule(domain: 'tidal.com', pathPattern: '/playlist/', categoryIds: [74, 41]),
     CategorySuggestionRule(domain: 'tidal.com', categoryIds: STREAMING_MEDIA_CATEGORY_IDS),
     CategorySuggestionRule(domain: 'spotify.com', categoryIds: STREAMING_MEDIA_CATEGORY_IDS),
   ];

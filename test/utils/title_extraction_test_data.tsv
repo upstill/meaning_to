@@ -1,11 +1,67 @@
-URL	Expected Title	Category IDs			1	Watch a Movie
-			2	Start a TV Series
-			41	Try out some New Music
-			54	Play a Favorite Record
-			74	Put on a Playlist
-https://www.justwatch.com/us/movie/a-face-in-the-crowd	A Face in the Crowd	1
-https://www.justwatch.com/us/tv-show/pluribus	Pluribus	2
-https://letterboxd.com/film/killers-of-the-flower-moon/	Killers of the Flower Moon	1
-https://www.imdb.com/title/tt0111161/	Shawshank Redemption	1,2
-https://www.youtube.com/watch?v=HGJ7-GK43lg	True West
-https://www.amazon.com/dp/B085FP3VT1/
+URL	Expected Title	Category IDs				
+			1	Watch a Movie		
+			2	Start a TV Series		
+			41	Try out some New Music		
+			54	Play a Favorite Record		
+			74	Put on a Playlist		
+https://www.justwatch.com/us/movie/a-face-in-the-crowd	A Face in the Crowd	1				
+https://www.justwatch.com/us/tv-show/pluribus	Pluribus	2				
+https://letterboxd.com/film/killers-of-the-flower-moon/	Killers of the Flower Moon	1				
+https://www.imdb.com/title/tt0111161/	Shawshank Redemption	"1,2"				
+https://www.youtube.com/watch?v=HGJ7-GK43lg	True West	1				
+https://tidal.com/playlist/5610feae-12cd-4bca-8e21-e137d96f4182	Roxy Music Essentials	"74, 41"				
+https://bookshop.org/p/books/the-7-1-2-deaths-of-evelyn-hardcastle-stuart-turton/634eba725c4cba07	The 7 1/2 Deaths of Evelyn Hardcastle					
+https://boxd.it/e4uc	Phantom Thread					
+https://gggp.org/lightscape/	Lightscape 2025: San Francisco Botanical Garden Holiday Lights					
+https://letterboxd.com/film/killers-of-the-flower-moon/	Killers of the Flower Moon					
+https://www.ntathome.com/the-cherry-orchard	The Cherry Orchard					
+https://lookaway.app/	LookAway - The Best Break Reminder App for the Mac					
+https://maps.app.goo.gl/MKMcRZQGDndvx4hb9					
+https://maps.org/news/bulletin/modern-psychedelics-handbook/	"Modern Psychedelics, The Handbook of Mindful Exploration (An Excerpt) – Multidisciplinary Association for Psychedelic Studies – MAPS"					
+https://meaning-to.me/category/40					
+https://metsamusic.bandcamp.com/album/echos	Echos, by Metsa					
+https://music.youtube.com/browse/FEmusic_library_privately_owned_release_detailb_po_CPOc5fi74NWoORIbYWxsIG1vbWVudHMgbGVhZGluZyB0byB0aGlzIgNncG0
+https://music.youtube.com/playlist?list=OLAK5uy_mL7kPS-9HnW0jIX20BvO2ec0hv8N2bvpE&si=Rw2PafNsM8WZ_6zE
+https://open.spotify.com/album/1mFSq1sLWhflpnHi5vUDRY?si=zM8lusGKRnO9EpcL3Lxglg	Records of Resonance - Album by Blair Lineham | Spotify					
+https://play.asti.ga/storage/GDrive/?#Stray%20Music/Ministry%20Of%20Sound_%20The%20Karma%20Collection%202003
+https://playhousecinema.ca/movie/hamilton-premiere-wrong-husband-with-director-zacharias-kunuk	Wrong Husband
+https://qr.ae/pCqNR1
+https://redwoodhikes.com/EastBay/JoaquinMiller.html	Joaquin Miller Park					
+https://sfrecpark.org/m/newsflash/home/detail/2464	"Mayor Lurie Cuts Ribbon at SF’s Newest Park, Celebrates Activation of Another Public Space • San Francisco Recreation and Parks, CA"					
+https://tidal.com/album/10012792	Dub Side Of The Moon by Easy Star All-Stars on TIDAL					
+https://tidal.com/album/97552248	Mahala Rai Banda by Mahala Raï Banda on TIDAL					
+https://tidal.com/artist/1115	Jeff Buckley on TIDAL					
+https://tidal.com/artist/32723	Squeeze on TIDAL
+https://tidal.com/browse/album/151589995?u
+https://tidal.com/browse/album/35826861?u
+https://tidal.com/track/111062290
+https://tim.blog/2021/12/15/the-liberation-of-cosmic-insignificance-therapy/	The Liberation of Cosmic Insignificance Therapy - The Blog of Author Tim Ferriss					
+https://www.amazon.com/gp/video/detail/B0FKT6B5NJ/ref=atv_tv_hom_c_uDZhwG_brws_2_5?jic=52%7CCgdhbWNwbHVzCgdicml0Ym94EgxzdWJzY3JpcHRpb24SBHN2b2Q%3D
+https://watch.amazon.com/detail?gti=amzn1.dv.gti.acb36c4f-a668-0bac-e824-7d53bb484c19&ref_=atv_dp_share_seas&r=web
+https://www.amazon.com/James-Novel-Percival-Everett-ebook/dp/B0C8MGS6GR/ref=sr_1_1
+https://www.bbc.com/future/article/20260114-the-surprising-benefits-of-standing-on-one-leg	The surprising benefits of standing on one leg					
+https://www.hollywoodreporter.com/lists/most-anticipated-tv-shows-2026/	Most Anticipated TV Shows of 2026					
+https://www.justwatch.com/us/movie/10-things-i-hate-about-you	10 Things I Hate About You					
+https://www.justwatch.com/us/tv-show/death-and-other-details	Death and Other Details					
+https://www.ncry.org/	Niles Canyon Railway
+https://www.netflix.com/watch/81713948	Love, Death & Robots
+https://www.npr.org/2023/08/22/1195337204/a-guide-to-forest-bathing	nature walks
+https://www.nytimes.com/2025/08/04/technology/rationalists-ai-lighthaven.html
+https://www.justwatch.com/us/movie/10-things-i-hate-about-you	10 Things I Hate About You					
+https://www.justwatch.com/us/tv-show/your-honor-2020-0	Your Honor					
+https://www.ncry.org/	Niles Canyon Railway
+https://www.netflix.com/us/title/81692597?s=a&trkid=13747225&shareType=Title&shareUuid=b9eded7d-393e-4a4b-958e-e38d21a9868f&trg=more&unifiedEntityIdEncoded=Video%3A81692597&vlang=en&clip=82703334	Watch Taylor Tomlinson: Prodigal Daughter | Netflix Official Site					
+https://www.netflix.com/watch/81713948	Netflix					
+https://www.npr.org/2023/08/22/1195337204/a-guide-to-forest-bathing	nature walks
+https://www.nytimes.com/2025/08/04/technology/rationalists-ai-lighthaven.html
+https://www.nytimes.com/2025/10/24/arts/music/olivia-dean.html?smid=nytcore-android-share
+https://www.nytimes.com/2025/12/12/arts/television/netflix-expiring-movies-shows-january.html?#:~:text=%E2%80%98Captain%20Phillips%E2%80%99%20(Jan.%201)
+https://www.nytimes.com/2026/02/08/opinion/shakers-quakers-testament-ann-lee.html?unlocked_article_code=1.LVA.Awuh.Bho0qFCb77D5&smid=url-share
+https://www.sfchronicle.com/california/article/amargosa-river-monument-california-21200944.php
+"https://www.sfchronicle.com/projects/2026/things-to-do-sf/?noapp=true&sid=5476f82b3b35d0d754938d5d&ss=A&st_rid=dd7309d7-9603-49e1-bb38-9465f37aac13#:~:text=Stroll%20through-,Lightscape%20at%20the%20San%20Francisco%20Botanical%20Garden,-1199%209th%20Ave"	26 San Francisco things to do in 2026					
+https://www.theatlantic.com/magazine/archive/2025/09/canada-euthanasia-demand-maid-policy/683562/?lctg=6050ea384953a53f148f76c2	Canada Is Killing Itself					
+https://www.thebulwark.com/p/children-in-peril-are-powering-awards-season-hamnet-if-i-had-legs-kick-you-train-dreams	Children in Peril Are Powering Awards Season					
+https://www.youtube.com/@MaisyMouse	Maisy Mouse Official					
+https://www.youtube.com/watch?v=gQUHVYYHTb0	An Absurdly Deep Dive into Apollo 13					
+https://www.sfchronicle.com/california/article/amargosa-river-monument-california-21200944.php
+https://www.sfchronicle.com/projects/2025/bay-area-downtown-day-trip/

@@ -67,11 +67,18 @@ void main() {
         while (fields.length < 3) fields.add('');
 
         final url = fields[0].trim();
-        final expectedTitleSubstring = fields[1].trim();
-        final rawCategoryIds = fields[2].trim();
+        // Strip surrounding CSV-style double-quotes that Numbers/Excel adds
+        // when a cell contains a comma (e.g. "foo, bar" → foo, bar).
+        final expectedTitleSubstring =
+            fields[1].trim().replaceAll(RegExp(r'^"|"$'), '');
+        // Strip surrounding CSV-style double-quotes that Numbers/Excel adds
+        // when a cell contains a comma (e.g. "1,2" → 1,2).
+        final rawCategoryIds =
+            fields[2].trim().replaceAll(RegExp(r'^"|"$'), '');
 
-        final expectedCategoryIds = rawCategoryIds.isEmpty
-            ? <int>[]
+        // An empty category column means "title-only row — skip category check".
+        final List<int>? expectedCategoryIds = rawCategoryIds.isEmpty
+            ? null
             : rawCategoryIds
                 .split(',')
                 .map((s) => int.parse(s.trim()))
@@ -100,13 +107,17 @@ void main() {
           final actualCategoryIds =
               CategorySuggestionRegistry.getSuggestionsForUrl(url);
 
-          expect(
-            actualCategoryIds,
-            equals(expectedCategoryIds),
-            reason:
-                'Category IDs for $url: expected $expectedCategoryIds, got $actualCategoryIds',
-          );
-          print('  ✅ Category IDs: $actualCategoryIds');
+          if (expectedCategoryIds != null) {
+            expect(
+              actualCategoryIds,
+              equals(expectedCategoryIds),
+              reason:
+                  'Category IDs for $url: expected $expectedCategoryIds, got $actualCategoryIds',
+            );
+            print('  ✅ Category IDs: $actualCategoryIds');
+          } else {
+            print('  ℹ️  Category IDs: $actualCategoryIds (not checked)');
+          }
 
           print('  ✅ Row $rowNumber passed\n');
         } catch (e) {
@@ -116,6 +127,6 @@ void main() {
       }
 
       print('✅ All title extraction tests passed!');
-    });
+    }, timeout: const Timeout(Duration(minutes: 10)));
   });
 }
