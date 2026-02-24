@@ -313,6 +313,20 @@ class SiteConfigRegistry {
         'useMetaAttributes': true, // Extract from attributes, not text content
       },
     ),
+    'amazon.com': const SiteConfig(
+      domain: 'amazon.com',
+      displayName: 'Amazon',
+      cssSelectors: {
+        'title': 'meta[name="title"]',         // Primary: meta name="title"
+        'title_fallback': 'meta[property="og:title"]', // Fallback: OG title
+        'description': 'meta[name="description"]',
+        'description_fallback': 'meta[property="og:description"]',
+      },
+      requiresProxy: true, // Amazon blocks direct non-browser requests
+      customSettings: {
+        'useMetaAttributes': true,
+      },
+    ),
     'tidal.com': const SiteConfig(
       domain: 'tidal.com',
       displayName: 'TIDAL',
