@@ -1,45 +1,54 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:meaning_to/utils/link_processor.dart';
-import 'package:meaning_to/utils/site_configurations.dart';
-import 'package:flutter/foundation.dart';
+import 'package:meaning_to/utils/site_table.dart';
 
 void main() {
   group('YouTube Proxy Tests', () {
-    test('YouTube should require proxy for web', () {
+    test('YouTube web fetch methods do not start with direct (proxy required)',
+        () {
       final url = 'https://www.youtube.com/watch?v=qd1RXxf2LsQ';
+      final entry = SiteTable.entryForUrl(url);
+      final webMethods = entry.fetch[FetchContext.web] ?? [];
 
-      // Test that YouTube is configured to use proxy
-      final shouldUseProxy = SiteConfigRegistry.shouldUseProxy(url);
-      expect(shouldUseProxy, isTrue, reason: 'YouTube should require proxy for web environments');
-
-      // Test that the configuration is correctly set
-      final config = SiteConfigRegistry.getConfigForUrl(url);
-      expect(config.requiresProxy, isTrue, reason: 'YouTube config should have requiresProxy set to true');
-      expect(config.domain, equals('youtube.com'), reason: 'Should use YouTube-specific configuration');
+      expect(entry.domain, equals('youtube.com'),
+          reason: 'Should use YouTube-specific configuration');
+      expect(webMethods.contains(FetchMethod.direct), isFalse,
+          reason:
+              'YouTube should not use direct fetch on web (proxy or API required)');
+      expect(
+          webMethods.first == FetchMethod.youtubeApi ||
+              webMethods.first == FetchMethod.corsproxy ||
+              webMethods.first == FetchMethod.allorigins,
+          isTrue,
+          reason: 'YouTube web should prefer API or proxy over direct fetch');
     });
 
-    test('Verify proxy URL construction', () async {
+    test('Verify proxy URL construction', () {
       final url = 'https://www.youtube.com/watch?v=qd1RXxf2LsQ';
+      final entry = SiteTable.entryForUrl(url);
+      final webMethods = entry.fetch[FetchContext.web] ?? [];
 
-      // The system should construct a proxy URL like this when kIsWeb is true
-      final expectedProxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
+      // At least one proxy method should be present
+      final hasProxy = webMethods.any((m) =>
+          m == FetchMethod.allorigins ||
+          m == FetchMethod.corsproxy ||
+          m == FetchMethod.corsanywhere);
+      expect(hasProxy, isTrue,
+          reason: 'YouTube should have at least one proxy method for web');
 
-      print('Original URL: $url');
-      print('Expected proxy URL: $expectedProxyUrl');
-
-      // Verify URL encoding
+      // Verify URL encoding works correctly
       expect(Uri.encodeComponent(url), contains('https%3A%2F%2Fwww.youtube.com'));
     });
 
-    test('Non-proxied sites should not require proxy', () {
+    test('Non-proxied sites use direct fetch first on web', () {
       final url = 'https://example.com/test';
+      final entry = SiteTable.entryForUrl(url);
+      final webMethods = entry.fetch[FetchContext.web] ?? [];
 
-      final shouldUseProxy = SiteConfigRegistry.shouldUseProxy(url);
-      expect(shouldUseProxy, isFalse, reason: 'Example.com should not require proxy');
-
-      final config = SiteConfigRegistry.getConfigForUrl(url);
-      expect(config.domain, equals('*'), reason: 'Should use default configuration');
-      expect(config.requiresProxy, isFalse, reason: 'Default config should not require proxy');
+      expect(entry.domain, equals(''),
+          reason: 'example.com should use the default (empty domain) entry');
+      expect(webMethods.isNotEmpty, isTrue);
+      expect(webMethods.first, equals(FetchMethod.direct),
+          reason: 'Default config should try direct fetch first on web');
     });
   });
 }
