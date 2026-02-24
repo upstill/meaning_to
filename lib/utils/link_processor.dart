@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:meaning_to/utils/api_client.dart';
-import 'package:meaning_to/utils/site_configurations.dart';
 import 'package:meaning_to/utils/site_table.dart';
 import 'package:meaning_to/utils/youtube_api.dart';
 import 'dart:convert';
@@ -305,32 +304,6 @@ class LinkProcessor {
     return LinkType.other;
   }
 
-  /// Truncates Letterboxd titles at the year in parentheses
-  /// Example: "Phantom Thread (2017) directed by..." -> "Phantom Thread"
-  static String _truncateLetterboxdTitle(String title) {
-    // Look for pattern like " (YYYY)" where YYYY is a 4-digit year
-    final yearPattern = RegExp(r'\s*\(\d{4}\).*$');
-    final truncated = title.replaceFirst(yearPattern, '').trim();
-
-    // Remove any invisible characters at the beginning (like zero-width space)
-    return truncated.replaceFirst(RegExp(r'^\u200E?'), '');
-  }
-
-  /// Truncates JustWatch titles at the year in parentheses
-  /// Example: "K Pop Demon Hunters (2023)" -> "K Pop Demon Hunters"
-  static String _truncateJustWatchTitle(String title) {
-    // Look for pattern like " (YYYY)" where YYYY is a 4-digit year
-    final yearPattern = RegExp(r'\s*\(\d{4}\).*$');
-    final truncated = title.replaceFirst(yearPattern, '').trim();
-
-    // Also remove "streaming: where to watch online?" suffix if present
-    final streamingPattern =
-        RegExp(r'\s*streaming:?\s*where to watch.*$', caseSensitive: false);
-    final finalTitle = truncated.replaceFirst(streamingPattern, '').trim();
-
-    return finalTitle;
-  }
-
   // ── site_table.dart helpers ───────────────────────────────────────────────
 
   /// Determine the current [FetchContext] based on the runtime environment.
@@ -594,12 +567,18 @@ class LinkProcessor {
       // Try direct request first
       http.Response response;
       try {
-        // Check if we need to use proxy for web based on site configuration
-        if (kIsWeb && SiteConfigRegistry.shouldUseProxy(url)) {
-          // Temporarily use allorigins.win proxy until Vercel API deploys
-          final proxyUrl =
+        // Use site_table fetch context for proxy decision
+        final fetchContext = _getFetchContext();
+        final methods = SiteTable.fetchMethodsFor(url, fetchContext);
+        final useProxy = methods.isNotEmpty && methods.first != FetchMethod.direct && methods.first != FetchMethod.youtubeApi;
+        if (kIsWeb && useProxy) {
+          final proxyMethod = methods.firstWhere(
+            (m) => m != FetchMethod.direct && m != FetchMethod.youtubeApi,
+            orElse: () => FetchMethod.allorigins,
+          );
+          final proxyUrl = _buildFetchUrl(proxyMethod, url) ??
               'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
-          print('LinkProcessor: Using proxy for web: $proxyUrl');
+          print('LinkProcessor: Using proxy for web: $proxyMethod');
           response = await http.get(Uri.parse(proxyUrl));
 
           // Log the full response for debugging - write to file to avoid console truncation
@@ -716,97 +695,11 @@ class LinkProcessor {
       final htmlContent = utf8.decode(response.bodyBytes, allowMalformed: true);
       final document = html_parser.parse(htmlContent);
 
-      // First priority: JustWatch-specific CSS selector
-      if (url.contains('justwatch.com')) {
-        final titleElement =
-            document.querySelector('h1.title-detail-hero__details__title');
-        if (titleElement != null) {
-          // Get only direct text content, not nested spans (which contain the year)
-          String directText = '';
-          for (final node in titleElement.nodes) {
-            if (node.nodeType == 3) {
-              // Text node
-              directText += node.text ?? '';
-            }
-          }
-          final justWatchTitle = directText.trim();
-          if (justWatchTitle.isNotEmpty) {
-            print(
-                'LinkProcessor: Found JustWatch title via CSS selector (direct text only): "$justWatchTitle"');
-            return justWatchTitle;
-          }
-        }
-      }
-
-      // Second priority: <title> tag
-      var title = document.querySelector('title')?.text.trim();
-      print('LinkProcessor: Title tag found: "$title"');
-      if (title != null && title.isNotEmpty) {
-        // Special handling for Letterboxd URLs - truncate at year in parentheses
-        if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
-          title = _truncateLetterboxdTitle(title);
-          print('LinkProcessor: Truncated Letterboxd title: "$title"');
-        }
-        // Special handling for JustWatch URLs - truncate at year and streaming text
-        else if (url.contains('justwatch.com')) {
-          title = _truncateJustWatchTitle(title);
-          print('LinkProcessor: Truncated JustWatch title: "$title"');
-        }
-        print('LinkProcessor: Found title from <title> tag: "$title"');
-        return title;
-      }
-
-      // Second priority: Open Graph title
-      title = document
-          .querySelector('meta[property="og:title"]')
-          ?.attributes['content']
-          ?.trim();
-      if (title != null && title.isNotEmpty) {
-        // Special handling for Letterboxd URLs - truncate at year in parentheses
-        if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
-          title = _truncateLetterboxdTitle(title);
-          print('LinkProcessor: Truncated Letterboxd og:title: "$title"');
-        }
-        // Special handling for JustWatch URLs - truncate at year and streaming text
-        else if (url.contains('justwatch.com')) {
-          title = _truncateJustWatchTitle(title);
-          print('LinkProcessor: Truncated JustWatch og:title: "$title"');
-        }
-        print('LinkProcessor: Found title from og:title: "$title"');
-        return title;
-      }
-
-      // Third priority: Twitter Card title
-      title = document
-          .querySelector('meta[name="twitter:title"]')
-          ?.attributes['content']
-          ?.trim();
-      if (title != null && title.isNotEmpty) {
-        // Special handling for Letterboxd URLs - truncate at year in parentheses
-        if (url.contains('letterboxd.com') || url.contains('boxd.it')) {
-          title = _truncateLetterboxdTitle(title);
-          print('LinkProcessor: Truncated Letterboxd twitter:title: "$title"');
-        }
-        // Special handling for JustWatch URLs - truncate at year and streaming text
-        else if (url.contains('justwatch.com')) {
-          title = _truncateJustWatchTitle(title);
-          print('LinkProcessor: Truncated JustWatch twitter:title: "$title"');
-        }
-        print('LinkProcessor: Found title from twitter:title: "$title"');
-        return title;
-      }
-
-      // Fourth priority: First h1 tag
-      title = document.querySelector('h1')?.text.trim();
-      if (title != null && title.isNotEmpty) {
-        print('LinkProcessor: Found title from h1: "$title"');
-        return title;
-      }
-
-      // Fifth priority: First h2 tag
-      title = document.querySelector('h2')?.text.trim();
-      if (title != null && title.isNotEmpty) {
-        print('LinkProcessor: Found title from h2: "$title"');
+      final entry = SiteTable.entryForUrl(url);
+      final rawTitle = _extractTitleFromStrategies(document, entry.title);
+      if (rawTitle != null && rawTitle.isNotEmpty) {
+        final title = _applyStripSuffixes(rawTitle, entry.stripSuffixes);
+        print('LinkProcessor: fetchWebpageTitle extracted: "$title"');
         return title;
       }
 
