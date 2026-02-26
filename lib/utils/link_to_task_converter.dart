@@ -224,6 +224,29 @@ class LinkToTaskConverter {
         return cleanUri.toString();
       }
 
+      // For JustWatch URLs, remove trailing /u (user tracking suffix) and strip
+      // all query parameters (canonical JustWatch URLs never use query params).
+      if (uri.host.contains('justwatch.com')) {
+        String path = uri.path;
+        // Remove trailing /u or /u/
+        if (path.endsWith('/u/')) {
+          path = path.substring(0, path.length - 3);
+        } else if (path.endsWith('/u')) {
+          path = path.substring(0, path.length - 2);
+        }
+        final cleanUri = Uri(
+          scheme: uri.scheme,
+          userInfo: uri.userInfo,
+          host: uri.host,
+          port: uri.hasPort ? uri.port : null,
+          path: path,
+          // No queryParameters: canonical JustWatch URLs never need query params
+        );
+        print(
+            'LinkToTaskConverter: Normalized JustWatch URL from "$cleanUrl" to "${cleanUri.toString()}"');
+        return cleanUri.toString();
+      }
+
       // For IMDb URLs, remove ALL query parameters (they're never needed)
       // The canonical IMDb URL is just: https://www.imdb.com/title/tt1234567/
       if (uri.host.contains('imdb.com')) {
@@ -267,7 +290,8 @@ class LinkToTaskConverter {
         'gclid',
         'ref',
         'source',
-        '_campaign'
+        '_campaign',
+        'si', // Spotify session/share tracking parameter
       };
 
       for (final param in trackingParams) {

@@ -70,8 +70,8 @@ void main() {
       final textWidget = tester.widget<Text>(
           find.text('Available ${NamingUtils.tasksName(plural: true)}'));
 
-      // Check that the text color is not grey (should be null, meaning default color)
-      expect(textWidget.style?.color, isNull);
+      // Check that the text color is black (available tasks use Colors.black)
+      expect(textWidget.style?.color, Colors.black);
     });
 
     testWidgets('should not gray out title for task with null suggestibleAt',
@@ -102,8 +102,8 @@ void main() {
       // Find the text widget
       final textWidget = tester.widget<Text>(find.text('Null Task'));
 
-      // Check that the text color is not grey (should be null, meaning default color)
-      expect(textWidget.style?.color, isNull);
+      // Check that the text color is black (available tasks use Colors.black)
+      expect(textWidget.style?.color, Colors.black);
     });
   });
 }

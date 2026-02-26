@@ -98,7 +98,7 @@ void main() {
   const String plainTextData = '''
   Task 1
   Task 2: description
-  Task 3 https://example.com description"
+  Task 3 https://example.com description
   ''';
 
   const String jsonData = '''
@@ -131,9 +131,9 @@ void main() {
   final dataResult1 = ImportItem(title: 'Task 1');
   final dataResult2 = ImportItem(title: 'Task 2', description: 'description');
   final dataResult3 = ImportItem(
-      title: 'Task 3 with link',
+      title: 'Task 3',
       link: 'https://example.com',
-      description: 'with description description"');
+      description: 'description');
   group('TextImporter', () {
     final testCategory = Category(
         id: 1,
@@ -426,11 +426,12 @@ Test Task 2 with https://www.example.com
     });
 
     test('importFromText processes string and matches expected results', () {
-      // Array of test strings (currently just one, but can be extended)
+      // Array of test strings in different formats that represent the same data.
+      // jsonArrayData is excluded: it spans multiple lines and must be processed
+      // as a whole via processTextData, not line-by-line via importFromText.
       const testStrings = [
         plainTextData,
         jsonData,
-        jsonArrayData,
         markdownData,
         mixedData,
       ];

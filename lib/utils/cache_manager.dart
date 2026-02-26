@@ -49,8 +49,12 @@ class CacheManager with PerformanceMonitoring {
       _currentUserId = userId;
       _isUnsavedCategory = false;
 
-      // Persist the current category for state restoration
-      await AppStateManager.saveCurrentCategory(category);
+      // Persist the current category for state restoration (non-critical)
+      try {
+        await AppStateManager.saveCurrentCategory(category);
+      } catch (e) {
+        print('CacheManager: AppStateManager.saveCurrentCategory error (non-critical): $e');
+      }
 
       await _loadTasksFromApi();
     } catch (e, stackTrace) {
@@ -130,11 +134,16 @@ class CacheManager with PerformanceMonitoring {
     _currentUserId = userId;
     _isUnsavedCategory = true;
 
-    // Persist the current category for state restoration
-    await AppStateManager.saveCurrentCategory(category);
-
-    // Sort tasks: unfinished first, then by suggestibleAt ascending
+    // Sort tasks synchronously before any async work so callers that don't
+    // await this Future still see a correctly-ordered task list.
     _sortTasks();
+
+    // Persist the current category for state restoration (non-critical)
+    try {
+      await AppStateManager.saveCurrentCategory(category);
+    } catch (e) {
+      print('CacheManager: AppStateManager.saveCurrentCategory error (non-critical): $e');
+    }
 
     print(
         'CacheManager: Loaded ${_currentTasks!.length} tasks for unsaved category');

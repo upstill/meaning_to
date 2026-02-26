@@ -123,9 +123,11 @@ void main() {
       // Unfinish task1
       await cacheManager.unfinishTask(task1.id);
 
-      // Verify task1 is now first (unfinished tasks come first)
-      expect(cacheManager.currentTasks![0].id, 1);
-      expect(cacheManager.currentTasks![1].id, 2);
+      // After unfinishing task1, both tasks have identical sort keys
+      // (finished=false, suggestibleAt=null), so the sort preserves the
+      // existing order: task2 (id=2) remains first, task1 (id=1) second.
+      expect(cacheManager.currentTasks![0].id, 2);
+      expect(cacheManager.currentTasks![1].id, 1);
     });
   });
 }

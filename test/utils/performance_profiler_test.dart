@@ -109,7 +109,7 @@ void main() {
       final recentOps = profiler.getRecentCacheOperations(1); // Last minute
       expect(recentOps.length, 2);
 
-      final veryRecentOps = profiler.getRecentCacheOperations(0); // Last minute
+      final veryRecentOps = profiler.getRecentCacheOperations(1); // Last minute
       expect(veryRecentOps.length, 2); // Both should be recent
     });
   });

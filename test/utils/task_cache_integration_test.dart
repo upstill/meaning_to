@@ -39,27 +39,19 @@ void main() {
         finished: false,
       );
 
-      // Set up Task class state
-      Task.updateCurrentTask(task);
-
-      // Initialize CacheManager with the same data
+      // Initialize CacheManager
       cacheManager.initializeWithUnsavedCategory(category, [task], 'user123');
 
-      // Verify both are in sync
-      expect(Task.currentTask?.id, task.id);
       expect(cacheManager.currentTasks?.first.id, task.id);
 
       // Reject task using CacheManager
       await cacheManager.rejectTask(task.id);
 
-      // Verify CacheManager updated the task
+      // Verify CacheManager updated the task's deferral and suggestibleAt
       final updatedTaskInCache = cacheManager.currentTasks?.first;
       expect(updatedTaskInCache!.deferral,
           120); // Should be doubled from 60 to 120
-
-      // Verify Task class state is updated
-      expect(Task.currentTask?.deferral, 120);
-      expect(Task.currentTask?.suggestibleAt, isNotNull);
+      expect(updatedTaskInCache.suggestibleAt, isNotNull);
     });
 
     test('should handle task rejection with existing deferral', () async {
@@ -83,9 +75,6 @@ void main() {
         finished: false,
       );
 
-      // Set up Task class state
-      Task.updateCurrentTask(task);
-
       // Initialize CacheManager
       cacheManager.initializeWithUnsavedCategory(category, [task], 'user123');
 
@@ -96,9 +85,6 @@ void main() {
       final updatedTaskInCache = cacheManager.currentTasks?.first;
       expect(
           updatedTaskInCache!.deferral, 60); // Should be doubled from 30 to 60
-
-      // Verify Task class state is updated
-      expect(Task.currentTask?.deferral, 60);
     });
   });
 }

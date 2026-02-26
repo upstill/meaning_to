@@ -274,8 +274,19 @@ class TextImporter {
         return _parseJsonObject(jsonData);
       }
 
-      // Handle string items (from arrays)
+      // Handle string items — try JSON decode first, then fall back to importFromText
       if (jsonData is String) {
+        try {
+          final decoded = jsonDecode(jsonData);
+          if (decoded is Map<String, dynamic>) {
+            return _parseJsonObject(decoded);
+          }
+          if (decoded is List) {
+            return null; // JSON arrays yield null
+          }
+        } catch (_) {
+          // Not valid JSON, fall through to importFromText
+        }
         return importFromText(jsonData);
       }
 
@@ -334,9 +345,76 @@ class TextImporter {
       return null;
     }
 
+    final trimmedInput = text.trim();
+
+    // 1. Try JSON object detection first (before any URL extraction)
+    if (trimmedInput.startsWith('{')) {
+      try {
+        final jsonObj = jsonDecode(trimmedInput);
+        if (jsonObj is Map<String, dynamic>) {
+          print('    -> Detected JSON object, delegating to parseJsonItem');
+          return parseJsonItem(jsonObj);
+        }
+      } catch (_) {
+        // Not valid JSON, continue with normal processing
+      }
+    }
+
+    // 2. Try JSON array detection — arrays yield null from importFromText
+    if (trimmedInput.startsWith('[')) {
+      try {
+        jsonDecode(trimmedInput);
+        print('    -> Detected JSON array, returning null');
+        return null;
+      } catch (_) {
+        // Not valid JSON, continue
+      }
+    }
+
+    // 3. Check if text is an HTML link (before URL extraction)
+    if (trimmedInput.startsWith('<a') && trimmedInput.endsWith('</a>')) {
+      print('    -> Attempting HTML link parsing');
+      final (url, title) = LinkProcessor.parseHtmlLink(trimmedInput);
+      if (url != trimmedInput) {
+        final item = ImportItem(
+          title: title ?? 'Link',
+          link: url,
+          metadata: {'source': 'html_link'},
+        );
+        print('    -> Created ImportItem from HTML link: "${item.title}"');
+        return item;
+      }
+    }
+
+    // 4. Check for markdown list prefix
+    String processableText = trimmedInput;
+    if (processableText.startsWith('- ') || processableText.startsWith('* ')) {
+      processableText = processableText.substring(2);
+      print('    -> Removed markdown list prefix, text now: "$processableText"');
+    }
+
+    // 5. Check for markdown link [title](url) with optional description (before URL extraction)
+    final markdownMatch =
+        RegExp(r'\[([^\]]+)\]\(([^)]*)\)(.*)').firstMatch(processableText);
+    if (markdownMatch != null) {
+      final title = markdownMatch.group(1) ?? 'Link';
+      final url = markdownMatch.group(2) ?? '';
+      final description = markdownMatch.group(3)?.trim();
+      print('    -> Found markdown link - title: "$title", url: "$url"');
+
+      final item = ImportItem(
+        title: title,
+        link: url.isEmpty ? null : url,
+        description: description?.isNotEmpty == true ? description : null,
+        metadata: {'source': 'markdown_link'},
+      );
+      print('    -> Created ImportItem from markdown: "${item.title}"');
+      return item;
+    }
+
+    // 6. Extract URL from text
     String? extractedURL;
-    // Check if text contains a URL
-    final urlMatch = RegExp(r'https?://[^\s:]+').firstMatch(text);
+    final urlMatch = RegExp(r'https?://[^\s:]+').firstMatch(processableText);
     if (urlMatch != null) {
       extractedURL = urlMatch.group(0)!;
       print('    -> Found URL: $extractedURL');
@@ -346,21 +424,21 @@ class TextImporter {
       }
       final urlStart = urlMatch.start;
       final urlEnd = urlMatch.end;
-      final beforeURL = text.substring(0, urlStart);
-      final afterURL = text.substring(urlEnd);
+      final beforeURL = processableText.substring(0, urlStart);
+      final afterURL = processableText.substring(urlEnd);
       final colonMaybe =
           beforeURL.lastIndexOf(':') >= 0 || afterURL.contains(':') ? '' : ':';
-      text = beforeURL + colonMaybe + afterURL;
-      print('    -> Text after URL extraction: "$text"');
+      processableText = beforeURL + colonMaybe + afterURL;
+      print('    -> Text after URL extraction: "$processableText"');
     }
 
-    // Check if text contains a colon separator (title: description)
-    final colonIndex = text.indexOf(':');
+    // 7. Check if text contains a colon separator (title: description)
+    final colonIndex = processableText.indexOf(':');
     if (colonIndex > 0 &&
-        !text.trim().startsWith('{') &&
-        !text.trim().startsWith('[')) {
-      final title = text.substring(0, colonIndex).trim();
-      String description = text.substring(colonIndex + 1).trim();
+        !processableText.trim().startsWith('{') &&
+        !processableText.trim().startsWith('[')) {
+      final title = processableText.substring(0, colonIndex).trim();
+      String description = processableText.substring(colonIndex + 1).trim();
       print(
           '    -> Found colon separator - title: "$title", description: "$description"');
 
@@ -398,59 +476,16 @@ class TextImporter {
       }
     }
 
-    // Check if text is an HTML link
-    if (text.trim().startsWith('<a') && text.trim().endsWith('</a>')) {
-      print('    -> Attempting HTML link parsing');
-      final (url, title) = LinkProcessor.parseHtmlLink(text);
-      if (url != text) {
-        // If it was successfully parsed as an HTML link
-        final item = ImportItem(
-          title: title ?? 'Link',
-          link: url,
-          metadata: {'source': 'html_link'},
-        );
-        print('    -> Created ImportItem from HTML link: "${item.title}"');
-        return item;
-      }
-    }
-
-    // Check if text is a markdown list item
-    if (text.trim().startsWith('- ') || text.trim().startsWith('* ')) {
-      text = text.trim().substring(2);
-      print('    -> Removed markdown list prefix, text now: "$text"');
-    }
-
-    // Check if text looks like a markdown link [title](url) with optional description
-    final markdownMatch =
-        RegExp(r'\[([^\]]+)\]\(([^)]+)\)(.*)').firstMatch(text);
-    if (markdownMatch != null) {
-      final title = markdownMatch.group(1) ?? 'Link';
-      final url = markdownMatch.group(2) ?? '';
-      final description = markdownMatch.group(3)?.trim();
-      print('    -> Found markdown link - title: "$title", url: "$url"');
-
-      final item = ImportItem(
-        title: title,
-        link: url,
-        description: description?.isNotEmpty == true ? description : null,
-        metadata: {'source': 'markdown_link'},
-      );
-      print('    -> Created ImportItem from markdown: "${item.title}"');
-      return item;
-    }
-
-    // Check for parentheses in the text and move them to notes if no existing notes
-    final trimmedText = text.trim();
+    // 8. Check for parentheses in the text and move them to notes
+    final trimmedText = processableText.trim();
     String? notesFromParentheses;
     String cleanTitle = trimmedText;
 
-    // Look for parentheses content and extract it
     final parenthesesMatch = RegExp(r'\(([^)]+)\)').firstMatch(trimmedText);
     if (parenthesesMatch != null) {
       final parenthesesContent = parenthesesMatch.group(1)?.trim();
       if (parenthesesContent != null && parenthesesContent.isNotEmpty) {
         notesFromParentheses = '($parenthesesContent)';
-        // Remove the parentheses and their content from the title
         cleanTitle =
             trimmedText.replaceAll(RegExp(r'\s*\([^)]+\)\s*'), ' ').trim();
         print('    -> Found parentheses content: $notesFromParentheses');
@@ -458,7 +493,7 @@ class TextImporter {
       }
     }
 
-    // Treat as plain text
+    // 9. Treat as plain text
     print('    -> Treating as plain text: "$cleanTitle"');
     final item = ImportItem(
       title: cleanTitle,

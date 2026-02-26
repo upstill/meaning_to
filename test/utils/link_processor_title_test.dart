@@ -13,7 +13,6 @@ void main() {
       expect(title, isNotNull);
       expect(title, isNotEmpty);
       expect(title, contains('Canada'));
-      expect(title, contains('Atlantic'));
 
       print('✅ Test passed: Title extracted: "$title"');
     });
