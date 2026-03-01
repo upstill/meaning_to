@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
@@ -12,6 +11,7 @@ import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
+import 'package:meaning_to/utils/category_suggestion_registry.dart';
 
 /// Result of processing an incoming link
 class LinkProcessingResult {
@@ -67,74 +67,63 @@ class IncomingLinkProcessor {
       throw ArgumentError('Invalid URL provided: $url');
     }
 
-    // Extract metadata from the link
-    String? title;
-    String? description;
-    bool hasValidMetadata = false;
+    final userId = AuthUtils.getCurrentUserId();
 
-    try {
-      final content = await LinkProcessor.fetchWebpageContent(normalizedUrl);
-      if (content != null) {
-        title = content.title;
-        description = content.description;
-        hasValidMetadata = true;
-        print('IncomingLinkProcessor: Extracted metadata - Title: "$title"');
+    // Run enrichment (via LinkToTaskConverter) and URL-duplicate search in parallel
+    print('IncomingLinkProcessor: Starting parallel enrichment + duplicate check');
+    final results = await Future.wait([
+      LinkToTaskConverter.createProposedTaskFromLink(normalizedUrl, userId)
+          .then<ProposedTask?>((t) => t)
+          .catchError((e) {
+        print('IncomingLinkProcessor: LinkToTaskConverter failed: $e');
+        return null;
+      }),
+      findAllDuplicates(normalizedUrl),
+    ]);
 
-        if (normalizedUrl.contains('imdb.com')) {
-          final cleanedTitle = LinkProcessor.cleanImdbTitle(content.title);
-          if (cleanedTitle != content.title) {
-            print(
-                'IncomingLinkProcessor: Cleaned IMDb title from "${content.title}" to "$cleanedTitle"');
-            title = cleanedTitle;
-          }
-        }
-      }
-    } catch (e) {
-      print('IncomingLinkProcessor: Failed to extract metadata: $e');
+    final ProposedTask? proposedTask = results[0] as ProposedTask?;
+    final duplicates = results[1] as List<DuplicateMatch>;
+
+    // Derive title + description from the ProposedTask
+    String? title = proposedTask?.headline.isNotEmpty == true ? proposedTask!.headline : null;
+    String? description = proposedTask?.synopsis;
+    final hasValidMetadata = title != null || description != null;
+
+    if (proposedTask != null) {
+      print('IncomingLinkProcessor: ProposedTask - Headline: "$title"');
     }
 
-    // Use LinkToTaskConverter to build a rich ProposedTask for this link
-    ProposedTask? proposedTask;
-    try {
-      final userId = AuthUtils.getCurrentUserId();
-      proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
-        normalizedUrl,
-        userId,
-      );
-
-      print(
-          'IncomingLinkProcessor: Received ProposedTask - Headline: "${proposedTask.headline}"');
-
-      // If metadata was missing or incomplete, fill it from the ProposedTask
-      if (title == null || title.isEmpty) {
-        title = proposedTask.headline;
-      }
-      if ((description == null || description.isEmpty) &&
-          proposedTask.synopsis != null &&
-          proposedTask.synopsis!.isNotEmpty) {
-        description = proposedTask.synopsis;
-      }
-
-      if (!hasValidMetadata &&
-          (proposedTask.headline.isNotEmpty ||
-              (proposedTask.synopsis != null &&
-                  proposedTask.synopsis!.isNotEmpty))) {
-        hasValidMetadata = true;
-      }
-    } catch (e) {
-      print('IncomingLinkProcessor: LinkToTaskConverter failed: $e');
-    }
-
-    // Find all duplicates across user's tasks
-    print(
-        'IncomingLinkProcessor: Checking for duplicates of normalized URL: $normalizedUrl');
-    final duplicates = await findAllDuplicates(normalizedUrl);
     print(
         'IncomingLinkProcessor: Found ${duplicates.length} duplicate(s) for URL: $normalizedUrl');
     if (duplicates.isNotEmpty) {
       for (final dup in duplicates) {
         print(
             '  - Duplicate: "${dup.task.headline}" in "${dup.category.headline}"');
+      }
+    }
+
+    // If no URL match found, try matching by title in the suggested categories
+    // (e.g. an IMDb share for "Sly" should find an existing "Sly" task in Watch a Movie)
+    if (duplicates.isEmpty && title != null && title.isNotEmpty) {
+      final suggestedIds =
+          CategorySuggestionRegistry.getSuggestionsForUrl(normalizedUrl);
+      if (suggestedIds.isNotEmpty) {
+        print(
+            'IncomingLinkProcessor: No URL match — trying title match for "$title" in suggested categories $suggestedIds');
+        final userId = AuthUtils.getCurrentUserId();
+        final titleMatch = await _findTaskByTitleInSuggestedCategories(
+            title, userId, suggestedIds);
+        if (titleMatch != null) {
+          final (matchTask, matchCategory) = titleMatch;
+          duplicates.add(DuplicateMatch(
+            task: matchTask,
+            category: matchCategory,
+            matchingUrl: normalizedUrl,
+            originalLinkText: '',
+          ));
+          print(
+              'IncomingLinkProcessor: Title match added as duplicate: "${matchTask.headline}" in "${matchCategory.headline}"');
+        }
       }
     }
 
@@ -557,8 +546,8 @@ class IncomingLinkProcessor {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'There\'s a similar task already on file. Do you really want to create a new one, just edit the old one, or stand pat?',
+            Text(
+              'There\'s a similar ${NamingUtils.tasksName(capitalize: false, plural: false)} already on file. Do you really want to create a new one, just edit the old one, or stand pat?',
             ),
             const SizedBox(height: 16),
             Container(
@@ -1181,6 +1170,67 @@ class IncomingLinkProcessor {
   static Category? getCurrentCategory() {
     // TODO: Implement cache-aware category detection
     return null;
+  }
+
+  /// Search for a task by title in categories whose original_id is in [suggestedOriginalIds].
+  /// Returns (Task, Category) if exactly one match is found, otherwise null.
+  static Future<(Task, Category)?> _findTaskByTitleInSuggestedCategories(
+    String title,
+    String userId,
+    List<int> suggestedOriginalIds,
+  ) async {
+    try {
+      print(
+          'IncomingLinkProcessor: Searching for title "$title" in categories with original_ids $suggestedOriginalIds');
+
+      final categoriesResponse =
+          await supabase.from('Categories').select().eq('owner_id', userId);
+
+      final categoriesData = categoriesResponse as List<dynamic>;
+
+      final matchingCategories = categoriesData.where((catData) {
+        final originalId = catData['original_id'] as int?;
+        return originalId != null && suggestedOriginalIds.contains(originalId);
+      }).toList();
+
+      final matchingCategoryIds =
+          matchingCategories.map((c) => c['id'] as int).toList();
+
+      if (matchingCategoryIds.isEmpty) {
+        print(
+            'IncomingLinkProcessor: User has no categories matching original_ids $suggestedOriginalIds');
+        return null;
+      }
+
+      final tasksResponse = await supabase
+          .from('Tasks')
+          .select()
+          .eq('owner_id', userId)
+          .inFilter('category_id', matchingCategoryIds)
+          .ilike('headline', title);
+
+      final tasksData = tasksResponse as List<dynamic>;
+
+      print(
+          'IncomingLinkProcessor: Found ${tasksData.length} task(s) matching title "$title"');
+
+      if (tasksData.length == 1) {
+        final task = Task.fromJson(tasksData[0]);
+        final catData = matchingCategories
+            .firstWhere((c) => c['id'] == task.categoryId);
+        final category = Category.fromJson(catData);
+        print(
+            'IncomingLinkProcessor: Title match: "${task.headline}" in "${category.headline}"');
+        return (task, category);
+      } else if (tasksData.length > 1) {
+        print(
+            'IncomingLinkProcessor: Multiple title matches (${tasksData.length}), skipping');
+      }
+      return null;
+    } catch (e) {
+      print('IncomingLinkProcessor: Error searching by title: $e');
+      return null;
+    }
   }
 
   /// Search for a task by artist name in streaming media categories

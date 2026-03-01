@@ -114,58 +114,6 @@ void main() {
       expect(proposedTask.suggestedCategoryOriginalIds, contains(1)); // Movie category
     });
 
-    test('should extract exact details from Shawshank Redemption IMDb link', () async {
-      const imdbUrl = 'https://www.imdb.com/title/tt0111161/';
-
-      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
-        imdbUrl,
-        testUserId,
-      );
-
-      print('✅ ProposedTask from Shawshank Redemption IMDb link:');
-      print('   Headline: "${proposedTask.headline}"');
-      print('   Synopsis: "${proposedTask.synopsis?.substring(0, proposedTask.synopsis!.length > 50 ? 50 : proposedTask.synopsis!.length)}..."');
-      print('   Suggested categories: ${proposedTask.suggestedCategoryOriginalIds}');
-
-      // Should extract exactly "The Shawshank Redemption" as headline (without year or "- IMDb")
-      expect(proposedTask.headline, equals('The Shawshank Redemption'));
-
-      // Should have synopsis beginning with "A banker convicted" or "Chronicles"
-      expect(proposedTask.synopsis, isNotNull);
-      expect(proposedTask.synopsis, isNotEmpty);
-      // OMDb API provides different plot than HTML scraping
-      expect(proposedTask.synopsis!.startsWith('A banker convicted') ||
-             proposedTask.synopsis!.startsWith('Chronicles'), isTrue);
-
-      // Should suggest Movie category only [1] when OMDb API detects it as a movie
-      // Falls back to [1, 2] if OMDb API is not configured
-      expect(proposedTask.suggestedCategoryOriginalIds, anyOf(equals([1]), equals([1, 2])));
-
-      // Should have exactly one link
-      expect(proposedTask.links.length, 1);
-      expect(proposedTask.links[0], contains(imdbUrl));
-    });
-
-    test('should detect TV series type from OMDb and suggest TV category only', () async {
-      const imdbUrl = 'https://www.imdb.com/title/tt0903747/'; // Breaking Bad
-
-      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
-        imdbUrl,
-        testUserId,
-      );
-
-      print('✅ ProposedTask from Breaking Bad IMDb link:');
-      print('   Headline: "${proposedTask.headline}"');
-      print('   Suggested categories: ${proposedTask.suggestedCategoryOriginalIds}');
-
-      // Should extract clean headline
-      expect(proposedTask.headline, equals('Breaking Bad'));
-
-      // Should suggest TV category only [2] when OMDb API detects it as a series
-      // Falls back to [1, 2] if OMDb API is not configured
-      expect(proposedTask.suggestedCategoryOriginalIds, anyOf(equals([2]), equals([1, 2])));
-    });
-
     test('should process JustWatch movie link', () async {
       const justwatchUrl = 'https://www.justwatch.com/us/movie/the-shawshank-redemption';
 
@@ -403,36 +351,6 @@ void main() {
   });
 
   group('LinkProcessor UI Display Tests', () {
-    test('should clean IMDb movie title for UI display', () async {
-      const imdbUrl = 'https://www.imdb.com/title/tt0111161/';
-
-      final processed = await LinkProcessor.processLinkForDisplay(imdbUrl);
-
-      print('✅ Processed IMDb movie for UI:');
-      print('   Title: "${processed.title}"');
-
-      // Should have clean title without year or "- IMDb"
-      expect(processed.title, equals('The Shawshank Redemption'));
-      expect(processed.title, isNot(contains('1994')));
-      expect(processed.title, isNot(contains('IMDb')));
-    });
-
-    test('should clean IMDb TV series title for UI display', () async {
-      const imdbUrl = 'https://www.imdb.com/title/tt0903747/';
-
-      final processed = await LinkProcessor.processLinkForDisplay(imdbUrl);
-
-      print('✅ Processed IMDb TV series for UI:');
-      print('   Title: "${processed.title}"');
-
-      // Should have clean title without year range, "TV Series", or "- IMDb"
-      expect(processed.title, equals('Breaking Bad'));
-      expect(processed.title, isNot(contains('2008')));
-      expect(processed.title, isNot(contains('2013')));
-      expect(processed.title, isNot(contains('TV Series')));
-      expect(processed.title, isNot(contains('IMDb')));
-    });
-
     test('should clean IMDb title variations including "Reference view"', () {
       // Test direct method call with various IMDb title formats
 

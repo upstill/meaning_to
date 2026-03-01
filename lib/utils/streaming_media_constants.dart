@@ -12,6 +12,11 @@
 /// - 74: Playlist category (primary suggestion for Spotify playlists)
 const List<int> STREAMING_MEDIA_CATEGORY_IDS = [54, 41, 74];
 
+/// List of category original_ids for movie/TV categories.
+/// - 1: "Watch a Movie"
+/// - 2: "Watch a Series"
+const List<int> MOVIE_TV_CATEGORY_IDS = [1, 2];
+
 /// Regex pattern to extract artist and work from Tidal link titles.
 /// Format: "<work> by <artist> on TIDAL"
 /// Example: "Dark Side of the Moon by Pink Floyd on TIDAL"
