@@ -1,12 +1,16 @@
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
-import 'package:html/dom.dart' as dom;
 import 'package:meaning_to/models/icon.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:meaning_to/utils/api_client.dart';
-import 'package:meaning_to/utils/site_table.dart';
+import 'package:meaning_to/link_enrichment_core/models/enrichment_context.dart';
+import 'package:meaning_to/link_enrichment_core/models/enrichment_request.dart';
+import 'package:meaning_to/link_enrichment_core/models/enrichment_status.dart';
+import 'package:meaning_to/link_enrichment_core/rules/site_rule_provider.dart';
+import 'package:meaning_to/link_enrichment_core/rules/default_site_rule_provider.dart';
+import 'package:meaning_to/link_enrichment_core/service/enrichment_service.dart';
 import 'package:meaning_to/utils/youtube_api.dart';
 import 'dart:convert';
 import 'dart:io' show Platform;
@@ -88,6 +92,17 @@ class LinkProcessor {
 
   // Request deduplication - track in-flight requests to prevent duplicate fetches
   static final Map<String, Future<WebpageContent?>> _pendingRequests = {};
+  static final SiteRuleProvider _ruleProvider = DefaultSiteRuleProvider();
+  static final EnrichmentService _enrichmentService = EnrichmentService(
+    youtubeResolver: (url) async {
+      final info = await YouTubeApiService.getVideoInfoFromUrl(url);
+      if (info == null) return null;
+      return YoutubeVideoInfo(
+        title: info.title,
+        description: info.description,
+      );
+    },
+  );
 
   static Map<String, String>? parseCookieString(String cookieStr) {
     try {
@@ -306,88 +321,14 @@ class LinkProcessor {
 
   // ── site_table.dart helpers ───────────────────────────────────────────────
 
-  /// Determine the current [FetchContext] based on the runtime environment.
-  static FetchContext _getFetchContext() {
-    if (kIsWeb) return FetchContext.web;
+  /// Determine the current [EnrichmentContext] based on the runtime environment.
+  static EnrichmentContext _getFetchContext() {
+    if (kIsWeb) return EnrichmentContext.web;
     bool isTest = false;
     try {
       isTest = Platform.environment.containsKey('FLUTTER_TEST');
     } catch (_) {}
-    return isTest ? FetchContext.test : FetchContext.native;
-  }
-
-  /// Build the URL to GET for a given [FetchMethod].
-  /// Returns null for [FetchMethod.youtubeApi] (handled separately).
-  static String? _buildFetchUrl(FetchMethod method, String url) {
-    switch (method) {
-      case FetchMethod.direct:
-        return url;
-      case FetchMethod.allorigins:
-        return 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
-      case FetchMethod.corsproxy:
-        return 'https://corsproxy.io/?${Uri.encodeComponent(url)}';
-      case FetchMethod.corsanywhere:
-        return 'https://cors-anywhere.herokuapp.com/$url';
-      case FetchMethod.youtubeApi:
-        return null;
-    }
-  }
-
-  /// Extract a title from [document] using the ordered [strategies].
-  /// Returns the first non-empty result, skipping [TitleSource.youtubeApi]
-  /// (which must be resolved before HTML parsing).
-  static String? _extractTitleFromStrategies(
-      dom.Document document, List<TitleStrategy> strategies) {
-    for (final strategy in strategies) {
-      if (strategy.source == TitleSource.youtubeApi) continue;
-      String? title;
-      try {
-        switch (strategy.source) {
-          case TitleSource.metaName:
-            title = document
-                .querySelector('meta[name="${strategy.selector}"]')
-                ?.attributes['content']
-                ?.trim();
-          case TitleSource.metaProperty:
-            title = document
-                .querySelector('meta[property="${strategy.selector}"]')
-                ?.attributes['content']
-                ?.trim();
-          case TitleSource.cssText:
-            title = document.querySelector(strategy.selector!)?.text.trim();
-          case TitleSource.cssDirectText:
-            final el = document.querySelector(strategy.selector!);
-            if (el != null) {
-              final buf = StringBuffer();
-              for (final node in el.nodes) {
-                if (node.nodeType == 3) buf.write(node.text ?? '');
-              }
-              title = buf.toString().trim();
-            }
-          case TitleSource.htmlTitle:
-            title = document.querySelector('title')?.text.trim();
-          case TitleSource.h1:
-            title = document.querySelector('h1')?.text.trim();
-          case TitleSource.youtubeApi:
-            break; // unreachable
-        }
-      } catch (e) {
-        print('LinkProcessor: Title strategy ${strategy.source} failed: $e');
-      }
-      if (title != null && title.isNotEmpty) return title;
-    }
-    return null;
-  }
-
-  /// Apply a list of regex strip-suffix patterns to [title],
-  /// case-insensitively, in order.
-  static String _applyStripSuffixes(String title, List<String> patterns) {
-    String result = title;
-    for (final pattern in patterns) {
-      result =
-          result.replaceFirst(RegExp(pattern, caseSensitive: false), '').trim();
-    }
-    return result;
+    return isTest ? EnrichmentContext.test : EnrichmentContext.native;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -423,103 +364,29 @@ class LinkProcessor {
     }
   }
 
-  /// Internal method to perform the actual webpage content fetch.
-  ///
-  /// Uses [SiteTable] to determine the ordered [FetchMethod] list for the
-  /// current [FetchContext], then tries each method in turn.  The first that
-  /// yields a non-empty title wins.  Description extraction uses the same
-  /// [SiteEntry.description] strategy list from [SiteTable].
+  /// Internal method to perform webpage enrichment via the core service.
   static Future<WebpageContent?> _performWebpageContentFetch(String url) async {
     try {
-      final fetchContext = _getFetchContext();
-      final entry = SiteTable.entryForUrl(url);
-      final methods = SiteTable.fetchMethodsFor(url, fetchContext);
+      final result = await _enrichmentService.enrich(
+        EnrichmentRequest(
+          url: url,
+          context: _getFetchContext(),
+          allowDeferred: true,
+        ),
+      );
 
-      if (methods.isEmpty) {
-        print(
-            'LinkProcessor: No fetch methods for $url in context $fetchContext');
-        return null;
+      if (result.title != null && result.title!.isNotEmpty) {
+        final content = WebpageContent(
+          title: result.title!,
+          description: result.synopsis,
+        );
+        _cacheContent(url, content);
+        return content;
       }
 
-      print(
-          'LinkProcessor: ${entry.displayName} — methods $methods (context: $fetchContext)');
-
-      for (final method in methods) {
-        // ── YouTube API ──────────────────────────────────────────────────
-        if (method == FetchMethod.youtubeApi) {
-          if (!YouTubeApiService.isAvailable) continue;
-          print('LinkProcessor: Attempting YouTube API extraction');
-          try {
-            final videoInfo = await YouTubeApiService.getVideoInfoFromUrl(url);
-            if (videoInfo != null) {
-              final title =
-                  _applyStripSuffixes(videoInfo.title, entry.stripSuffixes);
-              print('LinkProcessor: YouTube API title: "$title"');
-              final content =
-                  WebpageContent(title: title, description: videoInfo.description);
-              _cacheContent(url, content);
-              return content;
-            }
-          } catch (e) {
-            print('LinkProcessor: YouTube API failed: $e');
-          }
-          continue;
-        }
-
-        // ── HTTP fetch ───────────────────────────────────────────────────
-        final fetchUrl = _buildFetchUrl(method, url);
-        if (fetchUrl == null) continue;
-
-        try {
-          final t0 = DateTime.now();
-          print('🕐 LinkProcessor: Starting $method fetch');
-
-          final response = await http.get(
-            Uri.parse(fetchUrl),
-            headers: {
-              'User-Agent':
-                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-            },
-          ).timeout(const Duration(seconds: 10));
-
-          print(
-              '🕐 LinkProcessor: $method completed in ${DateTime.now().difference(t0).inMilliseconds}ms');
-
-          if (response.statusCode != 200 || response.body.length < 500) {
-            print(
-                'LinkProcessor: $method → HTTP ${response.statusCode}, ${response.body.length} bytes — skipping');
-            continue;
-          }
-
-          // Explicitly decode as UTF-8 to handle special characters (e.g., Björk)
-          final htmlContent =
-              utf8.decode(response.bodyBytes, allowMalformed: true);
-          final document = html_parser.parse(htmlContent);
-
-          final rawTitle =
-              _extractTitleFromStrategies(document, entry.title);
-          if (rawTitle == null || rawTitle.isEmpty) {
-            print(
-                'LinkProcessor: $method fetched OK but title extraction failed — trying next method');
-            continue;
-          }
-
-          final title = _applyStripSuffixes(rawTitle, entry.stripSuffixes);
-          print('LinkProcessor: $method title: "$title"');
-
-          final description =
-              _extractTitleFromStrategies(document, entry.description);
-
-          final content = WebpageContent(title: title, description: description);
-          _cacheContent(url, content);
-          return content;
-        } catch (e) {
-          print('LinkProcessor: $method failed: $e');
-          continue;
-        }
+      if (result.status == EnrichmentStatus.deferred) {
+        print('LinkProcessor: Enrichment deferred for $url');
       }
-
-      print('LinkProcessor: All fetch methods exhausted for $url');
       return null;
     } catch (e) {
       print('LinkProcessor: Error in _performWebpageContentFetch: $e');
@@ -563,172 +430,10 @@ class LinkProcessor {
   static Future<String?> fetchWebpageTitle(String url) async {
     try {
       print('LinkProcessor: Fetching title for URL: $url');
-
-      // Try direct request first
-      http.Response response;
-      try {
-        // Use site_table fetch context for proxy decision
-        final fetchContext = _getFetchContext();
-        final methods = SiteTable.fetchMethodsFor(url, fetchContext);
-        final useProxy = methods.isNotEmpty && methods.first != FetchMethod.direct && methods.first != FetchMethod.youtubeApi;
-        if (kIsWeb && useProxy) {
-          final proxyMethod = methods.firstWhere(
-            (m) => m != FetchMethod.direct && m != FetchMethod.youtubeApi,
-            orElse: () => FetchMethod.allorigins,
-          );
-          final proxyUrl = _buildFetchUrl(proxyMethod, url) ??
-              'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
-          print('LinkProcessor: Using proxy for web: $proxyMethod');
-          response = await http.get(Uri.parse(proxyUrl));
-
-          // Log the full response for debugging - write to file to avoid console truncation
-          if (url.contains('justwatch.com')) {
-            print('LinkProcessor: === JUSTWATCH PROXY DEBUG ===');
-            print('LinkProcessor: Status Code: ${response.statusCode}');
-            print('LinkProcessor: Headers: ${response.headers}');
-            print('LinkProcessor: Body Length: ${response.body.length}');
-            print(
-                'LinkProcessor: First 1000 chars: ${response.body.substring(0, response.body.length > 1000 ? 1000 : response.body.length)}');
-
-            // Try to write full response to debug file
-            try {
-              if (kIsWeb) {
-                // On web, just log key indicators
-                print(
-                    'LinkProcessor: Contains title tag: ${response.body.contains('<title>')}');
-                print(
-                    'LinkProcessor: Contains h1.title-detail-hero: ${response.body.contains('title-detail-hero')}');
-                print(
-                    'LinkProcessor: Contains synopsis: ${response.body.contains('synopsis')}');
-              }
-            } catch (e) {
-              print('LinkProcessor: Error in debug logging: $e');
-            }
-            print('LinkProcessor: === END JUSTWATCH DEBUG ===');
-          }
-
-          // Check if proxy returned wrong content (JustWatch bot detection)
-          if (url.contains('justwatch.com') &&
-              response.statusCode == 200 &&
-              response.body.length < 5000) {
-            print(
-                'LinkProcessor: Proxy returned suspicious response for JustWatch, checking content...');
-            if (response.body.contains('<title>Meaning To</title>') ||
-                response.body.contains('Meaning To')) {
-              print(
-                  'LinkProcessor: JustWatch blocked proxy request, falling back to URL parsing');
-              // Return null to trigger fallback title generation
-              return null;
-            }
-          }
-        } else {
-          response = await http.get(
-            Uri.parse(url),
-            headers: {
-              'User-Agent':
-                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept':
-                  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-              'Accept-Language': 'en-US,en;q=0.5',
-              'Accept-Encoding': 'gzip, deflate, br',
-              'DNT': '1',
-              'Connection': 'keep-alive',
-              'Upgrade-Insecure-Requests': '1',
-            },
-          );
-        }
-      } catch (e) {
-        print(
-            'LinkProcessor: Direct request failed, trying alternative approaches: $e');
-
-        // Try using a reliable meta tag service
-        try {
-          print('LinkProcessor: Trying meta tag service...');
-          final metaUrl =
-              'https://api.microlink.io/?url=${Uri.encodeComponent(url)}&fields=title';
-          final metaResponse = await http.get(Uri.parse(metaUrl));
-
-          if (metaResponse.statusCode == 200) {
-            final data = json.decode(metaResponse.body);
-            final title = data['data']?['title'] as String?;
-            if (title != null && title.isNotEmpty) {
-              print(
-                  'LinkProcessor: Found title via meta tag service: "$title"');
-              return title;
-            }
-          }
-        } catch (metaError) {
-          print('LinkProcessor: Meta tag service failed: $metaError');
-        }
-
-        // Try using a different approach - link preview service
-        try {
-          print('LinkProcessor: Trying link preview service...');
-          final previewUrl =
-              'https://api.linkpreview.net/?key=5b578&q=${Uri.encodeComponent(url)}';
-          final previewResponse = await http.get(Uri.parse(previewUrl));
-
-          if (previewResponse.statusCode == 200) {
-            final data = json.decode(previewResponse.body);
-            final title = data['title'] as String?;
-            if (title != null && title.isNotEmpty) {
-              print(
-                  'LinkProcessor: Found title via link preview service: "$title"');
-              return title;
-            }
-          }
-        } catch (previewError) {
-          print('LinkProcessor: Link preview service failed: $previewError');
-        }
-
-        return null;
-      }
-      print('LinkProcessor: HTTP response status: ${response.statusCode}');
-      print('LinkProcessor: Response body length: ${response.body.length}');
-      if (response.statusCode != 200) {
-        print(
-            'LinkProcessor: HTTP status code ${response.statusCode} for URL: $url');
-        return null;
-      }
-
-      // Explicitly decode as UTF-8 to handle special characters (e.g., Björk)
-      final htmlContent = utf8.decode(response.bodyBytes, allowMalformed: true);
-      final document = html_parser.parse(htmlContent);
-
-      final entry = SiteTable.entryForUrl(url);
-      final rawTitle = _extractTitleFromStrategies(document, entry.title);
-      if (rawTitle != null && rawTitle.isNotEmpty) {
-        final title = _applyStripSuffixes(rawTitle, entry.stripSuffixes);
-        print('LinkProcessor: fetchWebpageTitle extracted: "$title"');
-        return title;
-      }
-
-      print('LinkProcessor: No title found for URL: $url');
-      return null;
+      final content = await fetchWebpageContent(url);
+      return content?.title;
     } catch (e) {
       print('LinkProcessor: Exception in fetchWebpageTitle for URL $url: $e');
-      print('LinkProcessor: Exception type: ${e.runtimeType}');
-      print('LinkProcessor: Stack trace: ${StackTrace.current}');
-
-      // For JustWatch URLs, try using Browserless as a fallback
-      if (url.contains('justwatch.com')) {
-        print('LinkProcessor: Trying Browserless for JustWatch URL: $url');
-        try {
-          final domain = extractDomain(url);
-          final links = await fetchLinksFromBrowserless(url, domain);
-          if (links.isNotEmpty) {
-            final title = links.first.title;
-            if (title != null && title.isNotEmpty) {
-              print('LinkProcessor: Found title via Browserless: "$title"');
-              return title;
-            }
-          }
-        } catch (browserlessError) {
-          print(
-              'LinkProcessor: Browserless fallback also failed: $browserlessError');
-        }
-      }
-
       return null;
     }
   }
@@ -1120,8 +825,11 @@ class LinkProcessor {
   /// generic fallback (empty domain), only fetches when no descriptive
   /// [linkText] is available.
   static bool _shouldFetchWebpageContent(String url, String? linkText) {
-    // Always fetch for specifically registered sites
-    if (SiteTable.entryForUrl(url).domain.isNotEmpty) return true;
+    // Always fetch for specifically registered sites.
+    final rule = _ruleProvider.matchRuleForUrl(url);
+    final isGenericDefault =
+        rule.id == 'generic-default' || rule.domainPatterns.contains('');
+    if (!isGenericDefault) return true;
 
     // For generic/unregistered sites, fetch only if we need a title
     return linkText == null || linkText.isEmpty || linkText == url;

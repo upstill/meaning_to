@@ -196,4 +196,135 @@ Main application widget.
 4. **User Experience**
    - Intuitive navigation
    - Responsive design
-   - Clear feedback mechanisms 
+   - Clear feedback mechanisms
+
+## Implementation Plan: Deferrable Page Access Library
+
+### Goal
+Extract link/site access into a reusable library that can:
+- Fetch and enrich URLs across contexts (app runtime + Supabase)
+- Defer and retry enrichment when immediate fetch quality is low
+- Return normalized, scored, provenance-rich results
+- Leave app-specific interpretation (task fields, UI policy) to the host app
+
+### Scope
+The library will own:
+- URL normalization/canonicalization
+- Site rule matching and fetch strategy orchestration
+- Metadata extraction (title/synopsis + optional generic fields)
+- Quality scoring and source provenance
+- Deferred fetch lifecycle (pending, retrying, complete, failed)
+
+The app will own:
+- Mapping enrichment output to task/headline/notes/synopsis
+- Suggested category business policy and user-facing UX
+- Final merge rules when updating existing tasks
+
+### Proposed Package Structure
+- `lib/link_enrichment_core/`
+- `lib/link_enrichment_core/models/` (request/result/status/provenance)
+- `lib/link_enrichment_core/rules/` (site rules, matcher, validators)
+- `lib/link_enrichment_core/fetch/` (direct/proxy/api drivers, orchestrator)
+- `lib/link_enrichment_core/extract/` (selector/metadata extraction)
+- `lib/link_enrichment_core/score/` (quality scoring)
+- `lib/link_enrichment_core/deferred/` (retry policy + scheduling contracts)
+
+### Data Contracts
+Primary input:
+- `EnrichmentRequest`
+  - `url`
+  - `context` (`web`, `native`, `edge`, `test`)
+  - `deadlineMs`
+  - `allowDeferred`
+  - `hints` (optional app metadata)
+
+Primary output:
+- `EnrichmentResult`
+  - `normalizedUrl`
+  - `title`
+  - `synopsis`
+  - `categoryHints` (generic tags/IDs)
+  - `qualityScore` (0-100)
+  - `source` (method + context + site rule id)
+  - `status` (`success`, `partial`, `deferred`, `failed`)
+  - `errors` (typed reason codes)
+
+### Site Rule Model (Table-Driven)
+Move site behavior into one table/schema (Dart map now, file-backed next):
+- `siteId`, `domainPatterns`, `pathPatterns`
+- ordered fetch methods per context
+- title/synopsis extraction selectors
+- normalization rules
+- fallback/title-cleanup rules
+- category hint rules
+- quality boosts/penalties per strategy
+
+### Storage Plan
+Owner-scoped app data (existing RLS):
+- Task/link-level chosen enrichment fields
+- Per-item provenance summary
+- Deferred status for that specific item
+
+Internal service-owned telemetry (new internal schema, no direct client writes):
+- Aggregated fetch success/latency by `{site, context, method}`
+- Rule health metrics for adaptive ordering
+- Anomaly flags (poisoning protection)
+
+### Rollout Phases
+
+#### Phase 1: Foundations
+- Introduce core request/result models and typed error codes
+- Add unified URL normalize/extract/match utility
+- Wrap current `SiteTable` into rule-provider interface
+- Add quality scoring baseline
+
+#### Phase 2: Orchestrator
+- Implement fetch orchestrator with:
+  - ordered attempts per context
+  - global deadline budget
+  - first-success return with best-quality replacement option
+- Add provenance capture for every attempt
+
+#### Phase 3: Deferred Enrichment
+- Add pending enrichment state and retry scheduler interface
+- Trigger deferred retries from:
+  - local app context when suitable
+  - Supabase Edge function for server-side retries
+- Add idempotent merge/update path for better-later results
+
+#### Phase 4: App Integration
+- Replace direct calls in:
+  - `LinkProcessor`
+  - `LinkToTaskConverter`
+  - `SynopsisFetcher`
+  - `IntentHandler` category suggestion path
+- Keep app-specific mapping in adapter layer
+
+#### Phase 5: Adaptive Optimization
+- Record aggregated success/latency stats
+- Dynamically reorder methods by site/context health
+- Add hedged fetch option for slow first attempts
+
+### Testing Strategy
+- Keep example-driven regression tables (existing link-to-task fixtures)
+- Add rule-conformance tests for each site-rule row:
+  - URL match behavior
+  - canonicalization idempotence
+  - extraction strategy validity
+  - fallback behavior
+- Add orchestrator tests for deadline, retries, and merge determinism
+
+### Migration Strategy
+- Ship behind feature flag: `useLinkEnrichmentCore`
+- Dual-run in shadow mode on selected links (compare old vs new outputs)
+- Promote by route:
+  1. task creation
+  2. link edit verification
+  3. background/deferred enrichment
+- Remove legacy per-site conditionals after parity targets are met
+
+### Exit Criteria
+- New site onboarding requires only table/rule changes in >90% of cases
+- Median task-from-link latency reduced for problematic sites
+- Deferred enrichment success rate improves metadata completeness
+- No direct client-writable global telemetry paths

@@ -1,4 +1,7 @@
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/link_enrichment_core/models/enrichment_context.dart';
+import 'package:meaning_to/link_enrichment_core/service/enrichment_service.dart';
+import 'package:meaning_to/link_enrichment_core/utils/url_canonicalizer.dart';
 import 'package:meaning_to/utils/category_suggestion_registry.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
@@ -35,6 +38,8 @@ class ProposedTask {
 
 /// Converts a link into a proposed Task with all relevant metadata
 class LinkToTaskConverter {
+  static final EnrichmentService _enrichmentService = EnrichmentService();
+
   /// Creates a proposed task from a link URL
   ///
   /// Parameters:
@@ -56,8 +61,10 @@ class LinkToTaskConverter {
   }) async {
     print('LinkToTaskConverter: Processing URL: $url');
 
-    // Normalize URL
-    final normalizedUrl = normalizeUrl(url);
+    // Normalize URL via the enrichment core facade.
+    final normalizedUrl = (await _enrichmentService.bootstrapFromUrl(url,
+            context: EnrichmentContext.native))
+        .normalizedUrl;
     print('LinkToTaskConverter: Normalized URL: $normalizedUrl');
 
     // Fetch webpage metadata
@@ -104,16 +111,14 @@ class LinkToTaskConverter {
         // and notes is the work (album/track/playlist name)
         headline = artistWorkInfo.artist;
         notes = artistWorkInfo.work;
-        // Don't fetch synopsis for TIDAL links
-        synopsis = normalizedUrl.contains('tidal.com') ? null : pageDescription;
+        synopsis = pageDescription;
         print(
             'LinkToTaskConverter: Extracted streaming media - Artist: "$headline", Work: "$notes"');
       } else {
         // Fallback if extraction fails
         headline = pageTitle;
         notes = null;
-        // Don't fetch synopsis for TIDAL links
-        synopsis = normalizedUrl.contains('tidal.com') ? null : pageDescription;
+        synopsis = pageDescription;
         print(
             'LinkToTaskConverter: Could not extract artist/work, using page title');
       }
@@ -183,131 +188,7 @@ class LinkToTaskConverter {
   /// Normalize URL for comparison (remove tracking parameters, etc.)
   static String normalizeUrl(String url) {
     try {
-      String cleanUrl = url.trim();
-
-      // Extract URL from HTML link if provided
-      final htmlMatch =
-          RegExp(r'<a[^>]+href="([^"]*)"[^>]*>').firstMatch(cleanUrl);
-      if (htmlMatch != null) {
-        cleanUrl = htmlMatch.group(1)!;
-      }
-
-      // Parse and normalize
-      final uri = Uri.parse(cleanUrl);
-
-      // For TIDAL URLs, remove trailing /u (user tracking parameter) and trailing slashes
-      if (uri.host.contains('tidal.com')) {
-        String path = uri.path;
-        // Remove trailing /u or /u/
-        if (path.endsWith('/u/')) {
-          path = path.substring(0, path.length - 3);
-        } else if (path.endsWith('/u')) {
-          path = path.substring(0, path.length - 2);
-        }
-        // Remove trailing slash (for consistency - makes normalization idempotent)
-        if (path.endsWith('/') && path.length > 1) {
-          path = path.substring(0, path.length - 1);
-        }
-
-        final cleanUri = Uri(
-          scheme: uri.scheme,
-          userInfo: uri.userInfo,
-          host: uri.host,
-          port: uri.hasPort ? uri.port : null,
-          path: path,
-          queryParameters:
-              uri.queryParameters.isNotEmpty ? uri.queryParameters : null,
-        );
-
-        print(
-            'LinkToTaskConverter: Normalized TIDAL URL from "$cleanUrl" to "${cleanUri.toString()}"');
-        return cleanUri.toString();
-      }
-
-      // For JustWatch URLs, remove trailing /u (user tracking suffix) and strip
-      // all query parameters (canonical JustWatch URLs never use query params).
-      if (uri.host.contains('justwatch.com')) {
-        String path = uri.path;
-        // Remove trailing /u or /u/
-        if (path.endsWith('/u/')) {
-          path = path.substring(0, path.length - 3);
-        } else if (path.endsWith('/u')) {
-          path = path.substring(0, path.length - 2);
-        }
-        final cleanUri = Uri(
-          scheme: uri.scheme,
-          userInfo: uri.userInfo,
-          host: uri.host,
-          port: uri.hasPort ? uri.port : null,
-          path: path,
-          // No queryParameters: canonical JustWatch URLs never need query params
-        );
-        print(
-            'LinkToTaskConverter: Normalized JustWatch URL from "$cleanUrl" to "${cleanUri.toString()}"');
-        return cleanUri.toString();
-      }
-
-      // For IMDb URLs, remove ALL query parameters (they're never needed)
-      // The canonical IMDb URL is just: https://www.imdb.com/title/tt1234567/
-      if (uri.host.contains('imdb.com')) {
-        print(
-            'LinkToTaskConverter: Normalizing IMDb URL - removing query parameters and extra path segments');
-
-        // Extract the IMDb title ID (e.g., tt0111161)
-        final idMatch = RegExp(r'/title/(tt\d+)').firstMatch(uri.path);
-        String? imdbId;
-        if (idMatch != null) {
-          imdbId = idMatch.group(1);
-        }
-
-        if (imdbId == null) {
-          print(
-              '   Warning: Could not extract IMDb ID from path "${uri.path}". Returning original URL.');
-          return cleanUrl;
-        }
-
-        // Rebuild the canonical IMDb URL: https://www.imdb.com/title/tt1234567/
-        final cleanUri = Uri(
-          scheme: uri.scheme,
-          userInfo: uri.userInfo,
-          host: uri.host,
-          port: uri.hasPort ? uri.port : null,
-          path: '/title/$imdbId/',
-        );
-
-        return cleanUri.toString();
-      }
-
-      // For other URLs, remove common tracking parameters
-      final cleanParams = Map<String, String>.from(uri.queryParameters);
-      final trackingParams = {
-        'utm_source',
-        'utm_medium',
-        'utm_campaign',
-        'utm_term',
-        'utm_content',
-        'fbclid',
-        'gclid',
-        'ref',
-        'source',
-        '_campaign',
-        'si', // Spotify session/share tracking parameter
-      };
-
-      for (final param in trackingParams) {
-        cleanParams.remove(param);
-      }
-
-      // Rebuild URL without tracking parameters
-      final cleanUri = uri.replace(queryParameters: cleanParams);
-
-      // Remove trailing ? if there are no parameters
-      String result = cleanUri.toString();
-      if (result.endsWith('?')) {
-        result = result.substring(0, result.length - 1);
-      }
-
-      return result;
+      return UrlCanonicalizer.normalize(url);
     } catch (e) {
       print('LinkToTaskConverter: Error normalizing URL "$url": $e');
       return url;
@@ -400,8 +281,8 @@ class LinkToTaskConverter {
 
   /// Extract URL from HTML link string
   static String? extractUrlFromHtmlLink(String htmlLink) {
-    final match = RegExp(r'<a[^>]+href="([^"]*)"').firstMatch(htmlLink);
-    return match?.group(1);
+    final extracted = UrlCanonicalizer.extractUrl(htmlLink);
+    return extracted.isEmpty ? null : extracted;
   }
 
   /// Compare two URLs for matching (handles normalization)

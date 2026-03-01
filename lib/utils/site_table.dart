@@ -27,6 +27,7 @@ enum FetchMethod {
 enum TitleSource {
   metaName, // <meta name="X" content="...">   — selector = name value
   metaProperty, // <meta property="X" content="..."> — selector = property value
+  jsonLdField, // <script type="application/ld+json"> ... field ... </script>
   cssText, // CSS selector → element.innerText (all descendants)
   cssDirectText, // CSS selector → direct text nodes only (skips nested elements)
   htmlTitle, // <title> tag text
@@ -46,6 +47,9 @@ class TitleStrategy {
   const TitleStrategy.metaProperty(String prop)
       : source = TitleSource.metaProperty,
         selector = prop;
+  const TitleStrategy.jsonLd(String field)
+      : source = TitleSource.jsonLdField,
+        selector = field;
   const TitleStrategy.css(String sel)
       : source = TitleSource.cssText,
         selector = sel;
@@ -86,6 +90,9 @@ class SiteEntry {
   /// Each is matched case-insensitively and replaced with ''.
   final List<String> stripSuffixes;
 
+  /// Whether synopsis/description extraction should be attempted for this site.
+  final bool synopsisEnabled;
+
   const SiteEntry({
     required this.domain,
     required this.displayName,
@@ -93,6 +100,7 @@ class SiteEntry {
     required this.title,
     this.description = const [],
     this.stripSuffixes = const [],
+    this.synopsisEnabled = true,
   });
 }
 
@@ -114,7 +122,11 @@ const List<SiteEntry> kSiteTable = [
       TitleStrategy.h1(),
     ],
     description: [
+      TitleStrategy.css('div#synopsis article.article-block'),
       TitleStrategy.css('div#synopsis p'),
+      TitleStrategy.jsonLd('description'),
+      TitleStrategy.metaName('description'),
+      TitleStrategy.metaProperty('og:description'),
     ],
     stripSuffixes: [
       r'\s*\(\d{4}\).*$', // remove year and trailing text
@@ -136,6 +148,8 @@ const List<SiteEntry> kSiteTable = [
     ],
     description: [
       TitleStrategy.css('.review .body-text p'),
+      TitleStrategy.metaName('description'),
+      TitleStrategy.metaProperty('og:description'),
     ],
     stripSuffixes: [r'\s*\(\d{4}\).*$'],
   ),
@@ -154,6 +168,8 @@ const List<SiteEntry> kSiteTable = [
     ],
     description: [
       TitleStrategy.css('.review .body-text p'),
+      TitleStrategy.metaName('description'),
+      TitleStrategy.metaProperty('og:description'),
     ],
     stripSuffixes: [r'\s*\(\d{4}\).*$'],
   ),
@@ -196,6 +212,7 @@ const List<SiteEntry> kSiteTable = [
       TitleStrategy.metaProperty('og:title'),
     ],
     description: [
+      TitleStrategy.jsonLd('description'),
       TitleStrategy.metaName('description'),
       TitleStrategy.metaProperty('og:description'),
     ],
@@ -217,6 +234,7 @@ const List<SiteEntry> kSiteTable = [
       TitleStrategy.css('div[data-test="biography"]'),
       TitleStrategy.metaProperty('og:description'),
     ],
+    synopsisEnabled: false,
   ),
 
   SiteEntry(
@@ -232,6 +250,7 @@ const List<SiteEntry> kSiteTable = [
       TitleStrategy.metaProperty('og:title'),
     ],
     description: [
+      TitleStrategy.jsonLd('description'),
       TitleStrategy.metaName('description'),
       TitleStrategy.metaProperty('og:description'),
     ],

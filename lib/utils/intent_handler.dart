@@ -4,6 +4,7 @@ import 'package:app_links/app_links.dart';
 import 'package:share_handler/share_handler.dart';
 import 'dart:async';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
+import 'package:meaning_to/utils/category_suggestion_registry.dart';
 import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/models/category.dart';
@@ -12,7 +13,6 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/main.dart';
-import 'package:meaning_to/utils/streaming_media_constants.dart';
 
 /// Comprehensive intent handler for all incoming content and deep links
 /// Handles: Deep links, Share intents, OAuth callbacks, Manual links, Browser redirects
@@ -255,7 +255,8 @@ class IntentHandler {
       // Analyze URL and determine suggested categories
       final suggestedCategoryIds = _analyzeLinkForCategorySuggestions(url);
       if (suggestedCategoryIds.isNotEmpty) {
-        print('IntentHandler: URL suggests category IDs: $suggestedCategoryIds');
+        print(
+            'IntentHandler: URL suggests category IDs: $suggestedCategoryIds');
         intent.data['suggestedCategoryIds'] = suggestedCategoryIds;
       }
 
@@ -382,7 +383,8 @@ class IntentHandler {
       case DuplicateAction.createNew:
         print('IntentHandler: User chose to create new task');
         // Go to New Content screen with preloaded link and original_id
-        await _navigateToNewContentWithLinkAndOriginal(url, intent, context, duplicate);
+        await _navigateToNewContentWithLinkAndOriginal(
+            url, intent, context, duplicate);
         break;
 
       case DuplicateAction.cancel:
@@ -413,31 +415,34 @@ class IntentHandler {
       print(
           'IntentHandler: No equivalent category found, creating new task with link and original_id');
       // Fallback to just the link but still preserve original_id relationship
-      await _navigateToNewContentWithLinkAndOriginal(url, intent, context, duplicate);
+      await _navigateToNewContentWithLinkAndOriginal(
+          url, intent, context, duplicate);
     }
   }
 
   /// Handle new link creation (no duplicates found)
-  Future<void> _handleNewLinkCreation(
-      String url, ProcessedIntent intent, BuildContext context, LinkProcessingResult result) async {
+  Future<void> _handleNewLinkCreation(String url, ProcessedIntent intent,
+      BuildContext context, LinkProcessingResult result) async {
     print('IntentHandler: Creating new task for link: $url');
 
     // Dismiss processing dialog before navigating
     _dismissProcessingDialog(context);
 
-    await _navigateToNewContentWithLink(url, intent, context, result.proposedTask);
+    await _navigateToNewContentWithLink(
+        url, intent, context, result.proposedTask);
   }
 
   /// Handle new link creation when duplicates exist (set original_id)
-  Future<void> _handleNewLinkWithDuplicates(
-      String url, ProcessedIntent intent, BuildContext context, List<DuplicateMatch> duplicates) async {
-
+  Future<void> _handleNewLinkWithDuplicates(String url, ProcessedIntent intent,
+      BuildContext context, List<DuplicateMatch> duplicates) async {
     // Find the most appropriate original task to link to
     final originalTask = _findBestOriginalTask(duplicates);
 
-    print('IntentHandler: Creating new task for link with original_id: ${originalTask.task.originalId ?? originalTask.task.id}');
+    print(
+        'IntentHandler: Creating new task for link with original_id: ${originalTask.task.originalId ?? originalTask.task.id}');
 
-    await _navigateToNewContentWithLinkAndOriginal(url, intent, context, originalTask);
+    await _navigateToNewContentWithLinkAndOriginal(
+        url, intent, context, originalTask);
   }
 
   /// Show dialog for user-owned duplicate
@@ -534,12 +539,13 @@ class IntentHandler {
   }
 
   /// Navigate to New Content screen with preloaded link
-  Future<void> _navigateToNewContentWithLink(
-      String url, ProcessedIntent intent, BuildContext context, ProposedTask? proposedTask) async {
+  Future<void> _navigateToNewContentWithLink(String url, ProcessedIntent intent,
+      BuildContext context, ProposedTask? proposedTask) async {
     if (_navigatorKey == null) return;
 
     // Try to get intelligently suggested category first
-    final suggestedCategory = await _getOrCreateSuggestedCategory(intent, context);
+    final suggestedCategory =
+        await _getOrCreateSuggestedCategory(intent, context);
     final defaultCategory = suggestedCategory ?? _getCurrentCategory();
 
     // Use ProposedTask data if available, otherwise fall back to intent data
@@ -549,7 +555,8 @@ class IntentHandler {
 
     print('IntentHandler: Navigating to NewContent with ProposedTask data:');
     print('  - Headline: $headline');
-    print('  - Synopsis: ${synopsis != null ? "present (${synopsis.length} chars)" : "null"}');
+    print(
+        '  - Synopsis: ${synopsis != null ? "present (${synopsis.length} chars)" : "null"}');
     print('  - Links: ${formattedLinks.length} link(s)');
 
     _navigatorKey!.currentState?.pushNamed(
@@ -582,18 +589,22 @@ class IntentHandler {
         'initialLinks': [url],
         'initialHeadline': otherTask.headline,
         'initialNotes': otherTask.notes,
-        'originalId': originalId,  // Pass the original_id to link tasks
+        'originalId': originalId, // Pass the original_id to link tasks
       },
     );
   }
 
   /// Navigate to New Content screen with preloaded link and original_id
   Future<void> _navigateToNewContentWithLinkAndOriginal(
-      String url, ProcessedIntent intent, BuildContext context, DuplicateMatch duplicate) async {
+      String url,
+      ProcessedIntent intent,
+      BuildContext context,
+      DuplicateMatch duplicate) async {
     if (_navigatorKey == null) return;
 
     // Try to get intelligently suggested category first
-    final suggestedCategory = await _getOrCreateSuggestedCategory(intent, context);
+    final suggestedCategory =
+        await _getOrCreateSuggestedCategory(intent, context);
     final defaultCategory = suggestedCategory ?? _getCurrentCategory();
 
     // Determine the original_id to use (preserve the chain)
@@ -608,7 +619,7 @@ class IntentHandler {
         'initialLinks': [url],
         'initialHeadline': intent.data['title'] as String?,
         'initialNotes': intent.data['description'] as String?,
-        'originalId': originalId,  // Pass the original_id to link tasks
+        'originalId': originalId, // Pass the original_id to link tasks
       },
     );
   }
@@ -616,7 +627,8 @@ class IntentHandler {
   /// Find the best original task to link to from duplicates
   DuplicateMatch _findBestOriginalTask(List<DuplicateMatch> duplicates) {
     // Prioritize tasks that are themselves originals (no original_id)
-    final originalTasks = duplicates.where((dup) => dup.task.originalId == null).toList();
+    final originalTasks =
+        duplicates.where((dup) => dup.task.originalId == null).toList();
 
     if (originalTasks.isNotEmpty) {
       // Return the first original task found
@@ -631,78 +643,30 @@ class IntentHandler {
   /// Analyze URL to suggest appropriate categories based on domain and path
   List<String> _analyzeLinkForCategorySuggestions(String url) {
     try {
-      final uri = Uri.parse(url.toLowerCase());
-      final domain = uri.host;
-      final path = uri.path;
-
-      print('IntentHandler: Analyzing URL - domain: $domain, path: $path');
-
-      // IMDb links -> can be either movies or TV shows
-      if (domain.contains('imdb.com')) {
-        print('IntentHandler: IMDb link detected, suggesting both movie and TV categories');
-        // Check if we can determine the type from the path
-        if (path.contains('/tv/') || path.contains('tvseries')) {
-          print('IntentHandler: IMDb TV content detected, prioritizing TV category');
-          return ['2', '1']; // TV first, then movie
-        } else if (path.contains('/title/')) {
-          print('IntentHandler: IMDb title detected, could be either type');
-          return ['1', '2']; // Movie first, then TV (more common)
-        } else {
-          print('IntentHandler: IMDb general link, suggesting both options');
-          return ['1', '2']; // Movie first, then TV
-        }
-      }
-
-      // Letterboxd links -> primarily movies but occasionally has TV series
-      if (domain.contains('letterboxd.com')) {
-        print('IntentHandler: Letterboxd link detected, suggesting movie category with TV option');
-        return ['1', '2']; // Movie first (primary), TV second (occasional)
-      }
-
-      // JustWatch links -> depends on path
-      if (domain.contains('justwatch.com')) {
-        print('IntentHandler: JustWatch link detected, analyzing path...');
-        if (path.contains('/movie/')) {
-          print('IntentHandler: JustWatch movie link, suggesting movie category');
-          return ['1']; // Just movie
-        } else if (path.contains('/tv-show/')) {
-          print('IntentHandler: JustWatch TV show link, suggesting TV category');
-          return ['2']; // Just TV
-        } else {
-          print('IntentHandler: JustWatch link without specific type, suggesting both');
-          return ['1', '2']; // Both options
-        }
-      }
-
-      // Tidal links -> streaming media categories
-      if (domain.contains('tidal.com')) {
-        print('IntentHandler: Tidal link detected, suggesting streaming media categories');
-        // Return streaming media category IDs as strings
-        return STREAMING_MEDIA_CATEGORY_IDS.map((id) => id.toString()).toList();
-      }
-
-      // Future streaming services can be added here:
-      // Spotify, Apple Music, YouTube Music, etc.
-      // if (domain.contains('spotify.com') || domain.contains('music.apple.com')) {
-      //   print('IntentHandler: Streaming media link detected');
-      //   return STREAMING_MEDIA_CATEGORY_IDS.map((id) => id.toString()).toList();
-      // }
-
-      print('IntentHandler: No category suggestion for domain: $domain');
-      return [];
-
+      final suggestions = CategorySuggestionRegistry.getSuggestionsForUrl(url);
+      print('IntentHandler: Category suggestions from registry: $suggestions');
+      return suggestions.map((id) => id.toString()).toList();
     } catch (e) {
       print('IntentHandler: Error analyzing URL for category suggestions: $e');
       return [];
     }
   }
 
-  /// Get the suggested category if the user already has it
-  Future<Category?> _getOrCreateSuggestedCategory(ProcessedIntent intent, BuildContext context) async {
-    final suggestedCategoryIds = intent.data['suggestedCategoryIds'] as List<String>?;
-    if (suggestedCategoryIds == null || suggestedCategoryIds.isEmpty) return null;
+  @visibleForTesting
+  List<String> analyzeLinkForCategorySuggestionsForTest(String url) {
+    return _analyzeLinkForCategorySuggestions(url);
+  }
 
-    print('IntentHandler: Looking for suggested categories with original_ids: $suggestedCategoryIds');
+  /// Get the suggested category if the user already has it
+  Future<Category?> _getOrCreateSuggestedCategory(
+      ProcessedIntent intent, BuildContext context) async {
+    final suggestedCategoryIds =
+        intent.data['suggestedCategoryIds'] as List<String>?;
+    if (suggestedCategoryIds == null || suggestedCategoryIds.isEmpty)
+      return null;
+
+    print(
+        'IntentHandler: Looking for suggested categories with original_ids: $suggestedCategoryIds');
 
     try {
       final currentUserId = AuthUtils.getCurrentUserId();
@@ -720,16 +684,17 @@ class IntentHandler {
 
         if (existingResponse != null) {
           final existingCategory = Category.fromJson(existingResponse);
-          print('IntentHandler: Found existing user category: ${existingCategory.headline}');
+          print(
+              'IntentHandler: Found existing user category: ${existingCategory.headline}');
           return existingCategory;
         }
       }
 
       // User doesn't have the suggested categories - return null to use current category
       // The unified CategoryPickerDialog will show suggestions when user clicks "Move to Different Pursuit"
-      print('IntentHandler: User doesn\'t have suggested categories, will use current category with suggestions');
+      print(
+          'IntentHandler: User doesn\'t have suggested categories, will use current category with suggestions');
       return null;
-
     } catch (e) {
       print('IntentHandler: Error getting suggested category: $e');
       return null;
