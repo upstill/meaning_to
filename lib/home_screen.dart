@@ -1024,6 +1024,47 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _deleteCategory(Category category) async {
+    final catName = NamingUtils.categoriesName(plural: false);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete $catName'),
+        content: Text(
+          'Are you sure you want to delete "${category.headline}"? '
+          'All ${NamingUtils.tasksName()} in this $catName will also be deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await supabase.from('Categories').delete().eq('id', category.id);
+      if (mounted) await _loadCategories();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting $catName: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _toggleTaskShareFromList(Task task, bool newSharedState) async {
     final updatedTask = Task(
       id: task.id,
@@ -2722,11 +2763,10 @@ class HomeScreenState extends State<HomeScreen> {
                                           ),
                                         ),
                                       ),
-                                      IconButton(
-                                        icon: const Icon(Icons.edit),
-                                        tooltip:
-                                            'Edit ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
-                                        onPressed: () {
+                                      PopupMenuButton<String>(
+                                        icon: const Icon(Icons.more_vert),
+                                        tooltip: '${NamingUtils.categoriesName(capitalize: true, plural: false)} options',
+                                        onSelected: (value) {
                                           if (AuthUtils.isGuestUser()) {
                                             _showGuestSignupDialog(
                                               content:
@@ -2734,9 +2774,44 @@ class HomeScreenState extends State<HomeScreen> {
                                             );
                                             return;
                                           }
-                                          _navigateToEditCategory(
-                                              _selectedCategory);
+                                          switch (value) {
+                                            case 'add':
+                                              _navigateToNewCategory();
+                                            case 'edit':
+                                              _navigateToEditCategory(_selectedCategory);
+                                            case 'delete':
+                                              if (_selectedCategory != null) _deleteCategory(_selectedCategory!);
+                                          }
                                         },
+                                        itemBuilder: (_) => [
+                                          PopupMenuItem<String>(
+                                            value: 'add',
+                                            child: ListTile(
+                                              leading: const Icon(Icons.add),
+                                              title: Text('New ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
+                                              contentPadding: EdgeInsets.zero,
+                                            ),
+                                          ),
+                                          PopupMenuItem<String>(
+                                            value: 'edit',
+                                            child: ListTile(
+                                              leading: const Icon(Icons.edit),
+                                              title: Text('Edit ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
+                                              contentPadding: EdgeInsets.zero,
+                                            ),
+                                          ),
+                                          PopupMenuItem<String>(
+                                            value: 'delete',
+                                            child: ListTile(
+                                              leading: const Icon(Icons.delete, color: Colors.red),
+                                              title: Text(
+                                                'Delete ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
+                                                style: const TextStyle(color: Colors.red),
+                                              ),
+                                              contentPadding: EdgeInsets.zero,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
@@ -2886,17 +2961,45 @@ class HomeScreenState extends State<HomeScreen> {
                                                 ),
                                               ),
                                               if (!AuthUtils.isGuestUser()) ...[
-                                                const SizedBox(width: 8),
-                                                GestureDetector(
-                                                  onTap: () =>
-                                                      _showEditPanel(
-                                                    _randomTask!,
-                                                  ),
-                                                  child: Icon(
-                                                    Icons.edit,
-                                                    size: 20,
-                                                    color: Colors.white,
-                                                  ),
+                                                PopupMenuButton<String>(
+                                                  icon: const Icon(Icons.more_vert, size: 20, color: Colors.white),
+                                                  padding: EdgeInsets.zero,
+                                                  onSelected: (value) {
+                                                    switch (value) {
+                                                      case 'add':
+                                                        _navigateToNewContent();
+                                                      case 'edit':
+                                                        _showEditPanel(_randomTask!);
+                                                      case 'delete':
+                                                        _deleteTaskFromList(_randomTask!);
+                                                    }
+                                                  },
+                                                  itemBuilder: (_) => [
+                                                    PopupMenuItem<String>(
+                                                      value: 'add',
+                                                      child: ListTile(
+                                                        leading: const Icon(Icons.add),
+                                                        title: Text('New ${NamingUtils.tasksName(plural: false)}'),
+                                                        contentPadding: EdgeInsets.zero,
+                                                      ),
+                                                    ),
+                                                    const PopupMenuItem<String>(
+                                                      value: 'edit',
+                                                      child: ListTile(
+                                                        leading: Icon(Icons.edit),
+                                                        title: Text('Edit'),
+                                                        contentPadding: EdgeInsets.zero,
+                                                      ),
+                                                    ),
+                                                    const PopupMenuItem<String>(
+                                                      value: 'delete',
+                                                      child: ListTile(
+                                                        leading: Icon(Icons.delete, color: Colors.red),
+                                                        title: Text('Delete', style: TextStyle(color: Colors.red)),
+                                                        contentPadding: EdgeInsets.zero,
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ],
                                             ],
