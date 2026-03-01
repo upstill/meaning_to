@@ -92,6 +92,8 @@ class TaskEditScreen extends StatefulWidget {
   final String? initialNotes; // Notes to pre-populate for new tasks
   final bool showAlternativeOptions; // Whether to show bulk import options
   final String? infoMessage; // Optional informational message to display at top
+  final bool isPanel; // true when displayed as modal bottom sheet
+  final void Function(Category)? onCategoryChange; // called when panel wants category change
 
   const TaskEditScreen({
     super.key,
@@ -102,6 +104,8 @@ class TaskEditScreen extends StatefulWidget {
     this.initialNotes,
     this.showAlternativeOptions = true,
     this.infoMessage,
+    this.isPanel = false,
+    this.onCategoryChange,
   });
 
   @override
@@ -567,23 +571,33 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       final shouldMove = result;
 
       if (shouldMove) {
-        // MOVE: Navigate to TaskEditScreen with new category, preserving task data
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => TaskEditScreen(
-              category: newCategory,
-              task: _localTask, // Pass the existing task
-              initialLinks: _links.isNotEmpty ? _links : null,
-              initialHeadline: _headlineController.text.isNotEmpty
-                  ? _headlineController.text
-                  : null,
-              initialNotes: _notesController.text.isNotEmpty
-                  ? _notesController.text
-                  : null,
-              showAlternativeOptions: widget.showAlternativeOptions,
+        if (widget.isPanel) {
+          // In panel mode, do a direct DB update and close the panel
+          await supabase
+              .from('Tasks')
+              .update({'category_id': newCategory.id})
+              .eq('id', _localTask!.id);
+          if (mounted) Navigator.pop(context);
+          TaskEditScreen.onEditComplete?.call();
+        } else {
+          // MOVE: Navigate to TaskEditScreen with new category, preserving task data
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => TaskEditScreen(
+                category: newCategory,
+                task: _localTask, // Pass the existing task
+                initialLinks: _links.isNotEmpty ? _links : null,
+                initialHeadline: _headlineController.text.isNotEmpty
+                    ? _headlineController.text
+                    : null,
+                initialNotes: _notesController.text.isNotEmpty
+                    ? _notesController.text
+                    : null,
+                showAlternativeOptions: widget.showAlternativeOptions,
+              ),
             ),
-          ),
-        );
+          );
+        }
       } else {
         // COPY: Create a new task in the new category while keeping the old one
         try {
@@ -2010,44 +2024,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        print('TaskEditScreen: WillPopScope triggered');
-        _handleBack();
-        return false;
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              print('TaskEditScreen: Back button pressed in app bar');
-              _handleBack();
-            },
-          ),
-          title: Text(
-            _localTask == null
-                ? 'New ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}'
-                : 'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}',
-          ),
-          actions: [
-            // Only show delete button for authenticated users
-            if (_localTask != null && !AuthUtils.isGuestUser())
-              IconButton(
-                icon: const Icon(Icons.delete),
-                onPressed: _isLoading ? null : _deleteTask,
-                tooltip:
-                    'Delete ${NamingUtils.tasksName(capitalize: false, plural: false)}',
-              ),
-          ],
-        ),
-        body: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(16.0),
-            children: [
+  List<Widget> _buildFormChildren() {
+    return [
               // Info message banner (if provided)
               if (widget.infoMessage != null) ...[
                 Container(
@@ -2083,33 +2061,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   ),
                 ),
               ],
-              // Category move button
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: _showCategorySelectionDialog,
-                  icon: const Icon(Icons.folder_open),
-                  label: Text(
-                    'Move to a different ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
-                  ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.green[800],
-                    backgroundColor: Colors.green[50],
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
               Card(
                 elevation: 10,
                 color: Colors.grey[50],
@@ -2525,7 +2476,101 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   ),
                 ),
               ],
+    ];
+  }
+
+  Widget _buildPanelContent() {
+    return Column(
+      children: [
+        // Drag handle
+        Center(
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 10),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[400],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+        // Title row + optional delete icon
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 4, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _localTask == null
+                      ? 'New ${NamingUtils.tasksName(capitalize: true, plural: false)} in ${widget.category.headline}'
+                      : 'Edit in ${widget.category.headline}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              if (_localTask != null && !AuthUtils.isGuestUser())
+                IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: _isLoading ? null : _deleteTask,
+                  tooltip: 'Delete',
+                ),
             ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: _buildFormChildren(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.isPanel) {
+      return _buildPanelContent();
+    }
+    return WillPopScope(
+      onWillPop: () async {
+        print('TaskEditScreen: WillPopScope triggered');
+        _handleBack();
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              print('TaskEditScreen: Back button pressed in app bar');
+              _handleBack();
+            },
+          ),
+          title: Text(
+            _localTask == null
+                ? 'New ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}'
+                : 'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}',
+          ),
+          actions: [
+            // Only show delete button for authenticated users
+            if (_localTask != null && !AuthUtils.isGuestUser())
+              IconButton(
+                icon: const Icon(Icons.delete),
+                onPressed: _isLoading ? null : _deleteTask,
+                tooltip:
+                    'Delete ${NamingUtils.tasksName(capitalize: false, plural: false)}',
+              ),
+          ],
+        ),
+        body: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: _buildFormChildren(),
           ),
         ),
       ),

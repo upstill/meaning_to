@@ -79,6 +79,9 @@ class HomeScreenState extends State<HomeScreen> {
   bool _isFetchingSynopsis = false;
   String? _fetchedSynopsis;
 
+  // Non-null while edit panel is open
+  Task? _editingTask;
+
   // CacheManager instance for managing current category and tasks
   final CacheManager _cacheManager = CacheManager();
 
@@ -1222,7 +1225,7 @@ class HomeScreenState extends State<HomeScreen> {
                 'home-task-${task.id}-${task.finished}-${task.shared}'),
             task: task,
             withControls: true,
-            onEdit: () => _navigateToEditTask(task),
+            onEdit: () => _showEditPanel(task),
             onDelete: () => _deleteTaskFromList(task),
             onTap: () => _toggleTaskCompletionFromList(task),
             onShareToggle: (newSharedState) =>
@@ -1480,6 +1483,12 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleCategorySelection(Category? newValue) async {
+    // If the edit panel is open, intercept and show copy/move dialog instead
+    if (_editingTask != null && newValue != null) {
+      await _handleEditPanelCategoryChange(_editingTask!, newValue);
+      return;
+    }
+
     setState(() {
       _selectedCategory = newValue;
       _randomTask = null;
@@ -2006,50 +2015,142 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _navigateToEditTask(Task task) {
-    print('HomeScreen: Navigating to edit task: ${task.headline}');
+  Future<void> _showEditPanel(Task task) async {
+    print('HomeScreen: Showing edit panel for task: ${task.headline}');
     if (!mounted || _selectedCategory == null) {
       print('HomeScreen: Not mounted or no category selected');
       return;
     }
 
-    // Set up the static callback before navigation
+    setState(() => _editingTask = task);
+
     TaskEditScreen.onEditComplete = () {
       print('HomeScreen: Task edit complete callback received');
       if (mounted) {
-        print('HomeScreen: Widget mounted, triggering task reload');
-        // Force a rebuild and task reload
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            print('HomeScreen: Post frame callback executing');
             setState(() {
-              print('HomeScreen: Setting needsTaskReload to true');
               HomeScreen.needsTaskReload.value = true;
             });
-            // The listener will call _handleEditComplete(), no need to call it directly
-          } else {
-            print('HomeScreen: Widget not mounted in post frame callback');
           }
         });
-      } else {
-        print('HomeScreen: Widget not mounted, cannot trigger task reload');
       }
     };
-    print(
-      'HomeScreen: Set static callback for task edit: ${TaskEditScreen.onEditComplete != null}',
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.88,
+        minChildSize: 0.5,
+        maxChildSize: 0.97,
+        expand: false,
+        builder: (_, __) => Material(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          clipBehavior: Clip.antiAlias,
+          child: TaskEditScreen(
+            category: _selectedCategory!,
+            task: task,
+            isPanel: true,
+            onCategoryChange: (newCategory) =>
+                _handleEditPanelCategoryChange(task, newCategory),
+          ),
+        ),
+      ),
     );
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            TaskEditScreen(category: _selectedCategory!, task: task),
+    TaskEditScreen.onEditComplete = null;
+    setState(() => _editingTask = null);
+  }
+
+  Future<void> _handleEditPanelCategoryChange(
+      Task task, Category newCategory) async {
+    bool shouldMove = true;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          title: Text(
+              'Change ${NamingUtils.categoriesName(capitalize: false, plural: false)}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Move "${task.headline}" to "${newCategory.headline}"?'),
+              const SizedBox(height: 16),
+              RadioListTile<bool>(
+                title: const Text('Move'),
+                subtitle: Text('Remove from "${_selectedCategory!.headline}"'),
+                value: true,
+                groupValue: shouldMove,
+                onChanged: (v) => setDlgState(() => shouldMove = v ?? true),
+              ),
+              RadioListTile<bool>(
+                title: const Text('Copy'),
+                subtitle: Text(
+                    'Keep in both "${_selectedCategory!.headline}" and "${newCategory.headline}"'),
+                value: false,
+                groupValue: shouldMove,
+                onChanged: (v) => setDlgState(() => shouldMove = v ?? false),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, shouldMove),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
       ),
-    ).then((_) {
-      // Clear the callback after navigation
-      TaskEditScreen.onEditComplete = null;
-      print('HomeScreen: Cleared static callback after task edit');
-    });
+    );
+
+    if (result == null) return;
+
+    // Close the edit panel
+    if (mounted) Navigator.pop(context);
+
+    try {
+      if (result) {
+        // Move: update category_id
+        await supabase
+            .from('Tasks')
+            .update({'category_id': newCategory.id})
+            .eq('id', task.id);
+      } else {
+        // Copy: insert new row
+        final userId = AuthUtils.getCurrentUserId();
+        await supabase.from('Tasks').insert({
+          'headline': task.headline,
+          'notes': task.notes,
+          'category_id': newCategory.id,
+          'owner_id': userId,
+          'finished': false,
+          'shared': task.shared,
+          'links': task.links ?? [],
+          'synopsis': task.synopsis,
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+
+    // Refresh current view (stay in original category)
+    if (mounted) {
+      setState(() {
+        HomeScreen.needsTaskReload.value = true;
+      });
+    }
   }
 
   void _navigateToEditTasks() {
@@ -2747,7 +2848,7 @@ class HomeScreenState extends State<HomeScreen> {
                                               Expanded(
                                                 child: GestureDetector(
                                                   onTap: () =>
-                                                      _navigateToEditTask(
+                                                      _showEditPanel(
                                                     _randomTask!,
                                                   ),
                                                   child: Text(
@@ -2788,7 +2889,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                 const SizedBox(width: 8),
                                                 GestureDetector(
                                                   onTap: () =>
-                                                      _navigateToEditTask(
+                                                      _showEditPanel(
                                                     _randomTask!,
                                                   ),
                                                   child: Icon(
