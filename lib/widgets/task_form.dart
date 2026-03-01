@@ -565,25 +565,6 @@ class _TaskFormState extends State<TaskForm> {
                     enabled: !widget.isLoading,
                   ),
 
-                  const SizedBox(height: 16),
-
-                  // Privacy/Sharing checkbox
-                  CheckboxListTile(
-                    title: Text(
-                        'Share this ${NamingUtils.tasksName(capitalize: false, plural: false)}'),
-                    subtitle: const Text('Make it available to others'),
-                    value: _isShared,
-                    onChanged: widget.isLoading
-                        ? null
-                        : (value) {
-                            setState(() {
-                              _isShared = value ?? false;
-                            });
-                          },
-                    tristate: false,
-                    controlAffinity: ListTileControlAffinity.leading,
-                  ),
-
                   // Links section
                   const SizedBox(height: 16),
                   Row(

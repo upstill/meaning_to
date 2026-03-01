@@ -2229,21 +2229,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         maxLines: 2,
                         enabled: !_isLoading,
                       ),
-                      const SizedBox(height: 16),
-                      CheckboxListTile(
-                        title: const Text(
-                            'Share this ${NamingUtils.tasksNameSingular}'),
-                        subtitle: const Text('Make it available to others'),
-                        value: _isShared,
-                        onChanged: _isLoading
-                            ? null
-                            : (value) {
-                                setState(() {
-                                  _isShared = value ?? false;
-                                });
-                              },
-                        controlAffinity: ListTileControlAffinity.leading,
-                      ),
                       if (_error != null) ...[
                         const SizedBox(height: 16),
                         Text(
