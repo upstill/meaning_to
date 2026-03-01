@@ -3,15 +3,12 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/widgets/task_form.dart';
 import 'package:meaning_to/widgets/category_form.dart';
-import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/edit_category_screen.dart';
-import 'package:meaning_to/utils/link_to_task_converter.dart';
-import 'package:html/parser.dart' as html_parser;
 
 enum ContentType { task, category }
 
@@ -43,17 +40,11 @@ class _NewContentScreenState extends State<NewContentScreen> {
   bool _isLoading = false;
   List<Category> _categories = [];
   Category? _selectedCategoryForTask;
-  List<String> _currentLinks = []; // Track current links from the task form
-
   @override
   void initState() {
     super.initState();
     _selectedCategoryForTask = widget.selectedCategory;
 
-    // Initialize links if provided
-    if (widget.initialLinks != null) {
-      _currentLinks = List<String>.from(widget.initialLinks!);
-    }
 
     _loadCategories();
   }
@@ -227,55 +218,6 @@ class _NewContentScreenState extends State<NewContentScreen> {
     }
   }
 
-  void _showCategoryPicker() {
-    // Analyze current links to get suggested category IDs
-    final suggestedIds = <int>{};
-
-    print('NewContentScreen: _showCategoryPicker - analyzing ${_currentLinks.length} links');
-
-    for (int i = 0; i < _currentLinks.length; i++) {
-      final htmlLink = _currentLinks[i];
-      print('NewContentScreen: Processing link $i: $htmlLink');
-
-      try {
-        // Extract URL from HTML link
-        final document = html_parser.parse(htmlLink);
-        final anchor = document.querySelector('a');
-        final url = anchor?.attributes['href'];
-
-        if (url != null) {
-          print('NewContentScreen: Extracted URL: $url');
-
-          // Get category suggestions for this URL
-          final suggestions = LinkToTaskConverter.analyzeLinkForCategorySuggestions(url);
-          print('NewContentScreen: Suggestions for this URL: $suggestions');
-
-          suggestedIds.addAll(suggestions);
-        } else {
-          print('NewContentScreen: No URL found in HTML link');
-        }
-      } catch (e) {
-        print('NewContentScreen: Error extracting URL from link: $e');
-      }
-    }
-
-    print('NewContentScreen: Final suggested category IDs: ${suggestedIds.toList()}');
-
-    CategoryPickerDialog.show(
-      context,
-      title:
-          'Choose ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
-      defaultCategory: _selectedCategoryForTask,
-      onCategorySelected: (category, {shouldMove, applyToAll}) {
-        setState(() {
-          _selectedCategoryForTask = category;
-        });
-      },
-      showCreateNew: true,
-      suggestedCategoryIds: suggestedIds.toList(),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -292,74 +234,6 @@ class _NewContentScreenState extends State<NewContentScreen> {
       ),
       body: Column(
         children: [
-          // Action buttons row (only show if not category locked)
-          if (!widget.categoryLocked) ...[
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Category change button (left side, only show for task mode and if user has multiple categories)
-                  if (_contentType == ContentType.task && _categories.length > 1)
-                    TextButton(
-                      onPressed: () => _showCategoryPicker(),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.blue[800],
-                        backgroundColor: Colors.blue[50],
-                        textStyle: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        visualDensity: VisualDensity.compact,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: Text(
-                        'Add to different ${NamingUtils.categoriesName(plural: false, capitalize: true)}',
-                      ),
-                    )
-                  else
-                    const SizedBox.shrink(),
-
-                  // "New Pursuit Instead" button (right side)
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _contentType = _contentType == ContentType.task
-                            ? ContentType.category
-                            : ContentType.task;
-                      });
-                    },
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.green[800],
-                      backgroundColor: Colors.green[50],
-                      textStyle: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: Text(
-                      _contentType == ContentType.task
-                          ? 'Make a New ${NamingUtils.categoriesName(capitalize: true, plural: false)} instead'
-                          : 'Make a New ${NamingUtils.tasksName(capitalize: true, plural: false)} instead',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-
           // Main content area
           Expanded(
             child: _contentType == ContentType.task || widget.categoryLocked
@@ -379,12 +253,7 @@ class _NewContentScreenState extends State<NewContentScreen> {
                     initialNotes: widget.initialNotes,
                     initialLinks: widget.initialLinks,
                     categoryLocked: widget.categoryLocked,
-                    onLinksChanged: (links) {
-                      setState(() {
-                        _currentLinks = links;
-                      });
-                      print('NewContentScreen: Links updated, count: ${links.length}');
-                    },
+                    onLinksChanged: null,
                   )
                 : ListView(
                     padding: const EdgeInsets.all(16.0),
