@@ -2777,6 +2777,8 @@ class HomeScreenState extends State<HomeScreen> {
                                           switch (value) {
                                             case 'add':
                                               _navigateToNewCategory();
+                                            case 'add_task':
+                                              _navigateToNewContent();
                                             case 'edit':
                                               _navigateToEditCategory(_selectedCategory);
                                             case 'delete':
@@ -2789,6 +2791,14 @@ class HomeScreenState extends State<HomeScreen> {
                                             child: ListTile(
                                               leading: const Icon(Icons.add),
                                               title: Text('New ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
+                                              contentPadding: EdgeInsets.zero,
+                                            ),
+                                          ),
+                                          PopupMenuItem<String>(
+                                            value: 'add_task',
+                                            child: ListTile(
+                                              leading: const Icon(Icons.add_task),
+                                              title: Text('New ${NamingUtils.tasksName(plural: false)}'),
                                               contentPadding: EdgeInsets.zero,
                                             ),
                                           ),
@@ -2966,8 +2976,6 @@ class HomeScreenState extends State<HomeScreen> {
                                                   padding: EdgeInsets.zero,
                                                   onSelected: (value) {
                                                     switch (value) {
-                                                      case 'add':
-                                                        _navigateToNewContent();
                                                       case 'edit':
                                                         _showEditPanel(_randomTask!);
                                                       case 'delete':
@@ -2975,14 +2983,6 @@ class HomeScreenState extends State<HomeScreen> {
                                                     }
                                                   },
                                                   itemBuilder: (_) => [
-                                                    PopupMenuItem<String>(
-                                                      value: 'add',
-                                                      child: ListTile(
-                                                        leading: const Icon(Icons.add),
-                                                        title: Text('New ${NamingUtils.tasksName(plural: false)}'),
-                                                        contentPadding: EdgeInsets.zero,
-                                                      ),
-                                                    ),
                                                     const PopupMenuItem<String>(
                                                       value: 'edit',
                                                       child: ListTile(
@@ -3441,26 +3441,6 @@ class HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(width: 200),
             ],
-            SizedBox(
-              width: 88,
-              height: 88,
-              child: FloatingActionButton(
-                heroTag: 'addContentButton',
-                onPressed: () {
-                  if (AuthUtils.isGuestUser()) {
-                    _showGuestSignupDialog(
-                        content:
-                            'Here\'s where you can add new ${NamingUtils.tasksName()} and ${NamingUtils.categoriesName()} once you\'re logged in. Sign up to add your own content!');
-                  } else {
-                    _navigateToNewContent();
-                  }
-                },
-                tooltip: 'Add New Content',
-                backgroundColor: AppButtons.goForthBg,
-                foregroundColor: AppButtons.goForthFg,
-                child: const Icon(Icons.add, size: 38),
-              ),
-            ),
           ],
         ),
       ),
