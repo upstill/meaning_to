@@ -94,9 +94,7 @@ class HomeScreenState extends State<HomeScreen> {
   // Check if current user is the developer
   bool get _isDeveloperUser {
     final userId = AuthUtils.getCurrentUserId();
-    print('DEBUG: Current user ID: $userId');
     final isDev = userId == 'ed1e8fd6-44cc-4fff-b717-57ffb551cb2d';
-    print('DEBUG: Is developer user: $isDev');
     return isDev;
   }
 
@@ -172,7 +170,6 @@ class HomeScreenState extends State<HomeScreen> {
 
     // Developer menu - only show for developer user
     if (_isDeveloperUser) {
-      print('DEBUG: Adding developer menu button to actions');
       actions.add(
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -240,7 +237,6 @@ class HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    print('DEBUG: Total actions in AppBar: ${actions.length}');
     return actions;
   }
 
@@ -2480,7 +2476,6 @@ class HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print('🔥🔥🔥 HOME SCREEN BUILD - NEW CODE VERSION 2026-01-11 🔥🔥🔥');
     // Check if data was modified after this frame completes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final dataModified = HomeScreen.checkAndResetDataModified();
