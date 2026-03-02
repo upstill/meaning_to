@@ -2889,6 +2889,62 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                     if (_selectedCategory != null) ...[
                       const SizedBox(height: 12),
+                      Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                try {
+                                  setState(() {
+                                    _showTaskListMode = false;
+                                    _isLoadingTask = true;
+                                    _error = null;
+                                  });
+                                  if (_randomTask != null) {
+                                    await _rejectCurrentTask();
+                                  }
+                                  if (_selectedCategory != null) {
+                                    await _loadRandomTask(_selectedCategory!);
+                                  }
+                                } catch (e) {
+                                  print('Error in Hit Me: $e');
+                                  setState(() {
+                                    _error = e.toString();
+                                    _isLoadingTask = false;
+                                  });
+                                }
+                              },
+                              icon: const Icon(Icons.refresh),
+                              label: const Text(
+                                'Hit Me',
+                                style: TextStyle(fontSize: 18),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size(0, 48),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            ElevatedButton(
+                              onPressed: () {
+                                if (!_showTaskListMode) _toggleTaskListMode();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size(0, 48),
+                              ),
+                              child: const Text(
+                                'Show All',
+                                style: TextStyle(fontSize: 18),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       // Debug info (commented out)
                       // Text('Selected Category: ${_selectedCategory!.headline}'),
                       // Text('Loading Task: $_isLoadingTask'),
@@ -3257,51 +3313,6 @@ class HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 20),
-                            Center(
-                              child: Column(
-                                children: [
-                                  ElevatedButton.icon(
-                                    onPressed: () async {
-                                      try {
-                                        setState(() {
-                                          _isLoadingTask = true;
-                                          _error = null;
-                                        });
-
-                                        // First reject the current task
-                                        await _rejectCurrentTask();
-
-                                        // Then load a new random task
-                                        if (_selectedCategory != null) {
-                                          await _loadRandomTask(
-                                            _selectedCategory!,
-                                          );
-                                        }
-                                      } catch (e) {
-                                        print('Error in Hit Me Again: $e');
-                                        setState(() {
-                                          _error = e.toString();
-                                          _isLoadingTask = false;
-                                        });
-                                      }
-                                    },
-                                    icon: const Icon(Icons.refresh),
-                                    label: const Text(
-                                      'Hit Me Again',
-                                      style: TextStyle(fontSize: 18),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.green,
-                                      foregroundColor: Colors.white,
-                                      minimumSize: const Size(0,
-                                          48), // 12 points taller than default
-                                    ),
-                                  ),
-                                  const SizedBox(height: 20),
-                                ],
-                              ),
-                            ),
                             const SizedBox(height: 16),
                             if (Task.currentTaskSet != null) ...[
                               Text(
@@ -3314,21 +3325,10 @@ class HomeScreenState extends State<HomeScreen> {
                           ],
                         )
                       else
-                        Center(
-                          child: Column(
-                            children: [
-                              const Text(
-                                'All out of ideas!',
-                                style: TextStyle(fontSize: 16),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Tap the + button to add more ${NamingUtils.tasksName()} or explore ${NamingUtils.categoriesName()}.',
-                                style: const TextStyle(
-                                    fontSize: 14, color: Colors.grey),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
+                        const Center(
+                          child: Text(
+                            'All out of ideas!',
+                            style: TextStyle(fontSize: 16),
                           ),
                         ),
                     ],
