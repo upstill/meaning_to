@@ -2791,18 +2791,22 @@ class HomeScreenState extends State<HomeScreen> {
                                         },
                                         itemBuilder: (_) => [
                                           PopupMenuItem<String>(
+                                            value: 'add_task',
+                                            child: ListTile(
+                                              leading: const Icon(Icons.add_task, color: Colors.deepPurple, size: 28),
+                                              title: Text(
+                                                'New ${NamingUtils.tasksName(plural: false)}',
+                                                style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold, fontSize: 20.8),
+                                              ),
+                                              contentPadding: EdgeInsets.zero,
+                                            ),
+                                          ),
+                                          const PopupMenuDivider(),
+                                          PopupMenuItem<String>(
                                             value: 'add',
                                             child: ListTile(
                                               leading: const Icon(Icons.add),
                                               title: Text('New ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
-                                              contentPadding: EdgeInsets.zero,
-                                            ),
-                                          ),
-                                          PopupMenuItem<String>(
-                                            value: 'add_task',
-                                            child: ListTile(
-                                              leading: const Icon(Icons.add_task),
-                                              title: Text('New ${NamingUtils.tasksName(plural: false)}'),
                                               contentPadding: EdgeInsets.zero,
                                             ),
                                           ),
@@ -3427,23 +3431,6 @@ class HomeScreenState extends State<HomeScreen> {
               //   child: const Icon(Icons.share),
               // ),
               // const SizedBox(width: 16),
-              // Edit category button
-              SizedBox(
-                width: 88,
-                height: 88,
-                child: FloatingActionButton(
-                  heroTag: 'editCategoryButton',
-                  onPressed: _toggleTaskListMode,
-                  tooltip: _showTaskListMode ? 'Select' : 'List',
-                  backgroundColor: AppButtons.goForthBg,
-                  foregroundColor: AppButtons.goForthFg,
-                  child: Icon(
-                    _showTaskListMode ? Icons.refresh : Icons.menu,
-                    size: 38,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 200),
             ],
           ],
         ),
