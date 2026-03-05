@@ -1530,22 +1530,26 @@ class HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    // Evaluate before setState so _isListModeLoading can be set in the same
+    // frame — preventing a "No tasks yet" flash while the load is pending.
+    final needsLoad = _showTaskListMode &&
+        newValue != null &&
+        (_cacheManager.currentCategory?.id != newValue.id ||
+            _cacheManager.currentTasks == null);
+
     setState(() {
       _selectedCategory = newValue;
       _randomTask = null;
       if (_showTaskListMode) {
         _rebuildTaskListFromCache();
+        if (needsLoad) _isListModeLoading = true;
       }
     });
 
     if (newValue != null) {
       await _updateCategoryLastAccess(newValue);
       if (_showTaskListMode) {
-        if (_cacheManager.currentCategory?.id != newValue.id ||
-            _cacheManager.currentTasks == null) {
-          setState(() {
-            _isListModeLoading = true;
-          });
+        if (needsLoad) {
           unawaited(_loadTaskListDataInBackground());
         }
       } else {
