@@ -2639,7 +2639,7 @@ class HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('I\'ve Been Meaning To...'),
+        title: const Text('ROUZ'),
         automaticallyImplyLeading: false,
         actions: _buildAppBarActions(),
       ),
@@ -2768,6 +2768,23 @@ class HomeScreenState extends State<HomeScreen> {
                                           ),
                                         ),
                                       ),
+                                      TextButton.icon(
+                                        icon: const Icon(Icons.add_task, color: Colors.deepPurple),
+                                        label: const Text(
+                                          'Add Idea',
+                                          style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
+                                        ),
+                                        onPressed: () {
+                                          if (AuthUtils.isGuestUser()) {
+                                            _showGuestSignupDialog(
+                                              content:
+                                                  'Here\'s where you can add ${NamingUtils.tasksName()} once you\'re logged in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
+                                            );
+                                            return;
+                                          }
+                                          _navigateToNewContent();
+                                        },
+                                      ),
                                       PopupMenuButton<String>(
                                         icon: const Icon(Icons.more_vert),
                                         tooltip: '${NamingUtils.categoriesName(capitalize: true, plural: false)} options',
@@ -2782,8 +2799,6 @@ class HomeScreenState extends State<HomeScreen> {
                                           switch (value) {
                                             case 'add':
                                               _navigateToNewCategory();
-                                            case 'add_task':
-                                              _navigateToNewContent();
                                             case 'edit':
                                               if (_selectedCategory != null) {
                                                 final updated = await showDialog<Category>(
@@ -2799,18 +2814,6 @@ class HomeScreenState extends State<HomeScreen> {
                                           }
                                         },
                                         itemBuilder: (_) => [
-                                          PopupMenuItem<String>(
-                                            value: 'add_task',
-                                            child: ListTile(
-                                              leading: const Icon(Icons.add_task, color: Colors.deepPurple, size: 28),
-                                              title: Text(
-                                                'New ${NamingUtils.tasksName(plural: false)}',
-                                                style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold, fontSize: 20.8),
-                                              ),
-                                              contentPadding: EdgeInsets.zero,
-                                            ),
-                                          ),
-                                          const PopupMenuDivider(),
                                           PopupMenuItem<String>(
                                             value: 'add',
                                             child: ListTile(

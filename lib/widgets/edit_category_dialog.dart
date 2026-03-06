@@ -19,7 +19,6 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
   late final TextEditingController _headlineController;
   late final TextEditingController _invitationController;
   late bool _isPrivate;
-  late bool _tasksArePrivate;
   bool _isLoading = false;
 
   @override
@@ -30,7 +29,6 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
     _invitationController =
         TextEditingController(text: widget.category.invitation ?? '');
     _isPrivate = widget.category.isPrivate;
-    _tasksArePrivate = widget.category.tasksArePrivate;
   }
 
   @override
@@ -51,7 +49,6 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
             'headline': _headlineController.text.trim(),
             'invitation': invitation.isEmpty ? null : invitation,
             'private': _isPrivate,
-            'tasks_are_private': _tasksArePrivate,
           })
           .eq('id', widget.category.id)
           .select()
@@ -111,20 +108,6 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
                 ),
                 maxLines: 3,
               ),
-              if (!_isPrivate) ...[
-                const SizedBox(height: 8),
-                CheckboxListTile(
-                  title: Text(
-                      '${NamingUtils.tasksName(plural: true)} are private by default'),
-                  value: _tasksArePrivate,
-                  onChanged: _isLoading
-                      ? null
-                      : (value) =>
-                          setState(() => _tasksArePrivate = value ?? true),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ],
               const SizedBox(height: 24),
               Row(
                 children: [
