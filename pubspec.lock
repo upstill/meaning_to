@@ -376,6 +376,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.2"
+  link_enrichment_core:
+    dependency: "direct main"
+    description:
+      path: "../link_enrichment_core"
+      relative: true
+    source: path
+    version: "0.1.0"
   lints:
     dependency: transitive
     description:

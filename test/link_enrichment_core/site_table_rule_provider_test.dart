@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:meaning_to/link_enrichment_core/models/enrichment_context.dart';
-import 'package:meaning_to/link_enrichment_core/rules/default_site_rule_provider.dart';
-import 'package:meaning_to/link_enrichment_core/rules/site_rule.dart';
+import 'package:link_enrichment_core/models/enrichment_context.dart';
+import 'package:link_enrichment_core/rules/default_site_rule_provider.dart';
+import 'package:link_enrichment_core/rules/site_rule.dart';
 
 void main() {
   group('DefaultSiteRuleProvider', () {

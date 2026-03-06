@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:meaning_to/link_enrichment_core/models/enrichment_error.dart';
-import 'package:meaning_to/link_enrichment_core/score/quality_scorer.dart';
+import 'package:link_enrichment_core/models/enrichment_error.dart';
+import 'package:link_enrichment_core/score/quality_scorer.dart';
 
 void main() {
   group('QualityScorer', () {

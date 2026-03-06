@@ -1,7 +1,7 @@
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/link_enrichment_core/models/enrichment_context.dart';
-import 'package:meaning_to/link_enrichment_core/service/enrichment_service.dart';
-import 'package:meaning_to/link_enrichment_core/utils/url_canonicalizer.dart';
+import 'package:link_enrichment_core/models/enrichment_context.dart';
+import 'package:link_enrichment_core/service/enrichment_service.dart';
+import 'package:link_enrichment_core/utils/url_canonicalizer.dart';
 import 'package:meaning_to/utils/category_suggestion_registry.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';

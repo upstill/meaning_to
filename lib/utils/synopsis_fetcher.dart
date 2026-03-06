@@ -1,5 +1,5 @@
-import 'package:meaning_to/link_enrichment_core/models/enrichment_context.dart';
-import 'package:meaning_to/link_enrichment_core/service/enrichment_service.dart';
+import 'package:link_enrichment_core/models/enrichment_context.dart';
+import 'package:link_enrichment_core/service/enrichment_service.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';

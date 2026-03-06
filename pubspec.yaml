@@ -39,6 +39,8 @@ dependencies:
   uri: ^1.0.0
   http: ^1.4.0
   html: ^0.15.4
+  link_enrichment_core:
+    path: ../link_enrichment_core
   image: ^4.1.7  # For image resizing and processing
   file_selector: ^1.0.2
   permission_handler: ^11.3.0

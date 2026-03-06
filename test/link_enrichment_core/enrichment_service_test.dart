@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:meaning_to/link_enrichment_core/models/enrichment_context.dart';
-import 'package:meaning_to/link_enrichment_core/models/enrichment_error.dart';
-import 'package:meaning_to/link_enrichment_core/models/enrichment_request.dart';
-import 'package:meaning_to/link_enrichment_core/models/enrichment_status.dart';
-import 'package:meaning_to/link_enrichment_core/rules/site_rule.dart';
-import 'package:meaning_to/link_enrichment_core/rules/site_rule_provider.dart';
-import 'package:meaning_to/link_enrichment_core/service/enrichment_service.dart';
+import 'package:link_enrichment_core/models/enrichment_context.dart';
+import 'package:link_enrichment_core/models/enrichment_error.dart';
+import 'package:link_enrichment_core/models/enrichment_request.dart';
+import 'package:link_enrichment_core/models/enrichment_status.dart';
+import 'package:link_enrichment_core/rules/site_rule.dart';
+import 'package:link_enrichment_core/rules/site_rule_provider.dart';
+import 'package:link_enrichment_core/service/enrichment_service.dart';
 
 class _FakeRuleProvider implements SiteRuleProvider {
   const _FakeRuleProvider();

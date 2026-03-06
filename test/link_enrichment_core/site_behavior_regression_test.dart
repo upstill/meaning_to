@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:meaning_to/link_enrichment_core/models/enrichment_context.dart';
-import 'package:meaning_to/link_enrichment_core/models/enrichment_status.dart';
-import 'package:meaning_to/link_enrichment_core/service/enrichment_service.dart';
+import 'package:link_enrichment_core/models/enrichment_context.dart';
+import 'package:link_enrichment_core/models/enrichment_status.dart';
+import 'package:link_enrichment_core/service/enrichment_service.dart';
 
 void main() {
   group('Site behavior regression coverage', () {

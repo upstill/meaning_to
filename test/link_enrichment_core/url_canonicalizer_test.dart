@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:meaning_to/link_enrichment_core/utils/url_canonicalizer.dart';
+import 'package:link_enrichment_core/utils/url_canonicalizer.dart';
 
 void main() {
   group('UrlCanonicalizer.extractUrl', () {
