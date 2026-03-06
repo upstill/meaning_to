@@ -196,7 +196,7 @@ class _NewContentScreenState extends State<NewContentScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => EditCategoryScreen(category: newCategory),
+            builder: (context) => EditCategoryScreen(category: newCategory, isNewCategory: true),
           ),
         );
       }

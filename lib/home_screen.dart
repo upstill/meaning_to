@@ -14,6 +14,7 @@ import 'package:meaning_to/performance_monitor_screen.dart';
 import 'package:meaning_to/find_screen.dart';
 import 'package:meaning_to/verify_links_screen.dart';
 import 'package:meaning_to/dialogs/task_created_dialog.dart';
+import 'package:meaning_to/widgets/edit_category_dialog.dart';
 import 'dart:async';
 
 import 'package:meaning_to/utils/naming.dart';
@@ -2770,7 +2771,7 @@ class HomeScreenState extends State<HomeScreen> {
                                       PopupMenuButton<String>(
                                         icon: const Icon(Icons.more_vert),
                                         tooltip: '${NamingUtils.categoriesName(capitalize: true, plural: false)} options',
-                                        onSelected: (value) {
+                                        onSelected: (value) async {
                                           if (AuthUtils.isGuestUser()) {
                                             _showGuestSignupDialog(
                                               content:
@@ -2784,7 +2785,15 @@ class HomeScreenState extends State<HomeScreen> {
                                             case 'add_task':
                                               _navigateToNewContent();
                                             case 'edit':
-                                              _navigateToEditCategory(_selectedCategory);
+                                              if (_selectedCategory != null) {
+                                                final updated = await showDialog<Category>(
+                                                  context: context,
+                                                  builder: (_) => EditCategoryDialog(category: _selectedCategory!),
+                                                );
+                                                if (updated != null) {
+                                                  await _loadCategories();
+                                                }
+                                              }
                                             case 'delete':
                                               if (_selectedCategory != null) _deleteCategory(_selectedCategory!);
                                           }

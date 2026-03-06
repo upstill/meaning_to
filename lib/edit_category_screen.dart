@@ -24,12 +24,14 @@ class EditCategoryScreen extends StatefulWidget {
   final Category? category; // null for new category, existing category for edit
   final bool tasksOnly;
   final bool startInCategoryEditorPanel;
+  final bool isNewCategory;
 
   const EditCategoryScreen({
     super.key,
     this.category,
     this.tasksOnly = false,
     this.startInCategoryEditorPanel = false,
+    this.isNewCategory = false,
   });
 
   // Add a factory constructor to handle arguments from Navigator
@@ -40,6 +42,7 @@ class EditCategoryScreen extends StatefulWidget {
         category: args?['category'] as Category?,
         tasksOnly: args?['tasksOnly'] == true,
         startInCategoryEditorPanel: args?['startInCategoryEditorPanel'] == true,
+        isNewCategory: args?['isNewCategory'] == true,
       ),
       settings: settings,
     );
@@ -1202,20 +1205,7 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
     return '$displayTasks Available ${NamingUtils.tasksName(plural: true)}';
   }
 
-  String _buildAppBarTitle() {
-    final currentCategory = widget.category ?? _currentCategory;
-
-    if (currentCategory == null) {
-      return 'New ${NamingUtils.categoriesName(plural: false)}';
-    }
-
-    final taskCount = _tasks.length;
-    final taskWord = taskCount == 1
-        ? NamingUtils.tasksName(plural: false)
-        : NamingUtils.tasksName(plural: true);
-
-    return '$taskCount $taskWord to ${currentCategory.headline}';
-  }
+  String _buildAppBarTitle() => 'Edit ${NamingUtils.categoriesName(capitalize: true, plural: false)}';
 
   String _buildTaskCountText() {
     // Get total tasks from cache manager (before limiting)
@@ -1577,32 +1567,6 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                       });
                     },
                   ),
-                  const SizedBox(height: 24),
-                  const Center(
-                    child: Text(
-                      '** You can grab ideas from other people. **',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _shopForCategories,
-                    icon: const Icon(Icons.shopping_cart),
-                    label: Text(
-                      'Shop for ${NamingUtils.categoriesName(capitalize: true)}',
-                      style: const TextStyle(fontSize: 18),
-                    ),
-                    style: AppButtons.goForth().copyWith(
-                      minimumSize: const WidgetStatePropertyAll(
-                          Size(double.infinity, 50)),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                 ] else if (widget.category != null) ...[
                   if (_isEditing) ...[
                     // Editable form when editing
@@ -1803,6 +1767,33 @@ class EditCategoryScreenState extends State<EditCategoryScreen> {
                               'Edit ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
                         ),
                       ],
+                    ),
+                  ],
+                  if (widget.isNewCategory) ...[
+                    const SizedBox(height: 8),
+                    const Center(
+                      child: Text(
+                        '** You can grab ideas from other people. **',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _shopForCategories,
+                      icon: const Icon(Icons.shopping_cart),
+                      label: Text(
+                        'Shop for ${NamingUtils.categoriesName(capitalize: true)}',
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                      style: AppButtons.goForth().copyWith(
+                        minimumSize: const WidgetStatePropertyAll(
+                            Size(double.infinity, 50)),
+                      ),
                     ),
                   ],
                   const SizedBox(height: 16),
