@@ -701,30 +701,23 @@ class IncomingLinkProcessor {
     if (!context.mounted) return;
 
     try {
-      // If we have a default category, use it; otherwise show category picker
-      Category? category = defaultCategory;
-
-      if (category == null) {
-        // Show category picker first with suggested categories from the link
-        await CategoryPickerDialog.show(
-          context,
-          title:
-              'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
-          suggestedCategoryIds:
-              result.proposedTask?.suggestedCategoryOriginalIds,
-          linkUrl: result.url,
-          onCategorySelected: (Category selectedCategory,
-              {bool? shouldMove, bool? applyToAll}) async {
-            await Future.delayed(const Duration(milliseconds: 100));
-            await _openTaskEditScreenWithArtistWork(
-                context, result, selectedCategory, artistWorkInfo);
-          },
-        );
-        return;
-      }
-
-      await _openTaskEditScreenWithArtistWork(
-          context, result, category, artistWorkInfo);
+      // Always show the category picker so the user can choose where to file
+      // the link. Pass defaultCategory as a pre-selected hint if available.
+      await CategoryPickerDialog.show(
+        context,
+        title:
+            'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
+        defaultCategory: defaultCategory,
+        suggestedCategoryIds:
+            result.proposedTask?.suggestedCategoryOriginalIds,
+        linkUrl: result.url,
+        onCategorySelected: (Category selectedCategory,
+            {bool? shouldMove, bool? applyToAll}) async {
+          await Future.delayed(const Duration(milliseconds: 100));
+          await _openTaskEditScreenWithArtistWork(
+              context, result, selectedCategory, artistWorkInfo);
+        },
+      );
     } catch (e) {
       print(
           'IncomingLinkProcessor: Error navigating to task edit screen with artist/work: $e');
@@ -787,28 +780,22 @@ class IncomingLinkProcessor {
     if (!context.mounted) return;
 
     try {
-      // If we have a default category, use it; otherwise show category picker
-      Category? category = defaultCategory;
-
-      if (category == null) {
-        // Show category picker first with suggested categories from the link
-        await CategoryPickerDialog.show(
-          context,
-          title:
-              'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
-          suggestedCategoryIds:
-              result.proposedTask?.suggestedCategoryOriginalIds,
-          linkUrl: result.url,
-          onCategorySelected: (Category selectedCategory,
-              {bool? shouldMove, bool? applyToAll}) async {
-            await Future.delayed(const Duration(milliseconds: 100));
-            await _openTaskEditScreen(context, result, selectedCategory);
-          },
-        );
-        return;
-      }
-
-      await _openTaskEditScreen(context, result, category);
+      // Always show the category picker so the user can choose where to file
+      // the link. Pass defaultCategory as a pre-selected hint if available.
+      await CategoryPickerDialog.show(
+        context,
+        title:
+            'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
+        defaultCategory: defaultCategory,
+        suggestedCategoryIds:
+            result.proposedTask?.suggestedCategoryOriginalIds,
+        linkUrl: result.url,
+        onCategorySelected: (Category selectedCategory,
+            {bool? shouldMove, bool? applyToAll}) async {
+          await Future.delayed(const Duration(milliseconds: 100));
+          await _openTaskEditScreen(context, result, selectedCategory);
+        },
+      );
     } catch (e) {
       print('IncomingLinkProcessor: Error navigating to task edit screen: $e');
     }

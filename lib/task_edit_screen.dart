@@ -1455,7 +1455,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   }
 
   /// Process headline text to extract links and set appropriate headline
-  Future<Map<String, dynamic>> _processHeadlineText(String headlineText) async {
+  Future<Map<String, dynamic>> _processHeadlineText(String headlineText,
+      {bool skipColonSplit = false}) async {
     print('TaskEditScreen: Processing headline text: "$headlineText"');
 
     if (headlineText.trim().isEmpty) {
@@ -1575,7 +1576,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
 
     // Check if text contains a colon separator (title: description)
-    final colonIndex = headlineText.indexOf(':');
+    // Skip this when editing an existing task — user may have colons in their text
+    // (e.g. movie titles like "Mission: Impossible").
+    final colonIndex = skipColonSplit ? -1 : headlineText.indexOf(':');
     if (colonIndex > 0) {
       final title = headlineText.substring(0, colonIndex).trim();
       final description = headlineText.substring(colonIndex + 1).trim();
@@ -1645,9 +1648,13 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     try {
       final userId = AuthUtils.getCurrentUserId();
 
-      // Process the headline text to extract links and set appropriate headline
-      final processedData =
-          await _processHeadlineText(_headlineController.text);
+      // Process the headline text to extract links and set appropriate headline.
+      // Skip colon-splitting for existing tasks so user edits like "Mission: Impossible"
+      // aren't silently truncated.
+      final processedData = await _processHeadlineText(
+        _headlineController.text,
+        skipColonSplit: _localTask != null,
+      );
       final processedHeadline = processedData['headline'] as String;
       final processedNotes = processedData['notes'] as String?;
       final newLinks = processedData['links'] as List<String>;
@@ -2480,53 +2487,12 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   }
 
   Widget _buildPanelContent() {
-    return Column(
-      children: [
-        // Drag handle
-        Center(
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 10),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[400],
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        ),
-        // Title row + optional delete icon
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 4, 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _localTask == null
-                      ? 'New ${NamingUtils.tasksName(capitalize: true, plural: false)} in ${widget.category.headline}'
-                      : 'Edit in ${widget.category.headline}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              if (_localTask != null && !AuthUtils.isGuestUser())
-                IconButton(
-                  icon: const Icon(Icons.delete),
-                  onPressed: _isLoading ? null : _deleteTask,
-                  tooltip: 'Delete',
-                ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: _buildFormChildren(),
-            ),
-          ),
-        ),
-      ],
+    return Form(
+      key: _formKey,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: _buildFormChildren(),
+      ),
     );
   }
 
