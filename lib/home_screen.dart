@@ -2110,7 +2110,13 @@ class HomeScreenState extends State<HomeScreen> {
     );
 
     TaskEditScreen.onEditComplete = null;
-    setState(() => _editingTask = null);
+    // Rebuild the list immediately from the already-updated cache.
+    // cacheManager.updateTask was called before the panel closed, so the
+    // cache is correct at this point — no need to wait for _handleEditComplete.
+    setState(() {
+      _editingTask = null;
+      if (_showTaskListMode) _rebuildTaskListFromCache();
+    });
   }
 
   Future<void> _handleEditPanelCategoryChange(
@@ -2461,6 +2467,10 @@ class HomeScreenState extends State<HomeScreen> {
           print(
             'HomeScreen: New random task loaded: \'${_randomTask?.headline}\'',
           );
+          // Rebuild the task list even in the fallthrough case (e.g. _randomTask was null)
+          if (_showTaskListMode) {
+            setState(() => _rebuildTaskListFromCache());
+          }
         }
       } else {
         print('HomeScreen: No category selected, skipping task load');
