@@ -1204,22 +1204,6 @@ class HomeScreenState extends State<HomeScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (tasks.isEmpty) {
-      return Center(
-        child: Column(
-          children: [
-            const Text('No tasks yet.', style: TextStyle(fontSize: 16)),
-            const SizedBox(height: 16),
-            Text(
-              'Tap the + button to add ${NamingUtils.tasksName(plural: true, capitalize: false)}.',
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1256,6 +1240,19 @@ class HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
+        if (tasks.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text(
+                _taskSearchController.text.trim().isNotEmpty
+                    ? 'No matching ${NamingUtils.tasksName(plural: true, capitalize: false)} found.'
+                    : 'No ${NamingUtils.tasksName(plural: true, capitalize: false)} yet.',
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ),
+          )
+        else ...[
         Text(
           '${tasks.length} ${NamingUtils.tasksName(plural: true, capitalize: false)}',
           style: const TextStyle(
@@ -1290,6 +1287,7 @@ class HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+        ], // end else (tasks non-empty)
       ],
     );
   }
@@ -2421,15 +2419,9 @@ class HomeScreenState extends State<HomeScreen> {
 
       // Then check if we need to reload the task
       if (_selectedCategory != null) {
-        // Force a cache refresh by reinitializing with the current category
-        final userId = AuthUtils.getCurrentUserId();
-        await _cacheManager.initializeWithSavedCategory(
-          _selectedCategory!,
-          userId,
-        );
-
-        // Also force refresh from API to ensure we have the latest data
-        await _cacheManager.refreshFromApi();
+        // The cache was already updated by cacheManager.updateTask() in _saveTask.
+        // Re-fetching from the API risks returning a differently-filtered set and
+        // causing the edited task to temporarily disappear. Just use the cache.
 
         // Check if the current task still exists and is valid
         if (currentTaskId != null) {
@@ -2519,15 +2511,9 @@ class HomeScreenState extends State<HomeScreen> {
 
       // Then check if we need to reload the task
       if (_selectedCategory != null) {
-        // Force a cache refresh by reinitializing with the current category
-        final userId = AuthUtils.getCurrentUserId();
-        await _cacheManager.initializeWithSavedCategory(
-          _selectedCategory!,
-          userId,
-        );
-
-        // Also force refresh from API to ensure we have the latest data
-        await _cacheManager.refreshFromApi();
+        // The cache was already updated by cacheManager.updateTask() in _saveTask.
+        // Re-fetching from the API risks returning a differently-filtered set and
+        // causing the edited task to temporarily disappear. Just use the cache.
 
         // Check if the current task still exists and is valid
         if (currentTaskId != null) {
