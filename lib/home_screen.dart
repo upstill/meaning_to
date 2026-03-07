@@ -684,11 +684,11 @@ class HomeScreenState extends State<HomeScreen> {
             if (mounted) {
               setState(() {
                 _randomTask = updatedTask;
+                // Also refresh the task list view if it's visible
+                if (_showTaskListMode) {
+                  _rebuildTaskListFromCache();
+                }
               });
-              // Also refresh the task list view if it's visible
-              if (_showTaskListMode) {
-                _rebuildTaskListFromCache();
-              }
             }
             return; // Don't load a new random task
           }
@@ -2449,11 +2449,11 @@ class HomeScreenState extends State<HomeScreen> {
             if (mounted) {
               setState(() {
                 _randomTask = updatedTask;
+                // Also refresh the task list view if it's visible
+                if (_showTaskListMode) {
+                  _rebuildTaskListFromCache();
+                }
               });
-              // Also refresh the task list view if it's visible
-              if (_showTaskListMode) {
-                _rebuildTaskListFromCache();
-              }
             }
             return; // Don't load a new random task
           } else {
@@ -2547,11 +2547,11 @@ class HomeScreenState extends State<HomeScreen> {
             if (mounted) {
               setState(() {
                 _randomTask = updatedTask;
+                // Also refresh the task list view if it's visible
+                if (_showTaskListMode) {
+                  _rebuildTaskListFromCache();
+                }
               });
-              // Also refresh the task list view if it's visible
-              if (_showTaskListMode) {
-                _rebuildTaskListFromCache();
-              }
             }
             return; // Don't load a new random task
           } else {
