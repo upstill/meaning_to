@@ -2069,18 +2069,22 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 ),
               ],
               Card(
-                elevation: 10,
-                color: Colors.grey[50],
+                elevation: widget.isPanel ? 0 : 10,
+                color: widget.isPanel ? Colors.transparent : Colors.grey[50],
                 margin: const EdgeInsets.only(bottom: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(
-                    color: Colors.blue.withOpacity(0.2),
-                    width: 2,
-                  ),
-                ),
+                shape: widget.isPanel
+                    ? const RoundedRectangleBorder()
+                    : RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: Colors.blue.withOpacity(0.2),
+                          width: 2,
+                        ),
+                      ),
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: widget.isPanel
+                      ? EdgeInsets.zero
+                      : const EdgeInsets.all(16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
