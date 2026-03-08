@@ -2085,19 +2085,12 @@ class HomeScreenState extends State<HomeScreen> {
       }
     };
 
-    await showModalBottomSheet(
+    await showDialog<void>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.88,
-        minChildSize: 0.5,
-        maxChildSize: 0.97,
-        expand: false,
-        builder: (_, __) => Material(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-          clipBehavior: Clip.antiAlias,
+      builder: (ctx) => Dialog(
+        child: SizedBox(
+          width: 480,
+          height: MediaQuery.of(context).size.height * 0.80,
           child: TaskEditScreen(
             category: _selectedCategory!,
             task: task,
