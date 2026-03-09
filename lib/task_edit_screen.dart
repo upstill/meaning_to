@@ -2188,7 +2188,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                           hintText: 'Add any additional details...',
                           border: OutlineInputBorder(),
                         ),
-                        maxLines: 2,
+                        minLines: 2,
+                        maxLines: null,
                         enabled: !_isLoading,
                       ),
                       if (_error != null) ...[
@@ -2493,9 +2494,20 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   Widget _buildPanelContent() {
     return Form(
       key: _formKey,
-      child: ListView(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        children: _buildFormChildren(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Modify ${NamingUtils.tasksName(capitalize: true, plural: false)}',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 16),
+            ..._buildFormChildren(),
+          ],
+        ),
       ),
     );
   }

@@ -2088,9 +2088,11 @@ class HomeScreenState extends State<HomeScreen> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => Dialog(
-        child: SizedBox(
-          width: 480,
-          height: MediaQuery.of(context).size.height * 0.80,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 480,
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+          ),
           child: TaskEditScreen(
             category: _selectedCategory!,
             task: task,

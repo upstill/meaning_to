@@ -76,7 +76,13 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                'Modify ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _headlineController,
                 autofocus: true,
