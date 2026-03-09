@@ -87,7 +87,7 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
                 controller: _headlineController,
                 autofocus: true,
                 decoration: InputDecoration(
-                  labelText: '${NamingUtils.categoriesName(capitalize: true, plural: false)} Name',
+                  labelText: 'Name',
                   border: const OutlineInputBorder(),
                   suffixIcon: Tooltip(
                     message: _isPrivate ? 'Make Public' : 'Make Private',
