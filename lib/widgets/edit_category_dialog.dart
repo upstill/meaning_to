@@ -79,7 +79,7 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Modify ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
+                'Edit ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 16),
@@ -112,7 +112,8 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
                   border: OutlineInputBorder(),
                   hintText: 'Add a description or invitation...',
                 ),
-                maxLines: 3,
+                minLines: 2,
+                maxLines: 10,
               ),
               const SizedBox(height: 24),
               Row(

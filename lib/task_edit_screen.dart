@@ -2189,7 +2189,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                           border: OutlineInputBorder(),
                         ),
                         minLines: 2,
-                        maxLines: null,
+                        maxLines: 10,
                         enabled: !_isLoading,
                       ),
                       if (_error != null) ...[
@@ -2501,7 +2501,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Modify ${NamingUtils.tasksName(capitalize: true, plural: false)}',
+              'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)}',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 16),
