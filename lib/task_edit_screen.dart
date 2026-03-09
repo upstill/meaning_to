@@ -2188,7 +2188,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                           hintText: 'Add any additional details...',
                           border: OutlineInputBorder(),
                         ),
-                        minLines: 2,
+                        minLines: 3,
                         maxLines: 10,
                         enabled: !_isLoading,
                       ),
@@ -2502,7 +2502,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           children: [
             Text(
               'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)}',
-              style: Theme.of(context).textTheme.titleMedium,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             ..._buildFormChildren(),

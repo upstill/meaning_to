@@ -80,7 +80,7 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
             children: [
               Text(
                 'Edit ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
-                style: Theme.of(context).textTheme.titleMedium,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -112,7 +112,7 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
                   border: OutlineInputBorder(),
                   hintText: 'Add a description or invitation...',
                 ),
-                minLines: 2,
+                minLines: 3,
                 maxLines: 10,
               ),
               const SizedBox(height: 24),
