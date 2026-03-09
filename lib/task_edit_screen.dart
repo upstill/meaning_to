@@ -2092,7 +2092,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         controller: _headlineController,
                         decoration: InputDecoration(
                           labelText:
-                              '${NamingUtils.tasksName(plural: false)} (required)',
+                              NamingUtils.tasksName(plural: false),
                           hintText:
                               'What have you been meaning to do?\n\nYou can use Enter to add line breaks for multi-line headlines.\n\nTip: Paste a link to automatically extract it and set the link title as the headline.',
                           border: const OutlineInputBorder(),
