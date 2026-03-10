@@ -115,8 +115,7 @@ class CategoryFormState extends State<CategoryForm> {
                 TextFormField(
                   controller: _headlineController,
                   decoration: const InputDecoration(
-                    labelText: 'Name (required)',
-                    hintText: 'What have you been meaning to do?',
+                    labelText: 'Name',
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) {
@@ -132,7 +131,6 @@ class CategoryFormState extends State<CategoryForm> {
                   controller: _invitationController,
                   decoration: const InputDecoration(
                     labelText: 'Description',
-                    hintText: 'What would you like to say to yourself?',
                     border: OutlineInputBorder(),
                   ),
                   maxLines: 3,
