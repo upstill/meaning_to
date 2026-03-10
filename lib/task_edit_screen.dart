@@ -2097,6 +2097,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                               'What have you been meaning to do?\n\nYou can use Enter to add line breaks for multi-line headlines.\n\nTip: Paste a link to automatically extract it and set the link title as the headline.',
                           border: const OutlineInputBorder(),
                           alignLabelWithHint: true,
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
+                          floatingLabelStyle: const TextStyle(fontSize: 16),
                         ),
                         maxLines: 3,
                         minLines: 1,
@@ -2184,9 +2186,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       TextFormField(
                         controller: _notesController,
                         decoration: const InputDecoration(
-                          labelText: 'Notes (optional)',
+                          labelText: 'Notes',
                           hintText: 'Add any additional details...',
                           border: OutlineInputBorder(),
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
+                          floatingLabelStyle: TextStyle(fontSize: 16),
                         ),
                         minLines: 3,
                         maxLines: 10,
@@ -2502,7 +2506,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           children: [
             Text(
               'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)}',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 21),
             ),
             const SizedBox(height: 16),
             ..._buildFormChildren(),

@@ -80,7 +80,7 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
             children: [
               Text(
                 'Edit ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 21),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -89,6 +89,8 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
                 decoration: InputDecoration(
                   labelText: 'Name',
                   border: const OutlineInputBorder(),
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  floatingLabelStyle: const TextStyle(fontSize: 16),
                   suffixIcon: Tooltip(
                     message: _isPrivate ? 'Make Public' : 'Make Private',
                     child: IconButton(
@@ -110,6 +112,8 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
                 decoration: const InputDecoration(
                   labelText: 'Description',
                   border: OutlineInputBorder(),
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  floatingLabelStyle: TextStyle(fontSize: 16),
                   hintText: 'Add a description or invitation...',
                 ),
                 minLines: 3,

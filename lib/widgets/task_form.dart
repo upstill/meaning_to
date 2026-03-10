@@ -520,6 +520,7 @@ class _TaskFormState extends State<TaskForm> {
                       labelText: NamingUtils.tasksName(plural: false),
                       border: const OutlineInputBorder(),
                       floatingLabelBehavior: FloatingLabelBehavior.always,
+                      floatingLabelStyle: const TextStyle(fontSize: 16),
                       suffixIcon: _isProcessingUrl
                           ? const Padding(
                               padding: EdgeInsets.all(12.0),
@@ -554,6 +555,7 @@ class _TaskFormState extends State<TaskForm> {
                       labelText: 'Notes',
                       border: OutlineInputBorder(),
                       floatingLabelBehavior: FloatingLabelBehavior.always,
+                      floatingLabelStyle: TextStyle(fontSize: 16),
                     ),
                     maxLines: 4,
                     minLines: 2,
@@ -574,10 +576,11 @@ class _TaskFormState extends State<TaskForm> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      TextButton.icon(
-                        onPressed: widget.isLoading ? null : _addLink,
+                      IconButton(
                         icon: const Icon(Icons.add),
-                        label: const Text('Add Link'),
+                        tooltip: 'Add link',
+                        onPressed: widget.isLoading ? null : _addLink,
+                        style: AppButtons.iconGoForth(),
                       ),
                     ],
                   ),
