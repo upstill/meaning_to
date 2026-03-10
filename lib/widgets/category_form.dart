@@ -117,6 +117,7 @@ class CategoryFormState extends State<CategoryForm> {
                   decoration: const InputDecoration(
                     labelText: 'Name',
                     border: OutlineInputBorder(),
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
@@ -132,6 +133,7 @@ class CategoryFormState extends State<CategoryForm> {
                   decoration: const InputDecoration(
                     labelText: 'Description',
                     border: OutlineInputBorder(),
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
                   ),
                   maxLines: 3,
                   enabled: !widget.isLoading,

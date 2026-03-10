@@ -517,11 +517,9 @@ class _TaskFormState extends State<TaskForm> {
                   TextFormField(
                     controller: _headlineController,
                     decoration: InputDecoration(
-                      labelText:
-                          '${NamingUtils.tasksName(plural: false)} (required)',
-                      hintText: 'What have you been meaning to do?',
+                      labelText: NamingUtils.tasksName(plural: false),
                       border: const OutlineInputBorder(),
-                      alignLabelWithHint: true,
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
                       suffixIcon: _isProcessingUrl
                           ? const Padding(
                               padding: EdgeInsets.all(12.0),
@@ -553,10 +551,9 @@ class _TaskFormState extends State<TaskForm> {
                   TextFormField(
                     controller: _notesController,
                     decoration: const InputDecoration(
-                      labelText: 'Notes (optional)',
-                      hintText: 'Additional details, thoughts, or context...',
+                      labelText: 'Notes',
                       border: OutlineInputBorder(),
-                      alignLabelWithHint: true,
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
                     ),
                     maxLines: 4,
                     minLines: 2,
