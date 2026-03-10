@@ -16,6 +16,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _isSignInLoading = false;
   String? _error;
   bool _obscurePassword = true;
 
@@ -93,6 +94,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
     setState(() {
       _isLoading = true;
+      _isSignInLoading = true;
       _error = null;
     });
 
@@ -120,6 +122,7 @@ class _AuthScreenState extends State<AuthScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _isSignInLoading = false;
         });
       }
     }
@@ -484,7 +487,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 ),
                                 elevation: 2,
                               ),
-                              child: _isLoading
+                              child: _isSignInLoading
                                   ? const CircularProgressIndicator(
                                       color: Colors.white)
                                   : const Text(
@@ -511,7 +514,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 ),
                                 elevation: 2,
                               ),
-                              child: _isLoading
+                              child: _isLoading && !_isSignInLoading
                                   ? const CircularProgressIndicator(
                                       color: Colors.deepPurple)
                                   : const Text(
