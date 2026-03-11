@@ -570,17 +570,17 @@ class _TaskFormState extends State<TaskForm> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Links',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        'Links:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.add),
-                        tooltip: 'Add link',
+                      TextButton.icon(
                         onPressed: widget.isLoading ? null : _addLink,
-                        style: AppButtons.iconGoForth(),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Link'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppButtons.goForthBg,
+                          backgroundColor: AppButtons.goForthBg.withOpacity(0.08),
+                        ),
                       ),
                     ],
                   ),
