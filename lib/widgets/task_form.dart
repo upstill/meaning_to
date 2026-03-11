@@ -574,17 +574,28 @@ class _TaskFormState extends State<TaskForm> {
                         'Links:',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      TextButton.icon(
-                        onPressed: widget.isLoading ? null : _addLink,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Link'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppButtons.goForthBg,
-                          backgroundColor: AppButtons.goForthBg.withOpacity(0.08),
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            onPressed: widget.isLoading ? null : _addLink,
+                            icon: const Icon(Icons.add, size: 18),
+                            style: AppButtons.iconGoForth(),
+                            constraints: const BoxConstraints(
+                                minWidth: 29, minHeight: 29,
+                                maxWidth: 29, maxHeight: 29),
+                            padding: EdgeInsets.zero,
+                          ),
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: widget.isLoading ? null : _addLink,
+                            child: const Text('Add Link'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
+                  const Divider(height: 8),
 
                   if (_links.isNotEmpty) ...[
                     const SizedBox(height: 8),
