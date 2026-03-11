@@ -92,7 +92,7 @@ class HomeScreenState extends State<HomeScreen> {
 
   // Inline search state
   bool _isSearchMode = false;
-  final TextEditingController _findController = TextEditingController();
+  late final TextEditingController _findController;
   List<Task> _findResults = [];
   bool _isFindSearching = false;
   Timer? _findDebounceTimer;
@@ -543,6 +543,7 @@ class HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _findController = TextEditingController();
     print('HomeScreen: initState called');
     // Listen for task reload requests
     HomeScreen.needsTaskReload.addListener(_handleTaskReloadRequest);
