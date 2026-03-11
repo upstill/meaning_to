@@ -270,13 +270,10 @@ class HomeScreenState extends State<HomeScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: InkWell(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        EditCategoryScreen(category: category),
-                  ),
-                ).then((_) => _performFind()),
+                onTap: () {
+                  _closeSearch();
+                  _handleCategorySelection(category);
+                },
                 child: Row(
                   children: [
                     Expanded(
