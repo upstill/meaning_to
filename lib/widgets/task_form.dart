@@ -520,7 +520,7 @@ class _TaskFormState extends State<TaskForm> {
                       labelText: NamingUtils.tasksName(plural: false),
                       border: const OutlineInputBorder(),
                       floatingLabelBehavior: FloatingLabelBehavior.always,
-                      floatingLabelStyle: const TextStyle(fontSize: 16),
+                      floatingLabelStyle: const TextStyle(fontSize: 21),
                       suffixIcon: _isProcessingUrl
                           ? const Padding(
                               padding: EdgeInsets.all(12.0),
