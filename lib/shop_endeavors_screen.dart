@@ -304,8 +304,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
               categoryIds: categoryIds,
               isSelected: false,
               isExpanded: false,
-              tasksLoaded:
-                  true, // Tasks are loaded on-demand when expanded, not preloaded
+              tasksLoaded: false, // Will be loaded eagerly for sample display
             ));
           }
         }
@@ -329,8 +328,10 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
           return;
         }
 
-        // Check which categories have tasks available
-        _checkTaskAvailability();
+        // Eagerly load tasks for all items (sample shown as "For example:")
+        for (int i = 0; i < items.length; i++) {
+          _loadTasksForItem(i);
+        }
       } catch (e) {
         print('ShopEndeavorsScreen: Error getting categories from API: $e');
         setState(() {
@@ -347,81 +348,6 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     }
   }
 
-  Future<void> _checkTaskAvailability() async {
-    print('ShopEndeavorsScreen: Checking task availability for categories');
-
-    for (int i = 0; i < _shopItems.length; i++) {
-      final item = _shopItems[i];
-
-      try {
-        if (widget.existingCategory != null) {
-          // In "Get Suggestions to..." mode
-          final originalId = widget.existingCategory!.originalId;
-
-          if (originalId == null) {
-            setState(() {
-              _shopItems[i].hasTasksAvailable = false;
-            });
-            continue;
-          }
-
-          // Get all categories with the same original_id
-          final categoriesResponse = await supabase
-              .from('Categories')
-              .select('id')
-              .eq('original_id', originalId);
-
-          if (categoriesResponse.isEmpty) {
-            setState(() {
-              _shopItems[i].hasTasksAvailable = false;
-            });
-            continue;
-          }
-
-          final categoryIds = (categoriesResponse as List)
-              .map((json) => json['id'] as int)
-              .toList();
-
-          // Count tasks - just check if any exist
-          final tasksResponse = await supabase
-              .from('Tasks')
-              .select('id')
-              .inFilter('category_id', categoryIds)
-              .limit(1);
-
-          final count = (tasksResponse as List).length;
-
-          setState(() {
-            _shopItems[i].hasTasksAvailable = count > 0;
-          });
-
-          print(
-              'ShopEndeavorsScreen: Category ${item.headline} has $count tasks');
-        } else {
-          // In "Shop Endeavors" mode - just check if any tasks exist
-          final tasksResponse = await supabase
-              .from('Tasks')
-              .select('id')
-              .inFilter('category_id', item.categoryIds)
-              .limit(1);
-
-          final count = (tasksResponse as List).length;
-
-          setState(() {
-            _shopItems[i].hasTasksAvailable = count > 0;
-          });
-
-          print(
-              'ShopEndeavorsScreen: Category ${item.headline} has $count tasks');
-        }
-      } catch (e) {
-        print(
-            'ShopEndeavorsScreen: Error checking task availability for item $i: $e');
-        // Leave hasTasksAvailable as null to show expand icon (fail-safe)
-      }
-    }
-  }
-
   Future<void> _toggleSelection(int index) async {
     final wasSelected = _shopItems[index].isSelected;
     final willBeSelected = !wasSelected;
@@ -430,15 +356,18 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       _shopItems[index].isSelected = willBeSelected;
     });
 
-    // Update task selections based on category selection
-    if (_shopItems[index].tasks.isNotEmpty) {
+    // In suggestion mode only: update task selections based on category selection
+    if (widget.existingCategory != null &&
+        _shopItems[index].tasks.isNotEmpty) {
       for (final task in _shopItems[index].tasks) {
         _taskImportSelections[task.id.toString()] = willBeSelected;
       }
     }
 
-    // If category is being selected and not already expanded, expand it
-    if (willBeSelected && !_shopItems[index].isExpanded) {
+    // In single-pursuit (suggestion) mode only: expand when selecting
+    if (widget.existingCategory != null &&
+        willBeSelected &&
+        !_shopItems[index].isExpanded) {
       await _toggleExpansion(index);
 
       // Show prompt if this is the first time selecting a category AND it has tasks
@@ -1168,10 +1097,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       });
 
       int importedCategories = 0;
-      int importedTasks = 0;
 
       for (final item in selectedItems) {
-        // Create new category (since we filtered out existing ones)
+        // Create new category for the user (tasks are added separately via Shop For Tasks)
         final newCategoryData = {
           'headline': item.headline,
           'invitation': item.invitation,
@@ -1181,69 +1109,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
         };
 
         final newCategory = await ApiClient.createCategory(newCategoryData);
-        final categoryId = newCategory.id.toString();
-        importedCategories++;
         print(
-            'Created new category $categoryId for original_id ${item.originalId}');
-
-        // Import selected tasks for this category
-        final selectedTaskIds = item.tasks
-            .where((task) => _taskImportSelections[task.id.toString()] == true)
-            .map((task) => task.id.toString())
-            .toList();
-
-        if (selectedTaskIds.isNotEmpty) {
-          // Get the specific tasks by ID (they belong to other users, so can't use getTasks())
-          final originalTasks = <Task>[];
-          for (final taskId in selectedTaskIds) {
-            try {
-              final task = await ApiClient.getTask(taskId);
-              if (task != null) {
-                originalTasks.add(task);
-              } else {
-                print('ShopEndeavorsScreen: Task $taskId not found');
-              }
-            } catch (e) {
-              print('ShopEndeavorsScreen: Error fetching task $taskId: $e');
-            }
-          }
-
-          // Track original_ids to prevent duplicates within this import
-          final importedOriginalIds = <int>{};
-
-          for (final originalTask in originalTasks) {
-            // Check for duplicate original_id within this import
-            if (originalTask.originalId != null &&
-                importedOriginalIds.contains(originalTask.originalId)) {
-              print(
-                  'ShopEndeavorsScreen: Skipping duplicate task "${originalTask.headline}" with original_id ${originalTask.originalId} in category import');
-              continue;
-            }
-
-            // Create new task with user's category_id
-            final newTaskData = {
-              'headline': originalTask.headline,
-              'notes': originalTask.notes,
-              'links': originalTask.links,
-              'triggers_at': originalTask.triggersAt?.toIso8601String(),
-              'suggestible_at': originalTask.suggestibleAt?.toIso8601String(),
-              'finished': false, // Start as unfinished
-              'category_id': categoryId,
-              'owner_id': userId,
-              'original_id': originalTask
-                  .originalId, // Copy the original_id from the source task
-            };
-
-            await ApiClient.createTask(newTaskData);
-
-            // Track this original_id to prevent future duplicates
-            if (originalTask.originalId != null) {
-              importedOriginalIds.add(originalTask.originalId!);
-            }
-
-            importedTasks++;
-          }
-        }
+            'Created new category ${newCategory.id} for original_id ${item.originalId}');
+        importedCategories++;
       }
 
       setState(() {
@@ -1258,7 +1126,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Successfully imported $importedCategories categories and $importedTasks tasks!',
+              importedCategories == 1
+                  ? 'Added 1 ${NamingUtils.categoriesName(plural: false, capitalize: false)}!'
+                  : 'Added $importedCategories ${NamingUtils.categoriesName(plural: true, capitalize: false)}!',
             ),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 4),
@@ -1639,24 +1509,6 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                                                           ),
                                                         ),
                                                       ),
-                                                      if (item.hasTasksAvailable ==
-                                                              null ||
-                                                          item.hasTasksAvailable ==
-                                                              true)
-                                                        GestureDetector(
-                                                          onTap: () =>
-                                                              _toggleExpansion(
-                                                                  index),
-                                                          child: Icon(
-                                                            item.isExpanded
-                                                                ? Icons
-                                                                    .expand_less
-                                                                : Icons
-                                                                    .expand_more,
-                                                            color:
-                                                                Colors.grey,
-                                                          ),
-                                                        ),
                                                     ],
                                                   ),
                                                 // Add invitation below headline (only in Shop mode)
@@ -1665,8 +1517,75 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                                                         item) !=
                                                     null)
                                                   _buildInvitationWidget(item)!,
-                                                // Show "No suggestions" text immediately if no tasks available
-                                                if (item.hasTasksAvailable ==
+                                                // In Shop mode: show sample tasks or loading/empty state
+                                                if (widget.existingCategory ==
+                                                    null)
+                                                  if (!item.tasksLoaded)
+                                                    const Padding(
+                                                      padding: EdgeInsets
+                                                          .fromLTRB(
+                                                          16.0, 8.0, 16.0, 0.0),
+                                                      child: SizedBox(
+                                                        height: 16,
+                                                        width: 16,
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                                strokeWidth: 2),
+                                                      ),
+                                                    )
+                                                  else if (item.tasks.isEmpty)
+                                                    const Padding(
+                                                      padding: EdgeInsets
+                                                          .fromLTRB(
+                                                          16.0, 8.0, 16.0, 0.0),
+                                                      child: Text(
+                                                        '(No ideas yet)',
+                                                        style: TextStyle(
+                                                          fontSize: 14,
+                                                          color: Colors.grey,
+                                                          fontStyle:
+                                                              FontStyle.italic,
+                                                        ),
+                                                      ),
+                                                    )
+                                                  else
+                                                    Padding(
+                                                      padding: const EdgeInsets
+                                                          .fromLTRB(
+                                                          16.0, 8.0, 16.0, 4.0),
+                                                      child: RichText(
+                                                        text: TextSpan(
+                                                          style: TextStyle(
+                                                            fontSize: 14,
+                                                            color: Colors
+                                                                .grey[700],
+                                                            fontStyle: FontStyle
+                                                                .italic,
+                                                          ),
+                                                          children: [
+                                                            const TextSpan(
+                                                              text:
+                                                                  'For example:\n',
+                                                              style: TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                              ),
+                                                            ),
+                                                            TextSpan(
+                                                              text: item.tasks
+                                                                  .take(5)
+                                                                  .map((t) =>
+                                                                      t.headline)
+                                                                  .join('\n'),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    )
+                                                // In suggestion mode: show "No suggestions" if no tasks
+                                                else if (item
+                                                        .hasTasksAvailable ==
                                                     false)
                                                   Padding(
                                                     padding: const EdgeInsets
@@ -1685,8 +1604,8 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                                               ],
                                             ),
                                           ),
-                                          if (widget.existingCategory != null ||
-                                              item.isExpanded) ...[
+                                          if (widget.existingCategory !=
+                                              null) ...[
                                             // Add Sort and Search controls for single-pursuit mode
                                             if (widget.existingCategory != null &&
                                                 item.tasks.isNotEmpty &&

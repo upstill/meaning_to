@@ -15,6 +15,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _emailFocusNode = FocusNode();
   bool _isLoading = false;
   bool _isSignInLoading = false;
   String? _error;
@@ -30,12 +31,16 @@ class _AuthScreenState extends State<AuthScreen> {
   void initState() {
     super.initState();
     _loadOAuthIcons();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _emailFocusNode.requestFocus();
+    });
   }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _emailFocusNode.dispose();
     super.dispose();
   }
 
@@ -413,6 +418,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   children: [
                     TextFormField(
                       controller: _emailController,
+                      focusNode: _emailFocusNode,
                       decoration: const InputDecoration(
                         labelText: 'Email',
                         border: OutlineInputBorder(),
