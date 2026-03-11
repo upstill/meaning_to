@@ -555,7 +555,7 @@ class _TaskFormState extends State<TaskForm> {
                       labelText: 'Notes',
                       border: OutlineInputBorder(),
                       floatingLabelBehavior: FloatingLabelBehavior.always,
-                      floatingLabelStyle: TextStyle(fontSize: 16),
+                      floatingLabelStyle: TextStyle(fontSize: 21),
                     ),
                     maxLines: 4,
                     minLines: 2,

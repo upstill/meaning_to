@@ -2098,7 +2098,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                           border: const OutlineInputBorder(),
                           alignLabelWithHint: true,
                           floatingLabelBehavior: FloatingLabelBehavior.always,
-                          floatingLabelStyle: const TextStyle(fontSize: 16),
+                          floatingLabelStyle: const TextStyle(fontSize: 21),
                         ),
                         maxLines: 3,
                         minLines: 1,

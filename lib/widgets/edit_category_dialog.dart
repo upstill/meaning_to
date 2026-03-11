@@ -113,7 +113,7 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
                   labelText: 'Description',
                   border: OutlineInputBorder(),
                   floatingLabelBehavior: FloatingLabelBehavior.always,
-                  floatingLabelStyle: TextStyle(fontSize: 16),
+                  floatingLabelStyle: TextStyle(fontSize: 21),
                   hintText: 'Add a description or invitation...',
                 ),
                 minLines: 3,

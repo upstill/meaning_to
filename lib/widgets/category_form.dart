@@ -118,7 +118,7 @@ class CategoryFormState extends State<CategoryForm> {
                     labelText: 'Name',
                     border: OutlineInputBorder(),
                     floatingLabelBehavior: FloatingLabelBehavior.always,
-                    floatingLabelStyle: TextStyle(fontSize: 16),
+                    floatingLabelStyle: TextStyle(fontSize: 21),
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
@@ -135,7 +135,7 @@ class CategoryFormState extends State<CategoryForm> {
                     labelText: 'Description',
                     border: OutlineInputBorder(),
                     floatingLabelBehavior: FloatingLabelBehavior.always,
-                    floatingLabelStyle: TextStyle(fontSize: 16),
+                    floatingLabelStyle: TextStyle(fontSize: 21),
                   ),
                   maxLines: 3,
                   enabled: !widget.isLoading,
