@@ -1,18 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' as foundation;
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
-import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
-import 'package:meaning_to/performance_monitor_screen.dart';
-import 'package:meaning_to/find_screen.dart';
-import 'package:meaning_to/verify_links_screen.dart';
 import 'package:meaning_to/dialogs/task_created_dialog.dart';
 import 'package:meaning_to/widgets/edit_category_dialog.dart';
 import 'dart:async';
@@ -95,106 +90,31 @@ class HomeScreenState extends State<HomeScreen> {
   // Track if this is the first load (to handle initial category selection from deep link)
   bool _isFirstLoad = true;
 
-  // Check if current user is the developer
-  bool get _isDeveloperUser {
-    final userId = AuthUtils.getCurrentUserId();
-    final isDev = userId == 'ed1e8fd6-44cc-4fff-b717-57ffb551cb2d';
-    return isDev;
-  }
+  // Inline search state
+  bool _isSearchMode = false;
+  final TextEditingController _findController = TextEditingController();
+  List<Task> _findResults = [];
+  bool _isFindSearching = false;
+  Timer? _findDebounceTimer;
 
-  /// Build AppBar actions with conditional developer menu
+  /// Build AppBar actions
   List<Widget> _buildAppBarActions() {
     final actions = <Widget>[];
 
-    // Debug button - only show in debug mode
-    if (foundation.kDebugMode) {
-      actions.add(
-        PopupMenuButton<String>(
-          icon: const Icon(Icons.analytics),
-          tooltip: 'Debug Tools',
-          onSelected: (value) {
-            if (value == 'performance') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const PerformanceMonitorScreen(),
-                ),
-              );
-            } else if (value == 'find') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const FindScreen(),
-                ),
-              );
-            } else if (value == 'verify_links') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const VerifyLinksScreen(),
-                ),
-              );
-            }
-          },
-          itemBuilder: (BuildContext context) => [
-            const PopupMenuItem<String>(
-              value: 'performance',
-              child: Row(
-                children: [
-                  Icon(Icons.speed, size: 20),
-                  SizedBox(width: 8),
-                  Text('Performance Monitor'),
-                ],
-              ),
-            ),
-            const PopupMenuItem<String>(
-              value: 'find',
-              child: Row(
-                children: [
-                  Icon(Icons.search, size: 20),
-                  SizedBox(width: 8),
-                  Text('Find Tasks'),
-                ],
-              ),
-            ),
-            const PopupMenuItem<String>(
-              value: 'verify_links',
-              child: Row(
-                children: [
-                  Icon(Icons.link, size: 20),
-                  SizedBox(width: 8),
-                  Text('Verify Links'),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Developer menu - only show for developer user
-    if (_isDeveloperUser) {
-      actions.add(
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          decoration: BoxDecoration(
-            color: Colors.orange,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: IconButton(
-            icon: const Icon(
-              Icons.build,
-              color: Colors.white,
-              size: 24,
-            ),
-            tooltip: 'Developer Tools',
-            onPressed: () {
-              _fixRawUrlsInTasks();
-            },
-          ),
-        ),
-      );
-    }
+    // Search button - always show
+    actions.add(
+      IconButton(
+        icon: const Icon(Icons.search),
+        onPressed: () {
+          setState(() {
+            _isSearchMode = true;
+            _findResults = [];
+            _findController.clear();
+          });
+        },
+        tooltip: 'Search',
+      ),
+    );
 
     // Help button - always show
     actions.add(
@@ -242,6 +162,218 @@ class HomeScreenState extends State<HomeScreen> {
     );
 
     return actions;
+  }
+
+  void _onFindChanged(String value) {
+    _findDebounceTimer?.cancel();
+    _findDebounceTimer = Timer(const Duration(milliseconds: 300), _performFind);
+  }
+
+  Future<void> _performFind() async {
+    final query = _findController.text.trim();
+    if (query.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _findResults = [];
+          _isFindSearching = false;
+        });
+      }
+      return;
+    }
+    if (mounted) setState(() => _isFindSearching = true);
+    try {
+      final tasks = await ApiClient.searchTasksByHeadline(query);
+      if (mounted) {
+        setState(() {
+          _findResults = tasks;
+          _isFindSearching = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isFindSearching = false);
+    }
+  }
+
+  void _closeSearch() {
+    setState(() {
+      _isSearchMode = false;
+      _findResults = [];
+      _findController.clear();
+    });
+  }
+
+  Widget _buildFindResults() {
+    final Map<int, List<Task>> tasksByCategory = {};
+    for (final task in _findResults) {
+      tasksByCategory.putIfAbsent(task.categoryId, () => []).add(task);
+    }
+    final Map<int, Category> categoryMap = {
+      for (final cat in _categories) cat.id: cat
+    };
+
+    if (_isFindSearching) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Searching...', style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    if (_findController.text.trim().isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'Enter a search term to find tasks',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_findResults.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text('No tasks found',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600])),
+            const SizedBox(height: 8),
+            Text('Try a different search term',
+                style: TextStyle(fontSize: 14, color: Colors.grey[500])),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: tasksByCategory.length,
+      itemBuilder: (context, index) {
+        final categoryId = tasksByCategory.keys.elementAt(index);
+        final category = categoryMap[categoryId];
+        final tasks = tasksByCategory[categoryId]!;
+        if (category == null) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: InkWell(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        EditCategoryScreen(category: category),
+                  ),
+                ).then((_) => _performFind()),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        category.headline,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                      ),
+                    ),
+                    Text(
+                      '${tasks.length} ${tasks.length == 1 ? NamingUtils.tasksName(plural: false) : NamingUtils.tasksName(plural: true)}',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(color: Colors.grey[600]),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward_ios,
+                        size: 16, color: Colors.grey),
+                  ],
+                ),
+              ),
+            ),
+            ...tasks.map(
+              (task) => Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: TaskDisplay(
+                  key: ValueKey('find-task-${task.id}'),
+                  task: task,
+                  withControls: true,
+                  onEdit: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            TaskEditScreen(category: category, task: task),
+                      ),
+                    );
+                    _performFind();
+                  },
+                  onDelete: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Delete Task'),
+                        content:
+                            Text('Delete "${task.headline}"?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () =>
+                                Navigator.pop(context, true),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true) {
+                      await ApiClient.deleteTask(task.id.toString());
+                      _performFind();
+                    }
+                  },
+                  onTap: () async {
+                    await ApiClient.updateTaskFinished(
+                        task.id, !task.finished);
+                    _performFind();
+                  },
+                  onUpdateSuggestibleAt: (DateTime newTime) async {
+                    await ApiClient.updateTaskSuggestibleAt(
+                        task.id, newTime.toIso8601String());
+                    _performFind();
+                  },
+                  onShareToggle: (bool newSharedState) async {
+                    await ApiClient.updateTaskShared(
+                        task.id, newSharedState);
+                    _performFind();
+                  },
+                  isCategoryPrivate: category.isPrivate,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        );
+      },
+    );
   }
 
   /// Handle logout action
@@ -408,148 +540,6 @@ class HomeScreenState extends State<HomeScreen> {
   /// Debug function to fix raw URLs in task links
   /// Converts any raw URL strings in the links array to proper HTML link format
   /// Processes all tasks in descending ID order
-  Future<void> _fixRawUrlsInTasks() async {
-    print('DEBUG: Starting to fix raw URLs in tasks');
-
-    try {
-      final userId = AuthUtils.getCurrentUserId();
-
-      // Fetch all tasks for this user, ordered by ID descending
-      final response = await supabase
-          .from('Tasks')
-          .select()
-          .eq('owner_id', userId)
-          .order('id', ascending: false);
-
-      final tasks =
-          (response as List).map((json) => Task.fromJson(json)).toList();
-
-      print('DEBUG: Found ${tasks.length} total tasks to check');
-
-      int tasksModified = 0;
-      int linksFixed = 0;
-
-      for (final task in tasks) {
-        print('DEBUG: Processing task ID ${task.id}: "${task.headline}"');
-
-        // Skip tasks with no links
-        if (task.links == null || task.links!.isEmpty) {
-          print('DEBUG: Task has no links, skipping');
-          continue;
-        }
-
-        print('DEBUG: Task has ${task.links!.length} links');
-
-        bool modified = false;
-        final updatedLinks = <String>[];
-
-        for (int i = 0; i < task.links!.length; i++) {
-          final link = task.links![i];
-          print('DEBUG: Link $i: $link');
-
-          // Check if this is a raw URL (doesn't start with <a)
-          if (!link.trim().startsWith('<a')) {
-            print('DEBUG: Found raw URL, converting to HTML link');
-            print('DEBUG: Original URL: $link');
-
-            // Normalize the URL first (this handles TIDAL /u stripping, etc.)
-            final normalizedUrl = LinkToTaskConverter.normalizeUrl(link);
-            print('DEBUG: Normalized URL: $normalizedUrl');
-
-            // Process the normalized URL to create HTML link
-            final processedLink =
-                await LinkProcessor.validateAndProcessLink(normalizedUrl);
-            final htmlLink =
-                '<a href="${processedLink.url}">${processedLink.title ?? processedLink.url}</a>';
-
-            print('DEBUG: Converted to: $htmlLink');
-            updatedLinks.add(htmlLink);
-            modified = true;
-            linksFixed++;
-          } else {
-            print(
-                'DEBUG: Link is already HTML formatted, checking if URL needs normalization');
-
-            // Extract URL from HTML link
-            final urlMatch = RegExp(r'href="([^"]+)"').firstMatch(link);
-            if (urlMatch != null) {
-              final originalUrl = urlMatch.group(1)!;
-              print('DEBUG: Extracted URL: $originalUrl');
-
-              // Normalize the URL
-              final normalizedUrl =
-                  LinkToTaskConverter.normalizeUrl(originalUrl);
-              print('DEBUG: Normalized URL: $normalizedUrl');
-
-              // Check if URL changed after normalization
-              if (normalizedUrl != originalUrl) {
-                print('DEBUG: URL was normalized, updating link');
-
-                // Replace the old URL with normalized one in the HTML link
-                final updatedLink = link.replaceAll(originalUrl, normalizedUrl);
-                print('DEBUG: Updated link: $updatedLink');
-
-                updatedLinks.add(updatedLink);
-                modified = true;
-                linksFixed++;
-              } else {
-                print('DEBUG: URL did not need normalization');
-                updatedLinks.add(link);
-              }
-            } else {
-              print('DEBUG: Could not extract URL from HTML link');
-              updatedLinks.add(link);
-            }
-          }
-        }
-
-        if (modified) {
-          print('DEBUG: Updating task ${task.id} with fixed links');
-          print('DEBUG: Total links being saved: ${updatedLinks.length}');
-          print('DEBUG: Links: ${updatedLinks.join(", ")}');
-
-          // Update the task in the database
-          await supabase
-              .from('Tasks')
-              .update({'links': updatedLinks}).eq('id', task.id);
-
-          print('DEBUG: Task ${task.id} updated successfully');
-          tasksModified++;
-        } else {
-          print(
-              'DEBUG: No raw URLs found in task ${task.id}, continuing to next task');
-        }
-      }
-
-      print('DEBUG: Finished processing tasks');
-      print('DEBUG: Total tasks modified: $tasksModified');
-      print('DEBUG: Total links fixed: $linksFixed');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:
-                Text('Fixed $linksFixed raw URLs across $tasksModified tasks'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
-    } catch (e, stackTrace) {
-      print('DEBUG: Error fixing raw URLs: $e');
-      print('DEBUG: Stack trace: $stackTrace');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
   @override
   void initState() {
     super.initState();
@@ -610,6 +600,8 @@ class HomeScreenState extends State<HomeScreen> {
     HomeScreen.needsTaskReload.removeListener(_handleTaskReloadRequest);
     HomeScreen.needsDataReload.removeListener(_handleDataReloadRequest);
     _taskSearchController.dispose();
+    _findController.dispose();
+    _findDebounceTimer?.cancel();
     super.dispose();
   }
 
@@ -2642,11 +2634,35 @@ class HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ROUZ'),
+        title: _isSearchMode ? null : const Text('ROUZ'),
         automaticallyImplyLeading: false,
         actions: _buildAppBarActions(),
+        bottom: _isSearchMode
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(56),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  child: TextField(
+                    controller: _findController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'Search tasks...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: _closeSearch,
+                      ),
+                      border: const OutlineInputBorder(),
+                      filled: true,
+                      fillColor: Colors.white,
+                    ),
+                    onChanged: _onFindChanged,
+                  ),
+                ),
+              )
+            : null,
       ),
-      body: Padding(
+      body: _isSearchMode ? _buildFindResults() : Padding(
         padding: const EdgeInsets.all(16.0),
         child: SingleChildScrollView(
           child: Column(
@@ -3337,14 +3353,6 @@ class HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
-                            if (Task.currentTaskSet != null) ...[
-                              Text(
-                                '${Task.currentTaskSet!.length} more tasks in this category',
-                                style: Theme.of(context).textTheme.bodySmall,
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 8),
-                            ],
                           ],
                         )
                       else
