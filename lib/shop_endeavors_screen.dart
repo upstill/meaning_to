@@ -1556,7 +1556,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                                                       child: RichText(
                                                         text: TextSpan(
                                                           style: TextStyle(
-                                                            fontSize: 14,
+                                                            fontSize: 17,
                                                             color: Colors
                                                                 .grey[700],
                                                             fontStyle: FontStyle
@@ -1567,6 +1567,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                                                               text:
                                                                   'For example:\n',
                                                               style: TextStyle(
+                                                                fontSize: 18,
                                                                 fontWeight:
                                                                     FontWeight
                                                                         .bold,
@@ -1576,7 +1577,7 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
                                                               text: item.tasks
                                                                   .take(5)
                                                                   .map((t) =>
-                                                                      t.headline)
+                                                                      '• ${t.headline}')
                                                                   .join('\n'),
                                                             ),
                                                           ],
