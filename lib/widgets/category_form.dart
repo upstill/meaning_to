@@ -114,6 +114,7 @@ class CategoryFormState extends State<CategoryForm> {
               if (widget.isEditing || widget.category == null) ...[
                 TextFormField(
                   controller: _headlineController,
+                  autofocus: true,
                   decoration: const InputDecoration(
                     labelText: 'Name',
                     border: OutlineInputBorder(),
