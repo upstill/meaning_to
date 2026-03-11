@@ -42,7 +42,7 @@ class _HelpScreenState extends State<HelpScreen> {
             index: 0,
             title: 'What Is This Thing?',
             content: '''
-I've Been Meaning To helps you organize and track the ideas, goals, and interests you've been meaning to pursue.
+ROUZ! moves you to actually do stuff. Use ROUZ! to helps you organize and track the ideas, goals, and interests you've been meaning to pursue.
 
 Think of it as a way to keep track of all those things you say "I've been meaning to..." about - books you want to read, movies to watch, places to visit, projects to start, or anything else that catches your interest.
 
