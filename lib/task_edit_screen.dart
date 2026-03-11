@@ -2189,12 +2189,12 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _notesController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Notes',
                           hintText: 'Add any additional details...',
-                          border: OutlineInputBorder(),
+                          border: const OutlineInputBorder(),
                           floatingLabelBehavior: FloatingLabelBehavior.always,
-                          floatingLabelStyle: TextStyle(fontSize: 16),
+                          floatingLabelStyle: const TextStyle(fontSize: 21),
                         ),
                         minLines: 3,
                         maxLines: 10,
