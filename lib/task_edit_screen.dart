@@ -2093,6 +2093,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                     children: [
                       TextFormField(
                         controller: _headlineController,
+                        autofocus: true,
                         decoration: InputDecoration(
                           labelText:
                               NamingUtils.tasksName(plural: false),

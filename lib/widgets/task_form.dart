@@ -516,6 +516,7 @@ class _TaskFormState extends State<TaskForm> {
                 children: [
                   TextFormField(
                     controller: _headlineController,
+                    autofocus: true,
                     decoration: InputDecoration(
                       labelText: NamingUtils.tasksName(plural: false),
                       border: const OutlineInputBorder(),
