@@ -591,6 +591,43 @@ class _TaskFormState extends State<TaskForm> {
                             onTap: widget.isLoading ? null : _addLink,
                             child: const Text('Add Link'),
                           ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            onPressed: () => showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Adding Links'),
+                                content: const Text(
+                                  "You can reference a Web page to help with this Idea. "
+                                  "Go to that page in a browser, copy the text from the "
+                                  "address bar (you know, the 'http://...' gobbledygook), "
+                                  "click the 'Add Link' button here, and paste it into the "
+                                  "Link field. Voila! You can get back to that page any "
+                                  "time you see this Idea.\n\n"
+                                  "(Incidentally, if you're on a phone, you can create "
+                                  "an Idea from any app that has a Share button. Click "
+                                  "it, select ROUZ, and we'll walk you through selecting "
+                                  "a Pursuit to add it to.)\n\n"
+				  "Pro Tip: When making a new Task, you can just paste "
+				  "that address-bar gobbledygook into the title and ROUZ "
+				  "will sort it all out."
+				),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Got it'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            icon: const Icon(Icons.help_outline, size: 18),
+                            style: IconButton.styleFrom(
+                              foregroundColor: Colors.grey[600],
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
                         ],
                       ),
                     ],
