@@ -116,17 +116,6 @@ class HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    // Help button - always show
-    actions.add(
-      IconButton(
-        icon: const Icon(Icons.info_outline),
-        onPressed: () {
-          Navigator.pushNamed(context, '/help');
-        },
-        tooltip: 'Help',
-      ),
-    );
-
     // Account menu - always show
     actions.add(
       PopupMenuButton<String>(
@@ -158,6 +147,17 @@ class HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+
+    // Help button - always show
+    actions.add(
+      IconButton(
+        icon: const Icon(Icons.info_outline),
+        onPressed: () {
+          Navigator.pushNamed(context, '/help');
+        },
+        tooltip: 'Help',
       ),
     );
 
