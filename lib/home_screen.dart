@@ -130,9 +130,7 @@ class HomeScreenState extends State<HomeScreen> {
     // Account menu - always show
     actions.add(
       PopupMenuButton<String>(
-        icon: Icon(Icons.person,
-            color: Theme.of(context).appBarTheme.foregroundColor ??
-                Theme.of(context).colorScheme.onPrimary),
+        child: const Icon(Icons.person),
         tooltip: 'Account',
         onSelected: (String value) async {
           if (value == 'logout') {
