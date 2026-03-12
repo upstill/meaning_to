@@ -15,7 +15,6 @@ import 'package:meaning_to/letterboxd_import_screen.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'dart:io';
-import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/new_category_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
@@ -748,14 +747,6 @@ class _MyAppState extends State<MyApp> {
               return MaterialPageRoute(
                 builder: (context) => ShopEndeavorsScreen(
                   existingCategory: args?['category'] as Category?,
-                ),
-              );
-            case '/import-justwatch':
-              final args = settings.arguments as Map<String, dynamic>;
-              return MaterialPageRoute(
-                builder: (context) => ImportJustWatchScreen(
-                  category: args['category'] as Category,
-                  jsonData: args['jsonData'],
                 ),
               );
             case '/edit-task':

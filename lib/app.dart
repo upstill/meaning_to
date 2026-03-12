@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
-import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/justwatch_import_screen.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
@@ -29,18 +28,6 @@ class MeaningToApp extends StatelessWidget {
           return TaskEditScreen(
             category: args['category'] as Category,
             task: args['task'] as Task?,
-          );
-        },
-        '/import-justwatch': (context) {
-          print('Route handler for /import-justwatch called');
-          final args = ModalRoute.of(context)!.settings.arguments
-              as Map<String, dynamic>;
-          print('Route args: $args');
-          print('Category: ${args['category']}');
-          print('JSON data type: ${args['jsonData']?.runtimeType}');
-          return ImportJustWatchScreen(
-            category: args['category'] as Category,
-            jsonData: args['jsonData'],
           );
         },
         '/justwatch-import': (context) {
