@@ -3380,21 +3380,24 @@ class HomeScreenState extends State<HomeScreen> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              const SizedBox(height: 24),
                               const Text(
                                 'All out of ideas!',
-                                style: TextStyle(fontSize: 16),
+                                style: TextStyle(fontSize: 21),
                               ),
                               if (_cacheManager.currentTasks?.isEmpty ==
                                   true) ...[
                                 const SizedBox(height: 24),
                                 ElevatedButton.icon(
                                   onPressed: _navigateToNewContent,
-                                  icon: const Icon(Icons.add, size: 24),
+                                  icon: const Icon(Icons.add_task, size: 24),
                                   label: const Text(
                                     'Add a Task',
                                     style: TextStyle(fontSize: 20),
                                   ),
                                   style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
                                     minimumSize: const Size(200, 56),
                                   ),
                                 ),
