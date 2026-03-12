@@ -615,7 +615,6 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
       // Update UI to show titles found and continue processing
       setState(() {
         _titlesFoundMessage = _getTitlesFoundMessage(titles.length);
-        _totalTitlesFound = titles.length;
       });
 
       final filteredTitles = await _filterTitlesAndRemoveDuplicates(titles);

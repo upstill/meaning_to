@@ -157,8 +157,6 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
       _isAutoVerifying = true;
       _isLoading = true;
       _error = null;
-      _testedUrl = null;
-      _testedIcon = null;
     });
 
     try {
@@ -196,8 +194,6 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
       }
 
       setState(() {
-        _testedUrl = processedLink.url;
-        _testedIcon = processedLink.favicon;
         _lastAutoVerifiedUrl = normalizedUrl; // Use normalized URL
         _isAutoVerifying = false;
         _isLoading = false;
