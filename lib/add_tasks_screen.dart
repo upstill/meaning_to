@@ -62,9 +62,10 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         label: 'text files',
         extensions: ['txt', 'md', 'csv', 'rtf', 'pdf', 'doc', 'docx', 'odt'],
       );
+      const allFiles = XTypeGroup(label: 'All files');
 
       final XFile? file = await openFile(
-        acceptedTypeGroups: [typeGroup],
+        acceptedTypeGroups: [typeGroup, allFiles],
       );
 
       if (file != null) {
