@@ -763,71 +763,60 @@ class _TaskFormState extends State<TaskForm> {
                   Expanded(child: Divider()),
                 ],
               ),
-              const SizedBox(height: 16),
-
-              // Prompt about getting ideas from other people
-              Center(
-                child: Text(
-                  '** You can get ${NamingUtils.tasksName(plural: true)} from other people: **',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Shop for Suggestions button
+              // Shop for Suggestions — only shown when suggestions exist
               FutureBuilder<bool>(
                 future: widget.selectedCategory != null
                     ? ShopEndeavorsScreen.hasAnyPublicSuggestionsForCategory(
                         widget.selectedCategory!)
                     : Future.value(false),
                 builder: (context, snapshot) {
-                  final hasSuggestions = snapshot.data == true;
-                  return Center(
-                    child: FractionallySizedBox(
-                      widthFactor: 0.75,
-                      child: ElevatedButton.icon(
-                        onPressed: (widget.isLoading ||
-                                !hasSuggestions ||
-                                widget.selectedCategory == null)
-                            ? null
-                            : () async {
-                                final result = await Navigator.pushNamed(
-                                  context,
-                                  '/shop-endeavors',
-                                  arguments: {
-                                    'category': widget.selectedCategory,
-                                  },
-                                );
-
-                                // If suggestions were added, close this screen to return to Edit Category
-                                if (result == true && context.mounted) {
-                                  Navigator.pop(context, true);
-                                }
-                              },
-                        icon: const Icon(Icons.shopping_cart),
-                        label: Text(hasSuggestions
-                            ? 'Shop for Suggestions'
-                            : 'No Suggestions Out There'),
-                        style: hasSuggestions
-                            ? AppButtons.goForth()
-                            : ElevatedButton.styleFrom(
-                                backgroundColor: Colors.grey[300],
-                                foregroundColor: Colors.grey[600],
-                              ),
+                  if (snapshot.data != true) return const SizedBox.shrink();
+                  return Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      Center(
+                        child: Text(
+                          '** You can get ${NamingUtils.tasksName(plural: true)} from other people: **',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      Center(
+                        child: FractionallySizedBox(
+                          widthFactor: 0.75,
+                          child: ElevatedButton.icon(
+                            onPressed: widget.isLoading ||
+                                    widget.selectedCategory == null
+                                ? null
+                                : () async {
+                                    final result = await Navigator.pushNamed(
+                                      context,
+                                      '/shop-endeavors',
+                                      arguments: {
+                                        'category': widget.selectedCategory,
+                                      },
+                                    );
+                                    if (result == true && context.mounted) {
+                                      Navigator.pop(context, true);
+                                    }
+                                  },
+                            icon: const Icon(Icons.shopping_cart),
+                            label: const Text('Shop for Suggestions'),
+                            style: AppButtons.goForth(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                   );
                 },
               ),
-
-              const SizedBox(height: 16),
 
               // Prompt about getting ideas from other people
               Center(
