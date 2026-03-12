@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:share_handler/share_handler.dart';
 import 'dart:async';
 import 'package:meaning_to/home_screen.dart';
-import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/models/category.dart';
@@ -148,24 +147,9 @@ class ShareHandler {
       }
     }
 
-    // Add EditCategoryScreen specific information
-    else if (routeName == '/edit-category') {
-      print(
-          'ShareHandler: STEP 14 - On edit-category route, looking for EditCategoryScreenState...');
-      final editState =
-          context.findAncestorStateOfType<EditCategoryScreenState>();
-      if (editState != null) {
-        print(
-            'ShareHandler: STEP 15 - Found EditCategoryScreenState, adding category info...');
-        contextInfo['context']['currentCategory'] =
-            editState.widget.category?.headline;
-        print('ShareHandler: STEP 16 - Edit category info added');
-      } else {
-        print('ShareHandler: STEP 15 - No EditCategoryScreenState found');
-      }
     } else {
       print(
-          'ShareHandler: STEP 11 - Route is not home or edit-category: ${routeName ?? 'null'}');
+          'ShareHandler: STEP 11 - Not on home route: ${routeName ?? 'null'}');
     }
 
     // Log the intent with context information

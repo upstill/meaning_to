@@ -352,7 +352,6 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
         }
       }
 
-      // Return to EditCategoryScreen
       if (mounted) {
         print('Navigating back with category: ${widget.category.headline}');
         Navigator.pop(context, widget.category);
