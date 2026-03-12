@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/home_screen.dart';
-import 'package:meaning_to/forgot_password_screen.dart';
 import 'package:meaning_to/reset_password_screen.dart';
 import 'package:meaning_to/auth_verification_screen.dart';
 import 'package:meaning_to/auth_otp_verification_screen.dart';
@@ -657,10 +656,6 @@ class _MyAppState extends State<MyApp> {
             case '/auth':
               return MaterialPageRoute(
                 builder: (context) => const AuthScreen(),
-              );
-            case '/forgot-password':
-              return MaterialPageRoute(
-                builder: (context) => const ForgotPasswordScreen(),
               );
             case '/auth/reset-password':
               final args = settings.arguments as Map<String, dynamic>?;
