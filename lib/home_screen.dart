@@ -1620,11 +1620,13 @@ class HomeScreenState extends State<HomeScreen> {
     }
 
     Navigator.pushNamed(context, '/new-category').then((result) {
-      // If we got a result (Category from direct creation, or true from ShopEndeavorsScreen import), reload categories
       if (result != null) {
-        print(
-            'HomeScreen: Category was created or imported, reloading categories');
-        _loadCategories();
+        print('HomeScreen: Category was created or imported, reloading categories');
+        _loadCategories().then((_) {
+          if (result is Category && mounted) {
+            _handleCategorySelection(result);
+          }
+        });
       }
     });
   }
