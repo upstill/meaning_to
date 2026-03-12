@@ -3,7 +3,6 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
-import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/widgets/category_form.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
@@ -71,12 +70,6 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
 
       final newCategory = Category.fromJson(response);
       print('Created new category: ${newCategory.headline}');
-
-      // Initialize cache with the new category (and no tasks)
-      final cacheManager = CacheManager();
-      await cacheManager.initializeWithSavedCategory(newCategory, userId);
-      print(
-          'CacheManager initialized with new category: ${newCategory.headline}');
 
       // Return the created category to the caller
       if (mounted) {
