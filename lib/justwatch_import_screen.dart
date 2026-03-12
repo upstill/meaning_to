@@ -8,7 +8,6 @@ import 'package:meaning_to/utils/justwatch_client.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/home_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -336,10 +335,6 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
 
       // Refresh the cache
       try {
-        EditCategoryScreen.onImportComplete = () {
-          print('JustWatchImportScreen: Import complete callback triggered');
-        };
-
         final cacheManager = CacheManager();
         await cacheManager.refreshCurrentCategoryTasks();
         print('Cache refreshed successfully');

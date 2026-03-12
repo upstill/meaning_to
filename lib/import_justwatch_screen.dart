@@ -10,7 +10,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/edit_category_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 // Conditional import for web-specific functionality
@@ -717,12 +716,6 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
       // Refresh the cache to include the newly imported tasks
       try {
         print('Refreshing cache after import...');
-
-        // Set up callback to switch to age sorting after import
-        EditCategoryScreen.onImportComplete = () {
-          print('ImportJustWatchScreen: Import complete callback triggered');
-        };
-
         final cacheManager = CacheManager();
         await cacheManager.refreshCurrentCategoryTasks();
         print('Cache refreshed successfully');

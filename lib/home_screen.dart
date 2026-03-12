@@ -1663,12 +1663,11 @@ class HomeScreenState extends State<HomeScreen> {
             await _handleMultipleTasksCreated(result);
           }
         } else if (result == true) {
-          // Bulk import without specific data - reload data
-          print('HomeScreen: Content was created, reloading data');
-          _loadCategories();
-          if (_selectedCategory != null) {
-            _loadRandomTask(_selectedCategory!);
-          }
+          // Bulk import (AddTasksScreen / JustWatch) - reload and switch to list mode
+          print('HomeScreen: Bulk tasks created, switching to list mode');
+          setState(() { _showTaskListMode = false; });
+          await _loadCategories();
+          if (mounted) _toggleTaskListMode();
         }
       }
     });
