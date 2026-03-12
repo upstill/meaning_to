@@ -2684,6 +2684,36 @@ class HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // TEMP icon test row — remove after picking account icon
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  for (final entry in const [
+                    (Icons.manage_accounts, 'manage_accounts'),
+                    (Icons.account_box, 'account_box'),
+                    (Icons.person_pin, 'person_pin'),
+                    (Icons.face, 'face'),
+                    (Icons.supervisor_account, 'supervisor_account'),
+                    (Icons.badge, 'badge'),
+                    (Icons.how_to_reg, 'how_to_reg'),
+                    (Icons.portrait, 'portrait'),
+                    (Icons.record_voice_over, 'record_voice_over'),
+                    (Icons.engineering, 'engineering'),
+                    (Icons.settings, 'settings'),
+                    (Icons.menu, 'menu'),
+                  ])
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(entry.$1),
+                        Text(entry.$2,
+                            style: const TextStyle(fontSize: 9)),
+                      ],
+                    ),
+                ],
+              ),
+              const Divider(),
               if (_isLoading)
                 const Center(child: CircularProgressIndicator())
               else if (_error != null)
