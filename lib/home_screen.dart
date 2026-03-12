@@ -3382,7 +3382,7 @@ class HomeScreenState extends State<HomeScreen> {
                             children: [
                               const SizedBox(height: 24),
                               Text(
-                                'All out of ${NamingUtils.tasksName(plural: true, capitalized: false)}!',
+                                'All out of ${NamingUtils.tasksName(plural: true, capitalize: false)}!',
                                 style: const TextStyle(fontSize: 21),
                               ),
                               if (_cacheManager.currentTasks?.isEmpty ==
@@ -3392,7 +3392,7 @@ class HomeScreenState extends State<HomeScreen> {
                                   onPressed: _navigateToNewContent,
                                   icon: const Icon(Icons.add_task, size: 24),
                                   label: Text(
-                                    'Add ${NamingUtils.tasksName(plural: true, capitalized: false, withArticle: true)}',
+                                    'Add ${NamingUtils.tasksName(plural: true, capitalize: false, withArticle: true)}',
                                     style: const TextStyle(fontSize: 20),
                                   ),
                                   style: ElevatedButton.styleFrom(
