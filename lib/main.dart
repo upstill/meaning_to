@@ -16,7 +16,6 @@ import 'package:meaning_to/letterboxd_import_screen.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'dart:io';
-import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/new_category_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
@@ -738,16 +737,6 @@ class _MyAppState extends State<MyApp> {
               final categoryId = args?['categoryId'] as String?;
               return MaterialPageRoute(
                 builder: (context) => HomeScreen(initialCategoryId: categoryId),
-              );
-            case '/edit-category':
-              final args = settings.arguments as Map<String, dynamic>?;
-              return MaterialPageRoute(
-                builder: (context) => EditCategoryScreen(
-                  category: args?['category'] as Category?,
-                  tasksOnly: args?['tasksOnly'] == true,
-                  startInCategoryEditorPanel:
-                      args?['startInCategoryEditorPanel'] == true,
-                ),
               );
             case '/new-category':
               return MaterialPageRoute(

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
-import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/import_justwatch_screen.dart';
 import 'package:meaning_to/justwatch_import_screen.dart';
@@ -24,16 +23,6 @@ class MeaningToApp extends StatelessWidget {
       routes: {
         '/': (context) => const HomeScreen(),
         '/auth': (context) => const AuthScreen(),
-        '/edit-category': (context) {
-          final args = ModalRoute.of(context)?.settings.arguments
-              as Map<String, dynamic>?;
-          return EditCategoryScreen(
-            category: args?['category'] as Category?,
-            tasksOnly: args?['tasksOnly'] == true,
-            startInCategoryEditorPanel:
-                args?['startInCategoryEditorPanel'] == true,
-          );
-        },
         '/edit-task': (context) {
           final args = ModalRoute.of(context)!.settings.arguments
               as Map<String, dynamic>;
