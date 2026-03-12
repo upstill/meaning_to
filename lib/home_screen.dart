@@ -5,7 +5,6 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
-import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/widgets/edit_category_dialog.dart';
@@ -1980,76 +1979,6 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _navigateToEditCategory([Category? category]) async {
-    print('HomeScreen: Starting navigation to edit category screen...');
-    print('HomeScreen: Current category: \'${_selectedCategory?.headline}\'');
-    print('HomeScreen: Current task: \'${_randomTask?.headline}\'');
-
-    if (!mounted) {
-      print('HomeScreen: Not mounted before navigation');
-      return;
-    }
-
-    // Set up the static callback before navigation
-    EditCategoryScreen.onEditComplete = () {
-      print('HomeScreen: Edit complete callback received');
-      if (mounted) {
-        print('HomeScreen: Widget mounted, triggering task reload');
-        // Force a rebuild and task reload
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            print('HomeScreen: Post frame callback executing');
-            setState(() {
-              print('HomeScreen: Setting needsTaskReload to true');
-              HomeScreen.needsTaskReload.value = true;
-            });
-            // The listener will call _handleEditComplete(), no need to call it directly
-          } else {
-            print('HomeScreen: Widget not mounted in post frame callback');
-          }
-        });
-      } else {
-        print('HomeScreen: Widget not mounted, cannot trigger task reload');
-      }
-    };
-    print(
-      'HomeScreen: Set static callback: ${EditCategoryScreen.onEditComplete != null}',
-    );
-
-    try {
-      print('HomeScreen: About to push route...');
-      // Create the screen
-      final screen = EditCategoryScreen(
-        key: ValueKey('edit_category_${category?.id ?? 'new'}'),
-        category: category,
-        tasksOnly: false,
-        startInCategoryEditorPanel: true,
-      );
-      print('HomeScreen: Created EditCategoryScreen');
-
-      // Push the route and wait for result
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => screen, fullscreenDialog: true),
-      );
-      print(
-        'HomeScreen: Returned from edit category screen with result: $result',
-      );
-
-      // If we got a result (true), reload categories
-      if (result == true) {
-        print('HomeScreen: Category was created/edited, reloading categories');
-        await _loadCategories();
-      }
-    } catch (e, stackTrace) {
-      print('HomeScreen: Error during navigation: $e');
-      print('HomeScreen: Stack trace: $stackTrace');
-    } finally {
-      // Always clear the callback after navigation
-      EditCategoryScreen.onEditComplete = null;
-      print('HomeScreen: Cleared static callback');
-    }
-  }
 
   Future<void> _showEditPanel(Task task) async {
     print('HomeScreen: Showing edit panel for task: ${task.headline}');
@@ -2190,56 +2119,6 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _navigateToEditTasks() {
-    print(
-      'HomeScreen: Navigating to edit category: ${_selectedCategory?.headline}',
-    );
-    if (!mounted || _selectedCategory == null) {
-      print('HomeScreen: Not mounted or no category selected');
-      return;
-    }
-
-    // Set up the static callback before navigation
-    EditCategoryScreen.onEditComplete = () {
-      print('HomeScreen: Category edit complete callback received');
-      if (mounted) {
-        print('HomeScreen: Widget mounted, triggering task reload');
-        // Force a rebuild and task reload
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            print('HomeScreen: Post frame callback executing');
-            setState(() {
-              print('HomeScreen: Setting needsTaskReload to true');
-              HomeScreen.needsTaskReload.value = true;
-            });
-            // The listener will call _handleEditComplete(), no need to call it directly
-          } else {
-            print('HomeScreen: Widget not mounted in post frame callback');
-          }
-        });
-      } else {
-        print('HomeScreen: Widget not mounted, cannot trigger task reload');
-      }
-    };
-    print(
-      'HomeScreen: Set static callback for category edit: ${EditCategoryScreen.onEditComplete != null}',
-    );
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EditCategoryScreen(
-          category: _selectedCategory,
-          tasksOnly: false, // Changed to false to edit the category
-          startInCategoryEditorPanel: true,
-        ),
-      ),
-    ).then((_) {
-      // Clear the callback after navigation
-      EditCategoryScreen.onEditComplete = null;
-      print('HomeScreen: Cleared static callback after category edit');
-    });
-  }
 
   Future<void> _checkAndShowWelcomeDialog() async {
     // Show the welcome dialog if it hasn't been shown in this session yet
