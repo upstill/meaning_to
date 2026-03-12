@@ -3381,9 +3381,9 @@ class HomeScreenState extends State<HomeScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               const SizedBox(height: 24),
-                              const Text(
-                                'All out of ideas!',
-                                style: TextStyle(fontSize: 21),
+                              Text(
+                                'All out of ${NamingUtils.tasksName(plural: true, capitalized: false)}!',
+                                style: const TextStyle(fontSize: 21),
                               ),
                               if (_cacheManager.currentTasks?.isEmpty ==
                                   true) ...[
@@ -3391,9 +3391,9 @@ class HomeScreenState extends State<HomeScreen> {
                                 ElevatedButton.icon(
                                   onPressed: _navigateToNewContent,
                                   icon: const Icon(Icons.add_task, size: 24),
-                                  label: const Text(
-                                    'Add a Task',
-                                    style: TextStyle(fontSize: 20),
+                                  label: Text(
+                                    'Add ${NamingUtils.tasksName(plural: true, capitalized: false, withArticle: true)}',
+                                    style: const TextStyle(fontSize: 20),
                                   ),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green,
