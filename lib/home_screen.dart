@@ -120,7 +120,7 @@ class HomeScreenState extends State<HomeScreen> {
     actions.add(
       Builder(
         builder: (context) => IconButton(
-          icon: const Icon(Icons.person),
+          icon: const Icon(Icons.person, color: Colors.black),
           tooltip: 'Account',
           onPressed: () async {
             final RenderBox button =
