@@ -8,7 +8,6 @@ import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/edit_category_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
-import 'package:meaning_to/dialogs/task_created_dialog.dart';
 import 'package:meaning_to/widgets/edit_category_dialog.dart';
 import 'dart:async';
 
@@ -1675,71 +1674,47 @@ class HomeScreenState extends State<HomeScreen> {
     final taskData = result['task'];
     final categoryData = result['category'];
     final category = Category.fromJson(categoryData);
+    final task = Task.fromJson(taskData);
 
-    final action = await showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return TaskCreatedDialog(
-          taskData: taskData,
-          category: category,
-        );
-      },
-    );
+    if (!mounted) return;
 
-    if (action == 'edit' && mounted) {
-      // Create Task object from the data for editing
-      final task = Task.fromJson(taskData);
+    setState(() {
+      _selectedCategory = category;
+      _showTaskListMode = false;
+      _isLoadingTask = true;
+    });
 
-      // Navigate to edit screen
-      final editResult = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => TaskEditScreen(
-            task: task,
-            category: category,
-          ),
-        ),
-      );
+    // Initialise cache for this category so the spinner clears
+    final userId = AuthUtils.getCurrentUserId();
+    await _cacheManager.initializeWithSavedCategory(category, userId);
 
-      // Reload data if task was modified
-      if (editResult == true && mounted) {
-        _loadCategories();
-        if (_selectedCategory != null) {
-          _loadRandomTask(_selectedCategory!);
-        }
-      }
-    } else {
-      // User accepted or dismissed - reload data
-      _loadCategories();
-      if (_selectedCategory != null) {
-        _loadRandomTask(_selectedCategory!);
-      }
-    }
+    if (!mounted) return;
+
+    setState(() {
+      _randomTask = task;
+      _isLoadingTask = false;
+    });
+
+    _loadCategories(); // refresh category list in background
   }
 
   Future<void> _handleMultipleTasksCreated(Map<String, dynamic> result) async {
     final categoryData = result['category'];
     final category = Category.fromJson(categoryData);
 
-    // Navigate directly to Edit Category screen showing the new tasks
-    if (mounted) {
-      final editResult = await Navigator.pushNamed(
-        context,
-        '/edit-category',
-        arguments: {
-          'category': category,
-          'tasksOnly': false,
-        },
-      );
+    if (!mounted) return;
 
-      // Reload data when returning from Edit Category
-      if (mounted) {
-        _loadCategories();
-        if (_selectedCategory != null) {
-          _loadRandomTask(_selectedCategory!);
-        }
-      }
-    }
+    // Select the category and ensure list mode is off before toggling on
+    setState(() {
+      _selectedCategory = category;
+      _showTaskListMode = false;
+    });
+
+    await _loadCategories();
+
+    if (!mounted) return;
+
+    _toggleTaskListMode(); // switches to list mode and loads fresh tasks
   }
 
   void _showCategoryInfo(Category category) {
@@ -3392,7 +3367,7 @@ class HomeScreenState extends State<HomeScreen> {
                                   onPressed: _navigateToNewContent,
                                   icon: const Icon(Icons.add_task, size: 24),
                                   label: Text(
-                                    'Add ${NamingUtils.tasksName(plural: true, capitalize: false, withArticle: true)}',
+                                    'Add ${NamingUtils.tasksName(plural: false, capitalize: false, withArticle: true)}',
                                     style: const TextStyle(fontSize: 20),
                                   ),
                                   style: ElevatedButton.styleFrom(
