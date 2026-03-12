@@ -10,7 +10,6 @@ import 'package:meaning_to/utils/task_enricher.dart';
 import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/widgets/add_task_manually_button.dart';
-import 'package:meaning_to/edit_category_screen.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 
@@ -196,9 +195,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         ),
       );
 
-      // Navigate to Edit Category screen to show the results
       if (mounted) {
-        _navigateToEditCategory();
+        Navigator.pop(context, true);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -276,27 +274,6 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     return text;
   }
 
-  /// Navigate to Edit Category screen for the cached category
-  void _navigateToEditCategory() async {
-    final cachedCategory = CacheManager().currentCategory;
-    if (cachedCategory != null) {
-      // Cache should already be fresh from the task creation process
-      // No need to refresh again here to avoid race conditions
-      print('AddTasksScreen: Navigating to Edit Category with cached category');
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => EditCategoryScreen(category: cachedCategory),
-        ),
-      );
-    } else {
-      // No cached category - this is fine when adding tasks without selecting a category first
-      // Just pop back to the home screen without any error
-      print('AddTasksScreen: No cached category, returning to home screen');
-      Navigator.pop(context, true);
-    }
-  }
 
   /// Extract the link text from an HTML link
   /// Example: '<a href="url">Link Text</a>' -> 'Link Text'
@@ -900,9 +877,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           // Clear the text input
           _textInputController.clear();
 
-          // Navigate to Edit Category screen for cached category
           if (mounted) {
-            _navigateToEditCategory();
+            Navigator.pop(context, true);
           }
           return;
         } catch (e) {
@@ -1129,13 +1105,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           // Clear the text input
           _textInputController.clear();
 
-          // Navigate to Edit Category screen for cached category (or pop if different category)
           if (mounted) {
-            if (newTask.categoryId == widget.category.id) {
-              _navigateToEditCategory();
-            } else {
-              Navigator.pop(context, true);
-            }
+            Navigator.pop(context, true);
           }
           return;
         } catch (e) {
@@ -1535,9 +1506,8 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       // Clear the text input
       _textInputController.clear();
 
-      // Navigate to Edit Category screen for cached category
       if (mounted) {
-        _navigateToEditCategory();
+        Navigator.pop(context, true);
       }
     } catch (e) {
       print('=== Text Input Error ===');
