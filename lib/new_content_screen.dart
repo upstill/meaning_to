@@ -8,7 +8,6 @@ import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
-import 'package:meaning_to/edit_category_screen.dart';
 
 enum ContentType { task, category }
 
@@ -187,18 +186,8 @@ class _NewContentScreenState extends State<NewContentScreen> {
 
       final newCategory = Category.fromJson(response);
 
-      // Initialize cache with the new category
-      final cacheManager = CacheManager();
-      await cacheManager.initializeWithSavedCategory(newCategory, userId);
-
       if (mounted) {
-        // Navigate to Edit Category screen with the new category
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => EditCategoryScreen(category: newCategory, isNewCategory: true),
-          ),
-        );
+        Navigator.pop(context, newCategory);
       }
     } catch (e) {
       print('Error creating category: $e');

@@ -1649,7 +1649,11 @@ class HomeScreenState extends State<HomeScreen> {
       ),
     ).then((result) async {
       if (result != null) {
-        if (result is Map<String, dynamic>) {
+        if (result is Category) {
+          // New Pursuit created - select it
+          await _loadCategories();
+          _handleCategorySelection(result);
+        } else if (result is Map<String, dynamic>) {
           final count = result['count'] ?? 1;
           if (count == 1) {
             // Single task created - show popup
@@ -1659,7 +1663,7 @@ class HomeScreenState extends State<HomeScreen> {
             await _handleMultipleTasksCreated(result);
           }
         } else if (result == true) {
-          // Category created or bulk import without specific data - reload data
+          // Bulk import without specific data - reload data
           print('HomeScreen: Content was created, reloading data');
           _loadCategories();
           if (_selectedCategory != null) {
