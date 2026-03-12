@@ -18,7 +18,6 @@ import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/justwatch_import_screen.dart';
 import 'package:meaning_to/letterboxd_import_screen.dart';
 import 'package:meaning_to/models/icon.dart';
-import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
 import 'package:meaning_to/utils/synopsis_fetcher.dart';
@@ -424,212 +423,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
-  /// Get suggested category IDs from current links
-  List<int> _getSuggestedCategoryIds() {
-    final suggestedIds = <int>{};
-
-    for (final htmlLink in _links) {
-      try {
-        // Extract URL from HTML link
-        final urlMatch = RegExp(r'href="([^"]+)"').firstMatch(htmlLink);
-        if (urlMatch != null) {
-          final url = urlMatch.group(1)!;
-          // Get suggested categories for this URL
-          final suggestions =
-              LinkToTaskConverter.analyzeLinkForCategorySuggestions(url);
-          suggestedIds.addAll(suggestions);
-        }
-      } catch (e) {
-        print('TaskEditScreen: Error extracting URL from link: $e');
-      }
-    }
-
-    return suggestedIds.toList();
-  }
-
-  /// Show category selection dialog
-  void _showCategorySelectionDialog() async {
-    // Get suggested categories from current links
-    final suggestedCategoryIds = _getSuggestedCategoryIds();
-    print('TaskEditScreen: Suggested category IDs: $suggestedCategoryIds');
-
-    // Extract first link URL for domain-based relevance scoring
-    String? linkUrl;
-    if (_links.isNotEmpty) {
-      try {
-        final urlMatch = RegExp(r'href="([^"]+)"').firstMatch(_links.first);
-        if (urlMatch != null) {
-          linkUrl = urlMatch.group(1);
-          print('TaskEditScreen: Using link for domain relevance: $linkUrl');
-        }
-      } catch (e) {
-        print('TaskEditScreen: Error extracting URL from link: $e');
-      }
-    }
-
-    await CategoryPickerDialog.show(
-      context,
-      title:
-          'Select ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
-      defaultCategory: widget.category,
-      suggestedCategoryIds:
-          suggestedCategoryIds.isNotEmpty ? suggestedCategoryIds : null,
-      linkUrl: linkUrl,
-      onCategorySelected: (Category selectedCategory,
-          {bool? shouldMove, bool? applyToAll}) async {
-        if (selectedCategory.id != widget.category.id) {
-          if (_localTask == null) {
-            // For new tasks, just change the category
-            await _changeCategoryForNewTask(selectedCategory);
-          } else {
-            // For existing tasks, show move/copy dialog
-            await _showMoveOrCopyDialog(selectedCategory);
-          }
-        }
-      },
-    );
-  }
-
-  /// Change category for a new task
-  Future<void> _changeCategoryForNewTask(Category newCategory) async {
-    // Navigate back to TaskEditScreen with the new category
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => TaskEditScreen(
-          category: newCategory,
-          initialLinks: _links.isNotEmpty ? _links : null,
-          initialHeadline: _headlineController.text.isNotEmpty
-              ? _headlineController.text
-              : null,
-          initialNotes:
-              _notesController.text.isNotEmpty ? _notesController.text : null,
-          showAlternativeOptions: widget.showAlternativeOptions,
-        ),
-      ),
-    );
-  }
-
-  /// Show dialog to choose between moving or copying the task
-  Future<void> _showMoveOrCopyDialog(Category newCategory) async {
-    bool shouldMove = true; // Default to move
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(
-              'Change ${NamingUtils.categoriesName(capitalize: false, plural: false)}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                  'Move this ${NamingUtils.tasksName(capitalize: false, plural: false)} to "${newCategory.headline}"?'),
-              const SizedBox(height: 16),
-              RadioListTile<bool>(
-                title: Text(
-                    'Move ${NamingUtils.tasksName(capitalize: false, plural: false)}'),
-                subtitle: Text('Remove from "${widget.category.headline}"'),
-                value: true,
-                groupValue: shouldMove,
-                onChanged: (value) {
-                  setState(() {
-                    shouldMove = value ?? true;
-                  });
-                },
-              ),
-              RadioListTile<bool>(
-                title: Text(
-                    'Copy ${NamingUtils.tasksName(capitalize: false, plural: false)}'),
-                subtitle: Text(
-                    'Keep in both "${widget.category.headline}" and "${newCategory.headline}"'),
-                value: false,
-                groupValue: shouldMove,
-                onChanged: (value) {
-                  setState(() {
-                    shouldMove = value ?? false;
-                  });
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(shouldMove),
-              child: const Text('Okay'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (result != null) {
-      final shouldMove = result;
-
-      if (shouldMove) {
-        if (widget.isPanel) {
-          // In panel mode, do a direct DB update and close the panel
-          await supabase
-              .from('Tasks')
-              .update({'category_id': newCategory.id})
-              .eq('id', _localTask!.id);
-          if (mounted) Navigator.pop(context);
-          TaskEditScreen.onEditComplete?.call();
-        } else {
-          // MOVE: Navigate to TaskEditScreen with new category, preserving task data
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => TaskEditScreen(
-                category: newCategory,
-                task: _localTask, // Pass the existing task
-                initialLinks: _links.isNotEmpty ? _links : null,
-                initialHeadline: _headlineController.text.isNotEmpty
-                    ? _headlineController.text
-                    : null,
-                initialNotes: _notesController.text.isNotEmpty
-                    ? _notesController.text
-                    : null,
-                showAlternativeOptions: widget.showAlternativeOptions,
-              ),
-            ),
-          );
-        }
-      } else {
-        // COPY: Create a new task in the new category while keeping the old one
-        try {
-          final userId = AuthUtils.getCurrentUserId();
-          final data = {
-            'headline': _headlineController.text,
-            'notes':
-                _notesController.text.isEmpty ? null : _notesController.text,
-            'category_id': newCategory.id,
-            'owner_id': userId,
-            'finished': false,
-            'shared': _localTask?.shared ?? !newCategory.tasksArePrivate,
-            'links': _links,
-          };
-
-          await supabase.from('Tasks').insert(data).select().single();
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                  '${NamingUtils.tasksName(capitalize: true, plural: false)} copied to "${newCategory.headline}"'),
-            ),
-          );
-        } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error copying task: $e')),
-          );
-        }
-      }
-    }
-  }
-
   Future<void> _addLink() async {
     final result = await Navigator.push<ProposedTask?>(
       context,
@@ -944,107 +737,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     return null; // No error
   }
 
-  Future<void> _pasteLinkFromClipboard() async {
-    try {
-      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-      if (clipboardData?.text == null) {
-        setState(() {
-          _error = 'No text found in clipboard';
-        });
-        return;
-      }
-
-      final text = clipboardData!.text!.trim();
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
-
-      try {
-        // Parse the text as HTML link
-        final (url, linkText) = LinkProcessor.parseHtmlLink(text);
-
-        String htmlLink;
-        // If it's not an HTML link, treat it as a plain URL
-        if (url == text) {
-          if (LinkProcessor.isValidUrl(text)) {
-            // Validate the URL
-            final processedLink = await LinkProcessor.validateAndProcessLink(
-              text,
-            );
-
-            // Create an HTML link with the fetched title
-            htmlLink = '<a href="$text">${processedLink.title ?? text}</a>';
-          } else {
-            // Open link edit screen with the text pre-filled
-            final result = await Navigator.push<ProposedTask?>(
-              context,
-              MaterialPageRoute(
-                builder: (context) => LinkEditScreen(
-                  initialLink: text,
-                  errorMessage:
-                      'Clipboard text is not a valid URL or HTML link',
-                  currentTask: _currentTaskState,
-                  currentCategory: widget.category,
-                ),
-              ),
-            );
-            if (result != null && result.links.isNotEmpty) {
-              htmlLink = result.links.first;
-            } else {
-              setState(() {
-                _isLoading = false;
-              });
-              return;
-            }
-          }
-        } else {
-          // It was an HTML link, validate the extracted URL
-          final processedLink = await LinkProcessor.validateAndProcessLink(
-            url,
-            linkText: linkText,
-          );
-
-          // Create a new HTML link with the validated data
-          htmlLink =
-              '<a href="$url">${linkText ?? processedLink.title ?? url}</a>';
-        }
-
-        // Add the link (duplicate checking handled by LinkEditScreen)
-        await _addLinkToTask(htmlLink);
-      } catch (e) {
-        print('Error processing pasted link: $e');
-        // Open link edit screen with error message
-        final result = await Navigator.push<ProposedTask?>(
-          context,
-          MaterialPageRoute(
-            builder: (context) => LinkEditScreen(
-              initialLink: text,
-              errorMessage: e.toString(),
-              currentTask: _currentTaskState,
-              currentCategory: widget.category,
-            ),
-          ),
-        );
-        if (result != null && result.links.isNotEmpty) {
-          final htmlLink = result.links.first;
-          // Add the link (duplicate checking handled by LinkEditScreen)
-          await _addLinkToTask(htmlLink);
-        }
-      } finally {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      print('Error pasting link: $e');
-      setState(() {
-        _error = 'Failed to paste link: ${e.toString()}';
-        _isLoading = false;
-      });
-    }
-  }
-
   /// Check if a task with the same headline or same link already exists and merge information if needed
   Future<Task?> _checkForDuplicateAndMerge(
       Map<String, dynamic> newTaskData, String userId) async {
@@ -1267,7 +959,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           'TaskEditScreen: === DUPLICATE DETECTION END - DUPLICATE FOUND ===');
 
       // Check if we need to update the existing task with new information
-      bool needsUpdate = false;
       Map<String, dynamic> updateData = {};
 
       // Add links if the new task has them and the existing task doesn't
@@ -1275,7 +966,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           (newTaskData['links'] as List).isNotEmpty &&
           (existingTask.links == null || existingTask.links!.isEmpty)) {
         updateData['links'] = newTaskData['links'];
-        needsUpdate = true;
         print('TaskEditScreen:   -> Adding links to existing task');
       }
 
@@ -1284,7 +974,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           (newTaskData['notes'] as String).isNotEmpty &&
           (existingTask.notes == null || existingTask.notes!.isEmpty)) {
         updateData['notes'] = newTaskData['notes'];
-        needsUpdate = true;
         print('TaskEditScreen:   -> Adding notes to existing task');
       }
 
@@ -2342,8 +2031,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                             onPressed: _isLoading
                                 ? null
                                 : () async {
-                                    final result =
-                                        await Navigator.pushReplacement(
+                                    await Navigator.pushReplacement(
                                       context,
                                       MaterialPageRoute(
                                         builder: (context) => AddTasksScreen(

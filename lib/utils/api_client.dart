@@ -1,40 +1,11 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiClient {
-  static const String _baseUrl = '/api'; // Vercel API route
-
   // Temporary: Use Supabase directly for testing
   static SupabaseClient get _supabase => Supabase.instance.client;
-
-  static Future<Map<String, dynamic>> _makeRequest(
-    String action, {
-    Map<String, dynamic>? data,
-  }) async {
-    final userId = AuthUtils.getCurrentUserId();
-
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'action': action,
-        'data': data,
-        'userId': userId,
-      }),
-    );
-
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('API request failed: ${response.statusCode}');
-    }
-  }
 
   // Task operations
   static Future<List<Task>> getTasks() async {
@@ -255,7 +226,7 @@ class ApiClient {
       print('User ID length: ${userId.length}');
 
       // Check if Supabase client is working
-      print('Supabase client initialized: ${_supabase != null}');
+      print('Supabase client initialized: true');
 
       // Get all categories and filter in Dart
       print('Getting all categories and filtering in Dart...');
@@ -425,7 +396,7 @@ class ApiClient {
         );
 
         if (response != null && (response as List).isNotEmpty) {
-          candidates = (response as List)
+          candidates = (response)
               .map((data) => Task.fromJson(data as Map<String, dynamic>))
               .toList();
           print(
@@ -445,8 +416,8 @@ class ApiClient {
             .inFilter('Categories.original_id', categoryOriginalIds)
             .ilike('headline', headline.trim());
 
-        if (response != null && (response as List).isNotEmpty) {
-          candidates = (response as List).map((data) {
+        if (response.isNotEmpty) {
+          candidates = response.map((data) {
             final taskData = Map<String, dynamic>.from(data);
             taskData.remove('Categories');
             return Task.fromJson(taskData);

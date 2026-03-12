@@ -145,8 +145,6 @@ class ShareHandler {
       } else {
         print('ShareHandler: STEP 12 - No HomeScreenState found');
       }
-    }
-
     } else {
       print(
           'ShareHandler: STEP 11 - Not on home route: ${routeName ?? 'null'}');

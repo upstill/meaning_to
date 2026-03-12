@@ -484,92 +484,6 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     );
   }
 
-  /// Show dialog asking user if they want to consolidate multiple links from the same artist/headline
-  /// Returns true if links should be combined, false if they should be kept separate, null if cancelled
-  Future<bool?> _showConsolidateLinksDialog(String headline, int linkCount) async {
-    bool applyToAll = false;
-
-    return showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('Multiple Links for Same Item'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'You have multiple links for:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '"$headline"',
-                    style: const TextStyle(fontStyle: FontStyle.italic),
-                  ),
-                  const SizedBox(height: 16),
-                  Text('Found $linkCount links with this name.'),
-                  const SizedBox(height: 16),
-                  const Text('Would you like to:'),
-                  const SizedBox(height: 8),
-                  Text(
-                    '• Combine all links into one task, or',
-                    style: TextStyle(color: Colors.grey[700]),
-                  ),
-                  Text(
-                    '• Keep them as separate tasks',
-                    style: TextStyle(color: Colors.grey[700]),
-                  ),
-                  const SizedBox(height: 16),
-                  CheckboxListTile(
-                    title: const Text(
-                      'Apply to other duplicate links in this batch',
-                      style: TextStyle(fontSize: 14),
-                    ),
-                    value: applyToAll,
-                    onChanged: (value) {
-                      setState(() {
-                        applyToAll = value ?? false;
-                      });
-                    },
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    if (applyToAll) {
-                      _applyToAllBatchDuplicates = true;
-                      _rememberBatchDuplicateChoice = false;
-                    }
-                    Navigator.of(context).pop(false); // Keep separate
-                  },
-                  child: const Text('Keep Separate'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (applyToAll) {
-                      _applyToAllBatchDuplicates = true;
-                      _rememberBatchDuplicateChoice = true;
-                    }
-                    Navigator.of(context).pop(true); // Combine
-                  },
-                  child: const Text('Combine into One Task'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
   /// Check if a task with the same headline or same link already exists and merge information if needed
   /// Uses efficient query-based duplicate detection instead of loading all tasks into memory
   Future<Task?> _checkForDuplicateAndMerge(Task newTask) async {
@@ -1498,11 +1412,9 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         ),
       );
 
-      // Refresh cache after creating tasks (only if we have a category)
-      if (widget.category != null) {
-        final cacheManager = CacheManager();
-        await cacheManager.initializeWithSavedCategory(widget.category!, userId);
-      }
+      // Refresh cache after creating tasks
+      final cacheManager = CacheManager();
+      await cacheManager.initializeWithSavedCategory(widget.category, userId);
 
       // Clear the text input
       _textInputController.clear();

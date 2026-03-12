@@ -36,7 +36,6 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
   String? _error;
   List<JustWatchTitle> _filteredTitles = [];
   String? _titlesFoundMessage;
-  int? _totalTitlesFound;
   int _redundantTitlesCount = 0;
   bool _isProcessingImport = false;
   Set<String> _existingJustWatchPaths = {};
@@ -709,93 +708,6 @@ class _JustWatchImportScreenState extends State<JustWatchImportScreen> {
     }
   }
 
-  /// Pick and parse a JSON file
-  Future<void> _pickAndParseFile() async {
-    try {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
-
-      // Request permissions first (only on Android, not web)
-      if (!kIsWeb && Platform.isAndroid) {
-        try {
-          await _requestAndroidPermissions();
-        } catch (e) {
-          setState(() {
-            _error = e.toString();
-            _isLoading = false;
-          });
-          return;
-        }
-      }
-
-      try {
-        if (kIsWeb) {
-          // Web-specific file picker
-          await _pickFileWeb();
-        } else {
-          // Mobile/Desktop file picker
-          await _pickFileNative();
-        }
-      } catch (e) {
-        setState(() {
-          _error = 'Error processing file: $e';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _error = 'Error: $e';
-        _isLoading = false;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _requestAndroidPermissions() async {
-    final status = await Permission.storage.status;
-    if (!status.isGranted) {
-      final result = await Permission.storage.request();
-      if (!result.isGranted) {
-        throw Exception('Storage permission required to access files');
-      }
-    }
-  }
-
-  Future<void> _pickFileWeb() async {
-    // For web, we'll use a simple approach - just show a message
-    // In a real implementation, you'd use dart:js_interop or a web-specific package
-    setState(() {
-      _error =
-          'Web file picking not implemented yet. Please use the API option or download the file and use a mobile/desktop app.';
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _pickFileNative() async {
-    const typeGroup = XTypeGroup(
-      label: 'JSON files',
-      extensions: ['json'],
-    );
-
-    final XFile? file = await openFile(
-      acceptedTypeGroups: [typeGroup],
-    );
-
-    if (file == null) {
-      return;
-    }
-
-    // Read file content
-    final contents = await file.readAsString();
-    await _importTasksFromJsonData(json.decode(contents));
-  }
 
   @override
   Widget build(BuildContext context) {

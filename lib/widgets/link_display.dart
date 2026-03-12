@@ -87,45 +87,7 @@ class LinkDisplay extends StatelessWidget {
     }
   }
 
-  /// Launch URL using configured WebView if hijacking occurs
-  static Future<void> _launchWithDirectIntent(String url) async {
-    try {
-      // Since we can't prevent hijacking, configure it properly
-      bool launched = await launchUrl(
-        Uri.parse(url),
-        mode: LaunchMode.externalApplication,
-        webViewConfiguration: const WebViewConfiguration(
-          enableJavaScript: true,
-          enableDomStorage: true,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Android; Mobile) Flutter App',
-          },
-        ),
-        browserConfiguration: const BrowserConfiguration(
-          showTitle: true,
-        ),
-      );
 
-      if (!launched) {
-        print('LinkDisplay: Launch failed, trying platform default');
-        await launchUrl(
-          Uri.parse(url),
-          mode: LaunchMode.platformDefault,
-        );
-      }
-    } catch (e) {
-      print('LinkDisplay: Launch failed: $e');
-      await _copyToClipboardAndNotify(url);
-    }
-  }
-
-  /// Copy URL to clipboard as fallback
-  static Future<void> _copyToClipboardAndNotify(String url) async {
-    // Note: You'll need to add clipboard dependency to use this
-    // For now, just print the URL
-    print('LinkDisplay: URL copied to clipboard: $url');
-    // TODO: Implement actual clipboard copy and user notification
-  }
 
   /// Centralized function to handle any URL with letterboxd protection
   /// This can be used by other widgets to ensure consistent handling
@@ -289,8 +251,8 @@ class LinkDisplay extends StatelessWidget {
           mode: LaunchMode.externalNonBrowserApplication,
         ).catchError((e) {
           print('LinkDisplay: Error launching JustWatch URL: $e');
-          // Fallback to regular launch
-          return _resolveLinkAndLaunch(url);
+          _resolveLinkAndLaunch(url);
+          return false;
         });
       } else {
         print('LinkDisplay: Normal URL handling: $url');

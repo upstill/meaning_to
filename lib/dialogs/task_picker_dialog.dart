@@ -40,7 +40,6 @@ class TaskPickerDialog extends StatefulWidget {
 
 class _TaskPickerDialogState extends State<TaskPickerDialog> {
   Category? _selectedCategory;
-  List<Category> _categories = [];
   List<Task> _tasks = [];
   bool _isLoadingCategories = true;
   bool _isLoadingTasks = false;

@@ -17,7 +17,6 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   bool _showWelcomeScreen = false;
-  final bool _forceWelcomeScreen = false; // Temporary debug flag
   String _version = '';
   String _buildNumber = '';
   StreamSubscription<AuthState>? _authSubscription;
@@ -67,7 +66,7 @@ class _SplashScreenState extends State<SplashScreen> {
       if (isAuthenticated) {
         print(
             '🔥🔥🔥 SPLASH SCREEN: NEW CODE RUNNING - ATTEMPTING STATE RESTORATION 🔥🔥🔥');
-        _handleAuthenticatedUser(currentUser!.id);
+        _handleAuthenticatedUser(currentUser.id);
       } else {
         print('SplashScreen: Showing welcome screen (user not authenticated)');
         // Clear any saved state since user is not authenticated

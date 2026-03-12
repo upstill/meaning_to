@@ -789,7 +789,6 @@ class CacheManager with PerformanceMonitoring {
         // Test update with wrong owner_id (should fail)
         print('CacheManager: Testing update with WRONG owner_id...');
         try {
-          const wrongOwnerId = '00000000-0000-0000-0000-000000000000';
           final response3 = await ApiClient.updateTask(taskId.toString(), {
             'suggestible_at': testTime.toIso8601String(),
           });
@@ -1319,8 +1318,6 @@ class CacheManager with PerformanceMonitoring {
   }
 
   // Recent Category Management
-  static const String _recentCategoriesKey = 'recent_categories';
-  static const int _maxRecentCategories = 5;
 
   /// Get list of recent category IDs in order of most recent first
   static Future<List<int>> getRecentCategoryIds() async {

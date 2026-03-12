@@ -495,20 +495,14 @@ class _MyAppState extends State<MyApp> {
             final response =
                 await Supabase.instance.client.auth.getSessionFromUrl(uri);
 
-            if (response.session != null) {
-              print('OAuth session established successfully');
-              print('User: ${response.session!.user.email}');
+            print('OAuth session established successfully');
+            print('User: ${response.session.user.email}');
 
-              // Wait a moment for the Navigator to be ready, then navigate
-              await Future.delayed(const Duration(milliseconds: 100));
+            // Wait a moment for the Navigator to be ready, then navigate
+            await Future.delayed(const Duration(milliseconds: 100));
 
-              // Use global navigator key to navigate
-              MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
-            } else {
-              print('OAuth callback processed but no session created');
-              await Future.delayed(const Duration(milliseconds: 100));
-              MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
-            }
+            // Use global navigator key to navigate
+            MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
           } catch (e) {
             print('Error processing OAuth callback: $e');
             await Future.delayed(const Duration(milliseconds: 100));

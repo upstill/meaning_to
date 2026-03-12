@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 
 /// Performance profiler for tracking cache operations and database writes
 /// Helps identify bottlenecks when dealing with large numbers of tasks

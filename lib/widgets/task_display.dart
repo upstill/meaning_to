@@ -1,9 +1,7 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/auth.dart';
-import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/synopsis_fetcher.dart';
 import 'package:flutter_html/flutter_html.dart';
 
@@ -152,41 +150,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
     return false;
   }
 
-  /// Clear fallback notes (for web users with old imported tasks)
-  Future<void> _clearFallbackNotes() async {
-    try {
-      final updatedTask = Task(
-        id: widget.task.id,
-        categoryId: widget.task.categoryId,
-        headline: widget.task.headline,
-        notes: null, // Clear the notes
-        ownerId: widget.task.ownerId,
-        createdAt: widget.task.createdAt,
-        suggestibleAt: widget.task.suggestibleAt,
-        triggersAt: widget.task.triggersAt,
-        deferral: widget.task.deferral,
-        links: widget.task.links,
-        processedLinks: widget.task.processedLinks,
-        finished: widget.task.finished,
-        shared: widget.task.shared,
-        originalId: widget.task.originalId,
-        dirty: true, // Mark as dirty to trigger database update
-      );
-
-      await CacheManager().updateTask(updatedTask);
-
-      if (mounted) {
-        setState(() {
-          // This will cause the widget to rebuild with null notes
-        });
-
-        // On non-web platforms, trigger fetching after clearing
-        if (!kIsWeb) {
-          _fetchSynopsisFromLinks();
-        }
-      }
-    } catch (e) {}
-  }
 
   void _toggleExpanded() {
     if (!mounted) return;

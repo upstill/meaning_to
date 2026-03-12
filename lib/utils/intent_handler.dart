@@ -28,7 +28,6 @@ class IntentHandler {
 
   // State management
   GlobalKey<NavigatorState>? _navigatorKey;
-  GlobalKey<ScaffoldMessengerState>? _scaffoldKey;
 
   // Pending content handling
   Uri? _pendingDeepLink;
@@ -42,7 +41,6 @@ class IntentHandler {
   /// Initialize the intent handler with required keys and callbacks
   Future<void> initialize({
     required GlobalKey<NavigatorState> navigatorKey,
-    required GlobalKey<ScaffoldMessengerState> scaffoldKey,
     bool logIntents = true,
     Duration stateRestorationTimeout = const Duration(seconds: 10),
   }) async {
@@ -52,7 +50,6 @@ class IntentHandler {
     }
 
     _navigatorKey = navigatorKey;
-    _scaffoldKey = scaffoldKey;
     _logIntents = logIntents;
     _stateRestorationTimeout = stateRestorationTimeout;
 
@@ -120,9 +117,9 @@ class IntentHandler {
     // Handle subsequent share intents
     _shareSubscription = ShareHandlerPlatform.instance.sharedMediaStream.listen(
       (media) async {
-        if (media?.content != null) {
+        if (media.content != null) {
           print('IntentHandler: Share intent received');
-          await _handleShareIntent(media!, isInitial: false);
+          await _handleShareIntent(media, isInitial: false);
         }
       },
       onError: (error) {
@@ -320,10 +317,6 @@ class IntentHandler {
 
       // Get current user ID for ownership comparison
       final currentUserId = AuthUtils.getCurrentUserId();
-      if (currentUserId == null) {
-        print('IntentHandler: No current user, cannot process link');
-        return;
-      }
 
       // Separate duplicates by ownership
       final ownedDuplicates = result.duplicates
@@ -430,19 +423,6 @@ class IntentHandler {
 
     await _navigateToNewContentWithLink(
         url, intent, context, result.proposedTask);
-  }
-
-  /// Handle new link creation when duplicates exist (set original_id)
-  Future<void> _handleNewLinkWithDuplicates(String url, ProcessedIntent intent,
-      BuildContext context, List<DuplicateMatch> duplicates) async {
-    // Find the most appropriate original task to link to
-    final originalTask = _findBestOriginalTask(duplicates);
-
-    print(
-        'IntentHandler: Creating new task for link with original_id: ${originalTask.task.originalId ?? originalTask.task.id}');
-
-    await _navigateToNewContentWithLinkAndOriginal(
-        url, intent, context, originalTask);
   }
 
   /// Show dialog for user-owned duplicate
@@ -624,22 +604,6 @@ class IntentHandler {
     );
   }
 
-  /// Find the best original task to link to from duplicates
-  DuplicateMatch _findBestOriginalTask(List<DuplicateMatch> duplicates) {
-    // Prioritize tasks that are themselves originals (no original_id)
-    final originalTasks =
-        duplicates.where((dup) => dup.task.originalId == null).toList();
-
-    if (originalTasks.isNotEmpty) {
-      // Return the first original task found
-      return originalTasks.first;
-    }
-
-    // If no original tasks, return the first duplicate
-    // (its original_id will be used to continue the chain)
-    return duplicates.first;
-  }
-
   /// Analyze URL to suggest appropriate categories based on domain and path
   List<String> _analyzeLinkForCategorySuggestions(String url) {
     try {
@@ -670,7 +634,6 @@ class IntentHandler {
 
     try {
       final currentUserId = AuthUtils.getCurrentUserId();
-      if (currentUserId == null) return null;
 
       // Check if user already has any of the suggested categories
       for (final suggestedId in suggestedCategoryIds) {
@@ -705,7 +668,7 @@ class IntentHandler {
   Future<Category?> _findUserEquivalentCategory(Category otherCategory) async {
     try {
       final currentUserId = AuthUtils.getCurrentUserId();
-      if (currentUserId == null || otherCategory.originalId == null) {
+      if (otherCategory.originalId == null) {
         return null;
       }
 

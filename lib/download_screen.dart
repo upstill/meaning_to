@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/utils/link_processor.dart';
-import 'package:file_selector/file_selector.dart' show openFile, XFile, XTypeGroup;
+import 'package:file_selector/file_selector.dart' show openFile, XTypeGroup;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' show Node;
@@ -382,10 +382,10 @@ class _DownloadScreenState extends State<DownloadScreen> {
 
         // Now that we have the page URL, set it and extract the domain
         try {
-          final uri = Uri.parse(pageUrl!);
+          final uri = Uri.parse(pageUrl);
           setState(() {
             _currentDomain = uri.host;
-            _urlController.text = pageUrl!;
+            _urlController.text = pageUrl;
           });
           print('Using page URL: $pageUrl');  // Debug log
           print('Extracted domain: $_currentDomain');  // Debug log
@@ -406,7 +406,7 @@ class _DownloadScreenState extends State<DownloadScreen> {
         }
 
         // Get the base URL from the page URL we found
-        final baseUri = Uri.parse(pageUrl!);
+        final baseUri = Uri.parse(pageUrl);
         final baseUrl = '${baseUri.scheme}://${baseUri.host}';
         print('Using base URL for relative links: $baseUrl');  // Debug log
         
@@ -447,7 +447,7 @@ class _DownloadScreenState extends State<DownloadScreen> {
 
             // Get the badge label if it exists
             final badge = card.querySelector('span.title-poster__badge');
-            final badgeLabel = badge?.text?.trim();
+            final badgeLabel = badge?.text.trim();
             if (badgeLabel != null) {
               print('Found badge label: $badgeLabel');  // Debug log
             } else{

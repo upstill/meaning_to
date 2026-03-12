@@ -178,8 +178,6 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
       final targetType = widget.category.originalId == 1 ? 'MOVIE' : 'SHOW';
       print('Processing for ${targetType}s');
       if (jsonData is List) {
-        int totalNodes = 0;
-        int matchingNodes = 0;
         final List<JustWatchItem> items = [];
         final List<Task> tasks = [];
         for (var item in jsonData) {
@@ -187,11 +185,9 @@ class _ImportJustWatchScreenState extends State<ImportJustWatchScreen> {
             final node = item['node'];
             if (node is Map) {
               final objectType = node['objectType'];
-              totalNodes++;
               if (objectType?.toString().toUpperCase() != targetType) {
                 continue;
               }
-              matchingNodes++;
               final content = node['content'];
               if (content is Map) {
                 final title = content['title']?.toString() ?? 'Unknown Title';

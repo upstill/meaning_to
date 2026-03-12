@@ -183,7 +183,7 @@ class HijackDetector with WidgetsBindingObserver {
 
     try {
       print('HijackDetector: Inserting overlay into widget tree');
-      Overlay.of(_context!)?.insert(_overlayEntry!);
+      Overlay.of(_context!).insert(_overlayEntry!);
       print('HijackDetector: Overlay inserted successfully');
     } catch (e) {
       print('HijackDetector: Error inserting overlay: $e');

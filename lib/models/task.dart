@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/link_processor.dart';
-import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/guest_user_manager.dart';
 
@@ -24,9 +23,6 @@ class Task {
   final bool shared;
   final int? originalId;
   final bool dirty; // Track if task needs database update
-
-  // Global cache manager instance
-  static final CacheManager _cacheManager = CacheManager();
 
   // Static variables for current task management
   static Task? _currentTask;

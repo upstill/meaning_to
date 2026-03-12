@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:supabase_flutter/src/supabase_auth.dart';
-import 'package:meaning_to/models/icon.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -21,16 +20,9 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _error;
   bool _obscurePassword = true;
 
-  // OAuth icon states
-  DomainIcon? _googleIcon;
-  DomainIcon? _githubIcon;
-  DomainIcon? _appleIcon;
-  bool _iconsLoaded = false;
-
   @override
   void initState() {
     super.initState();
-    _loadOAuthIcons();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _emailFocusNode.requestFocus();
     });
@@ -42,56 +34,6 @@ class _AuthScreenState extends State<AuthScreen> {
     _passwordController.dispose();
     _emailFocusNode.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadOAuthIcons() async {
-    try {
-      print('AuthScreen: Loading OAuth icons...');
-
-      // Load Google icon
-      final googleIcon = await DomainIcon.getIconForDomain('google.com');
-      if (googleIcon != null) {
-        print('AuthScreen: Google icon loaded successfully');
-        setState(() {
-          _googleIcon = googleIcon;
-        });
-      } else {
-        print('AuthScreen: Failed to load Google icon');
-      }
-
-      // Load GitHub icon
-      final githubIcon = await DomainIcon.getIconForDomain('github.com');
-      if (githubIcon != null) {
-        print('AuthScreen: GitHub icon loaded successfully');
-        print('AuthScreen: GitHub icon data size: ${githubIcon.iconData?.length} bytes');
-        setState(() {
-          _githubIcon = githubIcon;
-        });
-      } else {
-        print('AuthScreen: Failed to load GitHub icon');
-      }
-
-      // Load Apple icon
-      final appleIcon = await DomainIcon.getIconForDomain('apple.com');
-      if (appleIcon != null) {
-        print('AuthScreen: Apple icon loaded successfully');
-        setState(() {
-          _appleIcon = appleIcon;
-        });
-      } else {
-        print('AuthScreen: Failed to load Apple icon');
-      }
-
-      setState(() {
-        _iconsLoaded = true;
-      });
-      print('AuthScreen: OAuth icons loading complete');
-    } catch (e) {
-      print('AuthScreen: Error loading OAuth icons: $e');
-      setState(() {
-        _iconsLoaded = true; // Mark as loaded even if failed
-      });
-    }
   }
 
   Future<void> _handleSignIn() async {
@@ -312,41 +254,6 @@ class _AuthScreenState extends State<AuthScreen> {
       print('AuthScreen: GitHub OAuth error: $e');
       setState(() {
         _error = 'GitHub sign-in failed. Please try again.';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _handleAppleSignIn() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      print('AuthScreen: Starting Apple OAuth sign-in');
-
-      // Use custom scheme for mobile, web URL for web
-      final redirectTo = foundation.kIsWeb
-          ? '${Uri.base.origin}/auth/callback'
-          : 'meaningto://auth/callback';
-
-      print('AuthScreen: Using redirect URL: $redirectTo');
-
-      await Supabase.instance.client.auth.signInWithOAuth(
-        OAuthProvider.apple,
-        redirectTo: redirectTo,
-      );
-      print('AuthScreen: Apple OAuth sign-in initiated successfully');
-    } catch (e) {
-      print('AuthScreen: Apple OAuth error: $e');
-      setState(() {
-        _error = 'Apple sign-in failed. Please try again.';
       });
     } finally {
       if (mounted) {

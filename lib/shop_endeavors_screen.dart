@@ -770,59 +770,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
     return true; // No tasks found and all tasks loaded, show alert
   }
 
-  /// Get filtered tasks for a given original_id and owner_id
-  /// This method encapsulates the query logic used by _loadTasksForItem
-  static Future<List<Task>> getFilteredTasksForOriginalId(
-    int originalId,
-    String ownerId,
-  ) async {
-    try {
-      // First, get all categories with the same original_id
-      final categoriesResponse = await supabase
-          .from('Categories')
-          .select('id')
-          .eq('original_id', originalId);
-
-      if (categoriesResponse.isEmpty) {
-        return [];
-      }
-
-      // Extract category IDs
-      final categoryIds = (categoriesResponse as List)
-          .map((json) => json['id'] as int)
-          .toList();
-
-      // Get tasks from all these categories
-      final tasksResponse = await supabase
-          .from('Tasks')
-          .select('*')
-          .inFilter('category_id', categoryIds);
-
-      // Convert to Task objects
-      final List<Task> allTasks = (tasksResponse as List)
-          .map((json) => Task.fromJson(json as Map<String, dynamic>))
-          .toList();
-
-      // Filter to only show original tasks (where id equals original_id)
-      final List<Task> allOriginalTasks =
-          allTasks.where((task) => task.id == task.originalId).toList();
-
-      // Filter out tasks that belong to the current owner (to avoid showing their own tasks)
-      final List<Task> filteredTasks =
-          allOriginalTasks.where((task) => task.ownerId != ownerId).toList();
-
-      return filteredTasks;
-    } catch (e) {
-      print('Error getting filtered tasks for original_id $originalId: $e');
-      return [];
-    }
-  }
-
   /// Load user's task original_ids for redundancy checking in Shop Endeavors mode
   Future<void> _loadUserTasksForRedundancyCheck() async {
     try {
-      final userId = AuthUtils.getCurrentUserId();
-
       // Use API client to get all tasks owned by the current user
       final tasks = await ApiClient.getTasks();
 

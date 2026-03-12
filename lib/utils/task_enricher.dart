@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:meaning_to/models/task.dart';
-import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 
 /// Specification for what fields should be enriched in a Task
@@ -103,7 +102,7 @@ class TaskEnricher {
 
       // 1a. Check if headline is a URL and extract it
       final urlExtractionResult =
-          await _extractUrlFromHeadline(newHeadline ?? task.headline);
+          await _extractUrlFromHeadline(newHeadline);
       if (urlExtractionResult != null) {
         newHeadline = urlExtractionResult.title;
         if (newLinks == null) {
@@ -609,11 +608,6 @@ class TaskEnricher {
   static String _processNotes(String notes) {
     // Clean up notes: normalize whitespace, handle HTML, etc.
     return notes.trim();
-  }
-
-  static Future<String?> _extractHeadlineFromLinks(List<String> links) async {
-    final result = await _extractHeadlineFromLinksWithDetails(links);
-    return result?.headline;
   }
 
   static Future<_HeadlineExtractionResult?>

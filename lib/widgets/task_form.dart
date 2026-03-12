@@ -100,11 +100,6 @@ class _TaskFormState extends State<TaskForm> {
     try {
       // Create a temporary task object with the initial links
       final userId = AuthUtils.getCurrentUserId();
-      if (userId == null) {
-        print('TaskForm: No user ID available, cannot fetch synopsis');
-        return;
-      }
-
       final tempTask = Task(
         id: 0, // Temporary ID (not saved yet)
         categoryId: widget.selectedCategory?.id ?? 0,
