@@ -118,35 +118,53 @@ class HomeScreenState extends State<HomeScreen> {
 
     // Account menu - always show
     actions.add(
-      PopupMenuButton<String>(
-        child: const Icon(Icons.person),
-        tooltip: 'Account',
-        onSelected: (String value) async {
-          if (value == 'logout') {
-            await _handleLogout();
-          } else if (value == 'delete') {
-            await _handleDeleteAccount();
-          }
-        },
-        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-          const PopupMenuItem<String>(
-            value: 'logout',
-            child: ListTile(
-              leading: Icon(Icons.logout),
-              title: Text('Logout'),
-              contentPadding: EdgeInsets.zero,
-            ),
-          ),
-          const PopupMenuItem<String>(
-            value: 'delete',
-            child: ListTile(
-              leading: Icon(Icons.delete_forever, color: Colors.red),
-              title:
-                  Text('Delete Account', style: TextStyle(color: Colors.red)),
-              contentPadding: EdgeInsets.zero,
-            ),
-          ),
-        ],
+      Builder(
+        builder: (context) => IconButton(
+          icon: const Icon(Icons.person),
+          tooltip: 'Account',
+          onPressed: () async {
+            final RenderBox button =
+                context.findRenderObject()! as RenderBox;
+            final RenderBox overlay = Navigator.of(context)
+                .overlay!
+                .context
+                .findRenderObject()! as RenderBox;
+            final position = RelativeRect.fromRect(
+              Rect.fromPoints(
+                button.localToGlobal(Offset.zero, ancestor: overlay),
+                button.localToGlobal(
+                    button.size.bottomRight(Offset.zero),
+                    ancestor: overlay),
+              ),
+              Offset.zero & overlay.size,
+            );
+            final value = await showMenu<String>(
+              context: context,
+              position: position,
+              items: const [
+                PopupMenuItem<String>(
+                  value: 'logout',
+                  child: ListTile(
+                    leading: Icon(Icons.logout),
+                    title: Text('Logout'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'delete',
+                  child: ListTile(
+                    leading: Icon(Icons.delete_forever, color: Colors.red),
+                    title: Text('Delete Account',
+                        style: TextStyle(color: Colors.red)),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            );
+            if (value == 'logout') await _handleLogout();
+            if (value == 'delete') await _handleDeleteAccount();
+          },
+        ),
       ),
     );
 
