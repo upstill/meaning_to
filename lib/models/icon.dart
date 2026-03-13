@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:async'; // Add this import for TimeoutException
 import 'dart:typed_data';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:image/image.dart' as img;
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
@@ -56,7 +57,7 @@ class DomainIcon {
 
     return DomainIcon(
       domain: domain,
-      iconUrl: 'https://img.logo.dev/$domain?token=REDACTED_LOGO_DEV_TOKEN',
+      iconUrl: 'https://img.logo.dev/$domain?token=${dotenv.env['LOGO_DEV_TOKEN'] ?? ''}',
       iconData: binaryData,
     );
   }
@@ -641,7 +642,7 @@ class DomainIcon {
     print('Fetching icon from logo.dev for domain: $domain');
     try {
       final logoDevUrl =
-          'https://img.logo.dev/$domain?token=REDACTED_LOGO_DEV_TOKEN';
+          'https://img.logo.dev/$domain?token=${dotenv.env['LOGO_DEV_TOKEN'] ?? ''}';
 
       // Create icon object first
       final icon = DomainIcon(domain: domain, iconUrl: logoDevUrl);
