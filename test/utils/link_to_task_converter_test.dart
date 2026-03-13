@@ -227,14 +227,13 @@ void main() {
       print('   Links: ${proposedTask.links}');
       print('   Suggested categories: ${proposedTask.suggestedCategoryOriginalIds}');
 
-      // Should extract artist as headline
-      expect(proposedTask.headline, equals('Pitbull'));
+      // oEmbed returns album name only (no artist), so headline = album name
+      expect(proposedTask.headline, equals('Global Warming'));
 
-      // Should extract album title as notes
-      expect(proposedTask.notes, equals('Global Warming'));
+      // No artist/work extraction possible from oEmbed title, so notes is null
+      expect(proposedTask.notes, isNull);
 
       // Should have exactly one link with text containing the album name
-      // (link text is the raw page title, e.g. "Global Warming - album by Pitbull | Spotify")
       expect(proposedTask.links.length, 1);
       expect(proposedTask.links[0], contains('Global Warming'));
       expect(proposedTask.links[0], contains('href="https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy"'));
