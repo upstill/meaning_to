@@ -37,6 +37,9 @@ class CategorySuggestionRegistry {
     // boxd.it (Letterboxd short links)
     CategorySuggestionRule(domain: 'boxd.it', categoryIds: [1, 2]),
 
+    // Amazon Prime Video
+    CategorySuggestionRule(domain: 'amazon.com', pathPattern: '/gp/video/', categoryIds: [1, 2]),
+
     // YouTube — watch URLs suggest movies/shows
     CategorySuggestionRule(domain: 'youtube.com', pathPattern: '/watch', categoryIds: [1]),
 
