@@ -18,9 +18,10 @@ const List<int> STREAMING_MEDIA_CATEGORY_IDS = [54, 41, 74];
 const List<int> MOVIE_TV_CATEGORY_IDS = [1, 2];
 
 /// Regex pattern to extract artist and work from Tidal link titles.
-/// Format: "<work> by <artist> on TIDAL"
+/// Format: "<work> by <artist> on TIDAL" or "<work> by <artist>"
+/// (The " on TIDAL" suffix is stripped by the enrichment layer before this runs.)
 /// Example: "Dark Side of the Moon by Pink Floyd on TIDAL"
-final RegExp TIDAL_TITLE_PATTERN = RegExp(r'^(.+?) by (.+?) on TIDAL$');
+final RegExp TIDAL_TITLE_PATTERN = RegExp(r'^(.+?) by (.+?)(?:\s+on\s+TIDAL)?$');
 
 /// Regex pattern to extract artist and work from Spotify link titles.
 /// Format: "<work> - album by <artist> | Spotify" or "<work> | Spotify"
@@ -44,30 +45,39 @@ class ArtistWorkInfo {
 
 /// Extracts artist and work information from a Tidal link title.
 ///
-/// Expected format: "<work> by <artist> on TIDAL"
-/// Returns null if the title doesn't match the expected format.
+/// Handles two formats:
+/// 1. "<work> by <artist> [on TIDAL]" — legacy htmlTitle format
+///    e.g. "Dark Side of the Moon by Pink Floyd on TIDAL"
+/// 2. "<artist> - <work>" — modern og:title format (TIDAL SPA)
+///    e.g. "Pink Floyd - Dark Side of the Moon"
 ///
-/// Example:
-/// ```dart
-/// final info = extractArtistAndWorkFromTidal("Dark Side of the Moon by Pink Floyd on TIDAL");
-/// // info.artist == "Pink Floyd"
-/// // info.work == "Dark Side of the Moon"
-/// ```
+/// Returns null if neither pattern matches (e.g. artist-only pages like "Jeff Buckley").
 ArtistWorkInfo? extractArtistAndWorkFromTidal(String title) {
-  final match = TIDAL_TITLE_PATTERN.firstMatch(title);
-  if (match == null) return null;
-
-  final work = match.group(1)?.trim();
-  final artist = match.group(2)?.trim();
-
-  if (work == null || artist == null || work.isEmpty || artist.isEmpty) {
-    return null;
+  // Pattern 1: "Work by Artist [on TIDAL]"
+  final byMatch = TIDAL_TITLE_PATTERN.firstMatch(title);
+  if (byMatch != null) {
+    final work = byMatch.group(1)?.trim();
+    final artist = byMatch.group(2)?.trim();
+    if (work != null && artist != null && work.isNotEmpty && artist.isNotEmpty) {
+      return ArtistWorkInfo(artist: artist, work: work);
+    }
   }
 
-  return ArtistWorkInfo(
-    artist: artist,
-    work: work,
-  );
+  // Pattern 2: "Artist - Work" (split on first " - " only)
+  // Guard against the generic TIDAL login/fallback page title.
+  const _tidalGenericTitle = 'TIDAL - High Fidelity Music Streaming';
+  if (title != _tidalGenericTitle) {
+    final dashIndex = title.indexOf(' - ');
+    if (dashIndex > 0) {
+      final artist = title.substring(0, dashIndex).trim();
+      final work = title.substring(dashIndex + 3).trim();
+      if (artist.isNotEmpty && work.isNotEmpty) {
+        return ArtistWorkInfo(artist: artist, work: work);
+      }
+    }
+  }
+
+  return null;
 }
 
 /// Extracts artist and work information from a Spotify link title.
