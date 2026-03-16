@@ -2465,18 +2465,48 @@ class HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              ElevatedButton(
-                                onPressed: () {
-                                  if (!_showTaskListMode) _toggleTaskListMode();
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue,
-                                  foregroundColor: Colors.white,
-                                  minimumSize: const Size(0, 48),
-                                ),
-                                child: const Text(
-                                  'Show All',
-                                  style: TextStyle(fontSize: 18),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    GestureDetector(
+                                      onTap: () {
+                                        if (_showTaskListMode) _toggleTaskListMode();
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 13),
+                                        height: 39,
+                                        color: !_showTaskListMode ? Colors.green : Colors.grey.shade400,
+                                        alignment: Alignment.center,
+                                        child: const Text(
+                                          '—',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Container(width: 1, height: 39, color: Colors.grey.shade300),
+                                    GestureDetector(
+                                      onTap: () {
+                                        if (!_showTaskListMode) _toggleTaskListMode();
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 13),
+                                        height: 39,
+                                        color: _showTaskListMode ? Colors.blue : Colors.grey.shade400,
+                                        alignment: Alignment.center,
+                                        child: const Icon(
+                                          Icons.menu,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
