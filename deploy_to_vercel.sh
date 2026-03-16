@@ -46,8 +46,11 @@ cp -rf build/web/* .
 # Step 4: Update build markers with current timestamp
 echo "🏷️  Updating build markers..."
 BUILD_TIMESTAMP=$(date +%s)
-echo "Build completed at $(date)" > build_id.txt
-echo "{\"app_name\":\"meaning_to\",\"version\":\"1.0.0\",\"build_number\":\"$BUILD_TIMESTAMP\",\"package_name\":\"meaning_to\"}" > version.json
+FLUTTER_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+FLUTTER_BUILD_NAME=$(echo $FLUTTER_VERSION | cut -d'+' -f1)
+FLUTTER_BUILD_NUMBER=$(echo $FLUTTER_VERSION | cut -d'+' -f2)
+echo "Build completed at $(date) — version $FLUTTER_VERSION" > build_id.txt
+echo "{\"app_name\":\"meaning_to\",\"version\":\"$FLUTTER_BUILD_NAME\",\"build_number\":\"$FLUTTER_BUILD_NUMBER\",\"package_name\":\"meaning_to\"}" > version.json
 
 # Verify files were copied
 if [ ! -f "index.html" ]; then
