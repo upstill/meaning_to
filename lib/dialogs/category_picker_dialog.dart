@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/utils/auth.dart';
-import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/new_category_screen.dart';
 
@@ -20,6 +20,7 @@ class CategoryPickerDialog extends StatefulWidget {
       suggestedCategoryIds; // Suggested category IDs (e.g., from LinkToTask)
   final String? linkUrl; // Optional link URL for domain-based relevance scoring
   final bool showApplyToAllCheckbox; // Show "apply to all remaining" checkbox
+  final bool hideShared; // Suppress the "Shared with you" section
 
   const CategoryPickerDialog({
     super.key,
@@ -34,6 +35,7 @@ class CategoryPickerDialog extends StatefulWidget {
     this.suggestedCategoryIds,
     this.linkUrl,
     this.showApplyToAllCheckbox = false,
+    this.hideShared = false,
   });
 
   static Future<void> show(
@@ -49,6 +51,7 @@ class CategoryPickerDialog extends StatefulWidget {
     List<int>? suggestedCategoryIds,
     String? linkUrl,
     bool showApplyToAllCheckbox = false,
+    bool hideShared = false,
   }) {
     return showDialog(
       context: context,
@@ -64,6 +67,7 @@ class CategoryPickerDialog extends StatefulWidget {
         suggestedCategoryIds: suggestedCategoryIds,
         linkUrl: linkUrl,
         showApplyToAllCheckbox: showApplyToAllCheckbox,
+        hideShared: hideShared,
       ),
     );
   }
@@ -74,6 +78,7 @@ class CategoryPickerDialog extends StatefulWidget {
 
 class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
   List<Category> _categories = [];
+  List<Category> _sharedCategories = []; // Categories shared with the user
   List<Category> _recentCategories = [];
   List<Category> _suggestedCategories =
       []; // Categories suggested by LinkToTask
@@ -105,34 +110,33 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
         _error = null;
       });
 
-      final userId = AuthUtils.getCurrentUserId();
+      print('CategoryPickerDialog: Loading categories');
 
-      print('CategoryPickerDialog: Loading categories for user: $userId');
+      // Use ApiClient which returns owned + shared categories (with isShared set)
+      final allCategories = await ApiClient.getCategories();
 
-      // Load all categories
-      final response = await supabase
-          .from('Categories')
-          .select()
-          .eq('owner_id', userId)
-          .order('headline');
+      // Split into owned and shared
+      final ownedCategories =
+          allCategories.where((c) => !c.isShared).toList();
+      final sharedCategories =
+          allCategories.where((c) => c.isShared).toList();
 
-      print('CategoryPickerDialog: Query completed successfully');
+      print('CategoryPickerDialog: ${ownedCategories.length} owned, '
+          '${sharedCategories.length} shared');
 
-      final categoriesData = response as List<dynamic>;
-      final categories =
-          categoriesData.map((data) => Category.fromJson(data)).toList();
+      // Get recent categories from cache (owned only)
+      final recentCategories = await _getRecentCategories(ownedCategories);
 
-      // Get recent categories from cache
-      final recentCategories = await _getRecentCategories(categories);
-
-      // Get suggested categories if IDs provided
-      final suggestedCategories = _getSuggestedCategories(categories);
+      // Get suggested categories if IDs provided (owned only)
+      final suggestedCategories = _getSuggestedCategories(ownedCategories);
 
       // Calculate domain-based relevance scores if link URL provided
-      final domainScores = await _calculateDomainRelevanceScores(categories);
+      final domainScores =
+          await _calculateDomainRelevanceScores(ownedCategories);
 
       setState(() {
-        _categories = categories;
+        _categories = ownedCategories;
+        _sharedCategories = sharedCategories;
         _recentCategories = recentCategories;
         _suggestedCategories = suggestedCategories;
         _domainRelevanceScores = domainScores;
@@ -738,7 +742,18 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
 
     final categories = _prioritizedCategories;
 
-    if (categories.isEmpty) {
+    // Filter shared categories by search query (suppressed when hideShared is set)
+    final filteredShared = widget.hideShared
+        ? <Category>[]
+        : _searchQuery.isEmpty
+            ? _sharedCategories
+            : _sharedCategories
+                .where((c) => c.headline
+                    .toLowerCase()
+                    .contains(_searchQuery.toLowerCase()))
+                .toList();
+
+    if (categories.isEmpty && filteredShared.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -762,9 +777,68 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       );
     }
 
+    final ownedItemCount = categories.length;
+    final sharedHeaderIndex =
+        filteredShared.isNotEmpty ? ownedItemCount : -1;
+    final totalCount = ownedItemCount +
+        (filteredShared.isNotEmpty ? 1 + filteredShared.length : 0);
+
     return ListView.builder(
-      itemCount: categories.length,
+      itemCount: totalCount,
       itemBuilder: (context, index) {
+        // "Shared with you" header
+        if (index == sharedHeaderIndex) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Row(
+              children: [
+                Icon(Icons.people,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.secondary),
+                const SizedBox(width: 6),
+                Text(
+                  'Shared with you',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Shared category items
+        if (filteredShared.isNotEmpty && index > sharedHeaderIndex) {
+          final sharedCategory = filteredShared[index - sharedHeaderIndex - 1];
+          return ListTile(
+            leading: Icon(Icons.people,
+                color: Theme.of(context).colorScheme.secondary),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(sharedCategory.headline),
+                Text(
+                  'from ${sharedCategory.ownerName}',
+                  style: TextStyle(
+                    fontSize: (Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14) * 0.7,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+            onTap: () => widget.showMoveAndCopy
+                ? _selectCategoryForMoveOrCopy(sharedCategory)
+                : _selectCategory(sharedCategory),
+            selected: widget.showMoveAndCopy &&
+                _selectedCategory?.id == sharedCategory.id,
+            dense: true,
+          );
+        }
+
+        // Owned category items
         final category = categories[index];
         final isDefault = category == widget.defaultCategory;
         final isSuggested =

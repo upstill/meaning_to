@@ -192,6 +192,26 @@ class ApiClient {
     }
   }
 
+  /// Load tasks for a shared category (no owner_id filter — RLS grants access)
+  static Future<List<Task>> getTasksByCategory(int categoryId) async {
+    try {
+      final response = await _supabase
+          .from('Tasks')
+          .select(
+              'id,headline,notes,synopsis,category_id,owner_id,finished,shared,links,original_id,suggestible_at,created_at')
+          .eq('category_id', categoryId)
+          .order('suggestible_at', ascending: true)
+          .order('created_at', ascending: false);
+
+      return (response as List)
+          .map((taskData) => Task.fromJson(taskData))
+          .toList();
+    } catch (e) {
+      print('Error getting tasks by category in Supabase: $e');
+      rethrow;
+    }
+  }
+
   static Future<void> updateGuestTasks(String guestUserId) async {
     try {
       print(
@@ -269,6 +289,44 @@ class ApiClient {
         // Sort by last_access in descending order (most recent first)
         return b.lastAccess!.compareTo(a.lastAccess!);
       });
+
+      // Fetch shared categories (subscribed by this user but owned by others)
+      if (!isGuest) {
+        try {
+          final sharedRows = await _supabase
+              .from('shared_categories')
+              .select('category_id, owner_name, Categories(*)')
+              .eq('user_id', userId);
+
+          final sharedCategories = (sharedRows as List).map((row) {
+            final cat = Category.fromJson(
+                row['Categories'] as Map<String, dynamic>);
+            return cat.copyWithShared(
+              isShared: true,
+              ownerName: row['owner_name'] as String,
+            );
+          }).toList();
+
+          // Interleave: each shared category goes right after its owned counterpart.
+          // Walk the owned list; after each owned entry, append any shared
+          // entry with the same id. Orphaned shared categories go at the end.
+          final ownedIds = {for (final c in categories) c.id};
+          final result = <Category>[];
+          for (final owned in categories) {
+            result.add(owned);
+            for (final shared in sharedCategories) {
+              if (shared.id == owned.id) result.add(shared);
+            }
+          }
+          for (final shared in sharedCategories) {
+            if (!ownedIds.contains(shared.id)) result.add(shared);
+          }
+          return result;
+        } catch (e) {
+          print('Error fetching shared categories: $e');
+          // Fall through and return just owned categories
+        }
+      }
 
       return categories;
     } catch (e) {

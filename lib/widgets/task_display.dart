@@ -15,6 +15,9 @@ class TaskDisplay extends StatefulWidget {
   final Function(bool)? onShareToggle;
   final bool? isCategoryPrivate;
   final VoidCallback? onMakeCategoryPublic;
+  // When set, replaces all controls with a selection checkbox
+  final bool? isSelected;
+  final ValueChanged<bool?>? onSelected;
 
   const TaskDisplay({
     super.key,
@@ -27,6 +30,8 @@ class TaskDisplay extends StatefulWidget {
     this.onShareToggle,
     this.isCategoryPrivate,
     this.onMakeCategoryPublic,
+    this.isSelected,
+    this.onSelected,
   });
 
   /// Builds a widget to display a task, with optional controls.
@@ -43,6 +48,8 @@ class TaskDisplay extends StatefulWidget {
     Function(bool)? onShareToggle,
     bool? isCategoryPrivate,
     VoidCallback? onMakeCategoryPublic,
+    bool? isSelected,
+    ValueChanged<bool?>? onSelected,
   }) {
     return TaskDisplay(
       task: task,
@@ -54,6 +61,8 @@ class TaskDisplay extends StatefulWidget {
       onShareToggle: onShareToggle,
       isCategoryPrivate: isCategoryPrivate,
       onMakeCategoryPublic: onMakeCategoryPublic,
+      isSelected: isSelected,
+      onSelected: onSelected,
     );
   }
 
@@ -291,7 +300,15 @@ class _TaskDisplayState extends State<TaskDisplay> {
                         ),
                       ),
                     ),
-                    // Controls bundle - finished checkbox, edit, delete
+                    // Controls bundle: selection checkbox OR full controls
+                    if (widget.onSelected != null)
+                      Checkbox(
+                        value: widget.isSelected ?? false,
+                        onChanged: widget.onSelected,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      )
+                    else
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

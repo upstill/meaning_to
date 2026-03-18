@@ -8,6 +8,7 @@ import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/widgets/edit_category_dialog.dart';
+import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'dart:async';
 
 import 'package:meaning_to/utils/naming.dart';
@@ -79,6 +80,12 @@ class HomeScreenState extends State<HomeScreen> {
 
   // Add getter for selected category
   Category? get selectedCategory => _selectedCategory;
+
+  // True when viewing a shared (read-only) category
+  bool get _isReadOnly => _selectedCategory?.isShared ?? false;
+
+  // Task IDs selected for "Snag Selected" in shared-category list mode
+  Set<int> _selectedTaskIds = {};
 
   // Track if welcome dialog has been shown
   bool _welcomeDialogShown = false;
@@ -299,14 +306,6 @@ class HomeScreenState extends State<HomeScreen> {
                             ),
                       ),
                     ),
-                    Text(
-                      '${tasks.length} ${tasks.length == 1 ? NamingUtils.tasksName(plural: false) : NamingUtils.tasksName(plural: true)}',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: Colors.grey[600]),
-                    ),
-                    const SizedBox(width: 8),
                     const Icon(Icons.arrow_forward_ios,
                         size: 16, color: Colors.grey),
                   ],
@@ -1184,29 +1183,31 @@ class HomeScreenState extends State<HomeScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final headerRow = LayoutBuilder(
+      builder: (context, constraints) {
+        final sortAreaWidth =
+            (constraints.maxWidth * 0.35).clamp(0.0, 240.0);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: sortAreaWidth,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: sortWidget,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: searchWidget),
+          ],
+        );
+      },
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final sortAreaWidth =
-                (constraints.maxWidth * 0.35).clamp(0.0, 240.0);
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: sortAreaWidth,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: sortWidget,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(child: searchWidget),
-              ],
-            );
-          },
-        ),
+        headerRow,
         const SizedBox(height: 8),
         if (_isTaskListSorting) ...[
           const Padding(
@@ -1233,43 +1234,149 @@ class HomeScreenState extends State<HomeScreen> {
             ),
           )
         else ...[
-        Text(
-          '${tasks.length} ${NamingUtils.tasksName(plural: true, capitalize: false)}',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.green,
-          ),
-        ),
-        const SizedBox(height: 8),
-        ...displayedTasks.map(
-          (task) => TaskDisplay(
-            key: ValueKey(
-                'home-task-${task.id}-${task.finished}-${task.shared}'),
-            task: task,
-            withControls: true,
-            onEdit: () => _showEditPanel(task),
-            onDelete: () => _deleteTaskFromList(task),
-            onTap: () => _toggleTaskCompletionFromList(task),
-            onShareToggle: (newSharedState) =>
-                _toggleTaskShareFromList(task, newSharedState),
-            isCategoryPrivate: _selectedCategory?.isPrivate ?? false,
-          ),
-        ),
-        if (_isListProgressiveLoading && _visibleTaskCount < tasks.length)
-          const Padding(
-            padding: EdgeInsets.all(8.0),
-            child: Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+          // Snag controls for read-only, right-aligned just above first task
+          if (_isReadOnly) ...[
+            Builder(builder: (context) {
+              final allSelected = _selectedTaskIds.containsAll(tasks.map((t) => t.id));
+              final someSelected = !allSelected && _selectedTaskIds.isNotEmpty;
+              return Align(
+                alignment: Alignment.centerRight,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ElevatedButton(
+                      onPressed: _selectedTaskIds.isEmpty ? null : _snagSelected,
+                      child: const Text('Snag Selected'),
+                    ),
+                    Checkbox(
+                      tristate: true,
+                      value: allSelected ? true : (someSelected ? null : false),
+                      onChanged: (val) {
+                        setState(() {
+                          if (someSelected || val == false) {
+                            _selectedTaskIds = {};
+                          } else {
+                            _selectedTaskIds = tasks.map((t) => t.id).toSet();
+                          }
+                        });
+                      },
+                    ),
+                    const Text('All'),
+                  ],
+                ),
+              );
+            }),
+          ],
+          ...displayedTasks.map(
+            (task) => TaskDisplay(
+              key: ValueKey(
+                  'home-task-${task.id}-${task.finished}-${task.shared}'),
+              task: task,
+              withControls: !_isReadOnly,
+              onEdit: _isReadOnly ? null : () => _showEditPanel(task),
+              onDelete: _isReadOnly ? null : () => _deleteTaskFromList(task),
+              onTap: _isReadOnly ? null : () => _toggleTaskCompletionFromList(task),
+              onShareToggle: _isReadOnly
+                  ? null
+                  : (newSharedState) =>
+                      _toggleTaskShareFromList(task, newSharedState),
+              isCategoryPrivate: _selectedCategory?.isPrivate ?? false,
+              isSelected: _isReadOnly ? _selectedTaskIds.contains(task.id) : null,
+              onSelected: _isReadOnly
+                  ? (val) {
+                      setState(() {
+                        if (val == true) {
+                          _selectedTaskIds.add(task.id);
+                        } else {
+                          _selectedTaskIds.remove(task.id);
+                        }
+                      });
+                    }
+                  : null,
             ),
           ),
+          if (_isListProgressiveLoading && _visibleTaskCount < tasks.length)
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
         ], // end else (tasks non-empty)
       ],
     );
+  }
+
+  /// Opens CategoryPickerDialog so the user can pick a destination pursuit,
+  /// defaulting to an owned category that shares [originalId] with the shared one.
+  Future<void> _snagSelected() async {
+    if (_selectedTaskIds.isEmpty || _selectedCategory == null) return;
+
+    // Look for an owned category whose originalId matches the shared category's originalId
+    Category? defaultCategory;
+    final sharedOriginalId = _selectedCategory!.originalId;
+    if (sharedOriginalId != null) {
+      defaultCategory = _categories
+          .where((c) => !c.isShared && c.originalId == sharedOriginalId)
+          .firstOrNull;
+    }
+
+    await CategoryPickerDialog.show(
+      context,
+      title: 'Copy to which Pursuit?',
+      subtitle: 'Select one of your own Pursuits to copy the selected ${NamingUtils.tasksName(plural: true, capitalize: false)} into.',
+      defaultCategory: defaultCategory,
+      showCreateNew: true,
+      hideShared: true,
+      onCategorySelected: (category, {bool? shouldMove, bool? applyToAll}) {
+        unawaited(_copySelectedTasksTo(category));
+      },
+    );
+  }
+
+  /// Copies selected tasks into [target] category as new tasks owned by current user.
+  Future<void> _copySelectedTasksTo(Category target) async {
+    final userId = AuthUtils.getCurrentUserId();
+
+    final tasksToCopy =
+        _listModeTasks.where((t) => _selectedTaskIds.contains(t.id)).toList();
+    int copied = 0;
+
+    for (final task in tasksToCopy) {
+      try {
+        await ApiClient.createTask({
+          'headline': task.headline,
+          if (task.notes != null) 'notes': task.notes,
+          if (task.synopsis != null) 'synopsis': task.synopsis,
+          'owner_id': userId,
+          'category_id': target.id,
+          'original_id': task.id,
+          if (task.links != null && task.links!.isNotEmpty) 'links': task.links,
+          'finished': false,
+          'shared': false,
+        });
+        copied++;
+      } catch (e) {
+        print('Error copying task "${task.headline}": $e');
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _selectedTaskIds = {};
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Copied $copied ${NamingUtils.tasksName(plural: copied != 1, capitalize: false)} to "${target.headline}"',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _rejectCurrentTask() async {
@@ -1522,6 +1629,7 @@ class HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _selectedCategory = newValue;
+      _selectedTaskIds = {};
       _randomTask = null;
       if (_showTaskListMode) {
         _rebuildTaskListFromCache();
@@ -2285,23 +2393,24 @@ class HomeScreenState extends State<HomeScreen> {
                                           ),
                                         ),
                                       ),
-                                      TextButton.icon(
-                                        icon: const Icon(Icons.add_task, color: Colors.deepPurple),
-                                        label: const Text(
-                                          'Add Idea',
-                                          style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
+                                      if (!_isReadOnly)
+                                        TextButton.icon(
+                                          icon: const Icon(Icons.add_task, color: Colors.deepPurple),
+                                          label: const Text(
+                                            'Add Idea',
+                                            style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
+                                          ),
+                                          onPressed: () {
+                                            if (AuthUtils.isGuestUser()) {
+                                              _showGuestSignupDialog(
+                                                content:
+                                                    'Here\'s where you can add ${NamingUtils.tasksName()} once you\'re logged in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
+                                              );
+                                              return;
+                                            }
+                                            _navigateToNewContent();
+                                          },
                                         ),
-                                        onPressed: () {
-                                          if (AuthUtils.isGuestUser()) {
-                                            _showGuestSignupDialog(
-                                              content:
-                                                  'Here\'s where you can add ${NamingUtils.tasksName()} once you\'re logged in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
-                                            );
-                                            return;
-                                          }
-                                          _navigateToNewContent();
-                                        },
-                                      ),
                                       PopupMenuButton<String>(
                                         icon: const Icon(Icons.more_vert),
                                         tooltip: '${NamingUtils.categoriesName(capitalize: true, plural: false)} options',
@@ -2339,25 +2448,27 @@ class HomeScreenState extends State<HomeScreen> {
                                               contentPadding: EdgeInsets.zero,
                                             ),
                                           ),
-                                          PopupMenuItem<String>(
-                                            value: 'edit',
-                                            child: ListTile(
-                                              leading: const Icon(Icons.edit),
-                                              title: Text('Edit ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
-                                              contentPadding: EdgeInsets.zero,
-                                            ),
-                                          ),
-                                          PopupMenuItem<String>(
-                                            value: 'delete',
-                                            child: ListTile(
-                                              leading: const Icon(Icons.delete, color: Colors.red),
-                                              title: Text(
-                                                'Delete ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
-                                                style: const TextStyle(color: Colors.red),
+                                          if (!_isReadOnly)
+                                            PopupMenuItem<String>(
+                                              value: 'edit',
+                                              child: ListTile(
+                                                leading: const Icon(Icons.edit),
+                                                title: Text('Edit ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
+                                                contentPadding: EdgeInsets.zero,
                                               ),
-                                              contentPadding: EdgeInsets.zero,
                                             ),
-                                          ),
+                                          if (!_isReadOnly)
+                                            PopupMenuItem<String>(
+                                              value: 'delete',
+                                              child: ListTile(
+                                                leading: const Icon(Icons.delete, color: Colors.red),
+                                                title: Text(
+                                                  'Delete ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
+                                                  style: const TextStyle(color: Colors.red),
+                                                ),
+                                                contentPadding: EdgeInsets.zero,
+                                              ),
+                                            ),
                                         ],
                                       ),
                                     ],
@@ -2366,20 +2477,33 @@ class HomeScreenState extends State<HomeScreen> {
                                     children: [
                                       Flexible(
                                         fit: FlexFit.loose,
-                                        child: Text(
-                                          _selectedCategory?.headline ??
-                                              _categories.first.headline,
-                                          style: TextStyle(
-                                            fontSize: (Theme.of(context)
-                                                        .textTheme
-                                                        .bodyLarge
-                                                        ?.fontSize ??
-                                                    16) +
-                                                10,
+                                        child: () {
+                                          final cat = _selectedCategory ?? _categories.first;
+                                          final headlineFontSize = (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) + 10;
+                                          final headlineStyle = TextStyle(
+                                            fontSize: headlineFontSize,
                                             fontWeight: FontWeight.bold,
                                             color: Color(0xFF1A237E),
-                                          ),
-                                        ),
+                                          );
+                                          if (cat.isShared) {
+                                            return Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(cat.headline, style: headlineStyle),
+                                                Text(
+                                                  'from ${cat.ownerName}',
+                                                  style: TextStyle(
+                                                    fontSize: headlineFontSize * 0.7,
+                                                    fontStyle: FontStyle.italic,
+                                                    color: Color(0xFF1A237E),
+                                                  ),
+                                                ),
+                                              ],
+                                            );
+                                          }
+                                          return Text(cat.headline, style: headlineStyle);
+                                        }(),
                                       ),
                                       PopupMenuButton<Category>(
                                         tooltip:
@@ -2398,7 +2522,22 @@ class HomeScreenState extends State<HomeScreen> {
                                               (category) =>
                                                   PopupMenuItem<Category>(
                                                 value: category,
-                                                child: Text(category.headline),
+                                                child: category.isShared
+                                                    ? Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Text(category.headline),
+                                                          Text(
+                                                            'from ${category.ownerName}',
+                                                            style: TextStyle(
+                                                              fontSize: (Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14) * 0.8,
+                                                              fontStyle: FontStyle.italic,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      )
+                                                    : Text(category.headline),
                                               ),
                                             )
                                             .toList(),
@@ -2595,7 +2734,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                   ),
                                                 ),
                                               ),
-                                              if (!AuthUtils.isGuestUser()) ...[
+                                              if (!AuthUtils.isGuestUser() && !_isReadOnly) ...[
                                                 PopupMenuButton<String>(
                                                   icon: const Icon(Icons.more_vert, size: 20, color: Colors.white),
                                                   padding: EdgeInsets.zero,
@@ -2838,43 +2977,46 @@ class HomeScreenState extends State<HomeScreen> {
                                                         ),
                                                   ),
                                                 ),
-                                                TextButton.icon(
-                                                  onPressed: () async {
-                                                    await _reviveCurrentTask();
-                                                  },
-                                                  icon: const Icon(
-                                                    Icons.refresh,
-                                                    size: 16,
-                                                  ),
-                                                  label: const Text('Revive'),
-                                                  style: TextButton.styleFrom(
-                                                    foregroundColor:
-                                                        Colors.lightBlueAccent,
-                                                    padding: const EdgeInsets
-                                                        .symmetric(
-                                                      horizontal: 8,
+                                                if (!_isReadOnly)
+                                                  TextButton.icon(
+                                                    onPressed: () async {
+                                                      await _reviveCurrentTask();
+                                                    },
+                                                    icon: const Icon(
+                                                      Icons.refresh,
+                                                      size: 16,
+                                                    ),
+                                                    label: const Text('Revive'),
+                                                    style: TextButton.styleFrom(
+                                                      foregroundColor:
+                                                          Colors.lightBlueAccent,
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 8,
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
                                               ],
                                             ),
                                           ],
-                                          const SizedBox(height: 2),
-                                          Center(
-                                            child: TextButton.icon(
-                                              onPressed: _finishCurrentTask,
-                                              icon: const Icon(Icons.check),
-                                              label: const Text(
-                                                'Actually, I\'m done with this',
-                                              ),
-                                              style: TextButton.styleFrom(
-                                                foregroundColor: Colors.white,
-                                                padding: EdgeInsets.zero,
-                                                visualDensity:
-                                                    VisualDensity.compact,
+                                          if (!_isReadOnly) ...[
+                                            const SizedBox(height: 2),
+                                            Center(
+                                              child: TextButton.icon(
+                                                onPressed: _finishCurrentTask,
+                                                icon: const Icon(Icons.check),
+                                                label: const Text(
+                                                  'Actually, I\'m done with this',
+                                                ),
+                                                style: TextButton.styleFrom(
+                                                  foregroundColor: Colors.white,
+                                                  padding: EdgeInsets.zero,
+                                                  visualDensity:
+                                                      VisualDensity.compact,
+                                                ),
                                               ),
                                             ),
-                                          ),
+                                          ],
                                         ],
                                       ),
                                     ),

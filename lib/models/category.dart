@@ -11,6 +11,8 @@ class Category {
   final DateTime? lastAccess;
   bool isPrivate;
   bool tasksArePrivate;
+  final bool isShared;       // true if from shared_categories (not a DB column)
+  final String? ownerName;   // display name of the sharer, for shared categories only
 
   Category({
     required this.id,
@@ -25,6 +27,8 @@ class Category {
     this.lastAccess,
     this.isPrivate = false,
     this.tasksArePrivate = true,
+    this.isShared = false,
+    this.ownerName,
   });
 
   @override
@@ -74,5 +78,24 @@ class Category {
       'private': isPrivate,
       'tasks_are_private': tasksArePrivate,
     };
+  }
+
+  Category copyWithShared({required bool isShared, required String ownerName}) {
+    return Category(
+      id: id,
+      headline: headline,
+      invitation: invitation,
+      ownerId: ownerId,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      originalId: originalId,
+      triggersAt: triggersAt,
+      template: template,
+      lastAccess: lastAccess,
+      isPrivate: isPrivate,
+      tasksArePrivate: tasksArePrivate,
+      isShared: isShared,
+      ownerName: ownerName,
+    );
   }
 }

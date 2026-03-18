@@ -91,8 +91,11 @@ class CacheManager with PerformanceMonitoring {
 
     try {
       // Use targeted API call to get only tasks for this category
-      final tasks = await ApiClient.getTasksByCategoryAndUser(
-          _currentCategory!.id, _currentUserId!);
+      // For shared categories, don't filter by owner_id (RLS grants read access)
+      final tasks = _currentCategory!.isShared
+          ? await ApiClient.getTasksByCategory(_currentCategory!.id)
+          : await ApiClient.getTasksByCategoryAndUser(
+              _currentCategory!.id, _currentUserId!);
 
       _currentTasks = tasks;
 
