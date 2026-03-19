@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.supabase.meaningto",
+      "sha256_cert_fingerprints": [
+        "B0:8E:30:3D:5B:F2:4C:3D:5F:6C:99:46:2B:C7:4F:48:F9:6E:97:76:62:54:9D:6E:9B:16:66:56:08:23:FD:F5"
+      ]
+    }
+  }
+]

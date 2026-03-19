@@ -40,8 +40,14 @@ echo "📦 Copying build output to project root..."
 # Remove old Flutter web files first to avoid stale files
 rm -f index.html flutter.js flutter_bootstrap.js flutter_service_worker.js main.dart.js manifest.json
 rm -rf assets/ canvaskit/ icons/
-# Copy fresh build
+# Copy fresh build (glob * skips dotdirectories, so handle them separately)
 cp -rf build/web/* .
+# Copy dotdirectories (e.g. .well-known for Android App Links verification)
+for d in build/web/.*; do
+  base=$(basename "$d")
+  [ "$base" = "." ] || [ "$base" = ".." ] && continue
+  [ -e "$d" ] && cp -rf "$d" .
+done
 
 # Step 4: Update build markers with current timestamp
 echo "🏷️  Updating build markers..."
