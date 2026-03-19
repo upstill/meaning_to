@@ -3,6 +3,7 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/task_edit_screen.dart';
@@ -593,6 +594,7 @@ class HomeScreenState extends State<HomeScreen> {
           setState(() {
             _selectedCategory = category;
           });
+          _showShareWelcomeIfNeeded(category);
           _loadRandomTask(category);
           // Update last_access for the selected category
           _updateCategoryLastAccess(category);
@@ -1315,6 +1317,39 @@ class HomeScreenState extends State<HomeScreen> {
 
   /// Creates a share-invitation link for [category] and shows a dialog
   /// with a Copy button so the sharer can send it via email/message/etc.
+  /// Shows a one-time welcome dialog when the user first sees a shared category.
+  Future<void> _showShareWelcomeIfNeeded(Category category) async {
+    if (!category.isShared) return;
+    final prefs = await SharedPreferences.getInstance();
+    final welcomed = prefs.getStringList('welcomed_shared_categories') ?? [];
+    final key = category.id.toString();
+    if (welcomed.contains(key)) return;
+
+    // Mark as welcomed before showing so a double-trigger doesn't double-show.
+    welcomed.add(key);
+    await prefs.setStringList('welcomed_shared_categories', welcomed);
+
+    if (!mounted) return;
+    final sharer = category.ownerName ?? 'Someone';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Pursuit Shared With You'),
+        content: Text(
+          '$sharer has shared their Pursuit "${category.headline}" with you. '
+          "It'll stick around on its own for your use, but you can also snag "
+          'its tasks and fold them into a Pursuit of your own.',
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _shareCategory(Category category) async {
     String? inviteLink;
     try {
@@ -1389,6 +1424,32 @@ class HomeScreenState extends State<HomeScreen> {
 
   /// Opens CategoryPickerDialog so the user can pick a destination pursuit,
   /// defaulting to an owned category that shares [originalId] with the shared one.
+  /// Snag the single currently-displayed random task into an owned category.
+  Future<void> _snagCurrentTask() async {
+    final task = _randomTask;
+    if (task == null || _selectedCategory == null) return;
+
+    Category? defaultCategory;
+    final sharedOriginalId = _selectedCategory!.originalId;
+    if (sharedOriginalId != null) {
+      defaultCategory = _categories
+          .where((c) => !c.isShared && c.originalId == sharedOriginalId)
+          .firstOrNull;
+    }
+
+    await CategoryPickerDialog.show(
+      context,
+      title: 'Copy to which Pursuit?',
+      subtitle: 'Select one of your own Pursuits to copy this ${NamingUtils.tasksName(plural: false, capitalize: false)} into.',
+      defaultCategory: defaultCategory,
+      showCreateNew: true,
+      hideShared: true,
+      onCategorySelected: (category, {bool? shouldMove, bool? applyToAll}) {
+        unawaited(_copySelectedTasksTo(category, overrideTasks: [task]));
+      },
+    );
+  }
+
   Future<void> _snagSelected() async {
     if (_selectedTaskIds.isEmpty || _selectedCategory == null) return;
 
@@ -1415,10 +1476,11 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   /// Copies selected tasks into [target] category as new tasks owned by current user.
-  Future<void> _copySelectedTasksTo(Category target) async {
+  /// Pass [overrideTasks] to copy specific tasks instead of the checkbox selection.
+  Future<void> _copySelectedTasksTo(Category target, {List<Task>? overrideTasks}) async {
     final userId = AuthUtils.getCurrentUserId();
 
-    final tasksToCopy =
+    final tasksToCopy = overrideTasks ??
         _listModeTasks.where((t) => _selectedTaskIds.contains(t.id)).toList();
     int copied = 0;
 
@@ -1714,6 +1776,7 @@ class HomeScreenState extends State<HomeScreen> {
     });
 
     if (newValue != null) {
+      _showShareWelcomeIfNeeded(newValue);
       await _updateCategoryLastAccess(newValue);
       if (_showTaskListMode) {
         if (needsLoad) {
@@ -3103,6 +3166,22 @@ class HomeScreenState extends State<HomeScreen> {
                                                 ),
                                               ),
                                             ),
+                                          ] else ...[
+                                            const SizedBox(height: 8),
+                                            Center(
+                                              child: ElevatedButton.icon(
+                                                onPressed: () => _snagCurrentTask(),
+                                                icon: const Icon(Icons.download, size: 18),
+                                                label: const Text('Snag this'),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.white,
+                                                  foregroundColor: const Color(0xFF4A148C),
+                                                  visualDensity: VisualDensity.compact,
+                                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
                                           ],
                                         ],
                                       ),
