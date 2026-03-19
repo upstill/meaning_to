@@ -1,6 +1,7 @@
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/models/share_invitation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiClient {
@@ -584,15 +585,66 @@ class ApiClient {
   // ── Sharing ────────────────────────────────────────────────────────────────
 
   /// Creates a share invitation for [categoryId] and returns the token UUID.
+  /// Enforces a 7-day expiry regardless of the DB function default.
   static Future<String> createShareInvitation(int categoryId) async {
     try {
       final response = await _supabase.rpc(
         'create_share_invitation',
         params: {'p_category_id': categoryId},
       );
-      return response as String;
+      final token = response as String;
+      // Enforce 7-day expiry on the client side (DB default may differ).
+      await _supabase.from('share_invitations').update({
+        'expires_at':
+            DateTime.now().add(const Duration(days: 7)).toUtc().toIso8601String(),
+      }).eq('id', token);
+      return token;
     } catch (e) {
       print('Error creating share invitation: $e');
+      rethrow;
+    }
+  }
+
+  /// Returns all share invitations for [categoryId] created by the current user,
+  /// newest first.
+  static Future<List<ShareInvitation>> getShareInvitations(
+      int categoryId) async {
+    try {
+      final rows = await _supabase
+          .from('share_invitations')
+          .select()
+          .eq('category_id', categoryId)
+          .order('created_at', ascending: false);
+      return rows
+          .map((r) => ShareInvitation.fromJson(r as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      print('Error fetching share invitations: $e');
+      rethrow;
+    }
+  }
+
+  /// Extends the expiry of [tokenId] by 7 days from now and clears used_at,
+  /// making the link reusable for another recipient.
+  static Future<void> renewShareInvitation(String tokenId) async {
+    try {
+      await _supabase.from('share_invitations').update({
+        'expires_at':
+            DateTime.now().add(const Duration(days: 7)).toUtc().toIso8601String(),
+        'used_at': null,
+      }).eq('id', tokenId);
+    } catch (e) {
+      print('Error renewing share invitation: $e');
+      rethrow;
+    }
+  }
+
+  /// Permanently deletes the share invitation [tokenId].
+  static Future<void> deleteShareInvitation(String tokenId) async {
+    try {
+      await _supabase.from('share_invitations').delete().eq('id', tokenId);
+    } catch (e) {
+      print('Error deleting share invitation: $e');
       rethrow;
     }
   }
