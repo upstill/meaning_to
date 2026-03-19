@@ -3169,7 +3169,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                 ),
                                               ),
                                             ),
-                                            const SizedBox(height: 4),
+                                            const SizedBox(height: 16),
                                           ],
                                         ],
                                       ),
