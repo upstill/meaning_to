@@ -1657,17 +1657,21 @@ class HomeScreenState extends State<HomeScreen> {
         } else {
           // On subsequent loads, update the selected category reference to the new object
           if (_selectedCategory != null) {
-            final updatedCategory = categories.firstWhere(
-              (c) => c.id == _selectedCategory!.id,
-              orElse: () =>
-                  categories.isNotEmpty ? categories.first : _selectedCategory!,
-            );
-            if (updatedCategory.id == _selectedCategory!.id) {
+            final matches = categories.where((c) => c.id == _selectedCategory!.id);
+            final updatedCategory = matches.isEmpty ? null : matches.first;
+            if (updatedCategory != null) {
               setState(() {
                 _selectedCategory = updatedCategory;
               });
+            } else {
+              // Selected category was removed (deleted or shared subscription released).
+              setState(() {
+                _selectedCategory = null;
+                _randomTask = null;
+              });
             }
-          } else if (categories.length == 1) {
+          }
+          if (_selectedCategory == null && categories.length == 1) {
             // Auto-select if there's only one category and none is currently selected
             // This handles the case where a user imports their first category
             print(
