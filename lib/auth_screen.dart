@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:supabase_flutter/src/supabase_auth.dart';
+import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/invite_token_store.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -53,9 +55,7 @@ class _AuthScreenState extends State<AuthScreen> {
       );
 
       if (response.user != null && response.session != null) {
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/home');
-        }
+        await _navigateAfterSignIn();
       } else {
         setState(() {
           _error = 'Sign in failed. Please check your credentials.';
@@ -97,9 +97,7 @@ class _AuthScreenState extends State<AuthScreen> {
       if (response.user != null) {
         if (response.session != null) {
           // New user - email confirmations are disabled - user is automatically signed in
-          if (mounted) {
-            Navigator.pushReplacementNamed(context, '/home');
-          }
+          await _navigateAfterSignIn();
         } else {
           // User exists but no session - this could be an existing user
           // Check if the user was actually created or if they already existed
@@ -113,9 +111,7 @@ class _AuthScreenState extends State<AuthScreen> {
               password: _passwordController.text,
             );
             // If we get here, the user exists and password is correct
-            if (mounted) {
-              Navigator.pushReplacementNamed(context, '/home');
-            }
+            await _navigateAfterSignIn();
           } catch (signInError) {
             // User exists but password is wrong, or user doesn't exist
             final errorString = signInError.toString().toLowerCase();
@@ -169,6 +165,33 @@ class _AuthScreenState extends State<AuthScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  /// Navigates after a successful sign-in.
+  /// If a pending invite token exists, redeems it and goes to that category;
+  /// otherwise goes to /home.
+  Future<void> _navigateAfterSignIn() async {
+    final token = await InviteTokenStore.get();
+    if (token != null && mounted) {
+      try {
+        final categoryId = await ApiClient.redeemInvitation(token);
+        await InviteTokenStore.clear();
+        if (mounted) {
+          Navigator.pushReplacementNamed(
+            context,
+            '/category',
+            arguments: {'categoryId': categoryId.toString()},
+          );
+          return;
+        }
+      } catch (e) {
+        await InviteTokenStore.clear();
+        // Fall through to /home on error
+      }
+    }
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/home');
     }
   }
 

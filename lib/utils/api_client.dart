@@ -580,4 +580,34 @@ class ApiClient {
     final match = regex.firstMatch(linkText);
     return match?.group(1);
   }
+
+  // ── Sharing ────────────────────────────────────────────────────────────────
+
+  /// Creates a share invitation for [categoryId] and returns the token UUID.
+  static Future<String> createShareInvitation(int categoryId) async {
+    try {
+      final response = await _supabase.rpc(
+        'create_share_invitation',
+        params: {'p_category_id': categoryId},
+      );
+      return response as String;
+    } catch (e) {
+      print('Error creating share invitation: $e');
+      rethrow;
+    }
+  }
+
+  /// Redeems a share invitation token and returns the subscribed category ID.
+  static Future<int> redeemInvitation(String token) async {
+    try {
+      final response = await _supabase.rpc(
+        'redeem_invitation',
+        params: {'p_token': token},
+      );
+      return response as int;
+    } catch (e) {
+      print('Error redeeming invitation: $e');
+      rethrow;
+    }
+  }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/invite_token_store.dart';
 
 class AuthOtpVerificationScreen extends StatefulWidget {
   const AuthOtpVerificationScreen({super.key});
@@ -42,9 +44,27 @@ class _AuthOtpVerificationScreenState extends State<AuthOtpVerificationScreen> {
           'AuthOtpVerificationScreen: OTP verification response - session: ${response.session != null}');
 
       if (response.session != null && mounted) {
-        // Successfully verified - navigate to home
-        print('AuthOtpVerificationScreen: Verification successful, navigating to home');
-        Navigator.pushReplacementNamed(context, '/home');
+        // Successfully verified - redeem any pending invite, then navigate
+        print('AuthOtpVerificationScreen: Verification successful');
+        final pendingToken = await InviteTokenStore.get();
+        if (pendingToken != null && mounted) {
+          try {
+            final categoryId = await ApiClient.redeemInvitation(pendingToken);
+            await InviteTokenStore.clear();
+            if (mounted) {
+              Navigator.pushReplacementNamed(
+                context,
+                '/category',
+                arguments: {'categoryId': categoryId.toString()},
+              );
+            }
+            return;
+          } catch (e) {
+            print('AuthOtpVerificationScreen: Failed to redeem invite: $e');
+            await InviteTokenStore.clear();
+          }
+        }
+        if (mounted) Navigator.pushReplacementNamed(context, '/home');
       } else {
         setState(() {
           _error = 'Verification failed. Please try again.';

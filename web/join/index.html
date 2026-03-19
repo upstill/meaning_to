@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Joining Pursuit…</title>
+  <script>
+    (function () {
+      var invite = new URLSearchParams(window.location.search).get('invite');
+      if (invite) {
+        window.location.replace('/?invite=' + encodeURIComponent(invite));
+      } else {
+        window.location.replace('/');
+      }
+    })();
+  </script>
+</head>
+<body></body>
+</html>

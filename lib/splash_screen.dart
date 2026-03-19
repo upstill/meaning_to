@@ -3,6 +3,8 @@ import 'package:meaning_to/main.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/app_state_manager.dart';
+import 'package:meaning_to/utils/invite_token_store.dart';
+import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -118,6 +120,27 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       print(
           'SplashScreen: Attempting to restore last category for user: $userId');
+
+      // Redeem any pending invite token first (covers the case where the
+      // invite link was tapped while not signed in, token was stashed, and
+      // the user is now signing in for the first time).
+      final pendingToken = await InviteTokenStore.get();
+      if (pendingToken != null) {
+        try {
+          final categoryId = await ApiClient.redeemInvitation(pendingToken);
+          await InviteTokenStore.clear();
+          if (mounted) {
+            MyApp.isStateRestored = true;
+            Navigator.of(context).pushReplacementNamed('/category',
+                arguments: {'categoryId': categoryId.toString()});
+          }
+          return;
+        } catch (e) {
+          print('SplashScreen: Failed to redeem stashed invite: $e');
+          await InviteTokenStore.clear();
+          // Fall through to normal navigation
+        }
+      }
 
       final cacheManager = CacheManager();
       final restoredCategory = await cacheManager.restoreLastCategory(userId);

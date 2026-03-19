@@ -25,6 +25,9 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/share_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
+import 'package:meaning_to/utils/invite_token_store.dart';
+import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/invite_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // Remove the instance creation since we'll use static methods
@@ -380,6 +383,38 @@ class _MyAppState extends State<MyApp> {
     print('Query parameters: ${uri.queryParameters}');
 
     try {
+      // Handle share-invitation links:
+      //   https://meaning-to.me/join?invite=<token>  (path == '/join')
+      //   meaningto://join?invite=<token>             (host == 'join')
+      final isHttpsInvite = uri.path == '/join';
+      final isCustomInvite = uri.scheme == 'meaningto' && uri.host == 'join';
+      if (isHttpsInvite || isCustomInvite) {
+        final token = uri.queryParameters['invite'];
+        if (token != null) {
+          // Reset the flag BEFORE navigation so onGenerateRoute isn't blocked.
+          MyApp.isHandlingDeepLink = false;
+          final session = Supabase.instance.client.auth.currentSession;
+          if (session != null) {
+            // Logged in — redeem directly, then jump to the shared category.
+            try {
+              final categoryId = await ApiClient.redeemInvitation(token);
+              MyApp.navigatorKey.currentState?.pushReplacementNamed(
+                '/category',
+                arguments: {'categoryId': categoryId.toString()},
+              );
+            } catch (e) {
+              print('Error redeeming invite in deep link: $e');
+              MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
+            }
+          } else {
+            // Not logged in — stash token and go to auth.
+            await InviteTokenStore.set(token);
+            MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
+          }
+          return;
+        }
+      }
+
       // Handle category deep links
       if (uri.path.startsWith('/category/')) {
         print('Processing category deep link');
@@ -499,6 +534,23 @@ class _MyAppState extends State<MyApp> {
             // Wait a moment for the Navigator to be ready, then navigate
             await Future.delayed(const Duration(milliseconds: 100));
 
+            // Redeem any pending invite token before navigating
+            final pendingInvite = await InviteTokenStore.get();
+            if (pendingInvite != null) {
+              try {
+                final categoryId = await ApiClient.redeemInvitation(pendingInvite);
+                await InviteTokenStore.clear();
+                MyApp.navigatorKey.currentState?.pushReplacementNamed(
+                  '/category',
+                  arguments: {'categoryId': categoryId.toString()},
+                );
+                return;
+              } catch (e) {
+                print('Error redeeming invite after OAuth: $e');
+                await InviteTokenStore.clear();
+              }
+            }
+
             // Use global navigator key to navigate
             MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
           } catch (e) {
@@ -603,6 +655,25 @@ class _MyAppState extends State<MyApp> {
                         HomeScreen(initialCategoryId: categoryId),
                   );
                 }
+              }
+
+              // Check for share-invitation link: /join?invite=<token>
+              if (currentPath == '/join') {
+                final token = Uri.base.queryParameters['invite'];
+                if (token != null) {
+                  return MaterialPageRoute(
+                    builder: (context) => InviteScreen(token: token),
+                  );
+                }
+              }
+
+              // Check for share-invitation token at root URL (?invite=<token>)
+              // This arrives when web/join/index.html redirects to /?invite=<token>
+              final rootInviteToken = Uri.base.queryParameters['invite'];
+              if (rootInviteToken != null) {
+                return MaterialPageRoute(
+                  builder: (context) => InviteScreen(token: rootInviteToken),
+                );
               }
 
               // Check for Supabase authentication verification (password reset, email confirmation, etc.)
@@ -718,6 +789,17 @@ class _MyAppState extends State<MyApp> {
             case '/help':
               return MaterialPageRoute(
                 builder: (context) => const HelpScreen(),
+              );
+            case '/join':
+              final joinArgs = settings.arguments as Map<String, dynamic>?;
+              final inviteToken = joinArgs?['token'] as String?;
+              if (inviteToken != null) {
+                return MaterialPageRoute(
+                  builder: (context) => InviteScreen(token: inviteToken),
+                );
+              }
+              return MaterialPageRoute(
+                builder: (context) => const HomeScreen(),
               );
             case '/category':
               // Handle category deep link with ID parameter

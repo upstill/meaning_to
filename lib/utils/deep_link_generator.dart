@@ -39,6 +39,12 @@ class DeepLinkGenerator {
     }
   }
 
+  /// Generate a share-invitation link for the given token UUID.
+  /// Always returns an HTTPS URL so it is clickable in email, SMS, etc.
+  static String generateInviteLink(String token) {
+    return '$_webBaseUrl/join?invite=$token';
+  }
+
   /// Convert a production URL to a debug URL for local development
   static String convertToDebugUrl(String url) {
     if (!isDebugMode) return url;

@@ -5,5 +5,10 @@
   "public": true,
   "github": {
     "silent": true
-  }
-} 
+  },
+  "rewrites": [
+    { "source": "/join", "destination": "/index.html" },
+    { "source": "/category/:path*", "destination": "/index.html" },
+    { "source": "/auth/:path*", "destination": "/index.html" }
+  ]
+}

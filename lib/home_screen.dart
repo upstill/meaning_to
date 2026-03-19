@@ -9,6 +9,8 @@ import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/widgets/edit_category_dialog.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
+import 'package:meaning_to/utils/deep_link_generator.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'dart:async';
 
 import 'package:meaning_to/utils/naming.dart';
@@ -1311,6 +1313,80 @@ class HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Creates a share-invitation link for [category] and shows a dialog
+  /// with a Copy button so the sharer can send it via email/message/etc.
+  Future<void> _shareCategory(Category category) async {
+    String? inviteLink;
+    try {
+      final token = await ApiClient.createShareInvitation(category.id);
+      inviteLink = DeepLinkGenerator.generateInviteLink(token);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not create share link: $e')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    final link = inviteLink;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Share this Pursuit'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Send this link to invite someone to follow "${category.headline}":',
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: SelectableText(
+                link,
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'This link expires in 30 days and can only be used once.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.copy, size: 16),
+            label: const Text('Copy Link'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: link));
+              Navigator.of(ctx).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Invite link copied to clipboard')),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Opens CategoryPickerDialog so the user can pick a destination pursuit,
   /// defaulting to an owned category that shares [originalId] with the shared one.
   Future<void> _snagSelected() async {
@@ -2435,6 +2511,8 @@ class HomeScreenState extends State<HomeScreen> {
                                                   await _loadCategories();
                                                 }
                                               }
+                                            case 'share':
+                                              if (_selectedCategory != null) unawaited(_shareCategory(_selectedCategory!));
                                             case 'delete':
                                               if (_selectedCategory != null) _deleteCategory(_selectedCategory!);
                                           }
@@ -2448,6 +2526,15 @@ class HomeScreenState extends State<HomeScreen> {
                                               contentPadding: EdgeInsets.zero,
                                             ),
                                           ),
+                                          if (!_isReadOnly)
+                                            PopupMenuItem<String>(
+                                              value: 'share',
+                                              child: const ListTile(
+                                                leading: Icon(Icons.person_add_outlined),
+                                                title: Text('Share this Pursuit'),
+                                                contentPadding: EdgeInsets.zero,
+                                              ),
+                                            ),
                                           if (!_isReadOnly)
                                             PopupMenuItem<String>(
                                               value: 'edit',
