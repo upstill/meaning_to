@@ -1374,11 +1374,12 @@ class HomeScreenState extends State<HomeScreen> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Pursuit Shared With You'),
+        title: Text('${NamingUtils.categoriesName(capitalize: true, plural: false)} Shared With You'),
         content: Text(
-          '$sharer has shared their Pursuit "${category.headline}" with you. '
+          '$sharer has shared their ${NamingUtils.categoriesName(capitalize: true, plural: false)} "${category.headline}" with you'
+          " so you can see what they've got. "
           "It'll stick around on its own for your use, but you can also snag "
-          'its tasks and fold them into a Pursuit of your own.',
+          'its ${NamingUtils.tasksName(capitalize: true, plural: true)} and fold them into a ${NamingUtils.categoriesName(capitalize: true, plural: false)} of your own.',
         ),
         actions: [
           ElevatedButton(
