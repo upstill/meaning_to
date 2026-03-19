@@ -610,4 +610,17 @@ class ApiClient {
       rethrow;
     }
   }
+
+  /// Removes a shared category subscription for the current user.
+  static Future<void> releaseSharedCategory(int categoryId) async {
+    try {
+      await _supabase
+          .from('shared_categories')
+          .delete()
+          .eq('category_id', categoryId);
+    } catch (e) {
+      print('Error releasing shared category: $e');
+      rethrow;
+    }
+  }
 }

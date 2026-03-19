@@ -1053,6 +1053,46 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _releaseSharedCategory(Category category) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Release Pursuit'),
+        content: Text(
+          'Remove "${category.headline}" from your shared Pursuits? '
+          'You will no longer be able to see it unless you are invited again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Release'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await ApiClient.releaseSharedCategory(category.id);
+      if (mounted) await _loadCategories();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error releasing Pursuit: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _toggleTaskShareFromList(Task task, bool newSharedState) async {
     final updatedTask = Task(
       id: task.id,
@@ -2578,6 +2618,8 @@ class HomeScreenState extends State<HomeScreen> {
                                               if (_selectedCategory != null) unawaited(_shareCategory(_selectedCategory!));
                                             case 'delete':
                                               if (_selectedCategory != null) _deleteCategory(_selectedCategory!);
+                                            case 'release':
+                                              if (_selectedCategory != null) _releaseSharedCategory(_selectedCategory!);
                                           }
                                         },
                                         itemBuilder: (_) => [
@@ -2615,6 +2657,18 @@ class HomeScreenState extends State<HomeScreen> {
                                                 title: Text(
                                                   'Delete ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
                                                   style: const TextStyle(color: Colors.red),
+                                                ),
+                                                contentPadding: EdgeInsets.zero,
+                                              ),
+                                            ),
+                                          if (_isReadOnly)
+                                            const PopupMenuItem<String>(
+                                              value: 'release',
+                                              child: ListTile(
+                                                leading: Icon(Icons.link_off, color: Colors.red),
+                                                title: Text(
+                                                  'Release this Pursuit',
+                                                  style: TextStyle(color: Colors.red),
                                                 ),
                                                 contentPadding: EdgeInsets.zero,
                                               ),
