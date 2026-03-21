@@ -344,13 +344,19 @@ class _MyAppState extends State<MyApp> {
     final uri = await _appLinks.getInitialAppLink();
     if (uri != null) {
       print('Got initial app link: $uri');
-      _pendingDeepLink = uri; // Store for later use
 
-      // Check if this is a category deep link that should be handled immediately
-      // Only handle non-web deep links immediately to avoid conflicts with web routing
-      if (uri.path.startsWith('/category/') && !foundation.kIsWeb) {
-        print('Initial category deep link detected, handling immediately');
+      // On non-web platforms, handle invite and category links immediately.
+      // onGenerateRoute for '/' runs before this async call completes (race
+      // condition), so _pendingDeepLink would be ignored. Instead we call
+      // _handleDeepLink directly once the navigator is ready.
+      final isInviteLink = uri.path == '/join' ||
+          (uri.scheme == 'meaningto' && uri.host == 'join');
+      if (!foundation.kIsWeb &&
+          (uri.path.startsWith('/category/') || isInviteLink)) {
+        print('Initial deep link detected, handling immediately');
         _handleDeepLink(uri);
+      } else {
+        _pendingDeepLink = uri; // Store for onGenerateRoute (web paths)
       }
     } else {
       print('No initial app link found');
@@ -493,6 +499,27 @@ class _MyAppState extends State<MyApp> {
 
               if (response.user != null && response.session != null) {
                 print('Email confirmation successful, user signed in');
+
+                // Redeem any pending invite token before navigating
+                final pendingInvite = await InviteTokenStore.get();
+                if (pendingInvite != null) {
+                  try {
+                    final categoryId =
+                        await ApiClient.redeemInvitation(pendingInvite);
+                    await InviteTokenStore.clear();
+                    if (mounted) {
+                      Navigator.pushReplacementNamed(
+                        context,
+                        '/category',
+                        arguments: {'categoryId': categoryId.toString()},
+                      );
+                    }
+                    return;
+                  } catch (e) {
+                    print('Error redeeming invite after email confirmation: $e');
+                    await InviteTokenStore.clear();
+                  }
+                }
 
                 // Navigate to home screen
                 if (mounted) {

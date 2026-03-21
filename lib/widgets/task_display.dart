@@ -312,7 +312,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Finished checkbox
+                        // Finished checkbox — only when tapping is enabled
+                        if (widget.onTap != null)
                         Builder(
                           builder: (context) {
                             return Container(
@@ -323,9 +324,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                               child: Checkbox(
                                 value: widget.task.finished,
                                 onChanged: (value) {
-                                  if (widget.onTap != null) {
-                                    widget.onTap!();
-                                  }
+                                  widget.onTap!();
                                 },
                                 materialTapTargetSize:
                                     MaterialTapTargetSize.shrinkWrap,
@@ -334,7 +333,8 @@ class _TaskDisplayState extends State<TaskDisplay> {
                             );
                           },
                         ),
-                        // Share control
+                        // Share control — only when sharing is enabled
+                        if (widget.onShareToggle != null)
                         Builder(
                           builder: (context) {
                             return Container(

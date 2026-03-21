@@ -11,6 +11,7 @@ import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/widgets/edit_category_dialog.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'package:meaning_to/dialogs/share_management_dialog.dart';
+import 'package:meaning_to/snag_pursuit_screen.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'dart:async';
@@ -87,9 +88,6 @@ class HomeScreenState extends State<HomeScreen> {
 
   // True when viewing a shared (read-only) category
   bool get _isReadOnly => _selectedCategory?.isShared ?? false;
-
-  // Task IDs selected for "Snag Selected" in shared-category list mode
-  Set<int> _selectedTaskIds = {};
 
   // Track if welcome dialog has been shown
   bool _welcomeDialogShown = false;
@@ -1042,7 +1040,8 @@ class HomeScreenState extends State<HomeScreen> {
     try {
       await supabase.from('Categories').delete().eq('id', category.id);
       if (mounted) await _loadCategories();
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('Error deleting category "${category.headline}": $e\n$st');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1050,6 +1049,24 @@ class HomeScreenState extends State<HomeScreen> {
             backgroundColor: Colors.red,
           ),
         );
+      }
+    }
+  }
+
+  Future<void> _showSnagPursuitScreen(Category category) async {
+    final result = await SnagPursuitScreen.push(
+      context,
+      sharedCategory: category,
+      allCategories: _categories,
+    );
+    if (result != null && mounted) {
+      await _loadCategories();
+      if (mounted) {
+        final match = _categories.firstWhere(
+          (c) => c.id == result.id,
+          orElse: () => result,
+        );
+        await _handleCategorySelection(match);
       }
     }
   }
@@ -1279,39 +1296,6 @@ class HomeScreenState extends State<HomeScreen> {
             ),
           )
         else ...[
-          // Snag controls for read-only, right-aligned just above first task
-          if (_isReadOnly) ...[
-            Builder(builder: (context) {
-              final allSelected = _selectedTaskIds.containsAll(tasks.map((t) => t.id));
-              final someSelected = !allSelected && _selectedTaskIds.isNotEmpty;
-              return Align(
-                alignment: Alignment.centerRight,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ElevatedButton(
-                      onPressed: _selectedTaskIds.isEmpty ? null : _snagSelected,
-                      child: const Text('Snag Selected'),
-                    ),
-                    Checkbox(
-                      tristate: true,
-                      value: allSelected ? true : (someSelected ? null : false),
-                      onChanged: (val) {
-                        setState(() {
-                          if (someSelected || val == false) {
-                            _selectedTaskIds = {};
-                          } else {
-                            _selectedTaskIds = tasks.map((t) => t.id).toSet();
-                          }
-                        });
-                      },
-                    ),
-                    const Text('All'),
-                  ],
-                ),
-              );
-            }),
-          ],
           ...displayedTasks.map(
             (task) => TaskDisplay(
               key: ValueKey(
@@ -1326,18 +1310,6 @@ class HomeScreenState extends State<HomeScreen> {
                   : (newSharedState) =>
                       _toggleTaskShareFromList(task, newSharedState),
               isCategoryPrivate: _selectedCategory?.isPrivate ?? false,
-              isSelected: _isReadOnly ? _selectedTaskIds.contains(task.id) : null,
-              onSelected: _isReadOnly
-                  ? (val) {
-                      setState(() {
-                        if (val == true) {
-                          _selectedTaskIds.add(task.id);
-                        } else {
-                          _selectedTaskIds.remove(task.id);
-                        }
-                      });
-                    }
-                  : null,
             ),
           ),
           if (_isListProgressiveLoading && _visibleTaskCount < tasks.length)
@@ -1361,14 +1333,16 @@ class HomeScreenState extends State<HomeScreen> {
   /// Shows a one-time welcome dialog when the user first sees a shared category.
   Future<void> _showShareWelcomeIfNeeded(Category category) async {
     if (!category.isShared) return;
+    final userId = AuthUtils.getCurrentUserId();
     final prefs = await SharedPreferences.getInstance();
-    final welcomed = prefs.getStringList('welcomed_shared_categories') ?? [];
+    final prefKey = 'welcomed_shared_$userId';
+    final welcomed = prefs.getStringList(prefKey) ?? [];
     final key = category.id.toString();
     if (welcomed.contains(key)) return;
 
     // Mark as welcomed before showing so a double-trigger doesn't double-show.
     welcomed.add(key);
-    await prefs.setStringList('welcomed_shared_categories', welcomed);
+    await prefs.setStringList(prefKey, welcomed);
 
     if (!mounted) return;
     final sharer = category.ownerName ?? 'Someone';
@@ -1424,38 +1398,11 @@ class HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _snagSelected() async {
-    if (_selectedTaskIds.isEmpty || _selectedCategory == null) return;
-
-    // Look for an owned category whose originalId matches the shared category's originalId
-    Category? defaultCategory;
-    final sharedOriginalId = _selectedCategory!.originalId;
-    if (sharedOriginalId != null) {
-      defaultCategory = _categories
-          .where((c) => !c.isShared && c.originalId == sharedOriginalId)
-          .firstOrNull;
-    }
-
-    await CategoryPickerDialog.show(
-      context,
-      title: 'Copy to which Pursuit?',
-      subtitle: 'Select one of your own Pursuits to copy the selected ${NamingUtils.tasksName(plural: true, capitalize: false)} into.',
-      defaultCategory: defaultCategory,
-      showCreateNew: true,
-      hideShared: true,
-      onCategorySelected: (category, {bool? shouldMove, bool? applyToAll}) {
-        unawaited(_copySelectedTasksTo(category));
-      },
-    );
-  }
-
-  /// Copies selected tasks into [target] category as new tasks owned by current user.
-  /// Pass [overrideTasks] to copy specific tasks instead of the checkbox selection.
+  /// Copies [overrideTasks] into [target] category as new tasks owned by current user.
   Future<void> _copySelectedTasksTo(Category target, {List<Task>? overrideTasks}) async {
     final userId = AuthUtils.getCurrentUserId();
 
-    final tasksToCopy = overrideTasks ??
-        _listModeTasks.where((t) => _selectedTaskIds.contains(t.id)).toList();
+    final tasksToCopy = overrideTasks ?? [];
     int copied = 0;
 
     for (final task in tasksToCopy) {
@@ -1478,9 +1425,6 @@ class HomeScreenState extends State<HomeScreen> {
     }
 
     if (mounted) {
-      setState(() {
-        _selectedTaskIds = {};
-      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1745,7 +1689,6 @@ class HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _selectedCategory = newValue;
-      _selectedTaskIds = {};
       _randomTask = null;
       if (_showTaskListMode) {
         _rebuildTaskListFromCache();
@@ -2556,6 +2499,8 @@ class HomeScreenState extends State<HomeScreen> {
                                               if (_selectedCategory != null) unawaited(_shareCategory(_selectedCategory!));
                                             case 'delete':
                                               if (_selectedCategory != null) _deleteCategory(_selectedCategory!);
+                                            case 'snag_all':
+                                              if (_selectedCategory != null) unawaited(_showSnagPursuitScreen(_selectedCategory!));
                                             case 'release':
                                               if (_selectedCategory != null) _releaseSharedCategory(_selectedCategory!);
                                           }
@@ -2596,6 +2541,15 @@ class HomeScreenState extends State<HomeScreen> {
                                                   'Delete ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
                                                   style: const TextStyle(color: Colors.red),
                                                 ),
+                                                contentPadding: EdgeInsets.zero,
+                                              ),
+                                            ),
+                                          if (_isReadOnly)
+                                            PopupMenuItem<String>(
+                                              value: 'snag_all',
+                                              child: ListTile(
+                                                leading: const Icon(Icons.library_add_outlined),
+                                                title: Text('Snag this ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
                                                 contentPadding: EdgeInsets.zero,
                                               ),
                                             ),

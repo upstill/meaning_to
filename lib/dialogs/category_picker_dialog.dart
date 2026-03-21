@@ -21,6 +21,8 @@ class CategoryPickerDialog extends StatefulWidget {
   final String? linkUrl; // Optional link URL for domain-based relevance scoring
   final bool showApplyToAllCheckbox; // Show "apply to all remaining" checkbox
   final bool hideShared; // Suppress the "Shared with you" section
+  final String? topButtonLabel; // Prominent first-item button label
+  final VoidCallback? topButtonOnPressed; // Action for the top button
 
   const CategoryPickerDialog({
     super.key,
@@ -36,6 +38,8 @@ class CategoryPickerDialog extends StatefulWidget {
     this.linkUrl,
     this.showApplyToAllCheckbox = false,
     this.hideShared = false,
+    this.topButtonLabel,
+    this.topButtonOnPressed,
   });
 
   static Future<void> show(
@@ -52,6 +56,8 @@ class CategoryPickerDialog extends StatefulWidget {
     String? linkUrl,
     bool showApplyToAllCheckbox = false,
     bool hideShared = false,
+    String? topButtonLabel,
+    VoidCallback? topButtonOnPressed,
   }) {
     return showDialog(
       context: context,
@@ -68,6 +74,8 @@ class CategoryPickerDialog extends StatefulWidget {
         linkUrl: linkUrl,
         showApplyToAllCheckbox: showApplyToAllCheckbox,
         hideShared: hideShared,
+        topButtonLabel: topButtonLabel,
+        topButtonOnPressed: topButtonOnPressed,
       ),
     );
   }
@@ -281,6 +289,19 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     return scores;
   }
 
+  /// Total list items available, ignoring the current search query.
+  /// Used to decide whether to show the search box and list section.
+  int get _baseListCount {
+    int count = _categories.where((c) {
+      if (widget.defaultCategory?.id == c.id) return false;
+      if (widget.excludeCategory?.id == c.id) return false;
+      if (_suggestedCategories.any((s) => s.id == c.id)) return false;
+      return true;
+    }).length;
+    if (!widget.hideShared) count += _sharedCategories.length;
+    return count;
+  }
+
   List<Category> get _filteredCategories {
     var filtered = _categories;
 
@@ -386,11 +407,61 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
       content: SizedBox(
         width: double.maxFinite,
-        height: 500,
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            // Top quick-pick row: smart button + "A New Pursuit" side by side
+            if (widget.topButtonLabel != null) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      widget.topButtonOnPressed?.call();
+                    },
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.green[100],
+                      foregroundColor: Colors.green[800],
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 16),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      widget.topButtonLabel!,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: _createNewCategory,
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.blue[100],
+                      foregroundColor: Colors.blue[800],
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 16),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      'A New ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
+            // Everything below the divider only when there are pursuits to offer
+            if (!_isLoading && _baseListCount > 0) ...[
+              const SizedBox(height: 10),
+              const Divider(height: 1),
+              const SizedBox(height: 10),
+            ],
+
             // Guidance text (if provided)
-            if (widget.subtitle != null) ...[
+            if (!_isLoading && _baseListCount > 0 && widget.subtitle != null) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Text(
@@ -406,8 +477,9 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
             ],
 
             // Combined default and suggested categories section
-            if (widget.defaultCategory != null ||
-                _suggestedCategories.isNotEmpty) ...[
+            if (!_isLoading && _baseListCount > 0 &&
+                (widget.defaultCategory != null ||
+                    _suggestedCategories.isNotEmpty)) ...[
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
@@ -539,7 +611,8 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
             ],
 
             // Current category display (if excluding one - for move/copy operations)
-            if (widget.excludeCategory != null) ...[
+            if (!_isLoading && _baseListCount > 0 &&
+                widget.excludeCategory != null) ...[
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
@@ -572,33 +645,37 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
               const SizedBox(height: 10),
             ],
 
-            // Search field
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText:
-                    'Search ${NamingUtils.categoriesName(plural: true)}...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+            // Search field — only when more than 4 choices are available
+            if (!_isLoading && _baseListCount > 4) ...[
+              TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText:
+                      'Search ${NamingUtils.categoriesName(plural: true)}...',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value;
+                  });
+                },
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
-            ),
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
+            ],
 
-            // Categories list
-            Expanded(
-              child: _buildCategoriesList(),
-            ),
+            // Categories list — only when there are choices to show
+            if (!_isLoading && _baseListCount > 0)
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: _buildCategoriesList(),
+              ),
 
             // "Apply to all remaining links" checkbox (show if enabled)
             if (widget.showApplyToAllCheckbox) ...[
@@ -620,8 +697,11 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
               ),
             ],
 
-            // Create new category option at the bottom (show if enabled)
-            if (widget.showCreateNew && !widget.showMoveAndCopy) ...[
+            // Create new category option at the bottom (show if enabled and
+            // not already shown in the top quick-pick row)
+            if (widget.showCreateNew &&
+                !widget.showMoveAndCopy &&
+                widget.topButtonLabel == null) ...[
               const SizedBox(height: 16),
               const Divider(height: 1),
               const SizedBox(height: 16),
