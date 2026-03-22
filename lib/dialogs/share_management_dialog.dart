@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:meaning_to/models/category.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:meaning_to/models/share_invitation.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
@@ -48,18 +50,28 @@ class _ShareManagementDialogState extends State<ShareManagementDialog> {
     }
   }
 
+  /// On mobile: opens the native Share sheet.
+  /// On web: copies to clipboard and shows a snackbar.
+  Future<void> _shareLink(String link, {String clipboardMessage = 'Invite link copied to clipboard'}) async {
+    if (kIsWeb) {
+      await Clipboard.setData(ClipboardData(text: link));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(clipboardMessage)),
+        );
+      }
+    } else {
+      await Share.share(link, subject: 'Join my Pursuit on ROUZ');
+    }
+  }
+
   Future<void> _createNew() async {
     setState(() => _creating = true);
     try {
       final token = await ApiClient.createShareInvitation(widget.category.id);
       final link = DeepLinkGenerator.generateInviteLink(token);
-      await Clipboard.setData(ClipboardData(text: link));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('New invite link copied to clipboard')),
-        );
-        await _load();
-      }
+      await _shareLink(link, clipboardMessage: 'New invite link copied to clipboard');
+      if (mounted) await _load();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -75,13 +87,8 @@ class _ShareManagementDialogState extends State<ShareManagementDialog> {
     try {
       await ApiClient.renewShareInvitation(inv.id);
       final link = DeepLinkGenerator.generateInviteLink(inv.id);
-      await Clipboard.setData(ClipboardData(text: link));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Link renewed and copied to clipboard')),
-        );
-        await _load();
-      }
+      await _shareLink(link, clipboardMessage: 'Link renewed and copied to clipboard');
+      if (mounted) await _load();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -104,12 +111,9 @@ class _ShareManagementDialogState extends State<ShareManagementDialog> {
     }
   }
 
-  void _copyLink(ShareInvitation inv) {
+  Future<void> _copyLink(ShareInvitation inv) async {
     final link = DeepLinkGenerator.generateInviteLink(inv.id);
-    Clipboard.setData(ClipboardData(text: link));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Invite link copied to clipboard')),
-    );
+    await _shareLink(link);
   }
 
   static String _formatDate(DateTime dt) {
