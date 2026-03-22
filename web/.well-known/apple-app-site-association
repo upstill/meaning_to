@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["7EYYC57N4S.me.meaningto.meaningto"],
+        "components": [
+          {
+            "/": "/join",
+            "comment": "Share invitation links"
+          }
+        ]
+      }
+    ]
+  }
+}

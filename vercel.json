@@ -6,6 +6,14 @@
   "github": {
     "silent": true
   },
+  "headers": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" }
+      ]
+    }
+  ],
   "rewrites": [
     { "source": "/join", "destination": "/index.html" },
     { "source": "/category/:path*", "destination": "/index.html" },
