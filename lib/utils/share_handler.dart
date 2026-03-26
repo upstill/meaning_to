@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:share_handler/share_handler.dart';
 import 'dart:async';
@@ -26,6 +27,9 @@ class ShareHandler {
     required GlobalKey<NavigatorState> navigatorKey,
   }) {
     _navigatorKey = navigatorKey;
+
+    // share_handler has no web implementation — skip entirely on web
+    if (kIsWeb) return;
 
     // Listen for shared content
     try {

@@ -412,44 +412,46 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
           children: [
             // Top quick-pick row: smart button + "A New Pursuit" side by side
             if (widget.topButtonLabel != null) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      widget.topButtonOnPressed?.call();
-                    },
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.green[100],
-                      foregroundColor: Colors.green[800],
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 16),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(
-                      widget.topButtonLabel!,
-                      style: const TextStyle(fontSize: 13),
-                    ),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    widget.topButtonOnPressed?.call();
+                  },
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.green[100],
+                    foregroundColor: Colors.green[800],
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 16),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: _createNewCategory,
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.blue[100],
-                      foregroundColor: Colors.blue[800],
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 16),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(
-                      'A New ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
-                      style: const TextStyle(fontSize: 13),
-                    ),
+                  child: Text(
+                    widget.topButtonLabel!,
+                    style: const TextStyle(fontSize: 15.6),
+                    textAlign: TextAlign.center,
                   ),
-                ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: _createNewCategory,
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.blue[100],
+                    foregroundColor: Colors.blue[800],
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 16),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'A New ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
+                    style: const TextStyle(fontSize: 15.6),
+                  ),
+                ),
               ),
             ],
 

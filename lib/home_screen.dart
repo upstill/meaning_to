@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:meaning_to/main.dart' show MyApp;
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
@@ -10,10 +11,9 @@ import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/widgets/edit_category_dialog.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
-import 'package:meaning_to/dialogs/share_management_dialog.dart';
+import 'package:meaning_to/my_shares_screen.dart';
+import 'package:meaning_to/dialogs/share_pursuit_dialog.dart';
 import 'package:meaning_to/snag_pursuit_screen.dart';
-import 'package:meaning_to/utils/deep_link_generator.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'dart:async';
 
 import 'package:meaning_to/utils/naming.dart';
@@ -25,6 +25,13 @@ import 'package:flutter_html/flutter_html.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 enum HomeTaskSortOption { alphabetical, priority, age }
+
+// Assert-based debug check works correctly on all platforms including Flutter web.
+bool _isDebugMode() {
+  var debug = false;
+  assert(() { debug = true; return true; }());
+  return debug;
+}
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
@@ -157,8 +164,16 @@ class HomeScreenState extends State<HomeScreen> {
             final value = await showMenu<String>(
               context: context,
               position: position,
-              items: const [
-                PopupMenuItem<String>(
+              items: [
+                const PopupMenuItem<String>(
+                  value: 'my_shares',
+                  child: ListTile(
+                    leading: Icon(Icons.people_alt_outlined),
+                    title: Text('My Shares'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuItem<String>(
                   value: 'logout',
                   child: ListTile(
                     leading: Icon(Icons.logout),
@@ -166,7 +181,7 @@ class HomeScreenState extends State<HomeScreen> {
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
-                PopupMenuItem<String>(
+                const PopupMenuItem<String>(
                   value: 'delete',
                   child: ListTile(
                     leading: Icon(Icons.delete_forever, color: Colors.red),
@@ -175,10 +190,29 @@ class HomeScreenState extends State<HomeScreen> {
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
+                if (_isDebugMode())
+                  const PopupMenuItem<String>(
+                    value: 'take_intent',
+                    child: ListTile(
+                      leading: Icon(Icons.link, color: Colors.orange),
+                      title: Text('Take Intent',
+                          style: TextStyle(color: Colors.orange)),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
               ],
             );
+            if (value == 'my_shares') {
+              await MySharesScreen.show(
+                context,
+                _categories,
+                (cat) async { await _handleCategorySelection(cat); },
+                onRefresh: _loadCategories,
+              );
+            }
             if (value == 'logout') await _handleLogout();
             if (value == 'delete') await _handleDeleteAccount();
+            if (value == 'take_intent') await _showTakeIntentDialog();
           },
         ),
       ),
@@ -547,6 +581,64 @@ class HomeScreenState extends State<HomeScreen> {
         );
       }
     }
+  }
+
+  Future<void> _showTakeIntentDialog() async {
+    final controller = TextEditingController();
+    String? error;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Take Intent'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Paste a link to process it as an incoming intent.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'https://...',
+                  border: const OutlineInputBorder(),
+                  errorText: error,
+                ),
+                onChanged: (_) {
+                  if (error != null) setDialogState(() => error = null);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final text = controller.text.trim();
+                final uri = Uri.tryParse(text);
+                if (uri == null || !uri.hasScheme) {
+                  setDialogState(() => error = 'Enter a valid URL');
+                  return;
+                }
+                Navigator.of(ctx).pop();
+                MyApp.handleDeepLink?.call(uri);
+              },
+              child: const Text('Go'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    controller.dispose();
   }
 
   /// Debug function to fix raw URLs in task links
@@ -1072,32 +1164,9 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _releaseSharedCategory(Category category) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Release Pursuit'),
-        content: Text(
-          'Remove "${category.headline}" from your shared Pursuits? '
-          'You will no longer be able to see it unless you are invited again.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Release'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
     try {
-      await ApiClient.releaseSharedCategory(category.id);
+      await ApiClient.setSharedCategoryAvailable(category.id, false);
+      category.isAvailable = false;
       if (mounted) await _loadCategories();
     } catch (e) {
       if (mounted) {
@@ -1367,7 +1436,7 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _shareCategory(Category category) async {
-    await ShareManagementDialog.show(context, category);
+    await SharePursuitDialog.show(context, category);
   }
 
   /// Opens CategoryPickerDialog so the user can pick a destination pursuit,
@@ -2587,13 +2656,27 @@ class HomeScreenState extends State<HomeScreen> {
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Text(cat.headline, style: headlineStyle),
-                                                Text(
-                                                  'from ${cat.ownerName}',
-                                                  style: TextStyle(
-                                                    fontSize: headlineFontSize * 0.7,
-                                                    fontStyle: FontStyle.italic,
-                                                    color: Color(0xFF1A237E),
-                                                  ),
+                                                Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      'from ${cat.ownerName}',
+                                                      style: TextStyle(
+                                                        fontSize: headlineFontSize * 0.7,
+                                                        fontStyle: FontStyle.italic,
+                                                        color: Color(0xFF1A237E),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    IconButton(
+                                                      onPressed: () => unawaited(_showSnagPursuitScreen(cat)),
+                                                      icon: const Icon(Icons.copy, size: 22),
+                                                      tooltip: 'Copy to Owned Pursuit',
+                                                      color: Colors.green[800],
+                                                      visualDensity: VisualDensity.compact,
+                                                      padding: EdgeInsets.zero,
+                                                    ),
+                                                  ],
                                                 ),
                                               ],
                                             );
@@ -2614,6 +2697,7 @@ class HomeScreenState extends State<HomeScreen> {
                                               category));
                                         },
                                         itemBuilder: (context) => _categories
+                                            .where((c) => !c.isShared || c.isAvailable)
                                             .map(
                                               (category) =>
                                                   PopupMenuItem<Category>(

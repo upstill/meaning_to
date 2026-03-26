@@ -8,8 +8,9 @@ class DeepLinkGenerator {
   /// Custom scheme for mobile deep links
   static const String _customScheme = 'meaningto';
 
-  /// Debug port for local development - can be changed as needed
-  static int _debugPort = 8080;
+  /// Debug port for local development - override with --dart-define=DEBUG_PORT=xxxx
+  static int _debugPort =
+      const int.fromEnvironment('DEBUG_PORT', defaultValue: 8080);
 
   /// Set the debug port for local development
   static void setDebugPort(int port) {
@@ -42,7 +43,8 @@ class DeepLinkGenerator {
   /// Generate a share-invitation link for the given token UUID.
   /// Always returns an HTTPS URL so it is clickable in email, SMS, etc.
   static String generateInviteLink(String token) {
-    return '$_webBaseUrl/join?invite=$token';
+    final base = kDebugMode ? 'http://localhost:$_debugPort' : _webBaseUrl;
+    return '$base/join?invite=$token';
   }
 
   /// Convert a production URL to a debug URL for local development

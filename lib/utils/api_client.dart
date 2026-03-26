@@ -2,6 +2,7 @@ import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/share_invitation.dart';
+import 'package:meaning_to/models/share_subscriber.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiClient {
@@ -296,7 +297,7 @@ class ApiClient {
         try {
           final sharedRows = await _supabase
               .from('shared_categories')
-              .select('category_id, owner_name, Categories(*)')
+              .select('category_id, owner_name, available, Categories(*)')
               .eq('user_id', userId);
 
           final sharedCategories = (sharedRows as List).map((row) {
@@ -305,6 +306,7 @@ class ApiClient {
             return cat.copyWithShared(
               isShared: true,
               ownerName: row['owner_name'] as String,
+              isAvailable: row['available'] as bool? ?? true,
             );
           }).toList();
 
@@ -588,12 +590,17 @@ class ApiClient {
   /// Enforces a 7-day expiry regardless of the DB function default.
   static Future<String> createShareInvitation(int categoryId) async {
     try {
+      // One link per category: remove any existing before creating.
+      await _supabase
+          .from('share_invitations')
+          .delete()
+          .eq('category_id', categoryId);
       final response = await _supabase.rpc(
         'create_share_invitation',
         params: {'p_category_id': categoryId},
       );
       final token = response as String;
-      // Enforce 7-day expiry on the client side (DB default may differ).
+      // Enforce 7-day expiry.
       await _supabase.from('share_invitations').update({
         'expires_at':
             DateTime.now().add(const Duration(days: 7)).toUtc().toIso8601String(),
@@ -672,6 +679,118 @@ class ApiClient {
           .eq('category_id', categoryId);
     } catch (e) {
       print('Error releasing shared category: $e');
+      rethrow;
+    }
+  }
+
+  /// Toggles whether a shared category subscription appears on the home screen.
+  static Future<void> setSharedCategoryAvailable(
+      int categoryId, bool available) async {
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+      await _supabase
+          .from('shared_categories')
+          .update({'available': available})
+          .eq('category_id', categoryId)
+          .eq('user_id', userId);
+    } catch (e) {
+      print('Error updating shared category availability: $e');
+      rethrow;
+    }
+  }
+
+  // ── Open To All sharing ────────────────────────────────────────────────────
+
+  /// Toggles the open_to_all flag on an invitation.
+  /// When enabling, clears expires_at; when disabling, sets a fresh 7-day expiry.
+  static Future<void> setInvitationOpenToAll(
+      String tokenId, bool openToAll) async {
+    try {
+      await _supabase.from('share_invitations').update({
+        'open_to_all': openToAll,
+        'expires_at': openToAll
+            ? null
+            : DateTime.now()
+                .add(const Duration(days: 7))
+                .toUtc()
+                .toIso8601String(),
+      }).eq('id', tokenId);
+    } catch (e) {
+      print('Error updating open_to_all: $e');
+      rethrow;
+    }
+  }
+
+  /// Returns all subscribers for [categoryId] (owner only).
+  static Future<List<ShareSubscriber>> getCategorySubscribers(
+      int categoryId) async {
+    try {
+      final response = await _supabase.rpc(
+        'get_category_subscribers',
+        params: {'p_category_id': categoryId},
+      );
+      return (response as List)
+          .map((r) => ShareSubscriber.fromJson(r as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      print('Error getting category subscribers: $e');
+      rethrow;
+    }
+  }
+
+  /// Revokes a subscriber's access to [categoryId].
+  static Future<void> revokeSubscriber(int categoryId, String userId) async {
+    try {
+      await _supabase.rpc(
+        'revoke_subscriber',
+        params: {'p_category_id': categoryId, 'p_user_id': userId},
+      );
+    } catch (e) {
+      print('Error revoking subscriber: $e');
+      rethrow;
+    }
+  }
+
+  /// Returns a summary of categories the current user is sharing out.
+  /// Each map has: category_id (int), open_to_all (bool), subscriber_count (int).
+  static Future<List<Map<String, dynamic>>> getSharedOutSummary() async {
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+      // Find categories owned by the user that have at least one invitation
+      final invRows = await _supabase
+          .from('share_invitations')
+          .select('category_id, open_to_all')
+          .eq('created_by', userId);
+
+      // Group by category_id; prefer open_to_all=true if any row has it
+      final Map<int, bool> byCategory = {};
+      for (final row in invRows as List) {
+        final catId = row['category_id'] as int;
+        final isOpen = row['open_to_all'] as bool? ?? false;
+        byCategory[catId] = (byCategory[catId] ?? false) || isOpen;
+      }
+
+      if (byCategory.isEmpty) return [];
+
+      // Count subscribers per category
+      final subRows = await _supabase
+          .from('shared_categories')
+          .select('category_id')
+          .inFilter('category_id', byCategory.keys.toList());
+
+      final Map<int, int> subCounts = {};
+      for (final row in subRows as List) {
+        final catId = row['category_id'] as int;
+        subCounts[catId] = (subCounts[catId] ?? 0) + 1;
+      }
+
+      return byCategory.entries.map((e) => {
+        'category_id': e.key,
+        'open_to_all': e.value,
+        'subscriber_count': subCounts[e.key] ?? 0,
+      }).toList();
+    } catch (e) {
+      print('Error getting shared-out summary: $e');
       rethrow;
     }
   }

@@ -5,6 +5,7 @@ class ShareInvitation {
   final DateTime? expiresAt;
   final DateTime? usedAt;
   final String? recipientEmail;
+  final bool openToAll;
 
   const ShareInvitation({
     required this.id,
@@ -13,6 +14,7 @@ class ShareInvitation {
     this.expiresAt,
     this.usedAt,
     this.recipientEmail,
+    this.openToAll = false,
   });
 
   bool get isExpired =>
@@ -20,7 +22,7 @@ class ShareInvitation {
 
   bool get isUsed => usedAt != null;
 
-  bool get isActive => !isExpired && !isUsed;
+  bool get isActive => openToAll || (!isExpired && !isUsed);
 
   factory ShareInvitation.fromJson(Map<String, dynamic> json) {
     return ShareInvitation(
@@ -34,6 +36,7 @@ class ShareInvitation {
           ? DateTime.parse(json['used_at'] as String)
           : null,
       recipientEmail: json['recipient_email'] as String?,
+      openToAll: json['open_to_all'] as bool? ?? false,
     );
   }
 }

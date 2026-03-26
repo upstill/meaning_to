@@ -235,6 +235,9 @@ class MyApp extends StatefulWidget {
   static bool isStateRestored =
       false; // Flag to track if state restoration is complete
 
+  /// Debug hook: set by _MyAppState so debug tools can inject a URI directly.
+  static Future<void> Function(Uri)? handleDeepLink;
+
   const MyApp({super.key});
 
   @override
@@ -318,6 +321,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    MyApp.handleDeepLink = _handleDeepLink;
     _initDeepLinkListener();
     _shareHandler.initialize(
       onIntentReceived: _logIntent,

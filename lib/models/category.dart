@@ -13,6 +13,7 @@ class Category {
   bool tasksArePrivate;
   final bool isShared;       // true if from shared_categories (not a DB column)
   final String? ownerName;   // display name of the sharer, for shared categories only
+  bool isAvailable;          // false hides this shared category from the home screen
 
   Category({
     required this.id,
@@ -29,6 +30,7 @@ class Category {
     this.tasksArePrivate = true,
     this.isShared = false,
     this.ownerName,
+    this.isAvailable = true,
   });
 
   @override
@@ -80,7 +82,11 @@ class Category {
     };
   }
 
-  Category copyWithShared({required bool isShared, required String ownerName}) {
+  Category copyWithShared({
+    required bool isShared,
+    required String ownerName,
+    bool isAvailable = true,
+  }) {
     return Category(
       id: id,
       headline: headline,
@@ -96,6 +102,7 @@ class Category {
       tasksArePrivate: tasksArePrivate,
       isShared: isShared,
       ownerName: ownerName,
+      isAvailable: isAvailable,
     );
   }
 }
