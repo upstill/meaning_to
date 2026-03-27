@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/share_invitation.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
 import 'package:meaning_to/edit_share_tasks_screen.dart';
@@ -27,6 +28,8 @@ class SharePursuitDialog extends StatefulWidget {
 
 class _SharePursuitDialogState extends State<SharePursuitDialog> {
   ShareInvitation? _invitation;
+  int _sharedTaskCount = 0;
+  int _totalTaskCount = 0;
   bool _loading = true;
   bool _busy = false;
 
@@ -39,10 +42,16 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final rows = await ApiClient.getShareInvitations(widget.category.id);
+      final userId = AuthUtils.getCurrentUserId();
+      final invFuture = ApiClient.getShareInvitations(widget.category.id);
+      final taskFuture = ApiClient.getTasksByCategoryAndUser(widget.category.id, userId);
+      final rows = await invFuture;
+      final tasks = await taskFuture;
       if (mounted) {
         setState(() {
           _invitation = rows.isNotEmpty ? rows.first : null;
+          _totalTaskCount = tasks.length;
+          _sharedTaskCount = tasks.where((t) => t.shared).length;
           _loading = false;
         });
       }
@@ -123,6 +132,14 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
     await _shareLink(DeepLinkGenerator.generateInviteLink(inv.id));
   }
 
+  Future<void> _shareAndClose() async {
+    final inv = _invitation;
+    if (inv == null) return;
+    final link = DeepLinkGenerator.generateInviteLink(inv.id);
+    if (mounted) Navigator.of(context).pop();
+    await _shareLink(link);
+  }
+
   Future<void> _setOpenToAll(bool openToAll) async {
     final inv = _invitation;
     if (inv == null) return;
@@ -153,7 +170,7 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
     final inv = _invitation;
     return AlertDialog(
       title: Text(
-        widget.category.headline,
+        "Share '${widget.category.headline}'",
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
       content: SizedBox(
@@ -169,7 +186,9 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('To share this ${NamingUtils.categoriesName(capitalize: true, plural: false)}**, copy the link below and send it to anyone for them to click on. To review which ${NamingUtils.tasksName(capitalize: true, plural: true)} will be shared, click the "Edit Tasks" button.', style: const TextStyle(fontSize: 13)),
+                  Text('To share this ${NamingUtils.categoriesName(capitalize: true, plural: false)}**, click the Share button. That will put a link on your Clipboard which you can paste into a message for them to click on.', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 7),
+                  Text('To review which ${NamingUtils.tasksName(capitalize: true, plural: true)} will be shared, click the "Select ${NamingUtils.tasksName(capitalize: true, plural: true)} to share." button.', style: const TextStyle(fontSize: 13)),
                   const SizedBox(height: 7),
                   Text('Normally, the link is only good for 7 days, and it expires when redeemed. If you want it to be valid forever, to anyone with the link, check "Open To All".', style: const TextStyle(fontSize: 13)),
                   const SizedBox(height: 7),
@@ -188,7 +207,7 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
         ),
         if (!_loading)
           ElevatedButton.icon(
-            onPressed: _busy ? null : (inv == null ? _create : _copyLink),
+            onPressed: _busy ? null : (inv == null ? _create : _shareAndClose),
             icon: _busy
                 ? const SizedBox(
                     width: 14,
@@ -258,23 +277,7 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                 const SizedBox(width: 8),
                 Text(expiryText,
                     style: TextStyle(fontSize: 12, color: expiryColor)),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: () async {
-                    await EditShareTasksScreen.push(context, category: widget.category);
-                    if (mounted) _load();
-                  },
-                  icon: const Icon(Icons.edit_outlined, size: 14),
-                  label: Text('Select ${NamingUtils.tasksName(capitalize: true, plural: true)} to share.', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
+                const SizedBox(width: 8),
                 Checkbox(
                   value: inv.openToAll,
                   onChanged: _busy ? null : (v) => _setOpenToAll(v ?? false),
@@ -282,19 +285,38 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                   visualDensity: VisualDensity.compact,
                 ),
                 const Text('Open To All', style: TextStyle(fontSize: 12)),
-                const Spacer(),
-                if (!inv.isActive)
+                if (!inv.isActive) ...[
+                  const Spacer(),
                   TextButton.icon(
                     onPressed: _busy ? null : _renew,
                     icon: const Icon(Icons.refresh, size: 14),
-                    label:
-                        const Text('Renew', style: TextStyle(fontSize: 12)),
+                    label: const Text('Renew', style: TextStyle(fontSize: 12)),
                     style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
                     ),
                   ),
+                ],
+              ],
+            ),
+            Row(
+              children: [
+                const Spacer(),
+                Text(
+                  '$_sharedTaskCount ${NamingUtils.tasksName(capitalize: false, plural: _sharedTaskCount != 1)} sharable of $_totalTaskCount',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                IconButton(
+                  onPressed: () async {
+                    await EditShareTasksScreen.push(context, category: widget.category);
+                    if (mounted) _load();
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  tooltip: 'Select ${NamingUtils.tasksName(capitalize: true, plural: true)} to share',
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                ),
               ],
             ),
           ],

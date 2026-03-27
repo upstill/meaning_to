@@ -28,7 +28,7 @@ class _HelpScreenState extends State<HelpScreen> {
           const Padding(
             padding: EdgeInsets.only(bottom: 24.0),
             child: Text(
-              'Welcome to I\'ve Been Meaning To!',
+              'Welcome to ROUZME!',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -42,14 +42,14 @@ class _HelpScreenState extends State<HelpScreen> {
             index: 0,
             title: 'What Is This Thing?',
             content: '''
-ROUZ! moves you to actually do stuff. Use ROUZ! to helps you organize and track the ideas, goals, and interests you've been meaning to pursue.
+ROUZME! moves you to actually do stuff. Use ROUZME! to help you organize and track the ideas, goals, and interests you've been meaning to pursue.
 
 Think of it as a way to keep track of all those things you say "I've been meaning to..." about - books you want to read, movies to watch, places to visit, projects to start, or anything else that catches your interest.
 
 The app helps you:
 • Keep your ideas organized, with notes reminding you where they came from and/or why they're here
 • Link your ideas to external resources like movies, books, music, and more
-• Get random suggestions when you're ready to act
+• Get a random suggestion when you're ready to act
 • Track what you've accomplished
 • Get ideas from others and share yours
 ''',

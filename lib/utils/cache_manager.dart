@@ -90,15 +90,18 @@ class CacheManager with PerformanceMonitoring {
     }
 
     try {
-      // Use targeted API call to get only tasks for this category
-      // For shared categories, don't filter by owner_id (RLS grants read access),
-      // but only include tasks the owner has marked visible (shared == true).
-      final tasks = _currentCategory!.isShared
-          ? (await ApiClient.getTasksByCategory(_currentCategory!.id))
+      // If the current user owns this category, always load all their tasks
+      // (regardless of the isShared flag, which may be stale or incorrect).
+      // Only use the subscriber path — filtered to shared=true — when the
+      // category is genuinely owned by someone else.
+      final isOwnedByCurrentUser =
+          _currentCategory!.ownerId == _currentUserId;
+      final tasks = isOwnedByCurrentUser
+          ? await ApiClient.getTasksByCategoryAndUser(
+              _currentCategory!.id, _currentUserId!)
+          : (await ApiClient.getTasksByCategory(_currentCategory!.id))
               .where((t) => t.shared)
-              .toList()
-          : await ApiClient.getTasksByCategoryAndUser(
-              _currentCategory!.id, _currentUserId!);
+              .toList();
 
       _currentTasks = tasks;
 
@@ -394,10 +397,13 @@ class CacheManager with PerformanceMonitoring {
     // Evaluate tasks for suggestibility (removed verbose debug output)
 
     // Find unfinished tasks that are suggestible.
-    // Only include tasks owned by the current user or marked visible (shared == true).
+    // Include tasks owned by the current user OR marked visible (shared == true).
+    // Owned tasks are always eligible regardless of their shared flag.
     final unfinishedTasks = _currentTasks!.where((task) =>
         task.isSuggestible &&
         (task.ownerId == _currentUserId || task.shared)).toList();
+    // Note: getTasksByCategoryAndUser already filters by owner_id, so for owned
+    // categories all tasks in _currentTasks are already owned by this user.
 
     // Found ${unfinishedTasks.length} available tasks
 

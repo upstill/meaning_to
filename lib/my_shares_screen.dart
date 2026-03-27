@@ -248,7 +248,7 @@ class _MySharesScreenState extends State<MySharesScreen> {
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
                   ),
-                  Text('Include in ${NamingUtils.categoriesName(capitalize: true, plural: true)} Menu', style: const TextStyle(fontSize: 12)),
+                  Text('Include in my list of ${NamingUtils.categoriesName(capitalize: true, plural: true)}', style: const TextStyle(fontSize: 12)),
                   const Spacer(),
                   TextButton.icon(
                     onPressed: () => _deleteSubscription(category),

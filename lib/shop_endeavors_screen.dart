@@ -27,36 +27,9 @@ class ShopEndeavorsScreen extends StatefulWidget {
   /// This is a lightweight check used by callers to pre-toggle UI
   static Future<bool> hasAnyPublicSuggestions() async {
     try {
-      // Check if there are any public categories with tasks
-      final response = await supabase
-          .from('Categories')
-          .select('id, private')
-          .eq('private', false)
-          .limit(1);
-
-      if (response.isNotEmpty) {
-        // Check if any of these public categories have tasks
-        final categoryIds = response.map((json) => json['id'] as int).toList();
-        final tasksResponse = await supabase
-            .from('Tasks')
-            .select('id, original_id')
-            .inFilter('category_id', categoryIds)
-            .limit(10); // Get more tasks to check filtering
-
-        if (tasksResponse.isNotEmpty) {
-          // Filter to only show original tasks (where id equals original_id)
-          final originalTasks = tasksResponse.where((task) {
-            final taskId = task['id'] as int;
-            final originalId = task['original_id'] as int?;
-            return originalId != null && taskId == originalId;
-          }).toList();
-
-          return originalTasks.isNotEmpty;
-        }
-      }
-      return false;
+      final response = await supabase.rpc('get_discoverable_categories');
+      return (response as List).isNotEmpty;
     } catch (e) {
-      // On error, return true to avoid disabling UX unnecessarily
       print('Error checking for public suggestions: $e');
       return true;
     }
@@ -215,34 +188,16 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
       print('ShopEndeavorsScreen: Using API client to get all categories');
 
       try {
-        // Get all categories from Supabase directly
-        print(
-            'ShopEndeavorsScreen: About to query Supabase for all categories');
-        print(
-            'ShopEndeavorsScreen: Supabase client auth state: ${supabase.auth.currentUser?.id ?? 'no user'}');
+        // Fetch all discoverable categories via SECURITY DEFINER RPC
+        // (bypasses RLS so users can see open-to-all shares from other owners)
+        final rawCategories = await supabase.rpc('get_discoverable_categories');
 
-        // Try to get all categories (this will be blocked by RLS if policies are restrictive)
-        final allCategories = await supabase.from('Categories').select('*');
-        print(
-            'ShopEndeavorsScreen: Raw API returned ${allCategories.length} categories');
-
-        // Let's also try a simple query to see if we can access the table at all
-        try {
-          final testResult =
-              await supabase.from('Categories').select('id').limit(1);
-          print(
-              'ShopEndeavorsScreen: Test query result: ${testResult.length} rows');
-        } catch (e) {
-          print('ShopEndeavorsScreen: Test query failed: $e');
-        }
+        print('ShopEndeavorsScreen: Fetched ${(rawCategories as List).length} discoverable categories');
 
         // Convert to Category objects
-        final categories = (allCategories as List)
+        final categories = (rawCategories as List)
             .map((json) => Category.fromJson(json as Map<String, dynamic>))
             .toList();
-
-        print(
-            'ShopEndeavorsScreen: Converted to ${categories.length} Category objects');
 
         // Get user's existing categories to check for original_id conflicts
         final userCategories = await ApiClient.getCategories();
@@ -251,28 +206,16 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
             .map((cat) => cat.originalId!)
             .toSet();
 
-        // Filter to only show public categories that don't belong to the current user
-        // AND don't have an original_id that the user already has
+        // Exclude categories owned by the user or whose type the user already has
         final publicCategories = categories.where((category) {
-          final isPublic = !category.isPrivate;
           final isNotOwnedByUser = category.ownerId != userId;
           final userDoesntHaveOriginalId = category.originalId == null ||
               !userOriginalIds.contains(category.originalId);
-
-          print(
-              'ShopEndeavorsScreen: Category ${category.headline} - isPublic: $isPublic, isNotOwnedByUser: $isNotOwnedByUser, userDoesntHaveOriginalId: $userDoesntHaveOriginalId (owner: ${category.ownerId}, user: $userId, original_id: ${category.originalId})');
-
-          return isPublic &&
-              (isGuest || isNotOwnedByUser) &&
-              userDoesntHaveOriginalId;
+          return (isGuest || isNotOwnedByUser) && userDoesntHaveOriginalId;
         }).toList();
 
         print(
-            'ShopEndeavorsScreen: Filtered to ${publicCategories.length} public categories');
-        for (final category in publicCategories) {
-          print(
-              'ShopEndeavorsScreen: Public category: ${category.headline} (owner: ${category.ownerId})');
-        }
+            'ShopEndeavorsScreen: Filtered to ${publicCategories.length} available categories');
 
         // Group categories by original_id
         final Map<String, List<Category>> groupedCategories = {};
@@ -572,9 +515,9 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
             .map((json) => Task.fromJson(json as Map<String, dynamic>))
             .toList();
 
-        // Filter to only show original tasks (where id equals original_id)
+        // Only show tasks the owner has marked as visible to subscribers
         final List<Task> allOriginalTasks =
-            allTasks.where((task) => task.id == task.originalId).toList();
+            allTasks.where((task) => task.shared).toList();
 
         print(
             'ShopEndeavorsScreen: Original tasks: ${allOriginalTasks.length}');

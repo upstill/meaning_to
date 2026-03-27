@@ -1164,6 +1164,29 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _releaseSharedCategory(Category category) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("Release Share of '${category.headline}'"),
+        content: Text(
+            'Choosing Release will remove this ${NamingUtils.categoriesName(capitalize: true, plural: false)} from my list. It can be restored using the "My Shares" item on the main menu.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Release'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     try {
       await ApiClient.setSharedCategoryAvailable(category.id, false);
       category.isAvailable = false;
@@ -1672,12 +1695,13 @@ class HomeScreenState extends State<HomeScreen> {
           if (_selectedCategory != null) {
             final matches = categories.where((c) => c.id == _selectedCategory!.id);
             final updatedCategory = matches.isEmpty ? null : matches.first;
-            if (updatedCategory != null) {
+            if (updatedCategory != null &&
+                (!updatedCategory.isShared || updatedCategory.isAvailable)) {
               setState(() {
                 _selectedCategory = updatedCategory;
               });
             } else {
-              // Selected category was removed (deleted or shared subscription released).
+              // Selected category was removed, deleted, or released.
               setState(() {
                 _selectedCategory = null;
                 _randomTask = null;
