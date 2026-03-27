@@ -2,45 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/naming.dart';
-import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'package:meaning_to/widgets/task_display.dart';
-import 'package:meaning_to/home_screen.dart' show HomeTaskSortOption;
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:meaning_to/home_screen.dart' show HomeTaskSortOption, HomeScreen;
 
-class SnagPursuitScreen extends StatefulWidget {
-  final Category sharedCategory;
-  final List<Category> allCategories;
+class EditShareTasksScreen extends StatefulWidget {
+  final Category category;
 
-  const SnagPursuitScreen({
-    super.key,
-    required this.sharedCategory,
-    required this.allCategories,
-  });
+  const EditShareTasksScreen({super.key, required this.category});
 
-  static Future<Category?> push(
-    BuildContext context, {
-    required Category sharedCategory,
-    required List<Category> allCategories,
-  }) {
-    return Navigator.of(context).push<Category>(
+  static Future<void> push(BuildContext context, {required Category category}) {
+    return Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SnagPursuitScreen(
-          sharedCategory: sharedCategory,
-          allCategories: allCategories,
-        ),
+        builder: (_) => EditShareTasksScreen(category: category),
       ),
     );
   }
 
   @override
-  State<SnagPursuitScreen> createState() => _SnagPursuitScreenState();
+  State<EditShareTasksScreen> createState() => _EditShareTasksScreenState();
 }
 
-class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
+class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
   List<Task> _allTasks = [];
   List<Task> _displayedTasks = [];
   bool _loading = true;
+  bool _saving = false;
   String? _error;
   Set<int> _selectedIds = {};
   HomeTaskSortOption _sortOption = HomeTaskSortOption.priority;
@@ -66,34 +54,13 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
       _error = null;
     });
     try {
-      // Find user's existing owned category cloned from the same original.
-      final sharedOriginalId =
-          widget.sharedCategory.originalId ?? widget.sharedCategory.id;
-      final cloneCategory = widget.allCategories
-          .where((c) => !c.isShared && c.originalId == sharedOriginalId)
-          .firstOrNull;
-
-      // Load shared tasks, and (if clone exists) existing owned tasks in parallel.
-      final results = await Future.wait([
-        ApiClient.getTasksByCategory(widget.sharedCategory.id)
-            .then((tasks) => tasks.where((t) => t.shared).toList()),
-        if (cloneCategory != null)
-          ApiClient.getTasksByCategory(cloneCategory.id),
-      ]);
-
-      final tasks = results[0];
-      Set<String> existingHeadlines = {};
-      if (cloneCategory != null && results.length > 1) {
-        existingHeadlines =
-            results[1].map((t) => t.headline.trim().toLowerCase()).toSet();
-      }
-
+      final userId = AuthUtils.getCurrentUserId();
+      final tasks = await ApiClient.getTasksByCategoryAndUser(
+          widget.category.id, userId);
       if (mounted) {
         _allTasks = tasks;
-        // Pre-select all tasks except those redundant with the existing clone.
         _selectedIds = tasks
-            .where((t) =>
-                !existingHeadlines.contains(t.headline.trim().toLowerCase()))
+            .where((t) => t.shared)
             .map((t) => t.id)
             .toSet();
         _applyFilter();
@@ -127,8 +94,7 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
       case HomeTaskSortOption.alphabetical:
         tasks.sort((a, b) => a.headline.compareTo(b.headline));
       case HomeTaskSortOption.age:
-        tasks.sort((a, b) =>
-            (a.createdAt ?? DateTime(0)).compareTo(b.createdAt ?? DateTime(0)));
+        tasks.sort((a, b) => a.createdAt.compareTo(b.createdAt));
       case HomeTaskSortOption.priority:
         tasks.sort((a, b) {
           final aAt = a.suggestibleAt;
@@ -158,156 +124,35 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
     });
   }
 
-  Future<void> _snagSelected() async {
-    if (_selectedIds.isEmpty) return;
-    final selected =
-        _allTasks.where((t) => _selectedIds.contains(t.id)).toList();
-
-    // Look for an owned category that is a clone of the same original
-    final sharedOriginalId =
-        widget.sharedCategory.originalId ?? widget.sharedCategory.id;
-    final cloneCategory = widget.allCategories
-        .where((c) => !c.isShared && c.originalId == sharedOriginalId)
-        .firstOrNull;
-
-    final topLabel = cloneCategory != null
-        ? "My existing '${cloneCategory.headline}'"
-        : "A '${widget.sharedCategory.headline}' pursuit of my own";
-
-    if (!mounted) return;
-    await CategoryPickerDialog.show(
-      context,
-      title:
-          'Copy to which ${NamingUtils.categoriesName(capitalize: true, plural: false)}?',
-      subtitle:
-          '...or pick another ${NamingUtils.categoriesName(plural: false, capitalize: true)} '
-          'to take these ${NamingUtils.tasksName(plural: true, capitalize: true)}.',
-      showCreateNew: true,
-      hideShared: true,
-      excludeCategory: cloneCategory,
-      topButtonLabel: topLabel,
-      topButtonOnPressed: () {
-        if (cloneCategory != null) {
-          _copyTasksTo(selected, cloneCategory);
-        } else {
-          _createCloneAndCopyTasksTo(selected);
-        }
-      },
-      onCategorySelected: (target, {bool? shouldMove, bool? applyToAll}) {
-        _copyTasksTo(selected, target);
-      },
-    );
-  }
-
-  Future<void> _createCloneAndCopyTasksTo(List<Task> tasks) async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) return;
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    int changed = 0;
     try {
-      final newCategory = await ApiClient.createCategory({
-        'headline': widget.sharedCategory.headline,
-        'owner_id': userId,
-        'original_id':
-            widget.sharedCategory.originalId ?? widget.sharedCategory.id,
-        if (widget.sharedCategory.invitation != null)
-          'invitation': widget.sharedCategory.invitation,
-      });
-      await _copyTasksTo(tasks, newCategory);
+      for (final task in _allTasks) {
+        final nowShared = _selectedIds.contains(task.id);
+        if (task.shared != nowShared) {
+          await ApiClient.updateTaskShared(task.id, nowShared);
+          changed++;
+        }
+      }
+      if (changed > 0) HomeScreen.needsTaskReload.value = true;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(changed == 0
+              ? 'No changes.'
+              : 'Updated $changed ${NamingUtils.tasksName(plural: changed != 1, capitalize: false)}.'),
+        ));
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not create Pursuit: $e'),
+          content: Text('Error saving: $e'),
+          backgroundColor: Colors.red,
         ));
       }
-    }
-  }
-
-  Future<void> _copyTasksTo(List<Task> tasksArg, Category target) async {
-    List<Task> tasks = tasksArg;
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) return;
-
-    // Check for duplicate headlines in the target category.
-    try {
-      final existing = await ApiClient.getTasksByCategory(target.id);
-      final existingHeadlines =
-          existing.map((t) => t.headline.trim().toLowerCase()).toSet();
-      final conflicts = tasks
-          .where((t) =>
-              existingHeadlines.contains(t.headline.trim().toLowerCase()))
-          .toList();
-
-      if (conflicts.isNotEmpty && mounted) {
-        final String message;
-        if (conflicts.length == 1) {
-          message =
-              '"${conflicts[0].headline}" is already a task in "${target.headline}". What to do?';
-        } else {
-          message =
-              '"${conflicts[0].headline}" and ${conflicts.length - 1} other '
-              '${NamingUtils.tasksName(plural: conflicts.length > 2, capitalize: false)} '
-              'are already in "${target.headline}". What to do?';
-        }
-        final choice = await showDialog<String>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Duplicate Task'),
-            content: Text(message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, 'cancel'),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, 'omit'),
-                child: const Text('Omit Redundant'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, 'save'),
-                child: const Text('Save Anyway'),
-              ),
-            ],
-          ),
-        );
-        if (choice == 'cancel' || choice == null) return;
-        if (choice == 'omit') {
-          tasks = tasks
-              .where((t) =>
-                  !existingHeadlines.contains(t.headline.trim().toLowerCase()))
-              .toList();
-        }
-      }
-    } catch (_) {
-      // If the duplicate check fails, proceed without it.
-    }
-
-    int copied = 0;
-    for (final task in tasks) {
-      try {
-        await ApiClient.createTask({
-          'headline': task.headline,
-          if (task.notes != null) 'notes': task.notes,
-          if (task.synopsis != null) 'synopsis': task.synopsis,
-          'owner_id': userId,
-          'category_id': target.id,
-          'original_id': task.id,
-          if (task.links != null && task.links!.isNotEmpty) 'links': task.links,
-          'finished': false,
-          'shared': false,
-        });
-        copied++;
-      } catch (e) {
-        debugPrint('Error copying task "${task.headline}": $e');
-      }
-    }
-    if (mounted) {
-      setState(() => _selectedIds = {});
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-          'Copied $copied ${NamingUtils.tasksName(plural: copied != 1, capitalize: false)} '
-          'to "${target.headline}"',
-        ),
-      ));
-      Navigator.of(context).pop(target);
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -320,9 +165,7 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
           groupValue: _sortOption,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           visualDensity: VisualDensity.compact,
-          onChanged: (v) {
-            if (v != null) _setSort(v);
-          },
+          onChanged: (v) { if (v != null) _setSort(v); },
         ),
         Text(label),
       ],
@@ -363,19 +206,17 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
     final searchWidget = TextField(
       controller: _searchController,
       decoration: InputDecoration(
-        hintText:
-            'Search ${NamingUtils.tasksName(capitalize: true, plural: true)}...',
+        hintText: 'Search ${NamingUtils.tasksName(capitalize: true, plural: true)}...',
         prefixIcon: const Icon(Icons.search, size: 20),
         suffixIcon: _searchController.text.isNotEmpty
             ? IconButton(
                 icon: const Icon(Icons.clear, size: 20),
-                onPressed: () {
-                  _searchController.clear();
-                },
+                onPressed: _searchController.clear,
               )
             : null,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         border: const OutlineInputBorder(),
       ),
     );
@@ -400,7 +241,7 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Snag For Me'),
+        title: const Text('Edit Shared Tasks'),
         leading: BackButton(onPressed: () => Navigator.of(context).pop()),
       ),
       body: SafeArea(
@@ -409,25 +250,19 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── Top card — mirrors the home screen category card ─────────
+              // ── Category header ───────────────────────────────────────────
               Card(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Pursuit name (large bold blue)
-                      Text(widget.sharedCategory.headline,
-                          style: headlineStyle),
-                      if ((widget.sharedCategory.ownerName ?? '').isNotEmpty)
-                        Text(
-                          'from ${widget.sharedCategory.ownerName}',
-                          style: TextStyle(
-                            fontSize: headlineFontSize * 0.7,
-                            fontStyle: FontStyle.italic,
-                            color: const Color(0xFF1A237E),
-                          ),
-                        ),
+                      Text(widget.category.headline, style: headlineStyle),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Check the tasks you want visible to subscribers.',
+                        style: TextStyle(fontSize: 13, color: Colors.black54),
+                      ),
                     ],
                   ),
                 ),
@@ -455,8 +290,9 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
                       ),
                       Checkbox(
                         tristate: true,
-                        value:
-                            allSelected ? true : (someSelected ? null : false),
+                        value: allSelected
+                            ? true
+                            : (someSelected ? null : false),
                         onChanged: (val) {
                           setState(() {
                             if (allSelected || someSelected) {
@@ -497,10 +333,12 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
                                 itemBuilder: (_, i) {
                                   final task = _displayedTasks[i];
                                   return TaskDisplay(
-                                    key: ValueKey('snag-task-${task.id}'),
+                                    key: ValueKey(
+                                        'edit-share-task-${task.id}'),
                                     task: task,
                                     withControls: false,
-                                    isSelected: _selectedIds.contains(task.id),
+                                    isSelected:
+                                        _selectedIds.contains(task.id),
                                     onSelected: (val) =>
                                         _toggleSelect(task.id, val),
                                   );
@@ -516,21 +354,25 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed:
+                          _saving ? null : () => Navigator.of(context).pop(),
                       child: const Text('Cancel'),
                     ),
                     const SizedBox(width: 12),
                     ElevatedButton(
-                      onPressed: _selectedIds.isEmpty ? null : _snagSelected,
+                      onPressed: _saving || _loading ? null : _save,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green[700],
                         foregroundColor: Colors.white,
                       ),
-                      child: Text(
-                        _selectedIds.isEmpty
-                            ? 'Snag Selected'
-                            : 'Snag ${_selectedIds.length} Selected',
-                      ),
+                      child: _saving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Text('Save'),
                     ),
                   ],
                 ),

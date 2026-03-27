@@ -4,7 +4,10 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/share_invitation.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
+import 'package:meaning_to/snag_pursuit_screen.dart';
+import 'package:meaning_to/edit_share_tasks_screen.dart';
 import 'package:share_plus/share_plus.dart';
 
 class MySharesScreen extends StatefulWidget {
@@ -110,9 +113,9 @@ class _MySharesScreenState extends State<MySharesScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSharingOutSection(),
-                  const SizedBox(height: 24),
                   _buildSharedWithMeSection(),
+                  const SizedBox(height: 24),
+                  _buildSharingOutSection(),
                 ],
               ),
             ),
@@ -190,17 +193,52 @@ class _MySharesScreenState extends State<MySharesScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                category.headline,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    category.headline,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      widget.onSelect(category);
+                      Navigator.of(context).pop();
+                    },
+                    icon: const Icon(Icons.arrow_forward),
+                    tooltip: 'Go to Pursuit',
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
               ),
               if (category.ownerName != null)
-                Text(
-                  'from ${category.ownerName}',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'from ${category.ownerName}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      onPressed: () async {
+                        await SnagPursuitScreen.push(
+                          context,
+                          sharedCategory: category,
+                          allCategories: widget.allCategories,
+                        );
+                        widget.onRefresh?.call();
+                      },
+                      icon: const Icon(Icons.copy, size: 22),
+                      tooltip: 'Copy to Owned Pursuit',
+                      color: Colors.green[800],
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                    ),
+                  ],
                 ),
               Row(
                 children: [
@@ -210,25 +248,13 @@ class _MySharesScreenState extends State<MySharesScreen> {
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
                   ),
-                  const Text('Available', style: TextStyle(fontSize: 12)),
+                  Text('Include in ${NamingUtils.categoriesName(capitalize: true, plural: true)} Menu', style: const TextStyle(fontSize: 12)),
                   const Spacer(),
-                  TextButton(
-                    onPressed: () {
-                      widget.onSelect(category);
-                      Navigator.of(context).pop();
-                    },
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                    ),
-                    child: const Text('Go', style: TextStyle(fontSize: 12)),
-                  ),
                   TextButton.icon(
                     onPressed: () => _deleteSubscription(category),
                     icon: const Icon(Icons.delete_outline,
                         size: 14, color: Colors.red),
-                    label: const Text('Delete',
+                    label: const Text('Forget',
                         style: TextStyle(fontSize: 12, color: Colors.red)),
                     style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact,
@@ -389,15 +415,30 @@ class _ShareCategoryCardState extends State<_ShareCategoryCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6, right: 8),
-                child: Text(
-                  widget.category.headline,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.category.headline,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
-                ),
+                  TextButton.icon(
+                    onPressed: () => EditShareTasksScreen.push(
+                        context, category: widget.category),
+                    icon: const Icon(Icons.edit_outlined, size: 14),
+                    label: const Text('Edit Tasks',
+                        style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                    ),
+                  ),
+                ],
               ),
               if (_loading)
                 const Padding(

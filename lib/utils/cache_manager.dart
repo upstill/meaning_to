@@ -91,9 +91,12 @@ class CacheManager with PerformanceMonitoring {
 
     try {
       // Use targeted API call to get only tasks for this category
-      // For shared categories, don't filter by owner_id (RLS grants read access)
+      // For shared categories, don't filter by owner_id (RLS grants read access),
+      // but only include tasks the owner has marked visible (shared == true).
       final tasks = _currentCategory!.isShared
-          ? await ApiClient.getTasksByCategory(_currentCategory!.id)
+          ? (await ApiClient.getTasksByCategory(_currentCategory!.id))
+              .where((t) => t.shared)
+              .toList()
           : await ApiClient.getTasksByCategoryAndUser(
               _currentCategory!.id, _currentUserId!);
 
@@ -390,9 +393,11 @@ class CacheManager with PerformanceMonitoring {
 
     // Evaluate tasks for suggestibility (removed verbose debug output)
 
-    // Find unfinished tasks that are suggestible using the Task method
-    final unfinishedTasks =
-        _currentTasks!.where((task) => task.isSuggestible).toList();
+    // Find unfinished tasks that are suggestible.
+    // Only include tasks owned by the current user or marked visible (shared == true).
+    final unfinishedTasks = _currentTasks!.where((task) =>
+        task.isSuggestible &&
+        (task.ownerId == _currentUserId || task.shared)).toList();
 
     // Found ${unfinishedTasks.length} available tasks
 

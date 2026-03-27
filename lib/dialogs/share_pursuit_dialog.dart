@@ -4,7 +4,9 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/share_invitation.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
+import 'package:meaning_to/edit_share_tasks_screen.dart';
 import 'package:share_plus/share_plus.dart';
 
 class SharePursuitDialog extends StatefulWidget {
@@ -167,14 +169,11 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    inv == null
-                        ? 'Create a link to share this Pursuit. '
-                            'Recipients get read-only access.'
-                        : 'Single-use links expire in 7 days. '
-                            'Check "Open To All" for a permanent, reusable link.',
-                    style: const TextStyle(fontSize: 13),
-                  ),
+                  Text('To share this ${NamingUtils.categoriesName(capitalize: true, plural: false)}**, copy the link below and send it to anyone for them to click on. To review which ${NamingUtils.tasksName(capitalize: true, plural: true)} will be shared, click the "Edit Tasks" button.', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 7),
+                  Text('Normally, the link is only good for 7 days, and it expires when redeemed. If you want it to be valid forever, to anyone with the link, check "Open To All".', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 7),
+                  Text('** Recipients can only read your ${NamingUtils.categoriesName(capitalize: true, plural: false)}, not add or edit anything.', style: const TextStyle(fontSize: 13)),
                   if (inv != null) ...[
                     const SizedBox(height: 12),
                     _buildLinkCard(inv),
@@ -185,19 +184,23 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
+          child: const Text('Cancel'),
         ),
-        if (!_loading && inv == null)
+        if (!_loading)
           ElevatedButton.icon(
-            onPressed: _busy ? null : _create,
+            onPressed: _busy ? null : (inv == null ? _create : _copyLink),
             icon: _busy
                 ? const SizedBox(
                     width: 14,
                     height: 14,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.add_link, size: 16),
-            label: const Text('Create Link'),
+                : Icon(inv == null ? Icons.add_link : Icons.share, size: 16),
+            label: Text(inv == null ? 'Create Link' : 'Share'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+            ),
           ),
       ],
     );
@@ -255,6 +258,19 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                 const SizedBox(width: 8),
                 Text(expiryText,
                     style: TextStyle(fontSize: 12, color: expiryColor)),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () async {
+                    await EditShareTasksScreen.push(context, category: widget.category);
+                    if (mounted) _load();
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 14),
+                  label: Text('Select ${NamingUtils.tasksName(capitalize: true, plural: true)} to share.', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  ),
+                ),
               ],
             ),
             Row(
@@ -267,14 +283,7 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                 ),
                 const Text('Open To All', style: TextStyle(fontSize: 12)),
                 const Spacer(),
-                if (inv.isActive)
-                  IconButton(
-                    onPressed: _busy ? null : _copyLink,
-                    icon: const Icon(Icons.copy),
-                    tooltip: 'Copy Link',
-                    visualDensity: VisualDensity.compact,
-                  )
-                else
+                if (!inv.isActive)
                   TextButton.icon(
                     onPressed: _busy ? null : _renew,
                     icon: const Icon(Icons.refresh, size: 14),
@@ -286,18 +295,6 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                           horizontal: 8, vertical: 2),
                     ),
                   ),
-                TextButton.icon(
-                  onPressed: _busy ? null : _delete,
-                  icon: const Icon(Icons.delete_outline,
-                      size: 14, color: Colors.red),
-                  label: const Text('Delete',
-                      style: TextStyle(fontSize: 12, color: Colors.red)),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
-                  ),
-                ),
               ],
             ),
           ],
