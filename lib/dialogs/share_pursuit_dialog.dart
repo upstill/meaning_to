@@ -69,7 +69,7 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
         );
       }
     } else {
-      await Share.share(link, subject: 'Join my Pursuit on ROUZ');
+      await Share.share(link, subject: 'Join my Pursuit on ROUZME!');
     }
   }
 

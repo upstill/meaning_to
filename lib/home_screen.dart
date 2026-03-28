@@ -104,6 +104,7 @@ class HomeScreenState extends State<HomeScreen> {
 
   // Inline search state
   bool _isSearchMode = false;
+  bool _isShowingResults = false;
   late final TextEditingController _findController;
   List<Task> _findResults = [];
   bool _isFindSearching = false;
@@ -113,6 +114,17 @@ class HomeScreenState extends State<HomeScreen> {
   List<Widget> _buildAppBarActions() {
     final actions = <Widget>[];
 
+    if (_isSearchMode) {
+      actions.add(
+        IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: _closeSearch,
+          tooltip: 'Cancel search',
+        ),
+      );
+      return actions;
+    }
+
     // Search button - always show
     actions.add(
       IconButton(
@@ -120,6 +132,7 @@ class HomeScreenState extends State<HomeScreen> {
         onPressed: () {
           setState(() {
             _isSearchMode = true;
+            _isShowingResults = false;
             _findResults = [];
             _findController.clear();
           });
@@ -223,7 +236,19 @@ class HomeScreenState extends State<HomeScreen> {
 
   void _onFindChanged(String value) {
     _findDebounceTimer?.cancel();
-    _findDebounceTimer = Timer(const Duration(milliseconds: 300), _performFind);
+    if (value.trim().isEmpty && _isShowingResults) {
+      setState(() {
+        _isShowingResults = false;
+        _findResults = [];
+      });
+    }
+  }
+
+  void _submitSearch() {
+    final query = _findController.text.trim();
+    if (query.isEmpty) return;
+    setState(() => _isShowingResults = true);
+    _performFind();
   }
 
   Future<void> _performFind() async {
@@ -254,6 +279,7 @@ class HomeScreenState extends State<HomeScreen> {
   void _closeSearch() {
     setState(() {
       _isSearchMode = false;
+      _isShowingResults = false;
       _findResults = [];
       _findController.clear();
     });
@@ -1292,7 +1318,7 @@ class HomeScreenState extends State<HomeScreen> {
       controller: _taskSearchController,
       decoration: InputDecoration(
         hintText:
-            'Search ${NamingUtils.tasksName(capitalize: true, plural: true)}...',
+            'Search ${_listModeTasks.length} ${NamingUtils.tasksName(capitalize: false, plural: _listModeTasks.length != 1)}',
         prefixIcon: const Icon(Icons.search, size: 20),
         suffixIcon: _isSearchingTasks
             ? const Padding(
@@ -2393,35 +2419,23 @@ class HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: _isSearchMode ? null : const Text('ROUZ'),
+        title: _isSearchMode
+            ? TextField(
+                controller: _findController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Search ideas…',
+                  border: InputBorder.none,
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: _onFindChanged,
+                onSubmitted: (_) => _submitSearch(),
+              )
+            : const Text('ROUZME!'),
         automaticallyImplyLeading: false,
         actions: _buildAppBarActions(),
-        bottom: _isSearchMode
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(56),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                  child: TextField(
-                    controller: _findController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      hintText: 'Search tasks...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: _closeSearch,
-                      ),
-                      border: const OutlineInputBorder(),
-                      filled: true,
-                      fillColor: Colors.white,
-                    ),
-                    onChanged: _onFindChanged,
-                  ),
-                ),
-              )
-            : null,
       ),
-      body: _isSearchMode ? _buildFindResults() : Padding(
+      body: _isShowingResults ? _buildFindResults() : Padding(
         padding: const EdgeInsets.all(16.0),
         child: SingleChildScrollView(
           child: Column(

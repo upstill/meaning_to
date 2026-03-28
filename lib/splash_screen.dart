@@ -233,7 +233,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                   const SizedBox(height: 24),
                   const Text(
-                    'I\'ve Been Meaning To',
+                    'ROUZME!',
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -300,7 +300,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   // Guest mode button
                   SizedBox(
                     width: double.infinity,
-                    height: 56,
+                    height: 70,
                     child: OutlinedButton(
                       onPressed: _navigateAsGuest,
                       style: OutlinedButton.styleFrom(
@@ -311,7 +311,8 @@ class _SplashScreenState extends State<SplashScreen> {
                         ),
                       ),
                       child: const Text(
-                        'Continue as Guest (Read Only)',
+                        'Continue as Guest\n(Read Only)',
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,

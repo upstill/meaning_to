@@ -316,7 +316,7 @@ class _ShareCategoryCardState extends State<_ShareCategoryCard> {
         );
       }
     } else {
-      await Share.share(link, subject: 'Join my Pursuit on ROUZ');
+      await Share.share(link, subject: 'Join my Pursuit on ROUZME!');
     }
   }
 

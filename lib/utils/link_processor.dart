@@ -29,6 +29,7 @@ class ProcessedLink {
   final String url;
   final String? title;
   final String? favicon;
+  final DomainIcon? domainIcon;
   final LinkType type;
   final String domain;
   final String originalLink; // Store the original/modified link text
@@ -38,6 +39,7 @@ class ProcessedLink {
     required this.url,
     this.title,
     this.favicon,
+    this.domainIcon,
     required this.type,
     required this.domain,
     required this.originalLink,
@@ -492,19 +494,15 @@ class LinkProcessor {
 
     // Get icon for domain with error handling (skip for internal links)
     String? favicon;
+    DomainIcon? resolvedIcon;
     if (finalTitle == null || !_isInternalCategoryLink(url, domain)) {
       try {
-        if (url.contains('justwatch') || url.contains('boxd.it')) {
-          // Skip favicon fetching for these domains
+        resolvedIcon = await DomainIcon.getIconForDomain(domain);
+        if (resolvedIcon != null) {
+          favicon = resolvedIcon.iconUrl;
         }
-        final domainIcon = await DomainIcon.getIconForDomain(domain);
-        if (domainIcon != null) {
-          favicon = domainIcon.iconUrl;
-          if (url.contains('justwatch') || url.contains('boxd.it')) {}
-        } else if (url.contains('justwatch') || url.contains('boxd.it')) {}
       } catch (e) {
         print('Error processing icon for domain $domain: $e');
-        if (url.contains('justwatch')) {}
       }
     }
 
@@ -522,6 +520,7 @@ class LinkProcessor {
       url: url,
       title: finalTitle,
       favicon: favicon,
+      domainIcon: resolvedIcon,
       type: type,
       domain: domain,
       originalLink: finalLink, // Use the final HTML link with the title
@@ -852,50 +851,36 @@ class LinkDisplayWidget extends StatelessWidget {
     this.isEditing = false,
   });
 
-  Widget _buildFavicon(String? faviconUrl) {
-    if (faviconUrl == null) {
+  Widget _buildFavicon(String? faviconUrl, [DomainIcon? domainIcon]) {
+    if (faviconUrl == null && domainIcon == null) {
       return const SizedBox.shrink();
     }
+
+    const fallback = Icon(Icons.link, size: 32, color: Colors.grey);
+    const size = 32.0;
+
+    // Prefer cached binary data (avoids CORS issues on web)
+    if (domainIcon?.iconData != null) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 8.0),
+        child: Image.memory(
+          domainIcon!.iconData!,
+          width: size,
+          height: size,
+          errorBuilder: (_, __, ___) => fallback,
+        ),
+      );
+    }
+
+    if (faviconUrl == null) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.only(right: 8.0),
       child: Image.network(
         faviconUrl,
-        width: 32,
-        height: 32,
-        errorBuilder: (context, error, stackTrace) {
-          // Return a generic link icon on error
-          return const Icon(
-            Icons.link,
-            size: 32,
-            color: Colors.grey,
-          );
-        },
-        // Add a loading placeholder
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return const SizedBox(
-            width: 32,
-            height: 32,
-            child: Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                ),
-              ),
-            ),
-          );
-        },
-        // Add a timeout for loading
-        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-          if (wasSynchronouslyLoaded) return child;
-          return AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: frame != null ? child : const SizedBox.shrink(),
-          );
-        },
+        width: size,
+        height: size,
+        errorBuilder: (_, __, ___) => fallback,
       ),
     );
   }
@@ -965,7 +950,7 @@ class LinkDisplayWidget extends StatelessWidget {
         if (isEditing) {
           return Row(
             children: [
-              if (showIcon) _buildFavicon(processedLink.favicon),
+              if (showIcon) _buildFavicon(processedLink.favicon, processedLink.domainIcon),
               Expanded(
                 child: Text(
                   processedLink.displayTitle,
@@ -990,7 +975,7 @@ class LinkDisplayWidget extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 4.0),
             child: Row(
               children: [
-                if (showIcon) _buildFavicon(processedLink.favicon),
+                if (showIcon) _buildFavicon(processedLink.favicon, processedLink.domainIcon),
                 if (showTitle)
                   Expanded(
                     child: Text(

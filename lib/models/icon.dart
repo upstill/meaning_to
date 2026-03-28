@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:async'; // Add this import for TimeoutException
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:image/image.dart' as img;
 import 'package:meaning_to/utils/auth.dart';
@@ -638,7 +639,18 @@ class DomainIcon {
       print('Error details: $e');
     }
 
-    // 3. If not in cache or database, fetch from logo.dev
+    // 3. If not in cache or database, fetch icon.
+    // On web, proxy through our Supabase edge function to avoid CORS.
+    // On native, fetch binary from logo.dev and cache to database.
+    if (kIsWeb) {
+      const supabaseUrl = String.fromEnvironment('SUPABASE_URL',
+          defaultValue: 'https://zhpxdayfpysoixxjjqik.supabase.co');
+      final proxyUrl = '$supabaseUrl/functions/v1/favicon?domain=$domain';
+      final icon = DomainIcon(domain: domain, iconUrl: proxyUrl);
+      _iconCache[domain] = icon;
+      return icon;
+    }
+
     print('Fetching icon from logo.dev for domain: $domain');
     try {
       final logoDevUrl =
@@ -647,40 +659,24 @@ class DomainIcon {
       // Create icon object first
       final icon = DomainIcon(domain: domain, iconUrl: logoDevUrl);
 
-      // Fetch the icon data
-      final iconData = await icon.fetchIconData();
-      if (iconData != null) {
-        // Create new icon with the data
+      // Fetch binary data in the background for database storage.
+      icon.fetchIconData().then((iconData) async {
+        if (iconData == null) return;
         final iconWithData = DomainIcon(
           domain: domain,
           iconUrl: logoDevUrl,
           iconData: iconData,
         );
-
-        // Cache the icon
-        _iconCache[domain] = iconWithData;
-        print(
-          'Successfully fetched and cached icon from logo.dev for domain: $domain',
-        );
-
-        // Only try to save to database once
-        print('Attempting to save newly fetched icon to database...');
         final saveResult = await iconWithData.saveToDatabase();
         if (saveResult) {
-          print('Successfully saved new icon for domain $domain to database');
-        } else {
-          print(
-            'Failed to save new icon for domain $domain to database - will retry next time',
-          );
-          // Remove from cache so we'll try to save again next time
-          _iconCache.remove(domain);
+          _iconCache[domain] = iconWithData;
+          print('Successfully saved icon for domain $domain to database');
         }
+      }).catchError((e) {
+        print('Background icon fetch/save failed for $domain: $e');
+      });
 
-        return iconWithData;
-      } else {
-        print('Failed to fetch icon data from logo.dev');
-        return null;
-      }
+      return icon;
     } catch (e) {
       print('Error fetching icon from logo.dev for domain $domain:');
       print('Error type: ${e.runtimeType}');
