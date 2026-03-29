@@ -354,6 +354,9 @@ class HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: InkWell(
                 onTap: () {
+                  final query = _findController.text.trim();
+                  _taskSearchController.text = query;
+                  _showTaskListMode = true;
                   _closeSearch();
                   _handleCategorySelection(category);
                 },
