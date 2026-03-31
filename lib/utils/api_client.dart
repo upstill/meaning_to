@@ -747,7 +747,7 @@ class ApiClient {
       final response = await _supabase.rpc(
         'redeem_sample_shares',
         params: {
-          'p_owner_email': 'steve@upstill.net',
+          'p_owner_email': 'supstill@mac.com',
           'p_available': available,
         },
       );

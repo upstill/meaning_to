@@ -2125,14 +2125,10 @@ class HomeScreenState extends State<HomeScreen> {
     final userId = AuthUtils.getCurrentUserId();
     if (userId == null) return;
 
-    final isFirstLogin = !(prefs.getBool('onboarded_$userId') ?? false);
-    if (isFirstLogin && categories.isEmpty) {
+    if (categories.isEmpty) {
       _welcomeDialogShown = true;
       await prefs.setBool('onboarded_$userId', true);
       _showSampleSharesDialog();
-    } else if (categories.isEmpty) {
-      _welcomeDialogShown = false;
-      _checkAndShowWelcomeDialog();
     }
   }
 
@@ -2200,8 +2196,10 @@ class HomeScreenState extends State<HomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed: () {
+                    onPressed: () async {
                       Navigator.of(ctx).pop();
+                      await ApiClient.redeemSampleShares(available: false);
+                      await _loadCategories();
                       if (mounted) _showMySharesHintDialog();
                     },
                     child: const Text('No Thanks'),
@@ -2244,7 +2242,7 @@ class HomeScreenState extends State<HomeScreen> {
                 TextSpan(
                   text: 'By the way, there are more '
                       '${NamingUtils.categoriesName(capitalize: true, plural: true)} '
-                      'on offer if you select "My Shares" from the menu at the top. '
+                      'for inspiration if you select "My Shares" from the menu at the top. '
                       'And if you\'re feeling confused, check out the "Help" section by '
                       'clicking the ',
                 ),
