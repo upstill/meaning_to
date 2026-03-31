@@ -48,6 +48,7 @@ class _MySharesScreenState extends State<MySharesScreen> {
   List<Map<String, dynamic>>? _sharedOutSummary;
   bool _loading = true;
   late List<Category> _sharedWithMe;
+  final Set<int> _expandedInvitations = {};
 
   @override
   void initState() {
@@ -220,15 +221,55 @@ class _MySharesScreenState extends State<MySharesScreen> {
                 ],
               ),
               if (category.ownerName != null)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'from ${category.ownerName}',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                  ],
+                Text.rich(
+                  TextSpan(
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                    children: [
+                      const TextSpan(text: 'from '),
+                      TextSpan(
+                        text: category.ownerName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
                 ),
+              if (category.invitation != null && category.invitation!.isNotEmpty)
+                Builder(builder: (context) {
+                  const limit = 100;
+                  final full = category.invitation!;
+                  final expanded = _expandedInvitations.contains(category.id);
+                  final needsTrunc = full.length > limit;
+                  final shown = (needsTrunc && !expanded)
+                      ? full.substring(0, limit).trimRight()
+                      : full;
+                  return Text.rich(
+                    TextSpan(
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey[600],
+                        fontStyle: FontStyle.italic,
+                      ),
+                      children: [
+                        TextSpan(text: shown),
+                        if (needsTrunc && !expanded)
+                          WidgetSpan(
+                            child: GestureDetector(
+                              onTap: () => setState(
+                                  () => _expandedInvitations.add(category.id)),
+                              child: const Text(
+                                ' (more)',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.blue,
+                                  fontStyle: FontStyle.normal,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                }),
               Row(
                 children: [
                   Checkbox(

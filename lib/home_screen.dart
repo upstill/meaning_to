@@ -20,6 +20,7 @@ import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/utils/synopsis_fetcher.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import 'package:meaning_to/widgets/task_display.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -144,7 +145,7 @@ class HomeScreenState extends State<HomeScreen> {
     // Help button - always show
     actions.add(
       IconButton(
-        icon: const Icon(Icons.info_outline),
+        icon: const _HelpIcon(size: 22),
         onPressed: () {
           Navigator.pushNamed(context, '/help');
         },
@@ -192,6 +193,17 @@ class HomeScreenState extends State<HomeScreen> {
                     leading: Icon(Icons.logout),
                     title: Text('Logout'),
                     contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  enabled: false,
+                  child: Text(
+                    AuthUtils.getCurrentUserEmail(),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 ),
                 const PopupMenuItem<String>(
@@ -474,11 +486,23 @@ class HomeScreenState extends State<HomeScreen> {
               Text('Delete Account'),
             ],
           ),
-          content: const Column(
+          content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
+                () {
+                  final email = '...of ${AuthUtils.getCurrentUserEmail()}';
+                  final name = Supabase.instance.client.auth.currentUser
+                      ?.userMetadata?['display_name'] as String?;
+                  return (name != null && name.isNotEmpty)
+                      ? '$email ($name)'
+                      : email;
+                }(),
+                style: const TextStyle(fontSize: 18, color: Colors.grey, fontStyle: FontStyle.italic),
+              ),
+              const SizedBox(height: 12),
+              const Text(
                 'WARNING: This action cannot be undone!',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
@@ -486,17 +510,17 @@ class HomeScreenState extends State<HomeScreen> {
                   fontSize: 16,
                 ),
               ),
-              SizedBox(height: 16),
-              Text(
+              const SizedBox(height: 16),
+              const Text(
                 'Deleting your account will permanently remove:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              SizedBox(height: 8),
-              Text('• All your tasks'),
-              Text('• All your categories'),
-              Text('• Your user account'),
-              SizedBox(height: 16),
-              Text(
+              const SizedBox(height: 8),
+              const Text('• All your tasks'),
+              const Text('• All your categories'),
+              const Text('• Your user account'),
+              const SizedBox(height: 16),
+              const Text(
                 'This data cannot be recovered.',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
@@ -2176,10 +2200,8 @@ class HomeScreenState extends State<HomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed: () async {
+                    onPressed: () {
                       Navigator.of(ctx).pop();
-                      await ApiClient.redeemSampleShares(available: false);
-                      await _loadCategories();
                       if (mounted) _showMySharesHintDialog();
                     },
                     child: const Text('No Thanks'),
@@ -2215,13 +2237,24 @@ class HomeScreenState extends State<HomeScreen> {
       barrierDismissible: true,
       builder: (ctx) {
         return AlertDialog(
-          content: Text(
-            'By the way, there are more '
-            '${NamingUtils.categoriesName(capitalize: true, plural: true)} '
-            'on offer if you select "My Shares" from the menu at the top. '
-            'And if you\'re feeling confused, check out the "Help" section by '
-            'clicking the \'?\' button at the top of the screen.',
-            style: const TextStyle(fontSize: 16),
+          content: RichText(
+            text: TextSpan(
+              style: const TextStyle(fontSize: 16, color: Colors.black),
+              children: [
+                TextSpan(
+                  text: 'By the way, there are more '
+                      '${NamingUtils.categoriesName(capitalize: true, plural: true)} '
+                      'on offer if you select "My Shares" from the menu at the top. '
+                      'And if you\'re feeling confused, check out the "Help" section by '
+                      'clicking the ',
+                ),
+                const WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: _HelpIcon(size: 16),
+                ),
+                const TextSpan(text: ' button at the top of the screen.'),
+              ],
+            ),
           ),
           actions: [
             Row(
@@ -2232,7 +2265,7 @@ class HomeScreenState extends State<HomeScreen> {
                     Navigator.of(ctx).pop();
                     Navigator.pushNamed(context, '/help');
                   },
-                  child: const Text('?'),
+                  child: const _HelpIcon(size: 20),
                 ),
                 const SizedBox(width: 8),
                 TextButton(
@@ -2610,8 +2643,7 @@ class HomeScreenState extends State<HomeScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.info_outline,
-                            size: 48, color: Colors.grey),
+                        icon: const _HelpIcon(size: 48),
                         onPressed: () {
                           Navigator.pushNamed(context, '/help');
                         },
@@ -2844,7 +2876,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                     IconButton(
                                                       onPressed: () => unawaited(_showSnagPursuitScreen(cat)),
                                                       icon: const Icon(Icons.copy, size: 22),
-                                                      tooltip: 'Copy to Owned Pursuit',
+                                                      tooltip: 'Copy for Me',
                                                       color: Colors.green[800],
                                                       visualDensity: VisualDensity.compact,
                                                       padding: EdgeInsets.zero,
@@ -3520,6 +3552,41 @@ class HomeScreenState extends State<HomeScreen> {
               // const SizedBox(width: 16),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+
+/// A circled question-mark rendered with Flutter primitives.
+/// Avoids dependency on the MaterialIcons font, which is tree-shaken on web.
+class _HelpIcon extends StatelessWidget {
+  final double size;
+  const _HelpIcon({this.size = 20});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = IconTheme.of(context).color ?? Colors.white;
+    final fontSize = size * 0.6;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: color, width: size * 0.08),
+        ),
+        child: Center(
+          child: Text(
+            '?',
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.bold,
+              color: color,
+              height: 1,
+            ),
+          ),
         ),
       ),
     );

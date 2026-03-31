@@ -115,9 +115,8 @@ class _AuthOtpVerificationScreenState extends State<AuthOtpVerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final args =
-        ModalRoute.of(context)!.settings.arguments as Map<String, String>;
-    final email = args['email']!;
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final email = (args?['email'] as String?) ?? '';
 
     return Scaffold(
       appBar: AppBar(
