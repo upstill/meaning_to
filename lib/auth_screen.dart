@@ -334,7 +334,7 @@ class _AuthScreenState extends State<AuthScreen> {
           Column(
             children: [
               const Text(
-                'I\'ve Been Meaning To',
+                'Log in to ROUZME!',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 32,

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/auth.dart';
+import 'package:meaning_to/utils/deep_link_generator.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/widgets/task_display.dart';
 import 'package:meaning_to/home_screen.dart' show HomeTaskSortOption, HomeScreen;
@@ -126,8 +128,9 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    int changed = 0;
     try {
+      // Save shared-task selections.
+      int changed = 0;
       for (final task in _allTasks) {
         final nowShared = _selectedIds.contains(task.id);
         if (task.shared != nowShared) {
@@ -136,18 +139,24 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
         }
       }
       if (changed > 0) HomeScreen.needsTaskReload.value = true;
+
+      // Create or reuse the invitation and copy the link to clipboard.
+      final token = await ApiClient.createShareInvitation(widget.category.id);
+      final link = DeepLinkGenerator.generateInviteLink(token);
+      await Clipboard.setData(ClipboardData(text: link));
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(changed == 0
-              ? 'No changes.'
-              : 'Updated $changed ${NamingUtils.tasksName(plural: changed != 1, capitalize: false)}.'),
-        ));
-        Navigator.of(context).pop();
+        // Pop back past this screen and any dialog underneath it.
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Invite link copied to clipboard')),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error saving: $e'),
+          content: Text('Error: $e'),
           backgroundColor: Colors.red,
         ));
       }
@@ -354,8 +363,10 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton(
-                      onPressed:
-                          _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context)
+                              .popUntil((route) => route.isFirst),
                       child: const Text('Cancel'),
                     ),
                     const SizedBox(width: 12),
@@ -372,7 +383,14 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
                               child:
                                   CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
-                          : const Text('Save'),
+                          : const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.share, size: 16),
+                                SizedBox(width: 6),
+                                Text('Issue Link'),
+                              ],
+                            ),
                     ),
                   ],
                 ),

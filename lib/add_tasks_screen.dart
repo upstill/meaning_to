@@ -1377,7 +1377,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           'suggestible_at': task.suggestibleAt?.toIso8601String(),
           'triggers_at': task.triggersAt?.toIso8601String(),
           'deferral': task.deferral,
-          'links': task.links,
+          'links': task.links ?? <String>[],
           'finished': task.finished,
           'shared': task.shared,
           'original_id': task.originalId,

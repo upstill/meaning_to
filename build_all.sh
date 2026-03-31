@@ -123,6 +123,12 @@ if $BUILD_WEB; then
       echo "🚀 Deploying to Vercel..."
       if vercel --prod; then
         WEB_RESULT="✅  deployed → https://meaning-to.me"
+        # Commit and push web build files so Vercel's GitHub integration
+        # doesn't overwrite the deployment with stale files on the next push.
+        echo "📦 Committing web build files to git..."
+        git add build_id.txt flutter_service_worker.js main.dart.js version.json .last_build_id 2>/dev/null || true
+        git diff --cached --quiet || git commit -m "Deploy web build $FLUTTER_VERSION" --no-verify
+        git push
       else
         WEB_RESULT="⚠️  built OK but Vercel deploy failed"
       fi

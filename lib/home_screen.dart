@@ -714,10 +714,11 @@ class HomeScreenState extends State<HomeScreen> {
           setState(() {
             _selectedCategory = category;
           });
-          _showShareWelcomeIfNeeded(category);
           _loadRandomTask(category);
           // Update last_access for the selected category
           _updateCategoryLastAccess(category);
+          // Show one-time welcome when arriving via a share link
+          _showShareWelcomeIfNeeded(category);
         } else {
           print(
               'Category ID mismatch - expected: $categoryId, got: ${category.id}');
@@ -1451,41 +1452,6 @@ class HomeScreenState extends State<HomeScreen> {
 
   /// Creates a share-invitation link for [category] and shows a dialog
   /// with a Copy button so the sharer can send it via email/message/etc.
-  /// Shows a one-time welcome dialog when the user first sees a shared category.
-  Future<void> _showShareWelcomeIfNeeded(Category category) async {
-    if (!category.isShared) return;
-    final userId = AuthUtils.getCurrentUserId();
-    final prefs = await SharedPreferences.getInstance();
-    final prefKey = 'welcomed_shared_$userId';
-    final welcomed = prefs.getStringList(prefKey) ?? [];
-    final key = category.id.toString();
-    if (welcomed.contains(key)) return;
-
-    // Mark as welcomed before showing so a double-trigger doesn't double-show.
-    welcomed.add(key);
-    await prefs.setStringList(prefKey, welcomed);
-
-    if (!mounted) return;
-    final sharer = category.ownerName ?? 'Someone';
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${NamingUtils.categoriesName(capitalize: true, plural: false)} Shared With You'),
-        content: Text(
-          '$sharer has shared their ${NamingUtils.categoriesName(capitalize: true, plural: false)} "${category.headline}" with you'
-          " so you can see what they've got. "
-          "It'll stick around on its own for your use, but you can also snag "
-          'its ${NamingUtils.tasksName(capitalize: true, plural: true)} and fold them into a ${NamingUtils.categoriesName(capitalize: true, plural: false)} of your own.',
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Got it'),
-          ),
-        ],
-      ),
-    );
-  }
 
   Future<void> _shareCategory(Category category) async {
     await SharePursuitDialog.show(context, category);
@@ -1535,7 +1501,7 @@ class HomeScreenState extends State<HomeScreen> {
           'owner_id': userId,
           'category_id': target.id,
           'original_id': task.id,
-          if (task.links != null && task.links!.isNotEmpty) 'links': task.links,
+          'links': task.links ?? <String>[],
           'finished': false,
           'shared': false,
         });
@@ -1760,11 +1726,10 @@ class HomeScreenState extends State<HomeScreen> {
           _updateCategoryLastAccess(categories.first);
         }
 
-        // Show welcome dialog for authenticated users with no categories
-        // Reset flag on each category load to show dialog on each login
-        if (!AuthUtils.isGuestUser() && categories.isEmpty) {
-          _welcomeDialogShown = false; // Reset to allow showing again
-          _checkAndShowWelcomeDialog();
+        // Show onboarding dialogs on first login; fall back to welcome
+        // dialog for authenticated users who have no categories.
+        if (!AuthUtils.isGuestUser()) {
+          _handleFirstLoginOrEmptyCategories(categories);
         }
       } catch (e) {
         print('Error loading categories: $e');
@@ -1819,7 +1784,6 @@ class HomeScreenState extends State<HomeScreen> {
     });
 
     if (newValue != null) {
-      _showShareWelcomeIfNeeded(newValue);
       await _updateCategoryLastAccess(newValue);
       if (_showTaskListMode) {
         if (needsLoad) {
@@ -2125,11 +2089,179 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
 
+  /// Called after every category load for authenticated users.
+  /// On first login (per-user SharedPreferences flag) shows the onboarding
+  /// sample-shares dialogs. Otherwise shows the generic welcome dialog when
+  /// the user has no categories.
+  Future<void> _handleFirstLoginOrEmptyCategories(
+      List<Category> categories) async {
+    if (_welcomeDialogShown) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final userId = AuthUtils.getCurrentUserId();
+    if (userId == null) return;
+
+    final isFirstLogin = !(prefs.getBool('onboarded_$userId') ?? false);
+    if (isFirstLogin && categories.isEmpty) {
+      _welcomeDialogShown = true;
+      await prefs.setBool('onboarded_$userId', true);
+      _showSampleSharesDialog();
+    } else if (categories.isEmpty) {
+      _welcomeDialogShown = false;
+      _checkAndShowWelcomeDialog();
+    }
+  }
+
   Future<void> _checkAndShowWelcomeDialog() async {
-    // Show the welcome dialog if it hasn't been shown in this session yet
     if (!_welcomeDialogShown) {
       _showWelcomeDialog();
     }
+  }
+
+  /// Show a one-time welcome dialog when a user arrives via a share link.
+  Future<void> _showShareWelcomeIfNeeded(Category category) async {
+    if (!category.isShared) return;
+    final userId = AuthUtils.getCurrentUserId();
+    if (userId == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final prefKey = 'welcomed_shared_$userId';
+    final welcomed = prefs.getStringList(prefKey) ?? [];
+    final key = category.id.toString();
+    if (welcomed.contains(key)) return;
+    welcomed.add(key);
+    await prefs.setStringList(prefKey, welcomed);
+    if (!mounted) return;
+    final sharer = category.ownerName ?? 'Someone';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+            '${NamingUtils.categoriesName(capitalize: true, plural: false)} Shared With You'),
+        content: Text(
+            '$sharer has shared their ${NamingUtils.categoriesName(capitalize: false, plural: false)} "${category.headline}" with you. You can read it, but not add or edit anything.'),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Dialog 1 — offer to adopt sample shares.
+  void _showSampleSharesDialog() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Text(
+              'Welcome to ROUZME!',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            content: Text(
+              'Here, we keep track of things you want to do '
+              '("${NamingUtils.tasksName(capitalize: true, plural: true)}"), '
+              'organized into "${NamingUtils.categoriesName(capitalize: true, plural: true)}" '
+              'like \'Watch a Movie\' or \'Start a Book\'. '
+              'We have a starter set of ${NamingUtils.categoriesName(capitalize: true, plural: true)} '
+              'if you want to see how it works.',
+              style: const TextStyle(fontSize: 16),
+            ),
+            actions: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () async {
+                      Navigator.of(ctx).pop();
+                      await ApiClient.redeemSampleShares(available: false);
+                      await _loadCategories();
+                      if (mounted) _showMySharesHintDialog();
+                    },
+                    child: const Text('No Thanks'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () async {
+                      Navigator.of(ctx).pop();
+                      await ApiClient.redeemSampleShares(available: true);
+                      await _loadCategories();
+                      if (mounted) _showMySharesHintDialog();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Let me see'),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      );
+    });
+  }
+
+  /// Dialog 2 — explain My Shares and offer quick navigation.
+  void _showMySharesHintDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return AlertDialog(
+          content: Text(
+            'By the way, there are more '
+            '${NamingUtils.categoriesName(capitalize: true, plural: true)} '
+            'on offer if you select "My Shares" from the menu at the top. '
+            'And if you\'re feeling confused, check out the "Help" section by '
+            'clicking the \'?\' button at the top of the screen.',
+            style: const TextStyle(fontSize: 16),
+          ),
+          actions: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    Navigator.pushNamed(context, '/help');
+                  },
+                  child: const Text('?'),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    MySharesScreen.show(
+                      context,
+                      _categories,
+                      (cat) async { await _handleCategorySelection(cat); },
+                      onRefresh: _loadCategories,
+                    );
+                  },
+                  child: const Text('Show Me My Shares'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Got It'),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showWelcomeDialog() {
@@ -2149,7 +2281,7 @@ class HomeScreenState extends State<HomeScreen> {
                 children: [
                   const Expanded(
                     child: Text(
-                      'Welcome to I\'ve Been Meaning To...!',
+                      'Welcome to ROUZME!',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -2165,7 +2297,7 @@ class HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               content: Text(
-                'It can be a pretty empty experience in the beginning, so the first thing you\'ll want is to define some ${NamingUtils.categoriesName()} (like \'Watch a Movie\'), and then some ${NamingUtils.tasksName()} for pursuing them (like \'The Godfather\' or \'Die Hard\')',
+                'The basic idea is simple: we keep track of "${NamingUtils.categoriesName(plural: true, capitalize: true)}" like \'Watch a Movie\' or \'Read a Book\', with "${NamingUtils.tasksName(plural: true, capitalize: true)}" for each one, like "The Godfather" or "Moby Dick". (Click the "More Info" button to learn more.)\n\nTo make it easier getting started, we have shared some sample ${NamingUtils.categoriesName(plural: true, capitalize: true)} for you to use. ',
                 style: const TextStyle(fontSize: 16),
               ),
               actions: [
@@ -2627,9 +2759,9 @@ class HomeScreenState extends State<HomeScreen> {
                                           if (!_isReadOnly)
                                             PopupMenuItem<String>(
                                               value: 'share',
-                                              child: const ListTile(
-                                                leading: Icon(Icons.person_add_outlined),
-                                                title: Text('Share this Pursuit'),
+                                              child: ListTile(
+                                                leading: const Icon(Icons.share),
+                                                title: const Text('Share this Pursuit'),
                                                 contentPadding: EdgeInsets.zero,
                                               ),
                                             ),

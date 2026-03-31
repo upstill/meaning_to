@@ -32,21 +32,31 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
   int _totalTaskCount = 0;
   bool _loading = true;
   bool _busy = false;
+  bool _isProvisional = false;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(autoCreate: true);
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool autoCreate = false}) async {
     setState(() => _loading = true);
     try {
       final userId = AuthUtils.getCurrentUserId();
       final invFuture = ApiClient.getShareInvitations(widget.category.id);
       final taskFuture = ApiClient.getTasksByCategoryAndUser(widget.category.id, userId);
-      final rows = await invFuture;
+      var rows = await invFuture;
       final tasks = await taskFuture;
+
+      // On first open with no existing invitation, create one provisionally.
+      // It will be deleted if the user cancels.
+      if (rows.isEmpty && autoCreate) {
+        await ApiClient.createShareInvitation(widget.category.id);
+        _isProvisional = true;
+        rows = await ApiClient.getShareInvitations(widget.category.id);
+      }
+
       if (mounted) {
         setState(() {
           _invitation = rows.isNotEmpty ? rows.first : null;
@@ -132,9 +142,18 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
     await _shareLink(DeepLinkGenerator.generateInviteLink(inv.id));
   }
 
+  Future<void> _cancelAndClose() async {
+    final inv = _invitation;
+    if (_isProvisional && inv != null) {
+      await ApiClient.deleteShareInvitation(inv.id);
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
   Future<void> _shareAndClose() async {
     final inv = _invitation;
     if (inv == null) return;
+    _isProvisional = false;
     final link = DeepLinkGenerator.generateInviteLink(inv.id);
     if (mounted) Navigator.of(context).pop();
     await _shareLink(link);
@@ -186,13 +205,25 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('To share this ${NamingUtils.categoriesName(capitalize: true, plural: false)}**, click the Share button. That will put a link on your Clipboard which you can paste into a message for them to click on.', style: const TextStyle(fontSize: 13)),
+                  Text('Sharing this ${NamingUtils.categoriesName(capitalize: true, plural: false)} means your sharee(s) can read it, but not add or edit anything.', style: const TextStyle(fontSize: 13)),
                   const SizedBox(height: 7),
-                  Text('To review which ${NamingUtils.tasksName(capitalize: true, plural: true)} will be shared, click the "Select ${NamingUtils.tasksName(capitalize: true, plural: true)} to share." button.', style: const TextStyle(fontSize: 13)),
+                  Text('To share this ${NamingUtils.categoriesName(capitalize: true, plural: false)} with someone else, click the Issue Link button. That will put a link on your Clipboard which you can paste into a message for them to click on.', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 7),
+                  RichText(
+                    text: TextSpan(
+                      style: const TextStyle(fontSize: 13, color: Colors.black),
+                      children: [
+                        TextSpan(text: 'Note: you\'re in control of which ${NamingUtils.tasksName(capitalize: true, plural: true)} are visible to others. To review which ${NamingUtils.tasksName(capitalize: true, plural: true)} will be shared, click the pencil icon ('),
+                        const WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: Icon(Icons.edit_outlined, size: 13),
+                        ),
+                        const TextSpan(text: ').'),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 7),
                   Text('Normally, the link is only good for 7 days, and it expires when redeemed. If you want it to be valid forever, to anyone with the link, check "Open To All".', style: const TextStyle(fontSize: 13)),
-                  const SizedBox(height: 7),
-                  Text('** Recipients can only read your ${NamingUtils.categoriesName(capitalize: true, plural: false)}, not add or edit anything.', style: const TextStyle(fontSize: 13)),
                   if (inv != null) ...[
                     const SizedBox(height: 12),
                     _buildLinkCard(inv),
@@ -202,20 +233,20 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _busy ? null : _cancelAndClose,
           child: const Text('Cancel'),
         ),
         if (!_loading)
           ElevatedButton.icon(
-            onPressed: _busy ? null : (inv == null ? _create : _shareAndClose),
+            onPressed: _busy ? null : _shareAndClose,
             icon: _busy
                 ? const SizedBox(
                     width: 14,
                     height: 14,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Icon(inv == null ? Icons.add_link : Icons.share, size: 16),
-            label: Text(inv == null ? 'Create Link' : 'Share'),
+                : const Icon(Icons.share, size: 16),
+            label: const Text('Issue Link'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green[700],
               foregroundColor: Colors.white,

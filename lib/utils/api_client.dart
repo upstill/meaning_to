@@ -738,6 +738,26 @@ class ApiClient {
     }
   }
 
+  /// Subscribes the current user to all open-to-all categories owned by
+  /// [ownerEmail]. If [available] is true they appear on the home screen
+  /// immediately; if false they are hidden in My Shares only.
+  /// Returns the number of new subscriptions created.
+  static Future<int> redeemSampleShares({bool available = true}) async {
+    try {
+      final response = await _supabase.rpc(
+        'redeem_sample_shares',
+        params: {
+          'p_owner_email': 'steve@upstill.net',
+          'p_available': available,
+        },
+      );
+      return response as int;
+    } catch (e) {
+      print('Error redeeming sample shares: $e');
+      return 0;
+    }
+  }
+
   /// Revokes a subscriber's access to [categoryId].
   static Future<void> revokeSubscriber(int categoryId, String userId) async {
     try {

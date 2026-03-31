@@ -204,12 +204,17 @@ class _MySharesScreenState extends State<MySharesScreen> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () {
-                      widget.onSelect(category);
-                      Navigator.of(context).pop();
+                    onPressed: () async {
+                      if (!category.isAvailable) {
+                        await _toggleAvailable(category, true);
+                      }
+                      if (mounted) {
+                        widget.onSelect(category);
+                        Navigator.of(context).pop();
+                      }
                     },
                     icon: const Icon(Icons.arrow_forward),
-                    tooltip: 'Go to Pursuit',
+                    tooltip: 'Adopt & Go to Pursuit',
                     visualDensity: VisualDensity.compact,
                   ),
                 ],
@@ -221,22 +226,6 @@ class _MySharesScreenState extends State<MySharesScreen> {
                     Text(
                       'from ${category.ownerName}',
                       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      onPressed: () async {
-                        await SnagPursuitScreen.push(
-                          context,
-                          sharedCategory: category,
-                          allCategories: widget.allCategories,
-                        );
-                        widget.onRefresh?.call();
-                      },
-                      icon: const Icon(Icons.copy, size: 22),
-                      tooltip: 'Copy to Owned Pursuit',
-                      color: Colors.green[800],
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
                     ),
                   ],
                 ),
@@ -430,7 +419,7 @@ class _ShareCategoryCardState extends State<_ShareCategoryCard> {
                     onPressed: () => EditShareTasksScreen.push(
                         context, category: widget.category),
                     icon: const Icon(Icons.edit_outlined, size: 14),
-                    label: const Text('Edit Tasks',
+                    label: const Text('Select Tasks to Share',
                         style: TextStyle(fontSize: 12)),
                     style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact,
