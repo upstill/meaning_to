@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:meaning_to/models/category.dart';
@@ -45,7 +46,8 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
     try {
       final userId = AuthUtils.getCurrentUserId();
       final invFuture = ApiClient.getShareInvitations(widget.category.id);
-      final taskFuture = ApiClient.getTasksByCategoryAndUser(widget.category.id, userId);
+      final taskFuture =
+          ApiClient.getTasksByCategoryAndUser(widget.category.id, userId);
       var rows = await invFuture;
       final tasks = await taskFuture;
 
@@ -71,7 +73,11 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
   }
 
   Future<void> _shareLink(String link) async {
-    if (kIsWeb) {
+    final useClipboard = kIsWeb ||
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.windows;
+    if (useClipboard) {
       await Clipboard.setData(ClipboardData(text: link));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -162,11 +168,24 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
   Future<void> _setOpenToAll(bool openToAll) async {
     final inv = _invitation;
     if (inv == null) return;
+    // Optimistically update the checkbox without triggering a full reload.
+    setState(() {
+      _invitation = ShareInvitation(
+        id: inv.id,
+        categoryId: inv.categoryId,
+        createdAt: inv.createdAt,
+        expiresAt: openToAll ? null : inv.expiresAt,
+        usedAt: inv.usedAt,
+        recipientEmail: inv.recipientEmail,
+        openToAll: openToAll,
+      );
+    });
     try {
       await ApiClient.setInvitationOpenToAll(inv.id, openToAll);
-      if (mounted) await _load();
     } catch (e) {
+      // Revert on failure.
       if (mounted) {
+        setState(() => _invitation = inv);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not update: $e')),
         );
@@ -176,8 +195,18 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
 
   static String _formatDate(DateTime dt) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final now = DateTime.now();
     if (dt.year == now.year) return '${months[dt.month - 1]} ${dt.day}';
@@ -205,15 +234,21 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Sharing this ${NamingUtils.categoriesName(capitalize: true, plural: false)} means your sharee(s) can read it, but not add or edit anything.', style: const TextStyle(fontSize: 13)),
+                  Text(
+                      'Sharing this ${NamingUtils.categoriesName(capitalize: true, plural: false)} means your sharee(s) can read it, but not add or edit anything.',
+                      style: const TextStyle(fontSize: 13)),
                   const SizedBox(height: 7),
-                  Text('To share this ${NamingUtils.categoriesName(capitalize: true, plural: false)} with someone else, click the Issue Link button. That will put a link on your Clipboard which you can paste into a message for them to click on.', style: const TextStyle(fontSize: 13)),
+                  Text(
+                      'To share this ${NamingUtils.categoriesName(capitalize: true, plural: false)} with someone else, click the Issue Link button. That will put a link on your Clipboard which you can paste into a message for them to click on.',
+                      style: const TextStyle(fontSize: 13)),
                   const SizedBox(height: 7),
                   RichText(
                     text: TextSpan(
                       style: const TextStyle(fontSize: 13, color: Colors.black),
                       children: [
-                        TextSpan(text: 'Note: you\'re in control of which ${NamingUtils.tasksName(capitalize: true, plural: true)} are visible to others. To review which ${NamingUtils.tasksName(capitalize: true, plural: true)} will be shared, click the pencil icon ('),
+                        TextSpan(
+                            text:
+                                'Note: you\'re in control of which ${NamingUtils.tasksName(capitalize: true, plural: true)} are visible to others. To review which ${NamingUtils.tasksName(capitalize: true, plural: true)} will be shared, click the pencil icon ('),
                         const WidgetSpan(
                           alignment: PlaceholderAlignment.middle,
                           child: Icon(Icons.edit_outlined, size: 13),
@@ -223,7 +258,9 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                     ),
                   ),
                   const SizedBox(height: 7),
-                  Text('Normally, the link is only good for 7 days, and it expires when redeemed. If you want it to be valid forever, to anyone with the link, check "Open To All".', style: const TextStyle(fontSize: 13)),
+                  Text(
+                      'Normally, the link is only good for 7 days, and it expires when redeemed. If you want it to be valid forever, to anyone with the link, check "Open To All".',
+                      style: const TextStyle(fontSize: 13)),
                   if (inv != null) ...[
                     const SizedBox(height: 12),
                     _buildLinkCard(inv),
@@ -292,6 +329,7 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Row 1: status badge + expiry + optional Renew
             Row(
               children: [
                 Container(
@@ -302,20 +340,12 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(statusLabel,
-                      style: const TextStyle(
-                          fontSize: 11, color: Colors.white)),
+                      style:
+                          const TextStyle(fontSize: 11, color: Colors.white)),
                 ),
                 const SizedBox(width: 8),
                 Text(expiryText,
                     style: TextStyle(fontSize: 12, color: expiryColor)),
-                const SizedBox(width: 8),
-                Checkbox(
-                  value: inv.openToAll,
-                  onChanged: _busy ? null : (v) => _setOpenToAll(v ?? false),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                ),
-                const Text('Open To All', style: TextStyle(fontSize: 12)),
                 if (!inv.isActive) ...[
                   const Spacer(),
                   TextButton.icon(
@@ -331,20 +361,31 @@ class _SharePursuitDialogState extends State<SharePursuitDialog> {
                 ],
               ],
             ),
+            // Row 2: Open To All checkbox + task count + edit icon
             Row(
               children: [
+                Checkbox(
+                  value: inv.openToAll,
+                  onChanged: _busy ? null : (v) => _setOpenToAll(v ?? false),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+                const Text('Open To All', style: TextStyle(fontSize: 12)),
                 const Spacer(),
                 Text(
-                  '$_sharedTaskCount ${NamingUtils.tasksName(capitalize: false, plural: _sharedTaskCount != 1)} sharable of $_totalTaskCount',
+                  '$_sharedTaskCount shareable\n${NamingUtils.tasksName(capitalize: false, plural: _sharedTaskCount != 1)} (of $_totalTaskCount)',
                   style: const TextStyle(fontSize: 12),
+                  textAlign: TextAlign.right,
                 ),
                 IconButton(
                   onPressed: () async {
-                    await EditShareTasksScreen.push(context, category: widget.category);
+                    await EditShareTasksScreen.push(context,
+                        category: widget.category);
                     if (mounted) _load();
                   },
                   icon: const Icon(Icons.edit_outlined, size: 16),
-                  tooltip: 'Select ${NamingUtils.tasksName(capitalize: true, plural: true)} to share',
+                  tooltip:
+                      'Select ${NamingUtils.tasksName(capitalize: true, plural: true)} to share',
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                 ),

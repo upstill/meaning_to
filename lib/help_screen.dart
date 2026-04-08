@@ -109,10 +109,12 @@ Pro tip: Just paste a URL into the headline when adding a new ${NamingUtils.task
             title: 'Take Shares from other apps',
             contentWidget: RichText(
               text: TextSpan(
-                style: const TextStyle(fontSize: 15, height: 1.5, color: Colors.black),
+                style: const TextStyle(
+                    fontSize: 15, height: 1.5, color: Colors.black),
                 children: [
                   const TextSpan(
-                    text: 'On mobile, you can quickly capture content from other apps by using the Share feature.\n\n'
+                    text:
+                        'On mobile, you can quickly capture content from other apps by using the Share feature.\n\n'
                         'How it works:\n'
                         '1. Find something interesting in another app (a website, article, video, etc.)\n'
                         '2. Tap the Share ',
@@ -142,7 +144,8 @@ Pro tip: Just paste a URL into the headline when adding a new ${NamingUtils.task
           _buildHelpSection(
             context: context,
             index: 4,
-            title: 'Import a whole collection of ${NamingUtils.tasksName(capitalize: true, plural: true)}',
+            title:
+                'Import a whole collection of ${NamingUtils.tasksName(capitalize: true, plural: true)}',
             content: '''
 Already have a list of things you've been meaning to do? You can import them in bulk from other sources.
 
@@ -194,7 +197,8 @@ https://www.justwatch.com/us/movie/inception
           _buildHelpSection(
             context: context,
             index: 5,
-            title: 'Share ${NamingUtils.categoriesName(plural: false, capitalize: true)} with a friend',
+            title:
+                'Share ${NamingUtils.categoriesName(plural: false, capitalize: true, withArticle: true)} with a friend',
             content: '''
 If you want to share your accumulated wisdom, you can let anyone see (but not change!) one of your ${NamingUtils.categoriesName(plural: true, capitalize: true)}. Here's how:
 

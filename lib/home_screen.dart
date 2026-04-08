@@ -17,6 +17,7 @@ import 'package:meaning_to/snag_pursuit_screen.dart';
 import 'dart:async';
 
 import 'package:meaning_to/utils/naming.dart';
+import 'package:meaning_to/utils/borrow_explanation.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/utils/synopsis_fetcher.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
@@ -30,7 +31,10 @@ enum HomeTaskSortOption { alphabetical, priority, age }
 // Assert-based debug check works correctly on all platforms including Flutter web.
 bool _isDebugMode() {
   var debug = false;
-  assert(() { debug = true; return true; }());
+  assert(() {
+    debug = true;
+    return true;
+  }());
   return debug;
 }
 
@@ -100,6 +104,9 @@ class HomeScreenState extends State<HomeScreen> {
   // Track if welcome dialog has been shown
   bool _welcomeDialogShown = false;
 
+  // Count of pending (unavailable) shared-with-me categories, shown on empty home screen
+  int _pendingInvitationCount = 0;
+
   // Track if this is the first load (to handle initial category selection from deep link)
   bool _isFirstLoad = true;
 
@@ -160,8 +167,7 @@ class HomeScreenState extends State<HomeScreen> {
           icon: const Icon(Icons.menu),
           tooltip: 'Account',
           onPressed: () async {
-            final RenderBox button =
-                context.findRenderObject()! as RenderBox;
+            final RenderBox button = context.findRenderObject()! as RenderBox;
             final RenderBox overlay = Navigator.of(context)
                 .overlay!
                 .context
@@ -169,8 +175,7 @@ class HomeScreenState extends State<HomeScreen> {
             final position = RelativeRect.fromRect(
               Rect.fromPoints(
                 button.localToGlobal(Offset.zero, ancestor: overlay),
-                button.localToGlobal(
-                    button.size.bottomRight(Offset.zero),
+                button.localToGlobal(button.size.bottomRight(Offset.zero),
                     ancestor: overlay),
               ),
               Offset.zero & overlay.size,
@@ -179,14 +184,6 @@ class HomeScreenState extends State<HomeScreen> {
               context: context,
               position: position,
               items: [
-                const PopupMenuItem<String>(
-                  value: 'my_shares',
-                  child: ListTile(
-                    leading: Icon(Icons.people_alt_outlined),
-                    title: Text('My Shares'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
                 const PopupMenuItem<String>(
                   value: 'logout',
                   child: ListTile(
@@ -227,14 +224,6 @@ class HomeScreenState extends State<HomeScreen> {
                   ),
               ],
             );
-            if (value == 'my_shares') {
-              await MySharesScreen.show(
-                context,
-                _categories,
-                (cat) async { await _handleCategorySelection(cat); },
-                onRefresh: _loadCategories,
-              );
-            }
             if (value == 'logout') await _handleLogout();
             if (value == 'delete') await _handleDeleteAccount();
             if (value == 'take_intent') await _showTakeIntentDialog();
@@ -391,8 +380,7 @@ class HomeScreenState extends State<HomeScreen> {
             ),
             ...tasks.map(
               (task) => Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: TaskDisplay(
                   key: ValueKey('find-task-${task.id}'),
                   task: task,
@@ -412,17 +400,14 @@ class HomeScreenState extends State<HomeScreen> {
                       context: context,
                       builder: (context) => AlertDialog(
                         title: const Text('Delete Task'),
-                        content:
-                            Text('Delete "${task.headline}"?'),
+                        content: Text('Delete "${task.headline}"?'),
                         actions: [
                           TextButton(
-                            onPressed: () =>
-                                Navigator.pop(context, false),
+                            onPressed: () => Navigator.pop(context, false),
                             child: const Text('Cancel'),
                           ),
                           ElevatedButton(
-                            onPressed: () =>
-                                Navigator.pop(context, true),
+                            onPressed: () => Navigator.pop(context, true),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.red,
                               foregroundColor: Colors.white,
@@ -438,8 +423,7 @@ class HomeScreenState extends State<HomeScreen> {
                     }
                   },
                   onTap: () async {
-                    await ApiClient.updateTaskFinished(
-                        task.id, !task.finished);
+                    await ApiClient.updateTaskFinished(task.id, !task.finished);
                     _performFind();
                   },
                   onUpdateSuggestibleAt: (DateTime newTime) async {
@@ -448,8 +432,7 @@ class HomeScreenState extends State<HomeScreen> {
                     _performFind();
                   },
                   onShareToggle: (bool newSharedState) async {
-                    await ApiClient.updateTaskShared(
-                        task.id, newSharedState);
+                    await ApiClient.updateTaskShared(task.id, newSharedState);
                     _performFind();
                   },
                   isCategoryPrivate: category.isPrivate,
@@ -473,17 +456,19 @@ class HomeScreenState extends State<HomeScreen> {
 
   /// Handle delete account action
   Future<void> _handleDeleteAccount() async {
+    final isDevUser = AuthUtils.getCurrentUserEmail()?.toLowerCase() == 'upstill@gmail.com';
+
     // Show confirmation dialog
     final bool? confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.warning, color: Colors.red, size: 32),
-              SizedBox(width: 8),
-              Text('Delete Account'),
+              const Icon(Icons.warning, color: Colors.red, size: 32),
+              const SizedBox(width: 8),
+              Text(isDevUser ? 'Reset Account Data' : 'Delete Account'),
             ],
           ),
           content: Column(
@@ -499,34 +484,44 @@ class HomeScreenState extends State<HomeScreen> {
                       ? '$email ($name)'
                       : email;
                 }(),
-                style: const TextStyle(fontSize: 18, color: Colors.grey, fontStyle: FontStyle.italic),
+                style: const TextStyle(
+                    fontSize: 18,
+                    color: Colors.grey,
+                    fontStyle: FontStyle.italic),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'WARNING: This action cannot be undone!',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.red,
-                  fontSize: 16,
+              if (isDevUser) ...[
+                const Text(
+                  'This will delete all data for this account (tasks, categories, shares) but keep the login intact.',
+                  style: TextStyle(fontSize: 14),
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Deleting your account will permanently remove:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text('• All your tasks'),
-              const Text('• All your categories'),
-              const Text('• Your user account'),
-              const SizedBox(height: 16),
-              const Text(
-                'This data cannot be recovered.',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontStyle: FontStyle.italic,
+              ] else ...[
+                const Text(
+                  'WARNING: This action cannot be undone!',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                    fontSize: 16,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Deleting your account will permanently remove:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text('• All your tasks'),
+                const Text('• All your categories'),
+                const Text('• Your user account'),
+                const SizedBox(height: 16),
+                const Text(
+                  'This data cannot be recovered.',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ],
           ),
           actions: [
@@ -540,7 +535,7 @@ class HomeScreenState extends State<HomeScreen> {
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Delete My Account'),
+              child: Text(isDevUser ? 'Reset My Data' : 'Delete My Account'),
             ),
           ],
         );
@@ -554,19 +549,21 @@ class HomeScreenState extends State<HomeScreen> {
 
   /// Delete all user data and account
   Future<void> _deleteAccountData() async {
-    // Show loading indicator
     if (!mounted) return;
+
+    final userId = AuthUtils.getCurrentUserId();
+    final isDevUser = AuthUtils.getCurrentUserEmail()?.toLowerCase() == 'upstill@gmail.com';
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
-        return const AlertDialog(
+        return AlertDialog(
           content: Row(
             children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Text('Deleting account...'),
+              const CircularProgressIndicator(),
+              const SizedBox(width: 16),
+              Text(isDevUser ? 'Resetting account...' : 'Deleting account...'),
             ],
           ),
         );
@@ -574,55 +571,64 @@ class HomeScreenState extends State<HomeScreen> {
     );
 
     try {
-      final userId = AuthUtils.getCurrentUserId();
+      // Delete subscriptions this user holds in other people's categories.
+      await supabase.from('shared_categories').delete().eq('user_id', userId);
 
-      // Delete all tasks for this user
+      // Delete all tasks for this user (also cascades share_invitations via category deletion below).
       await supabase.from('Tasks').delete().eq('owner_id', userId);
 
-      // Delete all categories for this user
+      // Delete share_invitations for this user's categories.
+      final catIds = (await supabase
+              .from('Categories')
+              .select('id')
+              .eq('owner_id', userId))
+          .map((r) => r['id'])
+          .toList();
+      if (catIds.isNotEmpty) {
+        await supabase
+            .from('share_invitations')
+            .delete()
+            .inFilter('category_id', catIds);
+        await supabase
+            .from('shared_categories')
+            .delete()
+            .inFilter('category_id', catIds);
+      }
+
+      // Delete all categories for this user.
       await supabase.from('Categories').delete().eq('owner_id', userId);
 
-      // Try to delete the user's auth account
-      // This requires either an RPC function or proper permissions
-      try {
-        // Attempt to use RPC function to delete user
-        // You'll need to create this function in Supabase:
-        // CREATE OR REPLACE FUNCTION delete_user()
-        // RETURNS void
-        // LANGUAGE plpgsql
-        // SECURITY DEFINER
-        // AS $$
-        // BEGIN
-        //   DELETE FROM auth.users WHERE id = auth.uid();
-        // END;
-        // $$;
-        await supabase.rpc('delete_user');
-      } catch (rpcError) {
-        print('Could not delete auth user via RPC: $rpcError');
-        // If RPC doesn't exist, data is still deleted
-        // User account will remain in auth.users but with no data
+      if (isDevUser) {
+        // Dev reset: keep the auth user so they can sign back in without re-registering.
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('onboarded_$userId');
+        await prefs.remove('welcomed_shared_$userId');
+        await prefs.remove('borrow_explained_$userId');
+      } else {
+        // Normal delete: remove the auth user entry via RPC.
+        try {
+          await supabase.rpc('delete_user');
+        } catch (rpcError) {
+          print('Could not delete auth user via RPC: $rpcError');
+        }
       }
 
       // Sign out
       await AuthUtils.signOut();
 
-      // Close loading dialog and navigate to auth screen
       if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
         Navigator.pushReplacementNamed(context, '/');
       }
     } catch (e) {
-      // Close loading dialog
       if (mounted) {
         Navigator.of(context).pop();
-
-        // Show error dialog
         showDialog(
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
               title: const Text('Error'),
-              content: Text('Failed to delete account: $e'),
+              content: Text('Failed to ${isDevUser ? 'reset' : 'delete'} account: $e'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -691,7 +697,10 @@ class HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    controller.dispose();
+    // Defer disposal so any ongoing dismiss animation can finish using the
+    // controller before it's torn down (immediate disposal causes a
+    // "used after disposed" crash when navigation closes the dialog mid-animation).
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
   }
 
   /// Debug function to fix raw URLs in task links
@@ -1217,13 +1226,18 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Shows CategoryPickerDialog to pick a target, then copies all shared tasks
+  /// from [sharedCategory] into the selected category.  Used by the
+  /// "Snag this Pursuit" menu item.
+
   Future<void> _releaseSharedCategory(Category category) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text("Release Share of '${category.headline}'"),
+        title: Text(
+            "Release Shared ${NamingUtils.categoriesName(capitalize: true, plural: false)}"),
         content: Text(
-            'Choosing Release will remove this ${NamingUtils.categoriesName(capitalize: true, plural: false)} from my list. It can be restored using the "My Shares" item on the main menu.'),
+            'Choosing Release will remove "${category.headline}" from your list of ${NamingUtils.categoriesName(capitalize: true, plural: true)}. You can get it back using the "My Shares" item in the ${NamingUtils.categoriesName(capitalize: true, plural: false)} menu.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -1393,8 +1407,7 @@ class HomeScreenState extends State<HomeScreen> {
 
     final headerRow = LayoutBuilder(
       builder: (context, constraints) {
-        final sortAreaWidth =
-            (constraints.maxWidth * 0.35).clamp(0.0, 240.0);
+        final sortAreaWidth = (constraints.maxWidth * 0.35).clamp(0.0, 240.0);
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1450,7 +1463,9 @@ class HomeScreenState extends State<HomeScreen> {
               withControls: !_isReadOnly,
               onEdit: _isReadOnly ? null : () => _showEditPanel(task),
               onDelete: _isReadOnly ? null : () => _deleteTaskFromList(task),
-              onTap: _isReadOnly ? null : () => _toggleTaskCompletionFromList(task),
+              onTap: _isReadOnly
+                  ? null
+                  : () => _toggleTaskCompletionFromList(task),
               onShareToggle: _isReadOnly
                   ? null
                   : (newSharedState) =>
@@ -1486,31 +1501,175 @@ class HomeScreenState extends State<HomeScreen> {
   /// Snag the single currently-displayed random task into an owned category.
   Future<void> _snagCurrentTask() async {
     final task = _randomTask;
-    if (task == null || _selectedCategory == null) return;
+    final sharedCategory = _selectedCategory;
+    if (task == null || sharedCategory == null) return;
 
-    Category? defaultCategory;
-    final sharedOriginalId = _selectedCategory!.originalId;
-    if (sharedOriginalId != null) {
-      defaultCategory = _categories
-          .where((c) => !c.isShared && c.originalId == sharedOriginalId)
-          .firstOrNull;
-    }
+    final sharedOriginalId = sharedCategory.originalId ?? sharedCategory.id;
+    final cloneCategory = _categories
+        .where((c) => !c.isShared && c.originalId == sharedOriginalId)
+        .firstOrNull;
+
+    final topLabel = cloneCategory != null
+        ? "My existing '${cloneCategory.headline}'"
+        : "A new '${sharedCategory.headline}' Pursuit of my own";
 
     await CategoryPickerDialog.show(
       context,
       title: 'Copy to which Pursuit?',
-      subtitle: 'Select one of your own Pursuits to copy this ${NamingUtils.tasksName(plural: false, capitalize: false)} into.',
-      defaultCategory: defaultCategory,
+      subtitle:
+          'Select one of your own Pursuits to copy this ${NamingUtils.tasksName(plural: false, capitalize: false)} into.',
       showCreateNew: true,
       hideShared: true,
+      excludeCategory: cloneCategory,
+      topButtonLabel: topLabel,
+      topButtonOnPressed: () async {
+        if (cloneCategory != null) {
+          await _copySelectedTasksTo(cloneCategory, overrideTasks: [task]);
+        } else {
+          await _snagTaskToNewClone(task, sharedCategory);
+        }
+      },
       onCategorySelected: (category, {bool? shouldMove, bool? applyToAll}) {
         unawaited(_copySelectedTasksTo(category, overrideTasks: [task]));
       },
     );
   }
 
+  /// For read-only (shared) categories with no tasks visible: explain that
+  /// we'll create an owned copy of the pursuit, offer to copy existing tasks,
+  /// then open NewContentScreen in the new pursuit.
+  Future<void> _addIdeaViaPickedPursuit() async {
+    final sharedCategory = _selectedCategory;
+    if (sharedCategory == null) return;
+
+    final categoryName = NamingUtils.categoriesName(capitalize: false, plural: false);
+    final tasksName = NamingUtils.tasksName(capitalize: false, plural: true);
+
+    bool copyTasks = true;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text('Create your own "${sharedCategory.headline}"'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Since this is a shared $categoryName, adding an idea will '
+                'create your own copy of "${sharedCategory.headline}" and add '
+                'the idea there.',
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Checkbox(
+                    value: copyTasks,
+                    onChanged: (v) => setLocal(() => copyTasks = v ?? true),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Also copy the existing shared $tasksName into my copy',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green[700],
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Proceed'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (proceed != true || !mounted) return;
+
+    final target = await _createCloneCategory(sharedCategory);
+    if (target == null || !mounted) return;
+
+    if (copyTasks) {
+      try {
+        final tasks = await ApiClient.getTasksByCategory(sharedCategory.id);
+        final shared = tasks.where((t) => t.shared).toList();
+        final userId = AuthUtils.getCurrentUserId();
+        for (final task in shared) {
+          await ApiClient.createTask({
+            'headline': task.headline,
+            if (task.notes != null) 'notes': task.notes,
+            if (task.synopsis != null) 'synopsis': task.synopsis,
+            'owner_id': userId,
+            'category_id': target.id,
+            'original_id': task.id,
+            if (task.links != null && task.links!.isNotEmpty) 'links': task.links,
+            'finished': false,
+            'shared': false,
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not copy tasks: $e')),
+          );
+        }
+      }
+    }
+
+    if (mounted) {
+      await _loadCategories();
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NewContentScreen(selectedCategory: target),
+        ),
+      ).then((_) => _loadCategories());
+    }
+  }
+
+  Future<Category?> _createCloneCategory(Category sharedCategory) async {
+    final userId = AuthUtils.getCurrentUserId();
+    try {
+      return await ApiClient.createCategory({
+        'headline': sharedCategory.headline,
+        'owner_id': userId,
+        'original_id': sharedCategory.originalId ?? sharedCategory.id,
+        if (sharedCategory.invitation != null)
+          'invitation': sharedCategory.invitation,
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not create Pursuit: $e')),
+        );
+      }
+      return null;
+    }
+  }
+
+  Future<void> _snagTaskToNewClone(Task task, Category sharedCategory) async {
+    final newCategory = await _createCloneCategory(sharedCategory);
+    if (newCategory != null) {
+      await _copySelectedTasksTo(newCategory, overrideTasks: [task]);
+    }
+  }
+
   /// Copies [overrideTasks] into [target] category as new tasks owned by current user.
-  Future<void> _copySelectedTasksTo(Category target, {List<Task>? overrideTasks}) async {
+  Future<void> _copySelectedTasksTo(Category target,
+      {List<Task>? overrideTasks}) async {
     final userId = AuthUtils.getCurrentUserId();
 
     final tasksToCopy = overrideTasks ?? [];
@@ -1693,6 +1852,14 @@ class HomeScreenState extends State<HomeScreen> {
         });
         print('Categories loaded successfully');
 
+        // When the list is empty, fetch pending (unavailable) invitations count
+        if (categories.isEmpty && !AuthUtils.isGuestUser()) {
+          ApiClient.getAllSharedWithMe().then((shared) {
+            final count = shared.where((c) => !c.isAvailable).length;
+            if (mounted) setState(() => _pendingInvitationCount = count);
+          }).catchError((_) {});
+        }
+
         // Only select initial category on first load (e.g., from deep link)
         // On subsequent reloads, preserve the user's dropdown selection
         if (_isFirstLoad) {
@@ -1712,7 +1879,8 @@ class HomeScreenState extends State<HomeScreen> {
         } else {
           // On subsequent loads, update the selected category reference to the new object
           if (_selectedCategory != null) {
-            final matches = categories.where((c) => c.id == _selectedCategory!.id);
+            final matches =
+                categories.where((c) => c.id == _selectedCategory!.id);
             final updatedCategory = matches.isEmpty ? null : matches.first;
             if (updatedCategory != null &&
                 (!updatedCategory.isShared || updatedCategory.isAvailable)) {
@@ -1754,6 +1922,9 @@ class HomeScreenState extends State<HomeScreen> {
         // dialog for authenticated users who have no categories.
         if (!AuthUtils.isGuestUser()) {
           _handleFirstLoginOrEmptyCategories(categories);
+          // Show welcome for any shared categories not yet acknowledged
+          // (covers invite-link redemptions that happen during signup).
+          _showPendingShareWelcomes(categories);
         }
       } catch (e) {
         print('Error loading categories: $e');
@@ -1809,6 +1980,9 @@ class HomeScreenState extends State<HomeScreen> {
 
     if (newValue != null) {
       await _updateCategoryLastAccess(newValue);
+      if (newValue.isShared && mounted) {
+        await showBorrowExplanationIfNeeded(context);
+      }
       if (_showTaskListMode) {
         if (needsLoad) {
           unawaited(_loadTaskListDataInBackground());
@@ -1871,7 +2045,8 @@ class HomeScreenState extends State<HomeScreen> {
 
     Navigator.pushNamed(context, '/new-category').then((result) {
       if (result != null) {
-        print('HomeScreen: Category was created or imported, reloading categories');
+        print(
+            'HomeScreen: Category was created or imported, reloading categories');
         _loadCategories().then((_) {
           if (result is Category && mounted) {
             _handleCategorySelection(result);
@@ -1916,7 +2091,9 @@ class HomeScreenState extends State<HomeScreen> {
         } else if (result == true) {
           // Bulk import (AddTasksScreen / JustWatch) - reload and switch to list mode
           print('HomeScreen: Bulk tasks created, switching to list mode');
-          setState(() { _showTaskListMode = false; });
+          setState(() {
+            _showTaskListMode = false;
+          });
           await _loadCategories();
           if (mounted) _toggleTaskListMode();
         }
@@ -1970,8 +2147,6 @@ class HomeScreenState extends State<HomeScreen> {
 
     _toggleTaskListMode(); // switches to list mode and loads fresh tasks
   }
-
-
 
   Future<void> _showEditPanel(Task task) async {
     print('HomeScreen: Showing edit panel for task: ${task.headline}');
@@ -2080,8 +2255,7 @@ class HomeScreenState extends State<HomeScreen> {
         // Move: update category_id
         await supabase
             .from('Tasks')
-            .update({'category_id': newCategory.id})
-            .eq('id', task.id);
+            .update({'category_id': newCategory.id}).eq('id', task.id);
       } else {
         // Copy: insert new row
         final userId = AuthUtils.getCurrentUserId();
@@ -2112,11 +2286,9 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
-
   /// Called after every category load for authenticated users.
-  /// On first login (per-user SharedPreferences flag) shows the onboarding
-  /// sample-shares dialogs. Otherwise shows the generic welcome dialog when
-  /// the user has no categories.
+  /// On first login silently subscribes the user to shares from supstill@mac.com
+  /// (available=false so they appear in My Shares but not the main list).
   Future<void> _handleFirstLoginOrEmptyCategories(
       List<Category> categories) async {
     if (_welcomeDialogShown) return;
@@ -2125,16 +2297,46 @@ class HomeScreenState extends State<HomeScreen> {
     final userId = AuthUtils.getCurrentUserId();
     if (userId == null) return;
 
-    if (categories.isEmpty) {
-      _welcomeDialogShown = true;
+    final isFirstLogin = !(prefs.getBool('onboarded_$userId') ?? false);
+    if (isFirstLogin) {
       await prefs.setBool('onboarded_$userId', true);
-      _showSampleSharesDialog();
+      _showWelcomeDialog(); // non-blocking; sets _welcomeDialogShown internally
+      await ApiClient.redeemSampleShares(available: false);
+      // Pre-mark all silently-subscribed shares as welcomed so
+      // _showPendingShareWelcomes doesn't fire a dialog for each one.
+      if (mounted) {
+        final allShared = await ApiClient.getAllSharedWithMe();
+        final prefKey = 'welcomed_shared_$userId';
+        final welcomed = prefs.getStringList(prefKey) ?? [];
+        for (final cat in allShared) {
+          final key = cat.id.toString();
+          if (!welcomed.contains(key)) welcomed.add(key);
+        }
+        await prefs.setStringList(prefKey, welcomed);
+        await _loadCategories();
+      }
     }
   }
 
   Future<void> _checkAndShowWelcomeDialog() async {
     if (!_welcomeDialogShown) {
       _showWelcomeDialog();
+    }
+  }
+
+  /// After loading categories, show the share welcome for any shared category
+  /// not yet acknowledged — covers invite redemptions during signup where
+  /// initialCategoryId doesn't survive through the OTP auth flow.
+  Future<void> _showPendingShareWelcomes(List<Category> categories) async {
+    final userId = AuthUtils.getCurrentUserId();
+    if (userId == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final prefKey = 'welcomed_shared_$userId';
+    final welcomed = prefs.getStringList(prefKey) ?? [];
+    for (final category in categories) {
+      if (category.isShared && !welcomed.contains(category.id.toString())) {
+        await _showShareWelcomeIfNeeded(category);
+      }
     }
   }
 
@@ -2152,148 +2354,40 @@ class HomeScreenState extends State<HomeScreen> {
     await prefs.setStringList(prefKey, welcomed);
     if (!mounted) return;
     final sharer = category.ownerName ?? 'Someone';
-    await showDialog<void>(
+    final categoryName =
+        NamingUtils.categoriesName(capitalize: true, plural: false);
+    final specificParagraph =
+        '$sharer has shared their $categoryName "${category.headline}". '
+        'You can read it, but not add or edit anything. However, you can copy it for your own use by tapping the "Snag this $categoryName" button in the menu.';
+    final accepted = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(
-            '${NamingUtils.categoriesName(capitalize: true, plural: false)} Shared With You'),
-        content: Text(
-            '$sharer has shared their ${NamingUtils.categoriesName(capitalize: false, plural: false)} "${category.headline}" with you. You can read it, but not add or edit anything.'),
+        title: Text('$categoryName Shared With You'),
+        content: Text(specificParagraph),
         actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No Thanks'),
+          ),
           ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Got it'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Sounds Good'),
           ),
         ],
       ),
     );
+    if (accepted == false && mounted) {
+      try {
+        await ApiClient.setSharedCategoryAvailable(category.id, false);
+        await _loadCategories();
+      } catch (_) {}
+    }
   }
 
-  /// Dialog 1 — offer to adopt sample shares.
-  void _showSampleSharesDialog() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) {
-          return AlertDialog(
-            title: const Text(
-              'Welcome to ROUZME!',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            content: Text(
-              'Here, we keep track of things you want to do '
-              '("${NamingUtils.tasksName(capitalize: true, plural: true)}"), '
-              'organized into "${NamingUtils.categoriesName(capitalize: true, plural: true)}" '
-              'like \'Watch a Movie\' or \'Start a Book\'. '
-              'We have a starter set of ${NamingUtils.categoriesName(capitalize: true, plural: true)} '
-              'if you want to see how it works.',
-              style: const TextStyle(fontSize: 16),
-            ),
-            actions: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () async {
-                      Navigator.of(ctx).pop();
-                      await ApiClient.redeemSampleShares(available: false);
-                      await _loadCategories();
-                      if (mounted) _showMySharesHintDialog();
-                    },
-                    child: const Text('No Thanks'),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () async {
-                      Navigator.of(ctx).pop();
-                      await ApiClient.redeemSampleShares(available: true);
-                      await _loadCategories();
-                      if (mounted) _showMySharesHintDialog();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text('Let me see'),
-                  ),
-                ],
-              ),
-            ],
-          );
-        },
-      );
-    });
-  }
-
-  /// Dialog 2 — explain My Shares and offer quick navigation.
-  void _showMySharesHintDialog() {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) {
-        return AlertDialog(
-          content: RichText(
-            text: TextSpan(
-              style: const TextStyle(fontSize: 16, color: Colors.black),
-              children: [
-                TextSpan(
-                  text: 'By the way, there are more '
-                      '${NamingUtils.categoriesName(capitalize: true, plural: true)} '
-                      'for inspiration if you select "My Shares" from the menu at the top. '
-                      'And if you\'re feeling confused, check out the "Help" section by '
-                      'clicking the ',
-                ),
-                const WidgetSpan(
-                  alignment: PlaceholderAlignment.middle,
-                  child: _HelpIcon(size: 16),
-                ),
-                const TextSpan(text: ' button at the top of the screen.'),
-              ],
-            ),
-          ),
-          actions: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    Navigator.pushNamed(context, '/help');
-                  },
-                  child: const _HelpIcon(size: 20),
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    MySharesScreen.show(
-                      context,
-                      _categories,
-                      (cat) async { await _handleCategorySelection(cat); },
-                      onRefresh: _loadCategories,
-                    );
-                  },
-                  child: const Text('Show Me My Shares'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Got It'),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
 
   void _showWelcomeDialog() {
     if (_welcomeDialogShown) return;
@@ -2327,55 +2421,48 @@ class HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              content: Text(
-                'The basic idea is simple: we keep track of "${NamingUtils.categoriesName(plural: true, capitalize: true)}" like \'Watch a Movie\' or \'Read a Book\', with "${NamingUtils.tasksName(plural: true, capitalize: true)}" for each one, like "The Godfather" or "Moby Dick". (Click the "More Info" button to learn more.)\n\nTo make it easier getting started, we have shared some sample ${NamingUtils.categoriesName(plural: true, capitalize: true)} for you to use. ',
-                style: const TextStyle(fontSize: 16),
+              content: RichText(
+                text: TextSpan(
+                  style: const TextStyle(fontSize: 16, color: Colors.black),
+                  children: [
+                    const TextSpan(text: 'The basic idea is simple: we keep track of '),
+                    TextSpan(
+                      text: NamingUtils.categoriesName(plural: true, capitalize: true),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const TextSpan(text: ' like \'Watch a Movie\' or \'Read a Book\', with '),
+                    TextSpan(
+                      text: NamingUtils.tasksName(plural: true, capitalize: true),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(text: ' for each one, like "The Godfather" or "Moby Dick".\n\nTo make it easier getting started, you\'re invited to borrow some sample ${NamingUtils.categoriesName(plural: true, capitalize: true)} from others.\n\n(The Help button below will explain more.)'),
+                  ],
+                ),
               ),
               actions: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Flexible(
-                      flex: 1,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          Navigator.pushNamed(context, '/help');
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.yellow[700],
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 12),
-                        ),
-                        child: const Text(
-                          'More Info',
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
+                    IconButton(
+                      icon: const _HelpIcon(size: 28),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        Navigator.pushNamed(context, '/help');
+                      },
+                      tooltip: 'Help',
                     ),
                     const SizedBox(width: 8),
-                    Flexible(
-                      flex: 2,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          // Navigate to create new category
-                          _navigateToNewCategory();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 12),
-                        ),
-                        child: Text(
-                          'Create Your First ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.visible,
-                        ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 12),
+                      ),
+                      child: const Text(
+                        'Got It',
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -2601,928 +2688,1161 @@ class HomeScreenState extends State<HomeScreen> {
         automaticallyImplyLeading: false,
         actions: _buildAppBarActions(),
       ),
-      body: _isShowingResults ? _buildFindResults() : Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_isLoading)
-                const Center(child: CircularProgressIndicator())
-              else if (_error != null)
-                Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      Text(
-                        _error!,
-                        style: const TextStyle(fontSize: 16),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          _loadCategories();
-                          if (_selectedCategory != null) {
-                            _loadRandomTask(_selectedCategory!);
-                          }
-                        },
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Try Again'),
-                      ),
-                    ],
-                  ),
-                )
-              else if (_categories.isEmpty)
-                Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      IconButton(
-                        icon: const _HelpIcon(size: 48),
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/help');
-                        },
-                        tooltip: 'Help',
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No ${NamingUtils.categoriesName(plural: true)} available',
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w600),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        AuthUtils.isGuestUser()
-                            ? 'Guest users can only view demo data. Sign up/in to create your own ${NamingUtils.categoriesName()}.'
-                            : '',
-                        style:
-                            const TextStyle(fontSize: 14, color: Colors.grey),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      if (AuthUtils.isGuestUser())
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  Navigator.pushNamed(context, '/auth');
-                                },
-                                icon: const Icon(Icons.login),
-                                label: const Text('Sign In'),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  Navigator.pushNamed(context, '/auth');
-                                },
-                                icon: const Icon(Icons.person_add),
-                                label: const Text('Sign Up'),
-                              ),
-                            ),
-                          ],
-                        )
-                      else
-                        ElevatedButton.icon(
-                          onPressed: _navigateToNewCategory,
-                          icon: const Icon(Icons.add),
-                          label: Text(
-                              'Define ${NamingUtils.categoriesName(plural: false, withArticle: true)} to get started'),
-                          style: AppButtons.finalize(),
-                        ),
-                    ],
-                  ),
-                )
-              else
-                Column(
+      body: _isShowingResults
+          ? _buildFindResults()
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: SingleChildScrollView(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    if (_isLoading)
+                      const Center(child: CircularProgressIndicator())
+                    else if (_error != null)
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Expanded(
-                              child: Column(
+                            const Icon(Icons.cloud_off,
+                                size: 48, color: Colors.grey),
+                            const SizedBox(height: 16),
+                            Text(
+                              _error!,
+                              style: const TextStyle(fontSize: 16),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                _loadCategories();
+                                if (_selectedCategory != null) {
+                                  _loadRandomTask(_selectedCategory!);
+                                }
+                              },
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Try Again'),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (_categories.isEmpty)
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                              icon: const _HelpIcon(size: 48),
+                              onPressed: () {
+                                Navigator.pushNamed(context, '/help');
+                              },
+                              tooltip: 'Help',
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No ${NamingUtils.categoriesName(plural: true)} available',
+                              style: const TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.w600),
+                              textAlign: TextAlign.center,
+                            ),
+                            if (AuthUtils.isGuestUser()) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'Guest users can only view demo data. Sign up/in to create your own ${NamingUtils.categoriesName()}.',
+                                style: const TextStyle(fontSize: 14, color: Colors.grey),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                            if (AuthUtils.isGuestUser())
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: () {
+                                        Navigator.pushNamed(context, '/auth');
+                                      },
+                                      icon: const Icon(Icons.login),
+                                      label: const Text('Sign In'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: () {
+                                        Navigator.pushNamed(context, '/auth');
+                                      },
+                                      icon: const Icon(Icons.person_add),
+                                      label: const Text('Sign Up'),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else ...[
+                              if (_pendingInvitationCount > 0) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  '...but you\'re invited to borrow\nsome ${NamingUtils.categoriesName(plural: true)} from others:',
+                                  style: const TextStyle(fontSize: 17, color: Color(0xFF6F6F6F)),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 8),
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    await MySharesScreen.show(
+                                      context,
+                                      _categories,
+                                      (cat) async {
+                                        await _handleCategorySelection(cat);
+                                      },
+                                      onRefresh: _loadCategories,
+                                    );
+                                    if (mounted) _loadCategories();
+                                  },
+                                  icon: const Icon(Icons.inbox),
+                                  label: const Text('Show me'),
+                                  style: AppButtons.goForth(),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text('Otherwise,', style: TextStyle(fontSize: 17, color: Color(0xFF6F6F6F))),
+                                const SizedBox(height: 8),
+                              ],
+                              ElevatedButton.icon(
+                                onPressed: _navigateToNewCategory,
+                                icon: const Icon(Icons.add),
+                                label: const Text('Create My Own Pursuit'),
+                                style: AppButtons.finalize(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      )
+                    else
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                              child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      const Expanded(
-                                        child: Text(
-                                          'Rouse me to...',
-                                          style: TextStyle(
-                                            fontSize: 20,
-                                            fontStyle: FontStyle.italic,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                      ),
-                                      if (!_isReadOnly)
-                                        TextButton.icon(
-                                          icon: const Icon(Icons.add_task, color: Colors.deepPurple),
-                                          label: const Text(
-                                            'Add Idea',
-                                            style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
-                                          ),
-                                          onPressed: () {
-                                            if (AuthUtils.isGuestUser()) {
-                                              _showGuestSignupDialog(
-                                                content:
-                                                    'Here\'s where you can add ${NamingUtils.tasksName()} once you\'re logged in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
-                                              );
-                                              return;
-                                            }
-                                            _navigateToNewContent();
-                                          },
-                                        ),
-                                      PopupMenuButton<String>(
-                                        icon: const Icon(Icons.more_vert),
-                                        tooltip: '${NamingUtils.categoriesName(capitalize: true, plural: false)} options',
-                                        onSelected: (value) async {
-                                          if (AuthUtils.isGuestUser()) {
-                                            _showGuestSignupDialog(
-                                              content:
-                                                  'Here\'s where you can edit ${NamingUtils.categoriesName(plural: false, withArticle: true)} once you\'re logged in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
-                                            );
-                                            return;
-                                          }
-                                          switch (value) {
-                                            case 'add':
-                                              _navigateToNewCategory();
-                                            case 'edit':
-                                              if (_selectedCategory != null) {
-                                                final updated = await showDialog<Category>(
-                                                  context: context,
-                                                  builder: (_) => EditCategoryDialog(category: _selectedCategory!),
-                                                );
-                                                if (updated != null) {
-                                                  await _loadCategories();
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            const Expanded(
+                                              child: Text(
+                                                'Rouse me to...',
+                                                style: TextStyle(
+                                                  fontSize: 20,
+                                                  fontStyle: FontStyle.italic,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                            ),
+                                            if (!_isReadOnly)
+                                              TextButton.icon(
+                                                icon: const Icon(Icons.add_task,
+                                                    color: Colors.deepPurple),
+                                                label: const Text(
+                                                  'Add Idea',
+                                                  style: TextStyle(
+                                                      color: Colors.deepPurple,
+                                                      fontWeight:
+                                                          FontWeight.bold),
+                                                ),
+                                                onPressed: () {
+                                                  if (AuthUtils.isGuestUser()) {
+                                                    _showGuestSignupDialog(
+                                                      content:
+                                                          'Here\'s where you can add ${NamingUtils.tasksName()} once you\'re logged in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
+                                                    );
+                                                    return;
+                                                  }
+                                                  _navigateToNewContent();
+                                                },
+                                              ),
+                                            PopupMenuButton<String>(
+                                              icon: const Icon(Icons.more_vert),
+                                              tooltip:
+                                                  '${NamingUtils.categoriesName(capitalize: true, plural: false)} options',
+                                              onSelected: (value) async {
+                                                if (AuthUtils.isGuestUser()) {
+                                                  _showGuestSignupDialog(
+                                                    content:
+                                                        'Here\'s where you can edit ${NamingUtils.categoriesName(plural: false, withArticle: true)} once you\'re logged in. Sign up to create your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}!',
+                                                  );
+                                                  return;
                                                 }
-                                              }
-                                            case 'share':
-                                              if (_selectedCategory != null) unawaited(_shareCategory(_selectedCategory!));
-                                            case 'delete':
-                                              if (_selectedCategory != null) _deleteCategory(_selectedCategory!);
-                                            case 'snag_all':
-                                              if (_selectedCategory != null) unawaited(_showSnagPursuitScreen(_selectedCategory!));
-                                            case 'release':
-                                              if (_selectedCategory != null) _releaseSharedCategory(_selectedCategory!);
-                                          }
-                                        },
-                                        itemBuilder: (_) => [
-                                          PopupMenuItem<String>(
-                                            value: 'add',
-                                            child: ListTile(
-                                              leading: const Icon(Icons.add),
-                                              title: Text('New ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
-                                              contentPadding: EdgeInsets.zero,
-                                            ),
-                                          ),
-                                          if (!_isReadOnly)
-                                            PopupMenuItem<String>(
-                                              value: 'share',
-                                              child: ListTile(
-                                                leading: const Icon(Icons.share),
-                                                title: const Text('Share this Pursuit'),
-                                                contentPadding: EdgeInsets.zero,
-                                              ),
-                                            ),
-                                          if (!_isReadOnly)
-                                            PopupMenuItem<String>(
-                                              value: 'edit',
-                                              child: ListTile(
-                                                leading: const Icon(Icons.edit),
-                                                title: Text('Edit ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
-                                                contentPadding: EdgeInsets.zero,
-                                              ),
-                                            ),
-                                          if (!_isReadOnly)
-                                            PopupMenuItem<String>(
-                                              value: 'delete',
-                                              child: ListTile(
-                                                leading: const Icon(Icons.delete, color: Colors.red),
-                                                title: Text(
-                                                  'Delete ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
-                                                  style: const TextStyle(color: Colors.red),
+                                                switch (value) {
+                                                  case 'add':
+                                                    _navigateToNewCategory();
+                                                  case 'edit':
+                                                    if (_selectedCategory !=
+                                                        null) {
+                                                      final updated =
+                                                          await showDialog<
+                                                              Category>(
+                                                        context: context,
+                                                        builder: (_) =>
+                                                            EditCategoryDialog(
+                                                                category:
+                                                                    _selectedCategory!),
+                                                      );
+                                                      if (updated != null) {
+                                                        await _loadCategories();
+                                                      }
+                                                    }
+                                                  case 'share':
+                                                    if (_selectedCategory !=
+                                                        null)
+                                                      unawaited(_shareCategory(
+                                                          _selectedCategory!));
+                                                  case 'my_shares':
+                                                    await MySharesScreen.show(
+                                                      context,
+                                                      _categories,
+                                                      (cat) async {
+                                                        await _handleCategorySelection(
+                                                            cat);
+                                                      },
+                                                      onRefresh:
+                                                          _loadCategories,
+                                                    );
+                                                    if (mounted) _loadCategories();
+                                                  case 'delete':
+                                                    if (_selectedCategory !=
+                                                        null)
+                                                      _deleteCategory(
+                                                          _selectedCategory!);
+                                                  case 'snag_all':
+                                                    if (_selectedCategory !=
+                                                        null)
+                                                      unawaited(
+                                                          _showSnagPursuitScreen(
+                                                              _selectedCategory!));
+                                                  case 'release':
+                                                    if (_selectedCategory !=
+                                                        null)
+                                                      _releaseSharedCategory(
+                                                          _selectedCategory!);
+                                                }
+                                              },
+                                              itemBuilder: (_) => [
+                                                PopupMenuItem<String>(
+                                                  value: 'add',
+                                                  child: ListTile(
+                                                    leading:
+                                                        const Icon(Icons.add),
+                                                    title: Text(
+                                                        'New ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
+                                                    contentPadding:
+                                                        EdgeInsets.zero,
+                                                  ),
                                                 ),
-                                                contentPadding: EdgeInsets.zero,
-                                              ),
-                                            ),
-                                          if (_isReadOnly)
-                                            PopupMenuItem<String>(
-                                              value: 'snag_all',
-                                              child: ListTile(
-                                                leading: const Icon(Icons.library_add_outlined),
-                                                title: Text('Snag this ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
-                                                contentPadding: EdgeInsets.zero,
-                                              ),
-                                            ),
-                                          if (_isReadOnly)
-                                            const PopupMenuItem<String>(
-                                              value: 'release',
-                                              child: ListTile(
-                                                leading: Icon(Icons.link_off, color: Colors.red),
-                                                title: Text(
-                                                  'Release this Pursuit',
-                                                  style: TextStyle(color: Colors.red),
-                                                ),
-                                                contentPadding: EdgeInsets.zero,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                  Row(
-                                    children: [
-                                      Flexible(
-                                        fit: FlexFit.loose,
-                                        child: () {
-                                          final cat = _selectedCategory ?? _categories.first;
-                                          final headlineFontSize = (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) + 10;
-                                          final headlineStyle = TextStyle(
-                                            fontSize: headlineFontSize,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF1A237E),
-                                          );
-                                          if (cat.isShared) {
-                                            return Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(cat.headline, style: headlineStyle),
-                                                Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Text(
-                                                      'from ${cat.ownerName}',
-                                                      style: TextStyle(
-                                                        fontSize: headlineFontSize * 0.7,
-                                                        fontStyle: FontStyle.italic,
-                                                        color: Color(0xFF1A237E),
+                                                if (!_isReadOnly)
+                                                  PopupMenuItem<String>(
+                                                    value: 'edit',
+                                                    child: ListTile(
+                                                      leading: const Icon(
+                                                          Icons.edit),
+                                                      title: Text(
+                                                          'Edit ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
+                                                      contentPadding:
+                                                          EdgeInsets.zero,
+                                                    ),
+                                                  ),
+                                                if (!_isReadOnly)
+                                                  PopupMenuItem<String>(
+                                                    value: 'share',
+                                                    child: ListTile(
+                                                      leading: const Icon(
+                                                          Icons.share),
+                                                      title: const Text(
+                                                          'Share this Pursuit'),
+                                                      contentPadding:
+                                                          EdgeInsets.zero,
+                                                    ),
+                                                  ),
+                                                if (!AuthUtils.isGuestUser())
+                                                  const PopupMenuItem<String>(
+                                                    value: 'my_shares',
+                                                    child: ListTile(
+                                                      leading: Icon(Icons
+                                                          .people_alt_outlined),
+                                                      title: Text('My Shares'),
+                                                      contentPadding:
+                                                          EdgeInsets.zero,
+                                                    ),
+                                                  ),
+                                                if (!_isReadOnly)
+                                                  PopupMenuItem<String>(
+                                                    value: 'delete',
+                                                    child: ListTile(
+                                                      leading: const Icon(
+                                                          Icons.delete,
+                                                          color: Colors.red),
+                                                      title: Text(
+                                                        'Delete ${NamingUtils.categoriesName(capitalize: true, plural: false)}',
+                                                        style: const TextStyle(
+                                                            color: Colors.red),
                                                       ),
+                                                      contentPadding:
+                                                          EdgeInsets.zero,
                                                     ),
-                                                    const SizedBox(width: 6),
-                                                    IconButton(
-                                                      onPressed: () => unawaited(_showSnagPursuitScreen(cat)),
-                                                      icon: const Icon(Icons.copy, size: 22),
-                                                      tooltip: 'Copy for Me',
-                                                      color: Colors.green[800],
-                                                      visualDensity: VisualDensity.compact,
-                                                      padding: EdgeInsets.zero,
+                                                  ),
+                                                if (_isReadOnly)
+                                                  PopupMenuItem<String>(
+                                                    value: 'snag_all',
+                                                    child: ListTile(
+                                                      leading: const Icon(Icons
+                                                          .library_add_outlined),
+                                                      title: Text(
+                                                          'Snag this ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
+                                                      contentPadding:
+                                                          EdgeInsets.zero,
                                                     ),
-                                                  ],
-                                                ),
+                                                  ),
+                                                if (_isReadOnly)
+                                                  const PopupMenuItem<String>(
+                                                    value: 'release',
+                                                    child: ListTile(
+                                                      leading: Icon(
+                                                          Icons.link_off,
+                                                          color: Colors.red),
+                                                      title: Text(
+                                                        'Release this Pursuit',
+                                                        style: TextStyle(
+                                                            color: Colors.red),
+                                                      ),
+                                                      contentPadding:
+                                                          EdgeInsets.zero,
+                                                    ),
+                                                  ),
                                               ],
-                                            );
-                                          }
-                                          return Text(cat.headline, style: headlineStyle);
-                                        }(),
-                                      ),
-                                      PopupMenuButton<Category>(
-                                        tooltip:
-                                            'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
-                                        icon: const Icon(
-                                          Icons.arrow_drop_down,
-                                          size: 32,
+                                            ),
+                                          ],
                                         ),
-                                        enabled: _categories.length > 1,
-                                        onSelected: (category) {
-                                          unawaited(_handleCategorySelection(
-                                              category));
-                                        },
-                                        itemBuilder: (context) => _categories
-                                            .where((c) => !c.isShared || c.isAvailable)
-                                            .map(
-                                              (category) =>
-                                                  PopupMenuItem<Category>(
-                                                value: category,
-                                                child: category.isShared
-                                                    ? Column(
-                                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                                        mainAxisSize: MainAxisSize.min,
+                                        Row(
+                                          children: [
+                                            Flexible(
+                                              fit: FlexFit.loose,
+                                              child: () {
+                                                final cat = _selectedCategory ??
+                                                    _categories.first;
+                                                final headlineFontSize =
+                                                    (Theme.of(context)
+                                                                .textTheme
+                                                                .bodyLarge
+                                                                ?.fontSize ??
+                                                            16) +
+                                                        10;
+                                                final headlineStyle = TextStyle(
+                                                  fontSize: headlineFontSize,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Color(0xFF1A237E),
+                                                );
+                                                if (cat.isShared) {
+                                                  return Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Text(cat.headline,
+                                                          style: headlineStyle),
+                                                      Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
                                                         children: [
-                                                          Text(category.headline),
                                                           Text(
-                                                            'from ${category.ownerName}',
+                                                            'from ${cat.ownerName}',
                                                             style: TextStyle(
-                                                              fontSize: (Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14) * 0.8,
-                                                              fontStyle: FontStyle.italic,
+                                                              fontSize:
+                                                                  headlineFontSize *
+                                                                      0.7,
+                                                              fontStyle:
+                                                                  FontStyle
+                                                                      .italic,
+                                                              color: Color(
+                                                                  0xFF1A237E),
                                                             ),
                                                           ),
+                                                          const SizedBox(
+                                                              width: 6),
+                                                          IconButton(
+                                                            onPressed: () async {
+                                                              await showBorrowExplanationIfNeeded(context);
+                                                              if (mounted) unawaited(_showSnagPursuitScreen(cat));
+                                                            },
+                                                            icon: const Icon(
+                                                                Icons.copy,
+                                                                size: 22),
+                                                            tooltip:
+                                                                'Copy for Me',
+                                                            color: Colors
+                                                                .green[800],
+                                                            visualDensity:
+                                                                VisualDensity
+                                                                    .compact,
+                                                            padding:
+                                                                EdgeInsets.zero,
+                                                          ),
                                                         ],
-                                                      )
-                                                    : Text(category.headline),
+                                                      ),
+                                                    ],
+                                                  );
+                                                }
+                                                return Text(cat.headline,
+                                                    style: headlineStyle);
+                                              }(),
+                                            ),
+                                            PopupMenuButton<Category>(
+                                              tooltip:
+                                                  'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
+                                              icon: const Icon(
+                                                Icons.arrow_drop_down,
+                                                size: 32,
                                               ),
-                                            )
-                                            .toList(),
-                                      ),
-                                    ],
-                                  ),
-                                  if ((_selectedCategory?.invitation ?? '')
-                                      .trim()
-                                      .isNotEmpty) ...[
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      _selectedCategory!.invitation!,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontStyle: FontStyle.italic,
-                                      ),
+                                              enabled: _categories.length > 1,
+                                              onSelected: (category) {
+                                                unawaited(
+                                                    _handleCategorySelection(
+                                                        category));
+                                              },
+                                              itemBuilder: (context) =>
+                                                  _categories
+                                                      .where((c) =>
+                                                          !c.isShared ||
+                                                          c.isAvailable)
+                                                      .map(
+                                                        (category) =>
+                                                            PopupMenuItem<
+                                                                Category>(
+                                                          value: category,
+                                                          child: category
+                                                                  .isShared
+                                                              ? Column(
+                                                                  crossAxisAlignment:
+                                                                      CrossAxisAlignment
+                                                                          .start,
+                                                                  mainAxisSize:
+                                                                      MainAxisSize
+                                                                          .min,
+                                                                  children: [
+                                                                    Text(category
+                                                                        .headline),
+                                                                    Text(
+                                                                      'from ${category.ownerName}',
+                                                                      style:
+                                                                          TextStyle(
+                                                                        fontSize:
+                                                                            (Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14) *
+                                                                                0.8,
+                                                                        fontStyle:
+                                                                            FontStyle.italic,
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                )
+                                                              : Text(category
+                                                                  .headline),
+                                                        ),
+                                                      )
+                                                      .toList(),
+                                            ),
+                                          ],
+                                        ),
+                                        if ((_selectedCategory?.invitation ??
+                                                '')
+                                            .trim()
+                                            .isNotEmpty) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            _selectedCategory!.invitation!,
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
-                                  ],
+                                  ),
                                 ],
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (_selectedCategory != null) ...[
-                      if (_cacheManager.currentTasks?.isNotEmpty == true) ...[
-                        const SizedBox(height: 12),
-                        Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              ElevatedButton.icon(
-                                onPressed: () async {
-                                  try {
-                                    setState(() {
-                                      _showTaskListMode = false;
-                                      _isLoadingTask = true;
-                                      _error = null;
-                                    });
-                                    if (_randomTask != null) {
-                                      await _rejectCurrentTask();
-                                    }
-                                    if (_selectedCategory != null) {
-                                      await _loadRandomTask(_selectedCategory!);
-                                    }
-                                  } catch (e) {
-                                    print('Error in Hit Me: $e');
-                                    setState(() {
-                                      _error = e.toString();
-                                      _isLoadingTask = false;
-                                    });
-                                  }
-                                },
-                                icon: const Icon(Icons.refresh),
-                                label: const Text(
-                                  'Hit Me',
-                                  style: TextStyle(fontSize: 18),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  foregroundColor: Colors.white,
-                                  minimumSize: const Size(0, 48),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
+                          ),
+                          if (_selectedCategory != null) ...[
+                            if (_cacheManager.currentTasks?.isNotEmpty ==
+                                true) ...[
+                              const SizedBox(height: 12),
+                              Center(
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    GestureDetector(
-                                      onTap: () {
-                                        if (_showTaskListMode) _toggleTaskListMode();
+                                    ElevatedButton.icon(
+                                      onPressed: () async {
+                                        try {
+                                          setState(() {
+                                            _showTaskListMode = false;
+                                            _isLoadingTask = true;
+                                            _error = null;
+                                          });
+                                          if (_randomTask != null) {
+                                            await _rejectCurrentTask();
+                                          }
+                                          if (_selectedCategory != null) {
+                                            await _loadRandomTask(
+                                                _selectedCategory!);
+                                          }
+                                        } catch (e) {
+                                          print('Error in Hit Me: $e');
+                                          setState(() {
+                                            _error = e.toString();
+                                            _isLoadingTask = false;
+                                          });
+                                        }
                                       },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 13),
-                                        height: 39,
-                                        color: !_showTaskListMode ? Colors.green : Colors.grey.shade400,
-                                        alignment: Alignment.center,
-                                        child: const Text(
-                                          '—',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
+                                      icon: const Icon(Icons.refresh),
+                                      label: const Text(
+                                        'Hit Me',
+                                        style: TextStyle(fontSize: 18),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green,
+                                        foregroundColor: Colors.white,
+                                        minimumSize: const Size(0, 48),
                                       ),
                                     ),
-                                    Container(width: 1, height: 39, color: Colors.grey.shade300),
-                                    GestureDetector(
-                                      onTap: () {
-                                        if (!_showTaskListMode) _toggleTaskListMode();
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 13),
-                                        height: 39,
-                                        color: _showTaskListMode ? Colors.blue : Colors.grey.shade400,
-                                        alignment: Alignment.center,
-                                        child: const Icon(
-                                          Icons.menu,
-                                          color: Colors.white,
-                                          size: 20,
-                                        ),
+                                    const SizedBox(width: 12),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          GestureDetector(
+                                            onTap: () {
+                                              if (_showTaskListMode)
+                                                _toggleTaskListMode();
+                                            },
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 13),
+                                              height: 39,
+                                              color: !_showTaskListMode
+                                                  ? Colors.green
+                                                  : Colors.grey.shade400,
+                                              alignment: Alignment.center,
+                                              child: const Text(
+                                                '—',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                              width: 1,
+                                              height: 39,
+                                              color: Colors.grey.shade300),
+                                          GestureDetector(
+                                            onTap: () {
+                                              if (!_showTaskListMode)
+                                                _toggleTaskListMode();
+                                            },
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 13),
+                                              height: 39,
+                                              color: _showTaskListMode
+                                                  ? Colors.blue
+                                                  : Colors.grey.shade400,
+                                              alignment: Alignment.center,
+                                              child: const Icon(
+                                                Icons.menu,
+                                                color: Colors.white,
+                                                size: 20,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
+                              const SizedBox(height: 12),
                             ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      // Debug info (commented out)
-                      // Text('Selected Category: ${_selectedCategory!.headline}'),
-                      // Text('Loading Task: $_isLoadingTask'),
-                      // Text('Random Task: ${_randomTask?.headline ?? "null"}'),
-                      // Text('Error: ${_error ?? "none"}'),
-                      if (_showTaskListMode)
-                        _buildTaskListModeContent()
-                      else if (_isLoadingTask ||
-                          (_cacheManager.currentCategory?.id !=
-                                  _selectedCategory?.id ||
-                              _cacheManager.currentTasks == null))
-                        const Center(child: CircularProgressIndicator())
-                      else if (_randomTask != null)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 14),
-                            SizedBox(
-                              width: MediaQuery.of(context).size.width - 32,
-                              child: Card(
-                                key: ValueKey(
-                                  'task_${_randomTask!.id}_${_randomTask!.headline}',
-                                ),
-                                color: const Color(0xFF4A148C),
-                                child: Stack(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        16,
-                                        16,
-                                        16,
-                                        0,
+                            // Debug info (commented out)
+                            // Text('Selected Category: ${_selectedCategory!.headline}'),
+                            // Text('Loading Task: $_isLoadingTask'),
+                            // Text('Random Task: ${_randomTask?.headline ?? "null"}'),
+                            // Text('Error: ${_error ?? "none"}'),
+                            if (_showTaskListMode)
+                              _buildTaskListModeContent()
+                            else if (_isLoadingTask ||
+                                (_cacheManager.currentCategory?.id !=
+                                        _selectedCategory?.id ||
+                                    _cacheManager.currentTasks == null))
+                              const Center(child: CircularProgressIndicator())
+                            else if (_randomTask != null)
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 14),
+                                  SizedBox(
+                                    width:
+                                        MediaQuery.of(context).size.width - 32,
+                                    child: Card(
+                                      key: ValueKey(
+                                        'task_${_randomTask!.id}_${_randomTask!.headline}',
                                       ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                      color: const Color(0xFF4A148C),
+                                      child: Stack(
                                         children: [
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Expanded(
-                                                child: GestureDetector(
-                                                  onTap: () =>
-                                                      _showEditPanel(
-                                                    _randomTask!,
-                                                  ),
-                                                  child: Text(
-                                                    _randomTask!.headline,
-                                                    style: Theme.of(context)
-                                                        .textTheme
-                                                        .bodyLarge
-                                                        ?.copyWith(
-                                                          fontSize: 22,
-                                                          fontWeight: _randomTask!
-                                                                          .suggestibleAt ==
-                                                                      null ||
-                                                                  !_randomTask!
-                                                                      .suggestibleAt!
-                                                                      .isAfter(
-                                                                    DateTime
-                                                                        .now(),
-                                                                  )
-                                                              ? FontWeight.bold
-                                                              : FontWeight
-                                                                  .normal,
-                                                          color: _randomTask!
-                                                                          .suggestibleAt !=
-                                                                      null &&
-                                                                  _randomTask!
-                                                                      .suggestibleAt!
-                                                                      .isAfter(
-                                                                    DateTime
-                                                                        .now(),
-                                                                  )
-                                                              ? Colors.white70
-                                                              : Colors.white,
+                                          Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              16,
+                                              16,
+                                              16,
+                                              0,
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    Expanded(
+                                                      child: GestureDetector(
+                                                        onTap: () =>
+                                                            _showEditPanel(
+                                                          _randomTask!,
                                                         ),
-                                                  ),
-                                                ),
-                                              ),
-                                              if (!AuthUtils.isGuestUser() && !_isReadOnly) ...[
-                                                PopupMenuButton<String>(
-                                                  icon: const Icon(Icons.more_vert, size: 20, color: Colors.white),
-                                                  padding: EdgeInsets.zero,
-                                                  onSelected: (value) {
-                                                    switch (value) {
-                                                      case 'edit':
-                                                        _showEditPanel(_randomTask!);
-                                                      case 'delete':
-                                                        _deleteTaskFromList(_randomTask!);
-                                                    }
-                                                  },
-                                                  itemBuilder: (_) => [
-                                                    const PopupMenuItem<String>(
-                                                      value: 'edit',
-                                                      child: ListTile(
-                                                        leading: Icon(Icons.edit),
-                                                        title: Text('Edit'),
-                                                        contentPadding: EdgeInsets.zero,
+                                                        child: Text(
+                                                          _randomTask!.headline,
+                                                          style:
+                                                              Theme.of(context)
+                                                                  .textTheme
+                                                                  .bodyLarge
+                                                                  ?.copyWith(
+                                                                    fontSize:
+                                                                        22,
+                                                                    fontWeight: _randomTask!.suggestibleAt ==
+                                                                                null ||
+                                                                            !_randomTask!.suggestibleAt!
+                                                                                .isAfter(
+                                                                              DateTime.now(),
+                                                                            )
+                                                                        ? FontWeight
+                                                                            .bold
+                                                                        : FontWeight
+                                                                            .normal,
+                                                                    color: _randomTask!.suggestibleAt !=
+                                                                                null &&
+                                                                            _randomTask!.suggestibleAt!
+                                                                                .isAfter(
+                                                                              DateTime.now(),
+                                                                            )
+                                                                        ? Colors
+                                                                            .white70
+                                                                        : Colors
+                                                                            .white,
+                                                                  ),
+                                                        ),
                                                       ),
                                                     ),
-                                                    const PopupMenuItem<String>(
-                                                      value: 'delete',
-                                                      child: ListTile(
-                                                        leading: Icon(Icons.delete, color: Colors.red),
-                                                        title: Text('Delete', style: TextStyle(color: Colors.red)),
-                                                        contentPadding: EdgeInsets.zero,
+                                                    if (!AuthUtils
+                                                            .isGuestUser() &&
+                                                        !_isReadOnly) ...[
+                                                      PopupMenuButton<String>(
+                                                        icon: const Icon(
+                                                            Icons.more_vert,
+                                                            size: 20,
+                                                            color:
+                                                                Colors.white),
+                                                        padding:
+                                                            EdgeInsets.zero,
+                                                        onSelected: (value) {
+                                                          switch (value) {
+                                                            case 'edit':
+                                                              _showEditPanel(
+                                                                  _randomTask!);
+                                                            case 'delete':
+                                                              _deleteTaskFromList(
+                                                                  _randomTask!);
+                                                          }
+                                                        },
+                                                        itemBuilder: (_) => [
+                                                          const PopupMenuItem<
+                                                              String>(
+                                                            value: 'edit',
+                                                            child: ListTile(
+                                                              leading: Icon(
+                                                                  Icons.edit),
+                                                              title:
+                                                                  Text('Edit'),
+                                                              contentPadding:
+                                                                  EdgeInsets
+                                                                      .zero,
+                                                            ),
+                                                          ),
+                                                          const PopupMenuItem<
+                                                              String>(
+                                                            value: 'delete',
+                                                            child: ListTile(
+                                                              leading: Icon(
+                                                                  Icons.delete,
+                                                                  color: Colors
+                                                                      .red),
+                                                              title: Text(
+                                                                  'Delete',
+                                                                  style: TextStyle(
+                                                                      color: Colors
+                                                                          .red)),
+                                                              contentPadding:
+                                                                  EdgeInsets
+                                                                      .zero,
+                                                            ),
+                                                          ),
+                                                        ],
                                                       ),
-                                                    ),
+                                                    ],
                                                   ],
                                                 ),
-                                              ],
-                                            ],
-                                          ),
-                                          if (_randomTask!.finished) ...[
-                                            const SizedBox(width: 8),
-                                            const Icon(
-                                              Icons.check_circle,
-                                              color: Colors.green,
-                                              size: 28,
-                                            ),
-                                          ],
-                                          // Show notes if they exist (user-entered content)
-                                          if (_randomTask!.notes != null &&
-                                              _randomTask!
-                                                  .notes!.isNotEmpty) ...[
-                                            const SizedBox(height: 8),
-                                            Html(
-                                              data: _preprocessNotesForHtml(
-                                                  _randomTask!.notes!),
-                                              style: {
-                                                "body": Style(
-                                                  fontSize: FontSize(
-                                                    Theme.of(context)
-                                                            .textTheme
-                                                            .bodyMedium
-                                                            ?.fontSize ??
-                                                        14,
+                                                if (_randomTask!.finished) ...[
+                                                  const SizedBox(width: 8),
+                                                  const Icon(
+                                                    Icons.check_circle,
+                                                    color: Colors.green,
+                                                    size: 28,
                                                   ),
-                                                  color: _randomTask!
-                                                                  .suggestibleAt !=
-                                                              null &&
-                                                          _randomTask!
-                                                              .suggestibleAt!
-                                                              .isAfter(DateTime
-                                                                  .now())
-                                                      ? Colors.white70
-                                                      : Colors.white,
-                                                  margin: Margins.zero,
-                                                  padding: HtmlPaddings.zero,
-                                                ),
-                                                "a": Style(
-                                                  color: Colors.white,
-                                                  textDecoration:
-                                                      TextDecoration.underline,
-                                                ),
-                                              },
-                                              onLinkTap: (url, htmlContext,
-                                                  attributes) async {
-                                                if (url != null) {
-                                                  try {
-                                                    final uri = Uri.parse(url);
-                                                    if (await canLaunchUrl(
-                                                        uri)) {
-                                                      await launchUrl(uri,
-                                                          mode: LaunchMode
-                                                              .externalApplication);
-                                                    }
-                                                  } catch (e) {
-                                                    // Error handling without verbose logging
-                                                  }
-                                                }
-                                              },
-                                            ),
-                                          ],
-                                          // Show synopsis if it exists (auto-fetched or stored)
-                                          if ((_randomTask!.synopsis != null &&
-                                                  _randomTask!
-                                                      .synopsis!.isNotEmpty) ||
-                                              (_fetchedSynopsis != null &&
-                                                  _fetchedSynopsis!
-                                                      .isNotEmpty)) ...[
-                                            const SizedBox(height: 8),
-                                            Html(
-                                              data: _fetchedSynopsis ??
-                                                  _randomTask!.synopsis ??
-                                                  '',
-                                              style: {
-                                                "body": Style(
-                                                  fontSize: FontSize(
-                                                    Theme.of(context)
-                                                            .textTheme
-                                                            .bodyMedium
-                                                            ?.fontSize ??
-                                                        14,
+                                                ],
+                                                // Show notes if they exist (user-entered content)
+                                                if (_randomTask!.notes !=
+                                                        null &&
+                                                    _randomTask!
+                                                        .notes!.isNotEmpty) ...[
+                                                  const SizedBox(height: 8),
+                                                  Html(
+                                                    data:
+                                                        _preprocessNotesForHtml(
+                                                            _randomTask!
+                                                                .notes!),
+                                                    style: {
+                                                      "body": Style(
+                                                        fontSize: FontSize(
+                                                          Theme.of(context)
+                                                                  .textTheme
+                                                                  .bodyMedium
+                                                                  ?.fontSize ??
+                                                              14,
+                                                        ),
+                                                        color: _randomTask!
+                                                                        .suggestibleAt !=
+                                                                    null &&
+                                                                _randomTask!
+                                                                    .suggestibleAt!
+                                                                    .isAfter(
+                                                                        DateTime
+                                                                            .now())
+                                                            ? Colors.white70
+                                                            : Colors.white,
+                                                        margin: Margins.zero,
+                                                        padding:
+                                                            HtmlPaddings.zero,
+                                                      ),
+                                                      "a": Style(
+                                                        color: Colors.white,
+                                                        textDecoration:
+                                                            TextDecoration
+                                                                .underline,
+                                                      ),
+                                                    },
+                                                    onLinkTap: (url,
+                                                        htmlContext,
+                                                        attributes) async {
+                                                      if (url != null) {
+                                                        try {
+                                                          final uri =
+                                                              Uri.parse(url);
+                                                          if (await canLaunchUrl(
+                                                              uri)) {
+                                                            await launchUrl(uri,
+                                                                mode: LaunchMode
+                                                                    .externalApplication);
+                                                          }
+                                                        } catch (e) {
+                                                          // Error handling without verbose logging
+                                                        }
+                                                      }
+                                                    },
                                                   ),
-                                                  fontStyle: FontStyle.italic,
-                                                  color: _randomTask!
-                                                                  .suggestibleAt !=
-                                                              null &&
-                                                          _randomTask!
-                                                              .suggestibleAt!
-                                                              .isAfter(DateTime
-                                                                  .now())
-                                                      ? Colors.white70
-                                                      : Colors.white,
-                                                  margin: Margins.zero,
-                                                  padding: HtmlPaddings.zero,
-                                                ),
-                                                "a": Style(
-                                                  color: Colors.white,
-                                                  textDecoration:
-                                                      TextDecoration.underline,
-                                                  fontStyle: FontStyle.italic,
-                                                ),
-                                              },
-                                              onLinkTap: (url, htmlContext,
-                                                  attributes) async {
-                                                if (url != null) {
-                                                  try {
-                                                    final uri = Uri.parse(url);
-                                                    if (await canLaunchUrl(
-                                                        uri)) {
-                                                      await launchUrl(uri,
-                                                          mode: LaunchMode
-                                                              .externalApplication);
-                                                    }
-                                                  } catch (e) {
-                                                    // Error handling without verbose logging
-                                                  }
-                                                }
-                                              },
-                                            ),
-                                          ],
-                                          // Show loading indicator if fetching synopsis
-                                          if (_isFetchingSynopsis) ...[
-                                            const SizedBox(height: 8),
-                                            Row(
-                                              children: [
-                                                const SizedBox(
-                                                  width: 16,
-                                                  height: 16,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                          strokeWidth: 2),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Text(
-                                                  'Fetching description...',
-                                                  style: Theme.of(context)
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.copyWith(
+                                                ],
+                                                // Show synopsis if it exists (auto-fetched or stored)
+                                                if ((_randomTask!.synopsis !=
+                                                            null &&
+                                                        _randomTask!.synopsis!
+                                                            .isNotEmpty) ||
+                                                    (_fetchedSynopsis != null &&
+                                                        _fetchedSynopsis!
+                                                            .isNotEmpty)) ...[
+                                                  const SizedBox(height: 8),
+                                                  Html(
+                                                    data: _fetchedSynopsis ??
+                                                        _randomTask!.synopsis ??
+                                                        '',
+                                                    style: {
+                                                      "body": Style(
+                                                        fontSize: FontSize(
+                                                          Theme.of(context)
+                                                                  .textTheme
+                                                                  .bodyMedium
+                                                                  ?.fontSize ??
+                                                              14,
+                                                        ),
                                                         fontStyle:
                                                             FontStyle.italic,
-                                                        color: Colors.white70,
+                                                        color: _randomTask!
+                                                                        .suggestibleAt !=
+                                                                    null &&
+                                                                _randomTask!
+                                                                    .suggestibleAt!
+                                                                    .isAfter(
+                                                                        DateTime
+                                                                            .now())
+                                                            ? Colors.white70
+                                                            : Colors.white,
+                                                        margin: Margins.zero,
+                                                        padding:
+                                                            HtmlPaddings.zero,
                                                       ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                          if (_randomTask!.links != null &&
-                                              _randomTask!
-                                                  .links!.isNotEmpty) ...[
-                                            /* if (_randomTask!.notes != null)
+                                                      "a": Style(
+                                                        color: Colors.white,
+                                                        textDecoration:
+                                                            TextDecoration
+                                                                .underline,
+                                                        fontStyle:
+                                                            FontStyle.italic,
+                                                      ),
+                                                    },
+                                                    onLinkTap: (url,
+                                                        htmlContext,
+                                                        attributes) async {
+                                                      if (url != null) {
+                                                        try {
+                                                          final uri =
+                                                              Uri.parse(url);
+                                                          if (await canLaunchUrl(
+                                                              uri)) {
+                                                            await launchUrl(uri,
+                                                                mode: LaunchMode
+                                                                    .externalApplication);
+                                                          }
+                                                        } catch (e) {
+                                                          // Error handling without verbose logging
+                                                        }
+                                                      }
+                                                    },
+                                                  ),
+                                                ],
+                                                // Show loading indicator if fetching synopsis
+                                                if (_isFetchingSynopsis) ...[
+                                                  const SizedBox(height: 8),
+                                                  Row(
+                                                    children: [
+                                                      const SizedBox(
+                                                        width: 16,
+                                                        height: 16,
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                                strokeWidth: 2),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Text(
+                                                        'Fetching description...',
+                                                        style: Theme.of(context)
+                                                            .textTheme
+                                                            .bodySmall
+                                                            ?.copyWith(
+                                                              fontStyle:
+                                                                  FontStyle
+                                                                      .italic,
+                                                              color: Colors
+                                                                  .white70,
+                                                            ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                                if (_randomTask!.links !=
+                                                        null &&
+                                                    _randomTask!
+                                                        .links!.isNotEmpty) ...[
+                                                  /* if (_randomTask!.notes != null)
                                             const SizedBox(height: 16)
                                           else
                                            */
-                                            const SizedBox(height: 14),
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: _randomTask!.links!
-                                                  .map((link) => Padding(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .only(
-                                                                bottom: 4),
-                                                        child:
-                                                            LinkDisplayWidget(
-                                                          linkText: link,
-                                                          showIcon: true,
-                                                          showTitle: true,
-                                                        ),
-                                                      ))
-                                                  .toList(),
-                                            ),
-                                          ],
-                                          if (_randomTask!.triggersAt !=
-                                              null) ...[
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodySmall
-                                                  ?.copyWith(
-                                                    color: Colors.white70,
+                                                  const SizedBox(height: 14),
+                                                  Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: _randomTask!
+                                                        .links!
+                                                        .map((link) => Padding(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .only(
+                                                                      bottom:
+                                                                          4),
+                                                              child:
+                                                                  LinkDisplayWidget(
+                                                                linkText: link,
+                                                                showIcon: true,
+                                                                showTitle: true,
+                                                              ),
+                                                            ))
+                                                        .toList(),
                                                   ),
-                                            ),
-                                          ],
-                                          if (_randomTask!.suggestibleAt !=
-                                                  null &&
-                                              _randomTask!.suggestibleAt!
-                                                  .isAfter(
-                                                DateTime.now(),
-                                              )) ...[
-                                            const SizedBox(height: 8),
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    _randomTask!
-                                                        .getSuggestibleTimeDisplay()!,
+                                                ],
+                                                if (_randomTask!.triggersAt !=
+                                                    null) ...[
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    'Triggers at: ${_randomTask!.triggersAt!.toLocal().toString().split('.')[0]}',
                                                     style: Theme.of(context)
                                                         .textTheme
                                                         .bodySmall
                                                         ?.copyWith(
-                                                          color: Colors
-                                                              .lightBlueAccent,
+                                                          color: Colors.white70,
                                                         ),
                                                   ),
-                                                ),
-                                                if (!_isReadOnly)
-                                                  TextButton.icon(
-                                                    onPressed: () async {
-                                                      await _reviveCurrentTask();
-                                                    },
-                                                    icon: const Icon(
-                                                      Icons.refresh,
-                                                      size: 16,
-                                                    ),
-                                                    label: const Text('Revive'),
-                                                    style: TextButton.styleFrom(
-                                                      foregroundColor:
-                                                          Colors.lightBlueAccent,
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                        horizontal: 8,
+                                                ],
+                                                if (_randomTask!
+                                                            .suggestibleAt !=
+                                                        null &&
+                                                    _randomTask!.suggestibleAt!
+                                                        .isAfter(
+                                                      DateTime.now(),
+                                                    )) ...[
+                                                  const SizedBox(height: 8),
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          _randomTask!
+                                                              .getSuggestibleTimeDisplay()!,
+                                                          style:
+                                                              Theme.of(context)
+                                                                  .textTheme
+                                                                  .bodySmall
+                                                                  ?.copyWith(
+                                                                    color: Colors
+                                                                        .lightBlueAccent,
+                                                                  ),
+                                                        ),
+                                                      ),
+                                                      if (!_isReadOnly)
+                                                        TextButton.icon(
+                                                          onPressed: () async {
+                                                            await _reviveCurrentTask();
+                                                          },
+                                                          icon: const Icon(
+                                                            Icons.refresh,
+                                                            size: 16,
+                                                          ),
+                                                          label: const Text(
+                                                              'Revive'),
+                                                          style: TextButton
+                                                              .styleFrom(
+                                                            foregroundColor: Colors
+                                                                .lightBlueAccent,
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .symmetric(
+                                                              horizontal: 8,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ],
+                                                if (!_isReadOnly) ...[
+                                                  const SizedBox(height: 2),
+                                                  Center(
+                                                    child: TextButton.icon(
+                                                      onPressed:
+                                                          _finishCurrentTask,
+                                                      icon: const Icon(
+                                                          Icons.check),
+                                                      label: const Text(
+                                                        'Actually, I\'m done with this',
+                                                      ),
+                                                      style:
+                                                          TextButton.styleFrom(
+                                                        foregroundColor:
+                                                            Colors.white,
+                                                        padding:
+                                                            EdgeInsets.zero,
+                                                        visualDensity:
+                                                            VisualDensity
+                                                                .compact,
                                                       ),
                                                     ),
                                                   ),
+                                                ] else ...[
+                                                  const SizedBox(height: 8),
+                                                  Center(
+                                                    child: ElevatedButton.icon(
+                                                      onPressed: () =>
+                                                          _snagCurrentTask(),
+                                                      icon: const Icon(
+                                                          Icons.download,
+                                                          size: 18),
+                                                      label: const Text(
+                                                          'Snag this'),
+                                                      style: ElevatedButton
+                                                          .styleFrom(
+                                                        backgroundColor:
+                                                            Colors.white,
+                                                        foregroundColor:
+                                                            const Color(
+                                                                0xFF4A148C),
+                                                        visualDensity:
+                                                            VisualDensity
+                                                                .compact,
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal: 16,
+                                                                vertical: 8),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 16),
+                                                ],
                                               ],
                                             ),
-                                          ],
-                                          if (!_isReadOnly) ...[
-                                            const SizedBox(height: 2),
-                                            Center(
-                                              child: TextButton.icon(
-                                                onPressed: _finishCurrentTask,
-                                                icon: const Icon(Icons.check),
-                                                label: const Text(
-                                                  'Actually, I\'m done with this',
-                                                ),
-                                                style: TextButton.styleFrom(
-                                                  foregroundColor: Colors.white,
-                                                  padding: EdgeInsets.zero,
-                                                  visualDensity:
-                                                      VisualDensity.compact,
-                                                ),
-                                              ),
-                                            ),
-                                          ] else ...[
-                                            const SizedBox(height: 8),
-                                            Center(
-                                              child: ElevatedButton.icon(
-                                                onPressed: () => _snagCurrentTask(),
-                                                icon: const Icon(Icons.download, size: 18),
-                                                label: const Text('Snag this'),
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: Colors.white,
-                                                  foregroundColor: const Color(0xFF4A148C),
-                                                  visualDensity: VisualDensity.compact,
-                                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 16),
-                                          ],
+                                          ),
                                         ],
                                       ),
                                     ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                              )
+                            else
+                              Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(height: 24),
+                                    Text(
+                                      'All out of ${NamingUtils.tasksName(plural: true, capitalize: false)}!',
+                                      style: const TextStyle(fontSize: 21),
+                                    ),
+                                    if (_cacheManager.currentTasks?.isEmpty ==
+                                        true) ...[
+                                      const SizedBox(height: 24),
+                                      ElevatedButton.icon(
+                                        onPressed: _isReadOnly
+                                            ? () => unawaited(_addIdeaViaPickedPursuit())
+                                            : _navigateToNewContent,
+                                        icon: const Icon(Icons.add_task,
+                                            size: 24),
+                                        label: Text(
+                                          'Add ${NamingUtils.tasksName(plural: false, capitalize: false, withArticle: true)}',
+                                          style: const TextStyle(fontSize: 20),
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green,
+                                          foregroundColor: Colors.white,
+                                          minimumSize: const Size(200, 56),
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
                           ],
-                        )
-                      else
-                        Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const SizedBox(height: 24),
-                              Text(
-                                'All out of ${NamingUtils.tasksName(plural: true, capitalize: false)}!',
-                                style: const TextStyle(fontSize: 21),
-                              ),
-                              if (_cacheManager.currentTasks?.isEmpty ==
-                                  true) ...[
-                                const SizedBox(height: 24),
-                                ElevatedButton.icon(
-                                  onPressed: _navigateToNewContent,
-                                  icon: const Icon(Icons.add_task, size: 24),
-                                  label: Text(
-                                    'Add ${NamingUtils.tasksName(plural: false, capitalize: false, withArticle: true)}',
-                                    style: const TextStyle(fontSize: 20),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green,
-                                    foregroundColor: Colors.white,
-                                    minimumSize: const Size(200, 56),
+                        ],
+                      ),
+                    // Guest mode indicator
+                    if (AuthUtils.isGuestUser()) ...[
+                      const SizedBox(height: 24),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.orange.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  color: Colors.orange[700],
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'You\'re in guest mode, so you can play with demo data. Sign up/in for full access to making your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}.',
+                                    style: TextStyle(
+                                      color: Colors.orange[700],
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
                                 ),
                               ],
-                            ],
-                          ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pushNamed(context, '/auth');
+                                },
+                                icon: const Icon(Icons.login, size: 18),
+                                label: const Text('Sign Up / Sign In'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.orange[700],
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
+                      ),
                     ],
                   ],
                 ),
-              // Guest mode indicator
-              if (AuthUtils.isGuestUser()) ...[
-                const SizedBox(height: 24),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Colors.orange.withOpacity(0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: Colors.orange[700],
-                            size: 20,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'You\'re in guest mode, so you can play with demo data. Sign up/in for full access to making your own ${NamingUtils.categoriesName()} and ${NamingUtils.tasksName()}.',
-                              style: TextStyle(
-                                color: Colors.orange[700],
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pushNamed(context, '/auth');
-                          },
-                          icon: const Icon(Icons.login, size: 18),
-                          label: const Text('Sign Up / Sign In'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange[700],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
+              ),
+            ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 16),
@@ -3555,7 +3875,6 @@ class HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
 
 /// A circled question-mark rendered with Flutter primitives.
 /// Avoids dependency on the MaterialIcons font, which is tree-shaken on web.

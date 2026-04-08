@@ -6,7 +6,7 @@ import 'package:meaning_to/models/share_invitation.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
-import 'package:meaning_to/snag_pursuit_screen.dart';
+import 'package:meaning_to/utils/borrow_explanation.dart';
 import 'package:meaning_to/edit_share_tasks_screen.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -60,10 +60,14 @@ class _MySharesScreenState extends State<MySharesScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final summary = await ApiClient.getSharedOutSummary();
+      final results = await Future.wait([
+        ApiClient.getSharedOutSummary(),
+        ApiClient.getAllSharedWithMe(),
+      ]);
       if (mounted) {
         setState(() {
-          _sharedOutSummary = summary;
+          _sharedOutSummary = results[0] as List<Map<String, dynamic>>;
+          _sharedWithMe = results[1] as List<Category>;
           _loading = false;
         });
       }
@@ -74,6 +78,7 @@ class _MySharesScreenState extends State<MySharesScreen> {
 
   Future<void> _toggleAvailable(Category category, bool value) async {
     setState(() => category.isAvailable = value);
+    if (value && mounted) await showBorrowExplanationIfNeeded(context);
     try {
       await ApiClient.setSharedCategoryAvailable(category.id, value);
       widget.onRefresh?.call();
@@ -164,7 +169,11 @@ class _MySharesScreenState extends State<MySharesScreen> {
             style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
           )
         else
-          ...rows.map((cat) => _ShareCategoryCard(category: cat)),
+          ...rows.map((cat) => _ShareCategoryCard(
+                category: cat,
+                onDeleted: () => setState(() => _sharedOutSummary!
+                    .removeWhere((s) => s['category_id'] == cat.id)),
+              )),
       ],
     );
   }
@@ -208,6 +217,8 @@ class _MySharesScreenState extends State<MySharesScreen> {
                     onPressed: () async {
                       if (!category.isAvailable) {
                         await _toggleAvailable(category, true);
+                      } else if (mounted) {
+                        await showBorrowExplanationIfNeeded(context);
                       }
                       if (mounted) {
                         widget.onSelect(category);
@@ -233,7 +244,8 @@ class _MySharesScreenState extends State<MySharesScreen> {
                     ],
                   ),
                 ),
-              if (category.invitation != null && category.invitation!.isNotEmpty)
+              if (category.invitation != null &&
+                  category.invitation!.isNotEmpty)
                 Builder(builder: (context) {
                   const limit = 100;
                   final full = category.invitation!;
@@ -278,7 +290,7 @@ class _MySharesScreenState extends State<MySharesScreen> {
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
                   ),
-                  Text('Include in my list of ${NamingUtils.categoriesName(capitalize: true, plural: true)}', style: const TextStyle(fontSize: 12)),
+                  const Text('Borrow this', style: TextStyle(fontSize: 12)),
                   const Spacer(),
                   TextButton.icon(
                     onPressed: () => _deleteSubscription(category),
@@ -304,8 +316,9 @@ class _MySharesScreenState extends State<MySharesScreen> {
 
 class _ShareCategoryCard extends StatefulWidget {
   final Category category;
+  final VoidCallback? onDeleted;
 
-  const _ShareCategoryCard({required this.category});
+  const _ShareCategoryCard({required this.category, this.onDeleted});
 
   @override
   State<_ShareCategoryCard> createState() => _ShareCategoryCardState();
@@ -353,8 +366,7 @@ class _ShareCategoryCardState extends State<_ShareCategoryCard> {
   Future<void> _create() async {
     setState(() => _busy = true);
     try {
-      final token =
-          await ApiClient.createShareInvitation(widget.category.id);
+      final token = await ApiClient.createShareInvitation(widget.category.id);
       final link = DeepLinkGenerator.generateInviteLink(token);
       await _shareLink(link);
       if (mounted) await _load();
@@ -394,7 +406,7 @@ class _ShareCategoryCardState extends State<_ShareCategoryCard> {
     if (inv == null) return;
     try {
       await ApiClient.deleteShareInvitation(inv.id);
-      if (mounted) await _load();
+      if (mounted) widget.onDeleted?.call();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -427,8 +439,18 @@ class _ShareCategoryCardState extends State<_ShareCategoryCard> {
 
   static String _formatDate(DateTime dt) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final now = DateTime.now();
     if (dt.year == now.year) return '${months[dt.month - 1]} ${dt.day}';
@@ -457,8 +479,8 @@ class _ShareCategoryCardState extends State<_ShareCategoryCard> {
                     ),
                   ),
                   TextButton.icon(
-                    onPressed: () => EditShareTasksScreen.push(
-                        context, category: widget.category),
+                    onPressed: () => EditShareTasksScreen.push(context,
+                        category: widget.category),
                     icon: const Icon(Icons.edit_outlined, size: 14),
                     label: const Text('Select Tasks to Share',
                         style: TextStyle(fontSize: 12)),
@@ -493,8 +515,8 @@ class _ShareCategoryCardState extends State<_ShareCategoryCard> {
                             ? const SizedBox(
                                 width: 14,
                                 height: 14,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2),
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.add_link, size: 16),
                         label: const Text('Create Link'),
@@ -547,15 +569,13 @@ class _ShareCategoryCardState extends State<_ShareCategoryCard> {
         Row(
           children: [
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
                 color: statusColor,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(statusLabel,
-                  style:
-                      const TextStyle(fontSize: 11, color: Colors.white)),
+                  style: const TextStyle(fontSize: 11, color: Colors.white)),
             ),
             const SizedBox(width: 8),
             Text(expiryText,
@@ -586,20 +606,19 @@ class _ShareCategoryCardState extends State<_ShareCategoryCard> {
                 label: const Text('Renew', style: TextStyle(fontSize: 12)),
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 ),
               ),
             TextButton.icon(
               onPressed: _busy ? null : _delete,
-              icon: const Icon(Icons.delete_outline,
-                  size: 14, color: Colors.red),
+              icon:
+                  const Icon(Icons.delete_outline, size: 14, color: Colors.red),
               label: const Text('Delete',
                   style: TextStyle(fontSize: 12, color: Colors.red)),
               style: TextButton.styleFrom(
                 visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               ),
             ),
           ],

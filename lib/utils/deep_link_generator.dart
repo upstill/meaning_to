@@ -41,9 +41,19 @@ class DeepLinkGenerator {
   }
 
   /// Generate a share-invitation link for the given token UUID.
-  /// Always returns an HTTPS URL so it is clickable in email, SMS, etc.
+  /// On web, mirrors the current host so localhost links work in dev.
+  /// On native, falls back to kDebugMode → localhost, else production.
   static String generateInviteLink(String token) {
-    final base = kDebugMode ? 'http://localhost:$_debugPort' : _webBaseUrl;
+    String base;
+    if (kIsWeb) {
+      final host = Uri.base.host;
+      final isLocal = host == 'localhost' || host == '127.0.0.1';
+      base = isLocal
+          ? 'http://${Uri.base.authority}'
+          : _webBaseUrl;
+    } else {
+      base = kDebugMode ? 'http://localhost:$_debugPort' : _webBaseUrl;
+    }
     return '$base/join?invite=$token';
   }
 

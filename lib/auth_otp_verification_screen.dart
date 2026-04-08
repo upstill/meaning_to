@@ -88,9 +88,9 @@ class _AuthOtpVerificationScreenState extends State<AuthOtpVerificationScreen> {
 
     try {
       print('AuthOtpVerificationScreen: Resending code to $email');
-      await Supabase.instance.client.auth.resend(
+      await Supabase.instance.client.auth.signInWithOtp(
         email: email,
-        type: OtpType.signup,
+        shouldCreateUser: false,
       );
 
       if (mounted) {

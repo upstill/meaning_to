@@ -313,15 +313,21 @@ class ApiClient {
           // Interleave: each shared category goes right after its owned counterpart.
           // Walk the owned list; after each owned entry, append any shared
           // entry with the same id. Orphaned shared categories go at the end.
+          // Only surface available shared categories on the home screen.
+          // Unavailable ones remain in shared_categories (visible in My Shares)
+          // but should not appear in the main pursuit list.
+          final availableShared =
+              sharedCategories.where((c) => c.isAvailable).toList();
+
           final ownedIds = {for (final c in categories) c.id};
           final result = <Category>[];
           for (final owned in categories) {
             result.add(owned);
-            for (final shared in sharedCategories) {
+            for (final shared in availableShared) {
               if (shared.id == owned.id) result.add(shared);
             }
           }
-          for (final shared in sharedCategories) {
+          for (final shared in availableShared) {
             if (!ownedIds.contains(shared.id)) result.add(shared);
           }
           return result;
@@ -658,15 +664,43 @@ class ApiClient {
 
   /// Redeems a share invitation token and returns the subscribed category ID.
   static Future<int> redeemInvitation(String token) async {
+    print('[redeemInvitation] calling RPC redeem_invitation, token length=${token.length}');
     try {
       final response = await _supabase.rpc(
         'redeem_invitation',
         params: {'p_token': token},
       );
+      print('[redeemInvitation] RPC raw response: $response (type: ${response.runtimeType})');
       return response as int;
-    } catch (e) {
-      print('Error redeeming invitation: $e');
+    } catch (e, stack) {
+      print('[redeemInvitation] ERROR: $e');
+      print('[redeemInvitation] Stack: $stack');
       rethrow;
+    }
+  }
+
+  /// Returns invitation details for a given token, or null if not found.
+  /// Uses the get_invitation_info RPC (SECURITY DEFINER) so any authenticated
+  /// user can inspect a token regardless of who created the invitation.
+  static Future<({int? categoryId, bool openToAll})?>
+      getInvitationDetails(String token) async {
+    try {
+      final rows = await _supabase.rpc(
+        'get_invitation_info',
+        params: {'p_token': token},
+      );
+      print('[getInvitationDetails] RPC response: $rows');
+      if ((rows as List).isNotEmpty) {
+        final row = rows.first as Map<String, dynamic>;
+        return (
+          categoryId: row['category_id'] as int?,
+          openToAll: row['open_to_all'] as bool? ?? false,
+        );
+      }
+      return null;
+    } catch (e) {
+      print('[getInvitationDetails] ERROR: $e');
+      return null;
     }
   }
 
@@ -680,6 +714,31 @@ class ApiClient {
     } catch (e) {
       print('Error releasing shared category: $e');
       rethrow;
+    }
+  }
+
+  /// Returns ALL categories shared with the current user (including unavailable),
+  /// for use in My Shares where the full list is needed.
+  static Future<List<Category>> getAllSharedWithMe() async {
+    final userId = AuthUtils.getCurrentUserId();
+    if (userId == null) return [];
+    try {
+      final rows = await _supabase
+          .from('shared_categories')
+          .select('category_id, owner_name, available, Categories(*)')
+          .eq('user_id', userId);
+      return (rows as List).map((row) {
+        final cat =
+            Category.fromJson(row['Categories'] as Map<String, dynamic>);
+        return cat.copyWithShared(
+          isShared: true,
+          ownerName: row['owner_name'] as String,
+          isAvailable: row['available'] as bool? ?? true,
+        );
+      }).toList();
+    } catch (e) {
+      print('Error fetching shared-with-me categories: $e');
+      return [];
     }
   }
 

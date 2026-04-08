@@ -337,6 +337,14 @@ class _MyAppState extends State<MyApp> {
     super.dispose();
   }
 
+  void _showInviteSnackBar(String message) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scaffoldKey.currentState?.showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 5)),
+      );
+    });
+  }
+
   Future<void> _initDeepLinkListener() async {
     print('Initializing deep link listener');
     _appLinks = AppLinks();
@@ -346,6 +354,7 @@ class _MyAppState extends State<MyApp> {
 
     // Handle initial link
     final uri = await _appLinks.getInitialAppLink();
+    print('[DeepLink] getInitialAppLink result: $uri');
     if (uri != null) {
       print('Got initial app link: $uri');
 
@@ -398,30 +407,98 @@ class _MyAppState extends State<MyApp> {
       //   meaningto://join?invite=<token>             (host == 'join')
       final isHttpsInvite = uri.path == '/join';
       final isCustomInvite = uri.scheme == 'meaningto' && uri.host == 'join';
+      print('[DeepLink] isHttpsInvite=$isHttpsInvite isCustomInvite=$isCustomInvite');
       if (isHttpsInvite || isCustomInvite) {
         final token = uri.queryParameters['invite'];
+        print('[DeepLink] invite token present: ${token != null}, length: ${token?.length}');
         if (token != null) {
           // Reset the flag BEFORE navigation so onGenerateRoute isn't blocked.
           MyApp.isHandlingDeepLink = false;
           final session = Supabase.instance.client.auth.currentSession;
+          print('[DeepLink] session: ${session != null ? "present (user: ${session.user.email})" : "null — not logged in"}');
           if (session != null) {
             // Logged in — redeem directly, then jump to the shared category.
+            print('[DeepLink] navigatorKey.currentState: ${MyApp.navigatorKey.currentState}');
             try {
+              print('[DeepLink] Calling redeemInvitation...');
               final categoryId = await ApiClient.redeemInvitation(token);
+              print('[DeepLink] redeemInvitation succeeded, categoryId=$categoryId');
+              print('[DeepLink] navigatorKey.currentState before push: ${MyApp.navigatorKey.currentState}');
               MyApp.navigatorKey.currentState?.pushReplacementNamed(
                 '/category',
                 arguments: {'categoryId': categoryId.toString()},
               );
-            } catch (e) {
-              print('Error redeeming invite in deep link: $e');
-              MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
+              print('[DeepLink] pushReplacementNamed /category called');
+            } catch (e, stack) {
+              print('[DeepLink] ERROR redeeming invite: $e');
+              print('[DeepLink] Stack trace: $stack');
+              final alreadyUsed = e.toString().contains('already been used') ||
+                  e.toString().contains('already used');
+              if (alreadyUsed) {
+                // Before giving up, check whether this is an Open To All
+                // invitation — those should always be redeemable regardless
+                // of used_at, so if the RPC rejected it the data may be stale
+                // or the migration undeployed.
+                print('[DeepLink] "already used" — fetching invitation details');
+                final details = await ApiClient.getInvitationDetails(token);
+                print('[DeepLink] details: $details');
+
+                if (details != null && details.openToAll) {
+                  // Open To All: the RPC should not have failed. Retry once.
+                  print('[DeepLink] open_to_all=true — retrying redeemInvitation');
+                  try {
+                    final categoryId = await ApiClient.redeemInvitation(token);
+                    print('[DeepLink] retry succeeded, categoryId=$categoryId');
+                    MyApp.navigatorKey.currentState?.pushReplacementNamed(
+                      '/category',
+                      arguments: {'categoryId': categoryId.toString()},
+                    );
+                  } catch (e2, stack2) {
+                    print('[DeepLink] retry also failed: $e2\n$stack2');
+                    // Navigate to the category anyway since we know the ID.
+                    if (details.categoryId != null) {
+                      MyApp.navigatorKey.currentState?.pushReplacementNamed(
+                        '/category',
+                        arguments: {'categoryId': details.categoryId.toString()},
+                      );
+                    } else {
+                      MyApp.navigatorKey.currentState
+                          ?.pushReplacementNamed('/home');
+                      _showInviteSnackBar(
+                          'This is an open invitation but could not be redeemed. Please try again.');
+                    }
+                  }
+                } else {
+                  // Regular single-use invite already consumed.
+                  // Navigate to the category if we can find it; otherwise home.
+                  final categoryId = details?.categoryId;
+                  if (categoryId != null) {
+                    MyApp.navigatorKey.currentState?.pushReplacementNamed(
+                      '/category',
+                      arguments: {'categoryId': categoryId.toString()},
+                    );
+                  } else {
+                    MyApp.navigatorKey.currentState
+                        ?.pushReplacementNamed('/home');
+                    _showInviteSnackBar(
+                        'This invitation has already been used.');
+                  }
+                }
+              } else {
+                MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
+                _showInviteSnackBar('Failed to accept invitation: $e');
+              }
             }
           } else {
             // Not logged in — stash token and go to auth.
+            print('[DeepLink] Storing token and navigating to /auth');
             await InviteTokenStore.set(token);
+            print('[DeepLink] navigatorKey.currentState before /auth push: ${MyApp.navigatorKey.currentState}');
             MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
           }
           return;
+        } else {
+          print('[DeepLink] WARNING: invite query param missing from URI: $uri');
         }
       }
 

@@ -177,11 +177,10 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
     if (!mounted) return;
     await CategoryPickerDialog.show(
       context,
-      title:
-          'Copy to which ${NamingUtils.categoriesName(capitalize: true, plural: false)}?',
+      title: 'Copy to which Pursuit?',
       subtitle:
-          '...or pick another ${NamingUtils.categoriesName(plural: false, capitalize: true)} '
-          'to take these ${NamingUtils.tasksName(plural: true, capitalize: true)}.',
+          'Select one of your own Pursuits to copy these '
+          '${NamingUtils.tasksName(plural: true, capitalize: false)} into.',
       showCreateNew: true,
       hideShared: true,
       excludeCategory: cloneCategory,
@@ -307,7 +306,43 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
           'to "${target.headline}"',
         ),
       ));
-      Navigator.of(context).pop(target);
+
+      final shouldRelease = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(
+              'Remove "${widget.sharedCategory.headline}" from your list?'),
+          content: Text(
+            'You\'ve copied what you wanted. '
+            'Do you want to remove this shared ${NamingUtils.categoriesName(capitalize: false, plural: false)} '
+            'from your ${NamingUtils.categoriesName(capitalize: true, plural: true)} menu?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keep It'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[700],
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Remove It'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldRelease == true && mounted) {
+        try {
+          await ApiClient.releaseSharedCategory(widget.sharedCategory.id);
+        } catch (e) {
+          debugPrint('Error releasing shared category: $e');
+        }
+      }
+
+      if (mounted) Navigator.of(context).pop(target);
     }
   }
 
@@ -433,6 +468,15 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
                 ),
               ),
 
+              const SizedBox(height: 6),
+
+              // ── Explanation ───────────────────────────────────────────────
+              Text(
+                'Select the ${NamingUtils.tasksName(plural: true, capitalize: false)} '
+                'you\'d like to copy into your '
+                '${NamingUtils.categoriesName(plural: false, capitalize: true)}. ',
+                style: const TextStyle(fontSize: 16, color: Colors.black54),
+              ),
               const SizedBox(height: 8),
 
               // ── Sort + Search ─────────────────────────────────────────────
