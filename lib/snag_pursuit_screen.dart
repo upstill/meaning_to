@@ -178,8 +178,7 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
     await CategoryPickerDialog.show(
       context,
       title: 'Copy to which Pursuit?',
-      subtitle:
-          'Select one of your own Pursuits to copy these '
+      subtitle: 'Select one of your own Pursuits to copy these '
           '${NamingUtils.tasksName(plural: true, capitalize: false)} into.',
       showCreateNew: true,
       hideShared: true,
@@ -311,11 +310,11 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(
-              'Remove "${widget.sharedCategory.headline}" from your list?'),
+              'Release ${widget.sharedCategory.ownerName != null ? '${widget.sharedCategory.ownerName}\'s ' : ''}"${widget.sharedCategory.headline}" from your list?'),
           content: Text(
-            'You\'ve copied what you wanted. '
-            'Do you want to remove this shared ${NamingUtils.categoriesName(capitalize: false, plural: false)} '
-            'from your ${NamingUtils.categoriesName(capitalize: true, plural: true)} menu?',
+            'Now that you\'ve copied what you wanted, do you want to release this share '
+            'from your ${NamingUtils.categoriesName(capitalize: true, plural: true)} menu?'
+            '(You can always get it back using the "My Shares" item in the ${NamingUtils.categoriesName(capitalize: true, plural: false)}\'s menu.)',
           ),
           actions: [
             TextButton(

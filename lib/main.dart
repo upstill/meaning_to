@@ -382,6 +382,23 @@ class _MyAppState extends State<MyApp> {
     }, onError: (err) {
       print('Error handling deep link: $err');
     });
+
+    // macOS universal links arrive via NSUserActivity in AppDelegate,
+    // forwarded to Flutter via MethodChannel (app_links only handles
+    // custom URL schemes on macOS, not universal links).
+    if (!foundation.kIsWeb &&
+        foundation.defaultTargetPlatform == TargetPlatform.macOS) {
+      const channel = MethodChannel('me.meaningto/universal_links');
+      channel.setMethodCallHandler((call) async {
+        if (call.method == 'onLink') {
+          final url = call.arguments as String?;
+          if (url != null) {
+            print('[DeepLink] macOS universal link via channel: $url');
+            _handleDeepLink(Uri.parse(url));
+          }
+        }
+      });
+    }
   }
 
   Future<void> _handleDeepLink(Uri uri) async {

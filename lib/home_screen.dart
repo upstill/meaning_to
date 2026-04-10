@@ -456,7 +456,8 @@ class HomeScreenState extends State<HomeScreen> {
 
   /// Handle delete account action
   Future<void> _handleDeleteAccount() async {
-    final isDevUser = AuthUtils.getCurrentUserEmail()?.toLowerCase() == 'upstill@gmail.com';
+    final isDevUser =
+        AuthUtils.getCurrentUserEmail()?.toLowerCase() == 'upstill@gmail.com';
 
     // Show confirmation dialog
     final bool? confirmed = await showDialog<bool>(
@@ -552,7 +553,8 @@ class HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     final userId = AuthUtils.getCurrentUserId();
-    final isDevUser = AuthUtils.getCurrentUserEmail()?.toLowerCase() == 'upstill@gmail.com';
+    final isDevUser =
+        AuthUtils.getCurrentUserEmail()?.toLowerCase() == 'upstill@gmail.com';
 
     showDialog(
       context: context,
@@ -628,7 +630,8 @@ class HomeScreenState extends State<HomeScreen> {
           builder: (BuildContext context) {
             return AlertDialog(
               title: const Text('Error'),
-              content: Text('Failed to ${isDevUser ? 'reset' : 'delete'} account: $e'),
+              content: Text(
+                  'Failed to ${isDevUser ? 'reset' : 'delete'} account: $e'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -1237,7 +1240,7 @@ class HomeScreenState extends State<HomeScreen> {
         title: Text(
             "Release Shared ${NamingUtils.categoriesName(capitalize: true, plural: false)}"),
         content: Text(
-            'Choosing Release will remove "${category.headline}" from your list of ${NamingUtils.categoriesName(capitalize: true, plural: true)}. You can get it back using the "My Shares" item in the ${NamingUtils.categoriesName(capitalize: true, plural: false)} menu.'),
+            'Choosing Release will remove "${category.headline}" from your list of ${NamingUtils.categoriesName(capitalize: true, plural: true)}. You can get it back using the "My Shares" item in the ${NamingUtils.categoriesName(capitalize: true, plural: false)}\'s menu.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -1542,7 +1545,8 @@ class HomeScreenState extends State<HomeScreen> {
     final sharedCategory = _selectedCategory;
     if (sharedCategory == null) return;
 
-    final categoryName = NamingUtils.categoriesName(capitalize: false, plural: false);
+    final categoryName =
+        NamingUtils.categoriesName(capitalize: false, plural: false);
     final tasksName = NamingUtils.tasksName(capitalize: false, plural: true);
 
     bool copyTasks = true;
@@ -1615,7 +1619,8 @@ class HomeScreenState extends State<HomeScreen> {
             'owner_id': userId,
             'category_id': target.id,
             'original_id': task.id,
-            if (task.links != null && task.links!.isNotEmpty) 'links': task.links,
+            if (task.links != null && task.links!.isNotEmpty)
+              'links': task.links,
             'finished': false,
             'shared': false,
           });
@@ -2297,7 +2302,19 @@ class HomeScreenState extends State<HomeScreen> {
     final userId = AuthUtils.getCurrentUserId();
     if (userId == null) return;
 
-    final isFirstLogin = !(prefs.getBool('onboarded_$userId') ?? false);
+    // Use local pref as a fast check, but verify against server state
+    // to handle new-device / cleared-browser-data scenarios.
+    final localOnboarded = prefs.getBool('onboarded_$userId') ?? false;
+    bool isFirstLogin = !localOnboarded;
+    if (isFirstLogin) {
+      // Double-check server-side: if user already has shared subscriptions,
+      // they were onboarded on another device — don't show welcome again.
+      final existingShares = await ApiClient.getAllSharedWithMe();
+      if (existingShares.isNotEmpty || categories.isNotEmpty) {
+        isFirstLogin = false;
+        await prefs.setBool('onboarded_$userId', true);
+      }
+    }
     if (isFirstLogin) {
       await prefs.setBool('onboarded_$userId', true);
       _showWelcomeDialog(); // non-blocking; sets _welcomeDialogShown internally
@@ -2388,7 +2405,6 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
-
   void _showWelcomeDialog() {
     if (_welcomeDialogShown) return;
 
@@ -2425,17 +2441,24 @@ class HomeScreenState extends State<HomeScreen> {
                 text: TextSpan(
                   style: const TextStyle(fontSize: 16, color: Colors.black),
                   children: [
-                    const TextSpan(text: 'The basic idea is simple: we keep track of '),
+                    const TextSpan(
+                        text: 'The basic idea is simple: we keep track of '),
                     TextSpan(
-                      text: NamingUtils.categoriesName(plural: true, capitalize: true),
+                      text: NamingUtils.categoriesName(
+                          plural: true, capitalize: true),
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    const TextSpan(text: ' like \'Watch a Movie\' or \'Read a Book\', with '),
+                    const TextSpan(
+                        text:
+                            ' like \'Watch a Movie\' or \'Read a Book\', with '),
                     TextSpan(
-                      text: NamingUtils.tasksName(plural: true, capitalize: true),
+                      text:
+                          NamingUtils.tasksName(plural: true, capitalize: true),
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    TextSpan(text: ' for each one, like "The Godfather" or "Moby Dick".\n\nTo make it easier getting started, you\'re invited to borrow some sample ${NamingUtils.categoriesName(plural: true, capitalize: true)} from others.\n\n(The Help button below will explain more.)'),
+                    TextSpan(
+                        text:
+                            ' for each one, like "The Godfather" or "Moby Dick".\n\nTo make it easier getting started, you\'re invited to borrow some sample ${NamingUtils.categoriesName(plural: true, capitalize: true)} from others.\n\n(The Help button below will explain more.)'),
                   ],
                 ),
               ),
@@ -2748,7 +2771,8 @@ class HomeScreenState extends State<HomeScreen> {
                               const SizedBox(height: 8),
                               Text(
                                 'Guest users can only view demo data. Sign up/in to create your own ${NamingUtils.categoriesName()}.',
-                                style: const TextStyle(fontSize: 14, color: Colors.grey),
+                                style: const TextStyle(
+                                    fontSize: 14, color: Colors.grey),
                                 textAlign: TextAlign.center,
                               ),
                             ],
@@ -2782,7 +2806,8 @@ class HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 8),
                                 Text(
                                   '...but you\'re invited to borrow\nsome ${NamingUtils.categoriesName(plural: true)} from others:',
-                                  style: const TextStyle(fontSize: 17, color: Color(0xFF6F6F6F)),
+                                  style: const TextStyle(
+                                      fontSize: 17, color: Color(0xFF6F6F6F)),
                                   textAlign: TextAlign.center,
                                 ),
                                 const SizedBox(height: 8),
@@ -2803,7 +2828,10 @@ class HomeScreenState extends State<HomeScreen> {
                                   style: AppButtons.goForth(),
                                 ),
                                 const SizedBox(height: 16),
-                                const Text('Otherwise,', style: TextStyle(fontSize: 17, color: Color(0xFF6F6F6F))),
+                                const Text('Otherwise,',
+                                    style: TextStyle(
+                                        fontSize: 17,
+                                        color: Color(0xFF6F6F6F))),
                                 const SizedBox(height: 8),
                               ],
                               ElevatedButton.icon(
@@ -2912,7 +2940,8 @@ class HomeScreenState extends State<HomeScreen> {
                                                       onRefresh:
                                                           _loadCategories,
                                                     );
-                                                    if (mounted) _loadCategories();
+                                                    if (mounted)
+                                                      _loadCategories();
                                                   case 'delete':
                                                     if (_selectedCategory !=
                                                         null)
@@ -3075,9 +3104,14 @@ class HomeScreenState extends State<HomeScreen> {
                                                           const SizedBox(
                                                               width: 6),
                                                           IconButton(
-                                                            onPressed: () async {
-                                                              await showBorrowExplanationIfNeeded(context);
-                                                              if (mounted) unawaited(_showSnagPursuitScreen(cat));
+                                                            onPressed:
+                                                                () async {
+                                                              await showBorrowExplanationIfNeeded(
+                                                                  context);
+                                                              if (mounted)
+                                                                unawaited(
+                                                                    _showSnagPursuitScreen(
+                                                                        cat));
                                                             },
                                                             icon: const Icon(
                                                                 Icons.copy,
@@ -3758,7 +3792,8 @@ class HomeScreenState extends State<HomeScreen> {
                                       const SizedBox(height: 24),
                                       ElevatedButton.icon(
                                         onPressed: _isReadOnly
-                                            ? () => unawaited(_addIdeaViaPickedPursuit())
+                                            ? () => unawaited(
+                                                _addIdeaViaPickedPursuit())
                                             : _navigateToNewContent,
                                         icon: const Icon(Icons.add_task,
                                             size: 24),
