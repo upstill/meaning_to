@@ -42,6 +42,9 @@ class _HelpScreenState extends State<HelpScreen> {
             index: 0,
             title: 'What Is This Thing?',
             content: '''
+Who doesn't have a painfully long list in their lives? Whether it's Likes in a music app, or lists of to-do's, books to read or movies to watch, 
+the sheer number of things on a list can be overwhelming.
+
 ROUZME! moves you to actually do stuff. Use ROUZME! to help you organize and track the ideas, goals, and interests you've been meaning to pursue.
 
 Think of it as a way to keep track of all those things you say "I've been meaning to..." about - books you want to read, movies to watch, places to visit, projects to start, or anything else that catches your interest.
