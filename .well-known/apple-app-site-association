@@ -2,7 +2,9 @@
   "applinks": {
     "details": [
       {
-        "appIDs": ["7EYYC57N4S.me.meaningto.meaningto"],
+        "appIDs": [
+          "7EYYC57N4S.me.meaningto.meaningto"
+        ],
         "components": [
           {
             "/": "/join",

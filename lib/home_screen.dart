@@ -921,6 +921,126 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Widget _buildViewToggle() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: () {
+              if (_showTaskListMode) _toggleTaskListMode();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13),
+              height: 39,
+              color: !_showTaskListMode ? Colors.green : Colors.grey.shade400,
+              alignment: Alignment.center,
+              child: const Text(
+                '—',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          Container(width: 1, height: 39, color: Colors.grey.shade300),
+          GestureDetector(
+            onTap: () {
+              if (!_showTaskListMode) _toggleTaskListMode();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13),
+              height: 39,
+              color: _showTaskListMode ? Colors.blue : Colors.grey.shade400,
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.menu,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
+          if (_showTaskListMode)
+            Expanded(
+              child: Container(
+                height: 39,
+                color: Colors.blue,
+                child: TextField(
+                  controller: _taskSearchController,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                  ),
+                  decoration: InputDecoration(
+                    hintText:
+                        'Search ${_listModeTasks.length} ${NamingUtils.tasksName(capitalize: false, plural: _listModeTasks.length != 1)}',
+                    hintStyle: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 14,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search,
+                      size: 18,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
+                    suffixIcon: _isSearchingTasks
+                        ? const Padding(
+                            padding: EdgeInsets.all(10),
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            ),
+                          )
+                        : _taskSearchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(
+                                  Icons.clear,
+                                  size: 18,
+                                  color: Colors.white,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _taskSearchController.clear();
+                                    _rebuildTaskListFromCache();
+                                  });
+                                },
+                              )
+                            : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
+                  ),
+                  cursorColor: Colors.white,
+                  onChanged: (_) {
+                    setState(() {
+                      _isSearchingTasks = true;
+                      _rebuildTaskListFromCache();
+                    });
+                    Future.delayed(const Duration(milliseconds: 250), () {
+                      if (mounted) {
+                        setState(() {
+                          _isSearchingTasks = false;
+                        });
+                      }
+                    });
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   void _toggleTaskListMode() {
     if (_selectedCategory == null) {
       return;
@@ -1344,94 +1464,26 @@ class HomeScreenState extends State<HomeScreen> {
 
     final sortWidget = Row(
       crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
       children: [
         const Text('Sort By:'),
-        const SizedBox(width: 8),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            buildSortRow(HomeTaskSortOption.priority, 'Priority'),
-            buildSortRow(HomeTaskSortOption.alphabetical, 'A-Z'),
-            buildSortRow(HomeTaskSortOption.age, 'Age'),
-          ],
-        ),
+        buildSortRow(HomeTaskSortOption.priority, 'Priority'),
+        buildSortRow(HomeTaskSortOption.alphabetical, 'A-Z'),
+        buildSortRow(HomeTaskSortOption.age, 'Age'),
       ],
-    );
-
-    final searchWidget = TextField(
-      controller: _taskSearchController,
-      decoration: InputDecoration(
-        hintText:
-            'Search ${_listModeTasks.length} ${NamingUtils.tasksName(capitalize: false, plural: _listModeTasks.length != 1)}',
-        prefixIcon: const Icon(Icons.search, size: 20),
-        suffixIcon: _isSearchingTasks
-            ? const Padding(
-                padding: EdgeInsets.all(12.0),
-                child: SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            : _taskSearchController.text.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear, size: 20),
-                    onPressed: () {
-                      setState(() {
-                        _taskSearchController.clear();
-                        _rebuildTaskListFromCache();
-                      });
-                    },
-                  )
-                : null,
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        border: const OutlineInputBorder(),
-      ),
-      onChanged: (_) {
-        setState(() {
-          _isSearchingTasks = true;
-          _rebuildTaskListFromCache();
-        });
-        Future.delayed(const Duration(milliseconds: 250), () {
-          if (mounted) {
-            setState(() {
-              _isSearchingTasks = false;
-            });
-          }
-        });
-      },
     );
 
     if (_isListModeLoading && tasks.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final headerRow = LayoutBuilder(
-      builder: (context, constraints) {
-        final sortAreaWidth = (constraints.maxWidth * 0.35).clamp(0.0, 240.0);
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: sortAreaWidth,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: sortWidget,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: searchWidget),
-          ],
-        );
-      },
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        headerRow,
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: sortWidget,
+        ),
         const SizedBox(height: 8),
         if (_isTaskListSorting) ...[
           const Padding(
@@ -3217,7 +3269,9 @@ class HomeScreenState extends State<HomeScreen> {
                               const SizedBox(height: 12),
                               Center(
                                 child: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisSize: _showTaskListMode
+                                      ? MainAxisSize.max
+                                      : MainAxisSize.min,
                                   children: [
                                     ElevatedButton.icon(
                                       onPressed: () async {
@@ -3254,63 +3308,12 @@ class HomeScreenState extends State<HomeScreen> {
                                       ),
                                     ),
                                     const SizedBox(width: 12),
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(6),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          GestureDetector(
-                                            onTap: () {
-                                              if (_showTaskListMode)
-                                                _toggleTaskListMode();
-                                            },
-                                            child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 13),
-                                              height: 39,
-                                              color: !_showTaskListMode
-                                                  ? Colors.green
-                                                  : Colors.grey.shade400,
-                                              alignment: Alignment.center,
-                                              child: const Text(
-                                                '—',
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          Container(
-                                              width: 1,
-                                              height: 39,
-                                              color: Colors.grey.shade300),
-                                          GestureDetector(
-                                            onTap: () {
-                                              if (!_showTaskListMode)
-                                                _toggleTaskListMode();
-                                            },
-                                            child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 13),
-                                              height: 39,
-                                              color: _showTaskListMode
-                                                  ? Colors.blue
-                                                  : Colors.grey.shade400,
-                                              alignment: Alignment.center,
-                                              child: const Icon(
-                                                Icons.menu,
-                                                color: Colors.white,
-                                                size: 20,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                                    if (_showTaskListMode)
+                                      Expanded(
+                                        child: _buildViewToggle(),
+                                      )
+                                    else
+                                      _buildViewToggle(),
                                   ],
                                 ),
                               ),
