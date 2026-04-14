@@ -42,19 +42,18 @@ class _HelpScreenState extends State<HelpScreen> {
             index: 0,
             title: 'What Is This Thing?',
             content: '''
-Who doesn't have a painfully long list in their lives? Whether it's Likes in a music app, or lists of to-do's, books to read or movies to watch, 
-the sheer number of things on a list can be overwhelming.
+Who doesn't have a painfully long list in their lives? Whether it's Likes in a music app, or lists of to-do's, books to read or movies to watch, the sheer length of a list can be overwhelming.
 
-ROUZME! moves you to actually do stuff. Use ROUZME! to help you organize and track the ideas, goals, and interests you've been meaning to pursue.
+But help is here! ROUZME moves you to actually do stuff. Use ROUZME to help you organize and track the ideas, goals, and interests you've had nagging at you.
 
-Think of it as a way to keep track of all those things you say "I've been meaning to..." about - books you want to read, movies to watch, places to visit, projects to start, or anything else that catches your interest.
+Think of it as a way to keep track of all those things you say "I've been meaning to..." about.
 
 The app helps you:
-• Keep your ${NamingUtils.tasksName(capitalize: true, plural: true)} organized into collections (${NamingUtils.categoriesName(capitalize: true, plural: true)}), with notes reminding you where they came from and/or why they're here
-• Link your ${NamingUtils.tasksName(capitalize: true, plural: true)} to external resources like movies, books, music, and more
-• Get a random (more or less) suggestion when you're ready to act
-• Track what you've accomplished
-• Get ideas from others and share yours
+• Keep your ${NamingUtils.tasksName(capitalize: true, plural: true)} organized into collections (${NamingUtils.categoriesName(capitalize: true, plural: true)}), with notes reminding you where they came from and/or why they're here;
+• Link your ${NamingUtils.tasksName(capitalize: true, plural: true)} to external resources like movies, books, music, and more;
+• Get a random (more or less) suggestion when you're ready to act;
+• Track what you've accomplished;
+• Get ideas from others and share yours.
 ''',
           ),
 
@@ -153,7 +152,7 @@ Pro tip: Just paste a URL into the headline when adding a new ${NamingUtils.task
 Already have a list of things you've been meaning to do? You can import them in bulk from other sources.
 
 How to import:
-1. On the home screen, select the ${NamingUtils.categoriesName(capitalize: false, plural: false)} you want to add to.
+1. On the home screen, select the ${NamingUtils.categoriesName(capitalize: false, plural: false)} you want to add to, possibly creating it first as needed.
 2. Hit the "Add ${NamingUtils.tasksName(capitalize: false, plural: false)}" button next to the ${NamingUtils.categoriesName(capitalize: false, plural: false)}'s title.
 3. Instead of entering a single ${NamingUtils.tasksName(capitalize: false, plural: false)}, hit the "Add a List of Ideas" button.
 4. Paste the list into the text box, or hit the Import button and select a data source file to upload.

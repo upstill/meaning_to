@@ -37,7 +37,7 @@ Future<void> showBorrowExplanationIfNeeded(BuildContext context) async {
               text: 'Snag this Pursuit',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            const TextSpan(text: " in the Pursuit's menu)."),
+            const TextSpan(text: " in the Menu)."),
           ],
         ),
       ),

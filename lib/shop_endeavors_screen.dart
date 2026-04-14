@@ -69,11 +69,12 @@ class ShopEndeavorsScreen extends StatefulWidget {
         return false; // No other categories with same original_id
       }
 
-      // Get tasks from other categories with the same original_id
+      // Get shared tasks from other categories with the same original_id
       final tasksResponse = await supabase
           .from('Tasks')
           .select('id, original_id')
           .inFilter('category_id', categoryIds)
+          .eq('shared', true)
           .limit(100); // Get more tasks to check filtering
 
       if (tasksResponse.isNotEmpty) {
@@ -84,8 +85,19 @@ class ShopEndeavorsScreen extends StatefulWidget {
           return originalId != null && taskId == originalId;
         }).toList();
 
-        // If there are original tasks in other categories, we have suggestions
-        return originalTasks.isNotEmpty;
+        if (originalTasks.isEmpty) return false;
+
+        // Exclude tasks the user already has (same redundancy check as the load)
+        final existingTasks = CacheManager().currentTasks ?? [];
+        final existingOriginalIds = existingTasks
+            .where((t) => t.originalId != null)
+            .map((t) => t.originalId!)
+            .toSet();
+
+        return originalTasks.any((task) {
+          final originalId = task['original_id'] as int?;
+          return originalId != null && !existingOriginalIds.contains(originalId);
+        });
       }
       return false;
     } catch (e) {
@@ -450,11 +462,12 @@ class _ShopEndeavorsScreenState extends State<ShopEndeavorsScreen> {
 
         print('ShopEndeavorsScreen: Category IDs: $categoryIds');
 
-        // Get tasks from all these categories
+        // Get tasks from all these categories (only shared ones)
         final tasksResponse = await supabase
             .from('Tasks')
             .select('*')
-            .inFilter('category_id', categoryIds);
+            .inFilter('category_id', categoryIds)
+            .eq('shared', true);
 
         print(
             'ShopEndeavorsScreen: Raw tasks response: ${tasksResponse.length} tasks');

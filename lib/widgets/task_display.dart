@@ -18,6 +18,10 @@ class TaskDisplay extends StatefulWidget {
   // When set, replaces all controls with a selection checkbox
   final bool? isSelected;
   final ValueChanged<bool?>? onSelected;
+  // Snag controls for shared/borrowed pursuit list view
+  final bool isSnagged;
+  final VoidCallback? onSnag;
+  final VoidCallback? onSnagAgain;
 
   const TaskDisplay({
     super.key,
@@ -32,6 +36,9 @@ class TaskDisplay extends StatefulWidget {
     this.onMakeCategoryPublic,
     this.isSelected,
     this.onSelected,
+    this.isSnagged = false,
+    this.onSnag,
+    this.onSnagAgain,
   });
 
   /// Builds a widget to display a task, with optional controls.
@@ -50,6 +57,9 @@ class TaskDisplay extends StatefulWidget {
     VoidCallback? onMakeCategoryPublic,
     bool? isSelected,
     ValueChanged<bool?>? onSelected,
+    bool isSnagged = false,
+    VoidCallback? onSnag,
+    VoidCallback? onSnagAgain,
   }) {
     return TaskDisplay(
       task: task,
@@ -63,6 +73,9 @@ class TaskDisplay extends StatefulWidget {
       onMakeCategoryPublic: onMakeCategoryPublic,
       isSelected: isSelected,
       onSelected: onSelected,
+      isSnagged: isSnagged,
+      onSnag: onSnag,
+      onSnagAgain: onSnagAgain,
     );
   }
 
@@ -178,6 +191,31 @@ class _TaskDisplayState extends State<TaskDisplay> {
         _fetchSynopsisFromLinks();
       }
     }
+  }
+
+  Widget _buildShareToggleButton({
+    required bool isShared,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: isShared ? 'Unshare' : 'Share',
+      child: GestureDetector(
+        onTap: onPressed,
+        child: Container(
+          width: 27,
+          height: 27,
+          decoration: BoxDecoration(
+            color: isShared ? Colors.green.shade600 : Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Icon(
+            isShared ? Icons.share : Icons.share_outlined,
+            size: 14,
+            color: isShared ? Colors.white : Colors.grey.shade400,
+          ),
+        ),
+      ),
+    );
   }
 
   void _showPrivateCategoryDialog(BuildContext context) {
@@ -300,13 +338,82 @@ class _TaskDisplayState extends State<TaskDisplay> {
                         ),
                       ),
                     ),
-                    // Controls bundle: selection checkbox OR full controls
+                    // Controls bundle: selection share toggle, snag buttons, OR full controls
                     if (widget.onSelected != null)
-                      Checkbox(
-                        value: widget.isSelected ?? false,
-                        onChanged: widget.onSelected,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.compact,
+                      _buildShareToggleButton(
+                        isShared: widget.isSelected ?? false,
+                        onPressed: () {
+                          widget.onSelected!(!(widget.isSelected ?? false));
+                        },
+                      )
+                    else if (widget.onSnag != null || widget.onSnagAgain != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.isSnagged) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                'Snagged',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade500,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            if (widget.onSnagAgain != null) ...[
+                              const SizedBox(width: 6),
+                              GestureDetector(
+                                onTap: widget.onSnagAgain,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade600,
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: const Text(
+                                    'Snag Again',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ] else if (widget.onSnag != null)
+                            GestureDetector(
+                              onTap: widget.onSnag,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade600,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.add, size: 14, color: Colors.white),
+                                    SizedBox(width: 2),
+                                    Text(
+                                      'Snag',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
                       )
                     else
                     Row(
@@ -321,66 +428,36 @@ class _TaskDisplayState extends State<TaskDisplay> {
                                 color: Colors.green.withOpacity(0.3),
                                 borderRadius: BorderRadius.circular(4),
                               ), */
-                              child: Checkbox(
-                                value: widget.task.finished,
-                                onChanged: (value) {
-                                  widget.onTap!();
-                                },
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                visualDensity: VisualDensity.compact,
+                              child: Tooltip(
+                                message: widget.task.finished
+                                    ? 'Mark as not done'
+                                    : 'Done with this',
+                                child: Checkbox(
+                                  value: widget.task.finished,
+                                  onChanged: (value) {
+                                    widget.onTap!();
+                                  },
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                ),
                               ),
                             );
                           },
                         ),
                         // Share control — only when sharing is enabled
                         if (widget.onShareToggle != null)
-                        Builder(
-                          builder: (context) {
-                            return Container(
-                              child: SizedBox(
-                                width: 30,
-                                height: 30,
-                                child: IconButton(
-                                  icon: Icon(
-                                    // If category is private, always show as unshared
-                                    (widget.isCategoryPrivate == true ||
-                                            !widget.task.shared)
-                                        ? Icons.share_outlined
-                                        : Icons.share_sharp,
-                                    size:
-                                        18, // Slightly larger for better visibility
-                                    color: (widget.isCategoryPrivate == true ||
-                                            !widget.task.shared)
-                                        ? Colors.grey
-                                            .shade400 // Medium gray for unshared state
-                                        : Colors.green.shade700,
-                                  ),
-                                  onPressed: () {
-                                    // If category is private and user is trying to share, show dialog
-                                    if (widget.isCategoryPrivate == true &&
-                                        !widget.task.shared) {
-                                      _showPrivateCategoryDialog(context);
-                                    } else if (widget.onShareToggle != null) {
-                                      widget.onShareToggle!(
-                                        !widget.task.shared,
-                                      );
-                                    }
-                                  },
-                                  tooltip: (widget.isCategoryPrivate == true ||
-                                          !widget.task.shared)
-                                      ? 'Share task'
-                                      : 'Unshare task',
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 30,
-                                    minHeight: 30,
-                                    maxWidth: 30,
-                                    maxHeight: 30,
-                                  ),
-                                ),
-                              ),
-                            );
+                        _buildShareToggleButton(
+                          isShared: widget.isCategoryPrivate == true
+                              ? false
+                              : widget.task.shared,
+                          onPressed: () {
+                            if (widget.isCategoryPrivate == true &&
+                                !widget.task.shared) {
+                              _showPrivateCategoryDialog(context);
+                            } else if (widget.onShareToggle != null) {
+                              widget.onShareToggle!(!widget.task.shared);
+                            }
                           },
                         ),
                         // Edit and Delete buttons grouped tightly together

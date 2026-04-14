@@ -292,28 +292,47 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
                     children: [
                       Text(
                         _selectedIds.isEmpty
-                            ? 'Select All'
-                            : 'Select All  (${_selectedIds.length} selected)',
+                            ? 'Share All'
+                            : 'Share All  (${_selectedIds.length} shared)',
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 13),
                       ),
-                      Checkbox(
-                        tristate: true,
-                        value: allSelected
-                            ? true
-                            : (someSelected ? null : false),
-                        onChanged: (val) {
-                          setState(() {
-                            if (allSelected || someSelected) {
-                              _selectedIds = {};
-                            } else {
-                              _selectedIds =
-                                  _displayedTasks.map((t) => t.id).toSet();
-                            }
-                          });
-                        },
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.compact,
+                      const SizedBox(width: 8),
+                      Tooltip(
+                        message: allSelected ? 'Unshare all' : 'Share all',
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              if (allSelected || someSelected) {
+                                _selectedIds = {};
+                              } else {
+                                _selectedIds =
+                                    _displayedTasks.map((t) => t.id).toSet();
+                              }
+                            });
+                          },
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: allSelected
+                                  ? Colors.green.shade600
+                                  : someSelected
+                                      ? Colors.green.shade300
+                                      : Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Icon(
+                              allSelected || someSelected
+                                  ? Icons.share
+                                  : Icons.share_outlined,
+                              size: 16,
+                              color: allSelected || someSelected
+                                  ? Colors.white
+                                  : Colors.grey.shade400,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
