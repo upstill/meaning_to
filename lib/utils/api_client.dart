@@ -1,8 +1,6 @@
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/models/share_invitation.dart';
-import 'package:meaning_to/models/share_subscriber.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiClient {
@@ -591,78 +589,13 @@ class ApiClient {
   }
 
   // ── Sharing ────────────────────────────────────────────────────────────────
+  // Legacy single-category invitations (share_invitations / redeem_invitation)
+  // are retained only so links issued before the 2026-06-29 unified-share-link
+  // overhaul still redeem. New sharing uses create_share_link / redeem_share_link
+  // further below.
 
-  /// Creates a share invitation for [categoryId] and returns the token UUID.
-  /// Enforces a 7-day expiry regardless of the DB function default.
-  static Future<String> createShareInvitation(int categoryId) async {
-    try {
-      // One link per category: remove any existing before creating.
-      await _supabase
-          .from('share_invitations')
-          .delete()
-          .eq('category_id', categoryId);
-      final response = await _supabase.rpc(
-        'create_share_invitation',
-        params: {'p_category_id': categoryId},
-      );
-      final token = response as String;
-      // Enforce 7-day expiry.
-      await _supabase.from('share_invitations').update({
-        'expires_at':
-            DateTime.now().add(const Duration(days: 7)).toUtc().toIso8601String(),
-      }).eq('id', token);
-      return token;
-    } catch (e) {
-      print('Error creating share invitation: $e');
-      rethrow;
-    }
-  }
-
-  /// Returns all share invitations for [categoryId] created by the current user,
-  /// newest first.
-  static Future<List<ShareInvitation>> getShareInvitations(
-      int categoryId) async {
-    try {
-      final rows = await _supabase
-          .from('share_invitations')
-          .select()
-          .eq('category_id', categoryId)
-          .order('created_at', ascending: false);
-      return rows
-          .map((r) => ShareInvitation.fromJson(r as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      print('Error fetching share invitations: $e');
-      rethrow;
-    }
-  }
-
-  /// Extends the expiry of [tokenId] by 7 days from now and clears used_at,
-  /// making the link reusable for another recipient.
-  static Future<void> renewShareInvitation(String tokenId) async {
-    try {
-      await _supabase.from('share_invitations').update({
-        'expires_at':
-            DateTime.now().add(const Duration(days: 7)).toUtc().toIso8601String(),
-        'used_at': null,
-      }).eq('id', tokenId);
-    } catch (e) {
-      print('Error renewing share invitation: $e');
-      rethrow;
-    }
-  }
-
-  /// Permanently deletes the share invitation [tokenId].
-  static Future<void> deleteShareInvitation(String tokenId) async {
-    try {
-      await _supabase.from('share_invitations').delete().eq('id', tokenId);
-    } catch (e) {
-      print('Error deleting share invitation: $e');
-      rethrow;
-    }
-  }
-
-  /// Redeems a share invitation token and returns the subscribed category ID.
+  /// Redeems a legacy share invitation token and returns the subscribed
+  /// category ID.
   static Future<int> redeemInvitation(String token) async {
     print('[redeemInvitation] calling RPC redeem_invitation, token length=${token.length}');
     try {
@@ -725,8 +658,9 @@ class ApiClient {
     try {
       final rows = await _supabase
           .from('shared_categories')
-          .select('category_id, owner_name, available, Categories(*)')
-          .eq('user_id', userId);
+          .select('category_id, owner_name, available, shared_at, Categories(*)')
+          .eq('user_id', userId)
+          .order('shared_at', ascending: false); // newest first
       return (rows as List).map((row) {
         final cat =
             Category.fromJson(row['Categories'] as Map<String, dynamic>);
@@ -758,45 +692,6 @@ class ApiClient {
     }
   }
 
-  // ── Open To All sharing ────────────────────────────────────────────────────
-
-  /// Toggles the open_to_all flag on an invitation.
-  /// When enabling, clears expires_at; when disabling, sets a fresh 7-day expiry.
-  static Future<void> setInvitationOpenToAll(
-      String tokenId, bool openToAll) async {
-    try {
-      await _supabase.from('share_invitations').update({
-        'open_to_all': openToAll,
-        'expires_at': openToAll
-            ? null
-            : DateTime.now()
-                .add(const Duration(days: 7))
-                .toUtc()
-                .toIso8601String(),
-      }).eq('id', tokenId);
-    } catch (e) {
-      print('Error updating open_to_all: $e');
-      rethrow;
-    }
-  }
-
-  /// Returns all subscribers for [categoryId] (owner only).
-  static Future<List<ShareSubscriber>> getCategorySubscribers(
-      int categoryId) async {
-    try {
-      final response = await _supabase.rpc(
-        'get_category_subscribers',
-        params: {'p_category_id': categoryId},
-      );
-      return (response as List)
-          .map((r) => ShareSubscriber.fromJson(r as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      print('Error getting category subscribers: $e');
-      rethrow;
-    }
-  }
-
   /// Subscribes the current user to all open-to-all categories owned by
   /// [ownerEmail]. If [available] is true they appear on the home screen
   /// immediately; if false they are hidden in My Shares only.
@@ -817,59 +712,162 @@ class ApiClient {
     }
   }
 
-  /// Revokes a subscriber's access to [categoryId].
-  static Future<void> revokeSubscriber(int categoryId, String userId) async {
+  // ── Unified share links ─────────────────────────────────────────────────────
+
+  /// Searches other users by name or email substring, returning id + display
+  /// name only (never email). Empty list for queries shorter than 2 chars.
+  static Future<List<({String id, String name})>> searchUsers(
+      String query) async {
+    if (query.trim().length < 2) return [];
     try {
-      await _supabase.rpc(
-        'revoke_subscriber',
-        params: {'p_category_id': categoryId, 'p_user_id': userId},
+      final rows = await _supabase.rpc(
+        'search_users',
+        params: {'p_query': query.trim()},
       );
+      return (rows as List).map((r) {
+        final m = r as Map<String, dynamic>;
+        return (id: m['id'] as String, name: m['name'] as String);
+      }).toList();
     } catch (e) {
-      print('Error revoking subscriber: $e');
+      print('Error searching users: $e');
+      return [];
+    }
+  }
+
+  /// Grants [categoryIds] (all owned by the caller) directly to [recipientId]'s
+  /// Shared With Me, flagged unseen. Returns the number of pursuits granted.
+  static Future<int> sendShareToUser(
+      List<int> categoryIds, String recipientId) async {
+    try {
+      final response = await _supabase.rpc(
+        'send_share_to_user',
+        params: {'p_category_ids': categoryIds, 'p_recipient': recipientId},
+      );
+      return response as int;
+    } catch (e) {
+      print('Error sending share to user: $e');
       rethrow;
     }
   }
 
-  /// Returns a summary of categories the current user is sharing out.
-  /// Each map has: category_id (int), open_to_all (bool), subscriber_count (int).
-  static Future<List<Map<String, dynamic>>> getSharedOutSummary() async {
+  /// Creates a reusable share link granting [categoryIds] (all must be owned by
+  /// the caller). Returns the new link id.
+  static Future<String> createShareLink(List<int> categoryIds) async {
     try {
-      final userId = AuthUtils.getCurrentUserId();
-      // Find categories owned by the user that have at least one invitation
-      final invRows = await _supabase
-          .from('share_invitations')
-          .select('category_id, open_to_all')
-          .eq('created_by', userId);
+      final response = await _supabase.rpc(
+        'create_share_link',
+        params: {'p_category_ids': categoryIds},
+      );
+      return response as String;
+    } catch (e) {
+      print('Error creating share link: $e');
+      rethrow;
+    }
+  }
 
-      // Group by category_id; prefer open_to_all=true if any row has it
-      final Map<int, bool> byCategory = {};
-      for (final row in invRows as List) {
-        final catId = row['category_id'] as int;
-        final isOpen = row['open_to_all'] as bool? ?? false;
-        byCategory[catId] = (byCategory[catId] ?? false) || isOpen;
-      }
-
-      if (byCategory.isEmpty) return [];
-
-      // Count subscribers per category
-      final subRows = await _supabase
-          .from('shared_categories')
-          .select('category_id')
-          .inFilter('category_id', byCategory.keys.toList());
-
-      final Map<int, int> subCounts = {};
-      for (final row in subRows as List) {
-        final catId = row['category_id'] as int;
-        subCounts[catId] = (subCounts[catId] ?? 0) + 1;
-      }
-
-      return byCategory.entries.map((e) => {
-        'category_id': e.key,
-        'open_to_all': e.value,
-        'subscriber_count': subCounts[e.key] ?? 0,
+  /// Redeems a share link, subscribing the current user to every pursuit it
+  /// grants. Returns each granted pursuit's id + headline (for notification).
+  static Future<List<({int id, String headline})>> redeemShareLink(
+      String linkId) async {
+    try {
+      final rows = await _supabase.rpc(
+        'redeem_share_link',
+        params: {'p_link': linkId},
+      );
+      return (rows as List).map((r) {
+        final m = r as Map<String, dynamic>;
+        return (id: m['category_id'] as int, headline: m['headline'] as String);
       }).toList();
     } catch (e) {
-      print('Error getting shared-out summary: $e');
+      print('Error redeeming share link: $e');
+      rethrow;
+    }
+  }
+
+  /// Redeems a pending stashed value: either a new share link ('share:<id>') or
+  /// a legacy invitation token (raw uuid). Returns the number of pursuits granted.
+  static Future<int> redeemPending(String stashed) async {
+    if (stashed.startsWith('share:')) {
+      final granted = await redeemShareLink(stashed.substring('share:'.length));
+      return granted.length;
+    }
+    await redeemInvitation(stashed);
+    return 1;
+  }
+
+  /// Categories shared with the current user that they haven't seen yet
+  /// (seen_at IS NULL). Drives the new-shares notification + highlight.
+  static Future<List<Category>> getUnseenShares() async {
+    final userId = AuthUtils.getCurrentUserId();
+    if (userId == null) return [];
+    try {
+      final rows = await _supabase
+          .from('shared_categories')
+          .select('category_id, owner_name, available, shared_at, Categories(*)')
+          .eq('user_id', userId)
+          .isFilter('seen_at', null)
+          .order('shared_at', ascending: false); // newest first
+      return (rows as List).map((row) {
+        final cat = Category.fromJson(row['Categories'] as Map<String, dynamic>);
+        return cat.copyWithShared(
+          isShared: true,
+          ownerName: row['owner_name'] as String,
+          isAvailable: row['available'] as bool? ?? true,
+        );
+      }).toList();
+    } catch (e) {
+      print('Error fetching unseen shares: $e');
+      return [];
+    }
+  }
+
+  /// Marks all of the current user's unseen shares as seen.
+  static Future<void> markSharesSeen() async {
+    final userId = AuthUtils.getCurrentUserId();
+    if (userId == null) return;
+    try {
+      await _supabase
+          .from('shared_categories')
+          .update({'seen_at': DateTime.now().toUtc().toIso8601String()})
+          .eq('user_id', userId)
+          .isFilter('seen_at', null);
+    } catch (e) {
+      print('Error marking shares seen: $e');
+    }
+  }
+
+  /// Returns the current user's share links, each with the pursuits it grants.
+  static Future<List<({String linkId, List<Category> categories})>>
+      getMyShareLinks() async {
+    final userId = AuthUtils.getCurrentUserId();
+    if (userId == null) return [];
+    try {
+      final rows = await _supabase
+          .from('share_links')
+          .select(
+              'id, created_at, share_link_categories(category_id, Categories(*))')
+          .eq('created_by', userId)
+          .order('created_at', ascending: false);
+      return (rows as List).map((row) {
+        final items = (row['share_link_categories'] as List?) ?? [];
+        final cats = items
+            .map((it) => Category.fromJson((it as Map<String, dynamic>)['Categories']
+                as Map<String, dynamic>))
+            .toList();
+        return (linkId: row['id'] as String, categories: cats);
+      }).toList();
+    } catch (e) {
+      print('Error fetching share links: $e');
+      return [];
+    }
+  }
+
+  /// Deletes a share link so it no longer grants access to new recipients.
+  static Future<void> deleteShareLink(String linkId) async {
+    try {
+      await _supabase.from('share_links').delete().eq('id', linkId);
+    } catch (e) {
+      print('Error deleting share link: $e');
       rethrow;
     }
   }

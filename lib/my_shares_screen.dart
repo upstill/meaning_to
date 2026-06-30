@@ -1,15 +1,11 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/models/share_invitation.dart';
 import 'package:meaning_to/utils/api_client.dart';
-import 'package:meaning_to/utils/naming.dart';
-import 'package:meaning_to/utils/deep_link_generator.dart';
 import 'package:meaning_to/utils/borrow_explanation.dart';
-import 'package:meaning_to/edit_share_tasks_screen.dart';
-import 'package:share_plus/share_plus.dart';
 
+/// Lists the pursuits other people have shared with the current user. Newly
+/// received shares (seen_at IS NULL) are highlighted; opening this screen marks
+/// them seen so the highlight and the home-screen notification clear.
 class MySharesScreen extends StatefulWidget {
   final List<Category> allCategories;
   final void Function(Category) onSelect;
@@ -45,10 +41,12 @@ class MySharesScreen extends StatefulWidget {
 }
 
 class _MySharesScreenState extends State<MySharesScreen> {
-  List<Map<String, dynamic>>? _sharedOutSummary;
   bool _loading = true;
   late List<Category> _sharedWithMe;
   final Set<int> _expandedInvitations = {};
+
+  /// Category ids that were unseen when this screen opened — highlighted here.
+  Set<int> _newIds = {};
 
   @override
   void initState() {
@@ -61,15 +59,20 @@ class _MySharesScreenState extends State<MySharesScreen> {
     setState(() => _loading = true);
     try {
       final results = await Future.wait([
-        ApiClient.getSharedOutSummary(),
         ApiClient.getAllSharedWithMe(),
+        ApiClient.getUnseenShares(),
       ]);
       if (mounted) {
         setState(() {
-          _sharedOutSummary = results[0] as List<Map<String, dynamic>>;
-          _sharedWithMe = results[1] as List<Category>;
+          _sharedWithMe = results[0];
+          _newIds = results[1].map((c) => c.id).toSet();
           _loading = false;
         });
+      }
+      // Now that the recipient is viewing them, clear the "new" flag.
+      if (_newIds.isNotEmpty) {
+        await ApiClient.markSharesSeen();
+        widget.onRefresh?.call();
       }
     } catch (e) {
       if (mounted) setState(() => _loading = false);
@@ -111,7 +114,7 @@ class _MySharesScreenState extends State<MySharesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('My Shares')),
+      appBar: AppBar(title: const Text('Shared With Me')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -119,85 +122,31 @@ class _MySharesScreenState extends State<MySharesScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSharedWithMeSection(),
-                  const SizedBox(height: 24),
-                  _buildSharingOutSection(),
+                  if (_sharedWithMe.isEmpty)
+                    const Text(
+                      'No pursuits have been shared with you.',
+                      style: TextStyle(
+                          color: Colors.grey, fontStyle: FontStyle.italic),
+                    )
+                  else
+                    ..._sharedWithMe.map(_buildSharedWithMeRow),
                 ],
               ),
             ),
     );
   }
 
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: Colors.black54,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSharingOutSection() {
-    final summary = _sharedOutSummary ?? [];
-
-    final rows = summary
-        .map((s) {
-          final catId = s['category_id'] as int;
-          try {
-            return widget.allCategories
-                .firstWhere((c) => c.id == catId && !c.isShared);
-          } catch (_) {
-            return null;
-          }
-        })
-        .whereType<Category>()
-        .toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionHeader('SHARING OUT'),
-        if (rows.isEmpty)
-          const Text(
-            'You are not sharing any pursuits.',
-            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-          )
-        else
-          ...rows.map((cat) => _ShareCategoryCard(
-                category: cat,
-                onDeleted: () => setState(() => _sharedOutSummary!
-                    .removeWhere((s) => s['category_id'] == cat.id)),
-              )),
-      ],
-    );
-  }
-
-  Widget _buildSharedWithMeSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionHeader('SHARED WITH ME'),
-        if (_sharedWithMe.isEmpty)
-          const Text(
-            'No pursuits have been shared with you.',
-            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-          )
-        else
-          ..._sharedWithMe.map((c) => _buildSharedWithMeRow(c)),
-      ],
-    );
-  }
-
   Widget _buildSharedWithMeRow(Category category) {
+    final isNew = _newIds.contains(category.id);
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Card(
+        shape: isNew
+            ? RoundedRectangleBorder(
+                side: const BorderSide(color: Colors.blue, width: 2),
+                borderRadius: BorderRadius.circular(12),
+              )
+            : null,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
           child: Column(
@@ -213,6 +162,18 @@ class _MySharesScreenState extends State<MySharesScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+                  if (isNew)
+                    Container(
+                      margin: const EdgeInsets.only(left: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blue,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text('NEW',
+                          style: TextStyle(fontSize: 10, color: Colors.white)),
+                    ),
                   IconButton(
                     onPressed: () async {
                       if (!category.isAvailable) {
@@ -310,320 +271,6 @@ class _MySharesScreenState extends State<MySharesScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _ShareCategoryCard extends StatefulWidget {
-  final Category category;
-  final VoidCallback? onDeleted;
-
-  const _ShareCategoryCard({required this.category, this.onDeleted});
-
-  @override
-  State<_ShareCategoryCard> createState() => _ShareCategoryCardState();
-}
-
-class _ShareCategoryCardState extends State<_ShareCategoryCard> {
-  ShareInvitation? _invitation;
-  bool _loading = true;
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    try {
-      final rows = await ApiClient.getShareInvitations(widget.category.id);
-      if (mounted) {
-        setState(() {
-          _invitation = rows.isNotEmpty ? rows.first : null;
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _shareLink(String link) async {
-    if (kIsWeb) {
-      await Clipboard.setData(ClipboardData(text: link));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Link copied to clipboard')),
-        );
-      }
-    } else {
-      await Share.share(link, subject: 'Join my Pursuit on ROUZME!');
-    }
-  }
-
-  Future<void> _create() async {
-    setState(() => _busy = true);
-    try {
-      final token = await ApiClient.createShareInvitation(widget.category.id);
-      final link = DeepLinkGenerator.generateInviteLink(token);
-      await _shareLink(link);
-      if (mounted) await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not create link: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _renew() async {
-    final inv = _invitation;
-    if (inv == null) return;
-    setState(() => _busy = true);
-    try {
-      await ApiClient.renewShareInvitation(inv.id);
-      final link = DeepLinkGenerator.generateInviteLink(inv.id);
-      await _shareLink(link);
-      if (mounted) await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not renew: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _delete() async {
-    final inv = _invitation;
-    if (inv == null) return;
-    try {
-      await ApiClient.deleteShareInvitation(inv.id);
-      if (mounted) widget.onDeleted?.call();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not delete: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _copyLink() async {
-    final inv = _invitation;
-    if (inv == null) return;
-    await _shareLink(DeepLinkGenerator.generateInviteLink(inv.id));
-  }
-
-  Future<void> _setOpenToAll(bool openToAll) async {
-    final inv = _invitation;
-    if (inv == null) return;
-    try {
-      await ApiClient.setInvitationOpenToAll(inv.id, openToAll);
-      if (mounted) await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update: $e')),
-        );
-      }
-    }
-  }
-
-  static String _formatDate(DateTime dt) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    final now = DateTime.now();
-    if (dt.year == now.year) return '${months[dt.month - 1]} ${dt.day}';
-    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 4, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.category.headline,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => EditShareTasksScreen.push(context,
-                        category: widget.category),
-                    icon: const Icon(Icons.edit_outlined, size: 14),
-                    label: const Text('Select Tasks to Share',
-                        style: TextStyle(fontSize: 12)),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                    ),
-                  ),
-                ],
-              ),
-              if (_loading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else ...[
-                if (_invitation == null) ...[
-                  const Text(
-                    'Create a link to share this Pursuit. '
-                    'Recipients get read-only access.',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 8, bottom: 4),
-                      child: ElevatedButton.icon(
-                        onPressed: _busy ? null : _create,
-                        icon: _busy
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.add_link, size: 16),
-                        label: const Text('Create Link'),
-                      ),
-                    ),
-                  ),
-                ] else
-                  _buildLinkCard(_invitation!),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLinkCard(ShareInvitation inv) {
-    final String statusLabel;
-    final Color statusColor;
-    final String expiryText;
-    final Color expiryColor;
-
-    if (inv.openToAll) {
-      statusLabel = 'Open';
-      statusColor = Colors.green;
-      expiryText = 'Permanent';
-      expiryColor = Colors.green[700]!;
-    } else if (inv.isUsed) {
-      statusLabel = 'Used';
-      statusColor = Colors.grey;
-      expiryText = 'Used ${_formatDate(inv.usedAt!)}';
-      expiryColor = Colors.grey;
-    } else if (inv.isExpired) {
-      statusLabel = 'Expired';
-      statusColor = Colors.red;
-      expiryText = 'Expired ${_formatDate(inv.expiresAt!)}';
-      expiryColor = Colors.red;
-    } else {
-      statusLabel = 'Active';
-      statusColor = Colors.green;
-      expiryText = inv.expiresAt != null
-          ? 'Expires ${_formatDate(inv.expiresAt!)}'
-          : 'No expiry';
-      expiryColor = Colors.green[700]!;
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: statusColor,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(statusLabel,
-                  style: const TextStyle(fontSize: 11, color: Colors.white)),
-            ),
-            const SizedBox(width: 8),
-            Text(expiryText,
-                style: TextStyle(fontSize: 12, color: expiryColor)),
-          ],
-        ),
-        Row(
-          children: [
-            Checkbox(
-              value: inv.openToAll,
-              onChanged: _busy ? null : (v) => _setOpenToAll(v ?? false),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-            ),
-            const Text('Open To All', style: TextStyle(fontSize: 12)),
-            const Spacer(),
-            if (inv.isActive)
-              IconButton(
-                onPressed: _busy ? null : _copyLink,
-                icon: const Icon(Icons.copy),
-                tooltip: 'Copy Link',
-                visualDensity: VisualDensity.compact,
-              )
-            else
-              TextButton.icon(
-                onPressed: _busy ? null : _renew,
-                icon: const Icon(Icons.refresh, size: 14),
-                label: const Text('Renew', style: TextStyle(fontSize: 12)),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                ),
-              ),
-            TextButton.icon(
-              onPressed: _busy ? null : _delete,
-              icon:
-                  const Icon(Icons.delete_outline, size: 14, color: Colors.red),
-              label: const Text('Delete',
-                  style: TextStyle(fontSize: 12, color: Colors.red)),
-              style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }

@@ -44,17 +44,25 @@ class DeepLinkGenerator {
   /// On web, mirrors the current host so localhost links work in dev.
   /// On native, falls back to kDebugMode → localhost, else production.
   static String generateInviteLink(String token) {
-    String base;
+    return '${_joinBase()}/join?invite=$token';
+  }
+
+  /// Generate a reusable share link for the given share-link id.
+  /// Uses the same host resolution as [generateInviteLink].
+  static String generateShareLink(String linkId) {
+    return '${_joinBase()}/join?share=$linkId';
+  }
+
+  /// Resolves the base URL for /join links. On web, mirrors the current host so
+  /// localhost links work in dev; on native, falls back to debug localhost or
+  /// production.
+  static String _joinBase() {
     if (kIsWeb) {
       final host = Uri.base.host;
       final isLocal = host == 'localhost' || host == '127.0.0.1';
-      base = isLocal
-          ? 'http://${Uri.base.authority}'
-          : _webBaseUrl;
-    } else {
-      base = kDebugMode ? 'http://localhost:$_debugPort' : _webBaseUrl;
+      return isLocal ? 'http://${Uri.base.authority}' : _webBaseUrl;
     }
-    return '$base/join?invite=$token';
+    return kDebugMode ? 'http://localhost:$_debugPort' : _webBaseUrl;
   }
 
   /// Convert a production URL to a debug URL for local development

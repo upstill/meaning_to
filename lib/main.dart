@@ -426,6 +426,27 @@ class _MyAppState extends State<MyApp> {
       final isCustomInvite = uri.scheme == 'meaningto' && uri.host == 'join';
       print('[DeepLink] isHttpsInvite=$isHttpsInvite isCustomInvite=$isCustomInvite');
       if (isHttpsInvite || isCustomInvite) {
+        // New unified share links: /join?share=<linkId>. Grants a set of
+        // pursuits; after redeeming we land on /home, where the new-shares
+        // notification surfaces them.
+        final shareId = uri.queryParameters['share'];
+        if (shareId != null) {
+          MyApp.isHandlingDeepLink = false;
+          final session = Supabase.instance.client.auth.currentSession;
+          if (session != null) {
+            try {
+              await ApiClient.redeemShareLink(shareId);
+            } catch (e) {
+              _showInviteSnackBar('Could not accept the shared pursuits: $e');
+            }
+            MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
+          } else {
+            await InviteTokenStore.set('share:$shareId');
+            MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
+          }
+          return;
+        }
+
         final token = uri.queryParameters['invite'];
         print('[DeepLink] invite token present: ${token != null}, length: ${token?.length}');
         if (token != null) {
@@ -598,19 +619,15 @@ class _MyAppState extends State<MyApp> {
               if (response.user != null && response.session != null) {
                 print('Email confirmation successful, user signed in');
 
-                // Redeem any pending invite token before navigating
+                // Redeem any pending share/invite before navigating. New shares
+                // surface via the home-screen notification, so we land on /home.
                 final pendingInvite = await InviteTokenStore.get();
                 if (pendingInvite != null) {
                   try {
-                    final categoryId =
-                        await ApiClient.redeemInvitation(pendingInvite);
+                    await ApiClient.redeemPending(pendingInvite);
                     await InviteTokenStore.clear();
                     if (mounted) {
-                      Navigator.pushReplacementNamed(
-                        context,
-                        '/category',
-                        arguments: {'categoryId': categoryId.toString()},
-                      );
+                      Navigator.pushReplacementNamed(context, '/home');
                     }
                     return;
                   } catch (e) {
@@ -659,16 +676,14 @@ class _MyAppState extends State<MyApp> {
             // Wait a moment for the Navigator to be ready, then navigate
             await Future.delayed(const Duration(milliseconds: 100));
 
-            // Redeem any pending invite token before navigating
+            // Redeem any pending share/invite before navigating. New shares
+            // surface via the home-screen notification, so we land on /home.
             final pendingInvite = await InviteTokenStore.get();
             if (pendingInvite != null) {
               try {
-                final categoryId = await ApiClient.redeemInvitation(pendingInvite);
+                await ApiClient.redeemPending(pendingInvite);
                 await InviteTokenStore.clear();
-                MyApp.navigatorKey.currentState?.pushReplacementNamed(
-                  '/category',
-                  arguments: {'categoryId': categoryId.toString()},
-                );
+                MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
                 return;
               } catch (e) {
                 print('Error redeeming invite after OAuth: $e');
@@ -782,23 +797,21 @@ class _MyAppState extends State<MyApp> {
                 }
               }
 
-              // Check for share-invitation link: /join?invite=<token>
+              // Check for a share link: /join?share=<id> or /join?invite=<token>
               if (currentPath == '/join') {
-                final token = Uri.base.queryParameters['invite'];
-                if (token != null) {
-                  return MaterialPageRoute(
-                    builder: (context) => InviteScreen(token: token),
-                  );
+                final screen =
+                    InviteScreen.fromParams(Uri.base.queryParameters);
+                if (screen != null) {
+                  return MaterialPageRoute(builder: (context) => screen);
                 }
               }
 
-              // Check for share-invitation token at root URL (?invite=<token>)
+              // Check for a share link at the root URL (?share= / ?invite=).
               // This arrives when web/join/index.html redirects to /?invite=<token>
-              final rootInviteToken = Uri.base.queryParameters['invite'];
-              if (rootInviteToken != null) {
-                return MaterialPageRoute(
-                  builder: (context) => InviteScreen(token: rootInviteToken),
-                );
+              final rootScreen =
+                  InviteScreen.fromParams(Uri.base.queryParameters);
+              if (rootScreen != null) {
+                return MaterialPageRoute(builder: (context) => rootScreen);
               }
 
               // Check for Supabase authentication verification (password reset, email confirmation, etc.)
@@ -917,10 +930,14 @@ class _MyAppState extends State<MyApp> {
               );
             case '/join':
               final joinArgs = settings.arguments as Map<String, dynamic>?;
+              final shareId = joinArgs?['share'] as String?;
               final inviteToken = joinArgs?['token'] as String?;
-              if (inviteToken != null) {
+              final pending = shareId != null
+                  ? 'share:$shareId'
+                  : inviteToken;
+              if (pending != null) {
                 return MaterialPageRoute(
-                  builder: (context) => InviteScreen(token: inviteToken),
+                  builder: (context) => InviteScreen(pending: pending),
                 );
               }
               return MaterialPageRoute(

@@ -3,6 +3,7 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
+import 'package:meaning_to/widgets/home_button.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/widgets/category_form.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
@@ -99,10 +100,7 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
       appBar: AppBar(
         title:
             Text('Define a New ${NamingUtils.categoriesName(plural: false)}'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const HomeButton(),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
