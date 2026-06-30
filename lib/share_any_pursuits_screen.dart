@@ -8,9 +8,9 @@ import 'package:meaning_to/edit_share_tasks_screen.dart';
 import 'package:meaning_to/dialogs/find_user_dialog.dart';
 import 'package:share_plus/share_plus.dart';
 
-/// Lets the owner pick one or more of their own pursuits and issue a single
-/// reusable link that grants the whole set. Replaces the old per-category
-/// "Share This Pursuit" dialog and the open-to-all / single-use machinery.
+/// Lets the owner pick one or more of their own pursuits, then proceed to the
+/// shared [ShareActionDialog] to send them. "Share This Pursuit" from Home
+/// reaches that same dialog with a single pursuit.
 class ShareAnyPursuitsScreen extends StatefulWidget {
   final List<Category> allCategories;
 
@@ -26,23 +26,11 @@ class ShareAnyPursuitsScreen extends StatefulWidget {
     );
   }
 
-  /// One-tap entry point ("Share This Pursuit"): issues a reusable link for a
-  /// single pursuit and shows the result, identical to selecting it here.
+  /// One-tap entry point ("Share This Pursuit"): opens the share dialog for a
+  /// single pursuit — identical to selecting it here and proceeding.
   static Future<void> shareSingle(
-      BuildContext context, Category category) async {
-    try {
-      final linkId = await ApiClient.createShareLink([category.id]);
-      final url = DeepLinkGenerator.generateShareLink(linkId);
-      if (context.mounted) {
-        await showShareLinkResult(context, url, category: category);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not create link: $e')),
-        );
-      }
-    }
+      BuildContext context, Category category) {
+    return ShareActionDialog.show(context, [category]);
   }
 
   @override
@@ -51,7 +39,6 @@ class ShareAnyPursuitsScreen extends StatefulWidget {
 
 class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
   final Set<int> _selected = {};
-  bool _issuing = false;
 
   List<({String linkId, List<Category> categories})> _links = [];
   bool _loadingLinks = true;
@@ -77,92 +64,29 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
     }
   }
 
-  Future<void> _shareLink(String link) async {
+  /// Opens the share dialog for the currently-selected pursuits.
+  Future<void> _proceed() async {
+    final pursuits =
+        _ownedPursuits.where((c) => _selected.contains(c.id)).toList();
+    if (pursuits.isEmpty) return;
+    await ShareActionDialog.show(context, pursuits);
+    if (mounted) {
+      setState(() => _selected.clear());
+      await _loadLinks(); // a Share/Copy may have created a new link
+    }
+  }
+
+  Future<void> _copyExistingLink(String linkId) async {
+    final url = DeepLinkGenerator.generateShareLink(linkId);
     if (kIsWeb) {
-      await Clipboard.setData(ClipboardData(text: link));
+      await Clipboard.setData(ClipboardData(text: url));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Link copied to clipboard')),
         );
       }
     } else {
-      await Share.share(link, subject: 'Join my Pursuit on ROUZME!');
-    }
-  }
-
-  /// Creates a share link for the selected pursuits and returns its URL, or
-  /// null on error (after showing a snackbar). Refreshes the link list.
-  Future<String?> _createLinkForSelected() async {
-    try {
-      final linkId = await ApiClient.createShareLink(_selected.toList());
-      if (mounted) await _loadLinks();
-      return DeepLinkGenerator.generateShareLink(linkId);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not create link: $e')),
-        );
-      }
-      return null;
-    }
-  }
-
-  /// Share the link to the selected pursuits via another app (native) / copy (web).
-  Future<void> _shareSelected() async {
-    if (_selected.isEmpty) return;
-    setState(() => _issuing = true);
-    final url = await _createLinkForSelected();
-    if (url != null) {
-      await _shareLink(url);
-      if (mounted) setState(() => _selected.clear());
-    }
-    if (mounted) setState(() => _issuing = false);
-  }
-
-  /// Copy the link to the selected pursuits to the clipboard.
-  Future<void> _copySelected() async {
-    if (_selected.isEmpty) return;
-    setState(() => _issuing = true);
-    final url = await _createLinkForSelected();
-    if (url != null) {
-      await Clipboard.setData(ClipboardData(text: url));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Link copied — paste it into a message to send')),
-        );
-        setState(() => _selected.clear());
-      }
-    }
-    if (mounted) setState(() => _issuing = false);
-  }
-
-  /// Find a user and grant them the selected pursuits directly, in-app.
-  Future<void> _sendToUser() async {
-    if (_selected.isEmpty) return;
-    final user = await FindUserDialog.show(context);
-    if (user == null || !mounted) return;
-    setState(() => _issuing = true);
-    try {
-      final n = await ApiClient.sendShareToUser(_selected.toList(), user.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(n > 0
-                ? 'Shared $n Pursuit${n == 1 ? '' : 's'} with ${user.name}'
-                : '${user.name} already has those Pursuits'),
-          ),
-        );
-        setState(() => _selected.clear());
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not send: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _issuing = false);
+      await Share.share(url, subject: 'Join my Pursuit on ROUZME!');
     }
   }
 
@@ -191,9 +115,8 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Select the Pursuits you want to share, then issue one link to '
-              'send by email. Anyone who opens it gets read-only access to those '
-              'Pursuits.',
+              'Select the Pursuits you want to share, then tap Proceed to '
+              'choose how to send them. Recipients get read-only access.',
               style: TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 12),
@@ -208,46 +131,15 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
               )
             else
               ..._ownedPursuits.map(_buildPursuitRow),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Center(
-              child: Text(
-                _selected.isEmpty
-                    ? 'Select Pursuit(s) above, then choose how to share:'
-                    : '${_selected.length} '
-                        'Pursuit${_selected.length == 1 ? '' : 's'} selected — '
-                        'share by:',
-                style: const TextStyle(color: Colors.black54, fontSize: 13),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.center,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: (_selected.isEmpty || _issuing)
-                        ? null
-                        : _shareSelected,
-                    icon: const Icon(Icons.ios_share),
-                    label: const Text('Share'),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: (_selected.isEmpty || _issuing)
-                        ? null
-                        : _copySelected,
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Copy Link for Sending'),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: (_selected.isEmpty || _issuing)
-                        ? null
-                        : _sendToUser,
-                    icon: const Icon(Icons.person_add_alt_1),
-                    label: const Text('Send To User'),
-                  ),
-                ],
+              child: ElevatedButton.icon(
+                onPressed: _selected.isEmpty ? null : _proceed,
+                icon: const Icon(Icons.arrow_forward),
+                label: Text(_selected.isEmpty
+                    ? 'Proceed'
+                    : 'Proceed with ${_selected.length} '
+                        'Pursuit${_selected.length == 1 ? '' : 's'}'),
               ),
             ),
             const Divider(height: 32),
@@ -262,39 +154,37 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
     final checked = _selected.contains(cat.id);
     return Card(
       margin: const EdgeInsets.only(bottom: 4),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
-        child: Row(
-          children: [
-            Checkbox(
-              value: checked,
-              onChanged: (v) => setState(() {
-                if (v ?? false) {
-                  _selected.add(cat.id);
-                } else {
-                  _selected.remove(cat.id);
-                }
-              }),
-            ),
-            Expanded(
-              child: Text(
-                cat.headline,
-                style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.bold),
+      child: InkWell(
+        onTap: () => setState(() {
+          if (checked) {
+            _selected.remove(cat.id);
+          } else {
+            _selected.add(cat.id);
+          }
+        }),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 12, 0),
+          child: Row(
+            children: [
+              Checkbox(
+                value: checked,
+                onChanged: (v) => setState(() {
+                  if (v ?? false) {
+                    _selected.add(cat.id);
+                  } else {
+                    _selected.remove(cat.id);
+                  }
+                }),
               ),
-            ),
-            TextButton.icon(
-              onPressed: () =>
-                  EditShareTasksScreen.push(context, category: cat),
-              icon: const Icon(Icons.edit_outlined, size: 14),
-              label: const Text('Tasks', style: TextStyle(fontSize: 12)),
-              style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              Expanded(
+                child: Text(
+                  cat.headline,
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.bold),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -344,8 +234,7 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
               children: [
                 const Spacer(),
                 IconButton(
-                  onPressed: () => _shareLink(
-                      DeepLinkGenerator.generateShareLink(link.linkId)),
+                  onPressed: () => _copyExistingLink(link.linkId),
                   icon: const Icon(Icons.copy),
                   tooltip: 'Copy Link',
                   visualDensity: VisualDensity.compact,
@@ -371,83 +260,214 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
   }
 }
 
-/// Shows an issued share link with copy / share actions. When [category] is
-/// given (the single-pursuit "Share This Pursuit" shortcut), the first
-/// paragraph also offers a link to choose which tasks are shared.
-Future<void> showShareLinkResult(BuildContext context, String url,
-    {Category? category}) {
-  return showDialog<void>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Share Link Ready'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+/// Confirmation-and-instructions dialog for sharing one or more pursuits.
+/// Lists the pursuits (each with a Tasks editor) and offers the three ways to
+/// share them: Share, Copy Link for Sending, or Send To User. Reached from both
+/// "Share This Pursuit" (one pursuit) and the Share Any Pursuit(s) Proceed
+/// button (the selected set).
+class ShareActionDialog extends StatefulWidget {
+  final List<Category> pursuits;
+
+  const ShareActionDialog({super.key, required this.pursuits});
+
+  static Future<void> show(BuildContext context, List<Category> pursuits) {
+    return showDialog<void>(
+      context: context,
+      builder: (_) => ShareActionDialog(pursuits: pursuits),
+    );
+  }
+
+  @override
+  State<ShareActionDialog> createState() => _ShareActionDialogState();
+}
+
+class _ShareActionDialogState extends State<ShareActionDialog> {
+  bool _busy = false;
+
+  List<int> get _ids => widget.pursuits.map((c) => c.id).toList();
+
+  /// Creates a share link for the pursuits, returning its URL (or null on
+  /// error, after showing a snackbar via [messenger]).
+  Future<String?> _createLink(ScaffoldMessengerState messenger) async {
+    try {
+      final linkId = await ApiClient.createShareLink(_ids);
+      return DeepLinkGenerator.generateShareLink(linkId);
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not create link: $e')),
+      );
+      return null;
+    }
+  }
+
+  Future<void> _share() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    setState(() => _busy = true);
+    final url = await _createLink(messenger);
+    if (url == null) {
+      if (mounted) setState(() => _busy = false);
+      return;
+    }
+    if (kIsWeb) {
+      await Clipboard.setData(ClipboardData(text: url));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Link copied to clipboard')),
+      );
+    } else {
+      await Share.share(url, subject: 'Join my Pursuit on ROUZME!');
+    }
+    navigator.pop();
+  }
+
+  Future<void> _copy() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    setState(() => _busy = true);
+    final url = await _createLink(messenger);
+    if (url == null) {
+      if (mounted) setState(() => _busy = false);
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: url));
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Link copied — paste it into a message to send')),
+    );
+    navigator.pop();
+  }
+
+  Future<void> _sendToUser() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final user = await FindUserDialog.show(context);
+    if (user == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final n = await ApiClient.sendShareToUser(_ids, user.id);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(n > 0
+              ? 'Shared $n Pursuit${n == 1 ? '' : 's'} with ${user.name}'
+              : '${user.name} already has those Pursuits'),
+        ),
+      );
+      navigator.pop();
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not send: $e')),
+      );
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = widget.pursuits.length;
+    return AlertDialog(
+      scrollable: true,
+      titlePadding: const EdgeInsets.fromLTRB(24, 12, 12, 0),
+      title: Row(
         children: [
-          Text.rich(
-            TextSpan(
-              children: [
-                const TextSpan(
-                  text: 'Send this link by email. Anyone who opens it gets '
-                      'read-only access to the selected Pursuit(s). ',
-                ),
-                if (category != null)
-                  WidgetSpan(
-                    alignment: PlaceholderAlignment.middle,
-                    child: GestureDetector(
-                      onTap: () => EditShareTasksScreen.push(ctx,
-                          category: category),
-                      child: const Text(
-                        '(If you want to select which tasks to share, '
-                        'click here)',
-                        style: TextStyle(
-                          color: Colors.blue,
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+          Expanded(
+            child: Text(n == 1 ? 'Share This Pursuit' : 'Share $n Pursuits'),
           ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: SelectableText(url,
-                    style: const TextStyle(fontSize: 13)),
-              ),
-              IconButton(
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: url));
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      const SnackBar(content: Text('Link copied to clipboard')),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.copy, size: 18),
-                tooltip: 'Copy Link',
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
+          IconButton(
+            onPressed: _busy ? null : () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close),
+            tooltip: 'Close',
+            visualDensity: VisualDensity.compact,
           ),
         ],
       ),
-      actions: [
-        if (!kIsWeb)
-          TextButton.icon(
-            onPressed: () =>
-                Share.share(url, subject: 'Join my Pursuit on ROUZME!'),
-            icon: const Icon(Icons.ios_share, size: 16),
-            label: const Text('Share'),
-          ),
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('Done'),
+      content: SizedBox(
+        width: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Recipients get read-only access. Use Tasks to choose which '
+              'tasks are shared, then pick how to send:',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            ...widget.pursuits.map(_buildPursuitRow),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: _busy ? null : _share,
+                    icon: const Icon(Icons.share),
+                    label: const Text('Share', textAlign: TextAlign.center),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 8),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 4,
+                  child: ElevatedButton.icon(
+                    onPressed: _busy ? null : _copy,
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copy Link\nfor Sending',
+                        textAlign: TextAlign.center),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 8),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 3,
+                  child: ElevatedButton.icon(
+                    onPressed: _busy ? null : _sendToUser,
+                    icon: const Icon(Icons.person_add_alt_1),
+                    label: const Text('Send To\nUser',
+                        textAlign: TextAlign.center),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
+
+  Widget _buildPursuitRow(Category cat) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              cat.headline,
+              style:
+                  const TextStyle(fontSize: 16.8, fontWeight: FontWeight.bold),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _busy
+                ? null
+                : () => EditShareTasksScreen.push(context, category: cat),
+            icon: const Icon(Icons.edit_outlined, size: 14),
+            label: const Text('Tasks', style: TextStyle(fontSize: 12)),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
