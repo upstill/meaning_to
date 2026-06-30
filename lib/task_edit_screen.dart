@@ -21,6 +21,7 @@ import 'package:meaning_to/models/icon.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
 import 'package:meaning_to/utils/synopsis_fetcher.dart';
+import 'package:meaning_to/widgets/home_button.dart';
 
 // Widget to display favicon for a domain
 class DomainFaviconWidget extends StatelessWidget {
@@ -1638,24 +1639,45 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
+  /// Whether the form has changes relative to the original task.
+  bool _hasUnsavedChanges() {
+    if (_localTask == null) {
+      // New task: dirty if headline is non-empty
+      return _headlineController.text.trim().isNotEmpty;
+    }
+    if (_headlineController.text != _localTask!.headline) return true;
+    if ((_notesController.text) != (_localTask!.notes ?? '')) return true;
+    if (_isShared != _localTask!.shared) return true;
+    // Compare links
+    final origLinks = _localTask!.links ?? <String>[];
+    if (_links.length != origLinks.length) return true;
+    for (int i = 0; i < _links.length; i++) {
+      if (_links[i] != origLinks[i]) return true;
+    }
+    return false;
+  }
+
+  /// Silently save the current form state. Returns true on success.
+  Future<bool> _autoSave() async {
+    // Only autosave existing tasks with a valid headline
+    if (_localTask == null) return true;
+    if (_headlineController.text.trim().isEmpty) return true;
+    if (!_hasUnsavedChanges()) return true;
+
+    try {
+      await _saveTask();
+      return true;
+    } catch (e) {
+      print('TaskEditScreen: Autosave failed: $e');
+      return true; // Still allow navigation even if save fails
+    }
+  }
+
   void _handleBack() {
     print('TaskEditScreen: Back button pressed');
-    print('TaskEditScreen: Current task: ${_localTask?.headline}');
-    print(
-      'TaskEditScreen: Static callback available: ${TaskEditScreen.onEditComplete != null}',
-    );
-
-    // Don't call the callback when going back without saving
-    print('TaskEditScreen: Going back without saving, not calling callback');
-
-    // Pop without calling the callback since changes weren't saved
+    // Pop without saving — the Home button handles autosave separately
     if (mounted) {
-      Navigator.of(
-        context,
-      ).pop(false); // Return false to indicate no changes were saved
-      print('TaskEditScreen: Popped screen with false result');
-    } else {
-      print('TaskEditScreen: Widget not mounted, cannot pop');
+      Navigator.of(context).pop(false);
     }
   }
 
@@ -2258,18 +2280,13 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
     return WillPopScope(
       onWillPop: () async {
-        print('TaskEditScreen: WillPopScope triggered');
-        _handleBack();
-        return false;
+        await _autoSave();
+        return true;
       },
       child: Scaffold(
         appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              print('TaskEditScreen: Back button pressed in app bar');
-              _handleBack();
-            },
+          leading: HomeButton(
+            onBeforeNavigate: _autoSave,
           ),
           title: Text(
             _localTask == null

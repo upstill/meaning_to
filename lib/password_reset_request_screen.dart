@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:meaning_to/widgets/home_button.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PasswordResetRequestScreen extends StatefulWidget {
@@ -89,10 +90,7 @@ class _PasswordResetRequestScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reset Password'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pushReplacementNamed(context, '/auth'),
-        ),
+        leading: const HomeButton(),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
