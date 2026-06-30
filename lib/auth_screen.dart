@@ -169,26 +169,17 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   /// Navigates after a successful sign-in.
-  /// If a pending invite token exists, redeems it and goes to that category;
-  /// otherwise goes to /home.
+  /// Redeems any pending share/invite, then goes to /home (new shares surface
+  /// via the home-screen notification).
   Future<void> _navigateAfterSignIn() async {
     final token = await InviteTokenStore.get();
     if (token != null && mounted) {
       try {
-        final categoryId = await ApiClient.redeemInvitation(token);
-        await InviteTokenStore.clear();
-        if (mounted) {
-          Navigator.pushReplacementNamed(
-            context,
-            '/category',
-            arguments: {'categoryId': categoryId.toString()},
-          );
-          return;
-        }
+        await ApiClient.redeemPending(token);
       } catch (e) {
-        await InviteTokenStore.clear();
         // Fall through to /home on error
       }
+      await InviteTokenStore.clear();
     }
     if (mounted) {
       Navigator.pushReplacementNamed(context, '/home');

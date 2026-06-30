@@ -8,6 +8,7 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/home_screen.dart';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
+import 'package:meaning_to/widgets/home_button.dart';
 
 class LetterboxdImportScreen extends StatefulWidget {
   final Category category;
@@ -310,10 +311,7 @@ class _LetterboxdImportScreenState extends State<LetterboxdImportScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Import from Letterboxd'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const HomeButton(),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),

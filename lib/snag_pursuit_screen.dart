@@ -4,6 +4,7 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
+import 'package:meaning_to/widgets/home_button.dart';
 import 'package:meaning_to/widgets/task_display.dart';
 import 'package:meaning_to/home_screen.dart' show HomeTaskSortOption;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -314,7 +315,7 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
           content: Text(
             'Now that you\'ve copied what you wanted, do you want to release this share '
             'from your ${NamingUtils.categoriesName(capitalize: true, plural: true)} menu?'
-            '(You can always get it back using the "My Shares" item in the ${NamingUtils.categoriesName(capitalize: true, plural: false)}\'s menu.)',
+            '(You can always get it back using the "Shared With Me" item in the ${NamingUtils.categoriesName(capitalize: true, plural: false)}\'s menu.)',
           ),
           actions: [
             TextButton(
@@ -435,7 +436,7 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Snag For Me'),
-        leading: BackButton(onPressed: () => Navigator.of(context).pop()),
+        leading: const HomeButton(),
       ),
       body: SafeArea(
         child: Padding(

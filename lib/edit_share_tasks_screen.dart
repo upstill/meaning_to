@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/auth.dart';
-import 'package:meaning_to/utils/deep_link_generator.dart';
 import 'package:meaning_to/utils/naming.dart';
+import 'package:meaning_to/widgets/home_button.dart';
 import 'package:meaning_to/widgets/task_display.dart';
 import 'package:meaning_to/home_screen.dart' show HomeTaskSortOption, HomeScreen;
 
@@ -140,17 +139,12 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
       }
       if (changed > 0) HomeScreen.needsTaskReload.value = true;
 
-      // Create or reuse the invitation and copy the link to clipboard.
-      final token = await ApiClient.createShareInvitation(widget.category.id);
-      final link = DeepLinkGenerator.generateInviteLink(token);
-      await Clipboard.setData(ClipboardData(text: link));
-
       if (mounted) {
-        // Pop back past this screen and any dialog underneath it.
+        // Return to the share screen; task privacy is now saved.
         final messenger = ScaffoldMessenger.of(context);
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        Navigator.of(context).pop();
         messenger.showSnackBar(
-          const SnackBar(content: Text('Invite link copied to clipboard')),
+          const SnackBar(content: Text('Shared tasks updated')),
         );
       }
     } catch (e) {
@@ -251,7 +245,7 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit Shared Tasks'),
-        leading: BackButton(onPressed: () => Navigator.of(context).pop()),
+        leading: const HomeButton(),
       ),
       body: SafeArea(
         child: Padding(
@@ -384,8 +378,7 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
                     TextButton(
                       onPressed: _saving
                           ? null
-                          : () => Navigator.of(context)
-                              .popUntil((route) => route.isFirst),
+                          : () => Navigator.of(context).pop(),
                       child: const Text('Cancel'),
                     ),
                     const SizedBox(width: 12),
@@ -405,9 +398,9 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
                           : const Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.share, size: 16),
+                                Icon(Icons.check, size: 16),
                                 SizedBox(width: 6),
-                                Text('Issue Link'),
+                                Text('Save'),
                               ],
                             ),
                     ),

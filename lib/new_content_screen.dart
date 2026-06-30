@@ -8,6 +8,7 @@ import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
+import 'package:meaning_to/widgets/home_button.dart';
 
 enum ContentType { task, category }
 
@@ -216,10 +217,7 @@ class _NewContentScreenState extends State<NewContentScreen> {
                 ? 'New Idea to ${_selectedCategoryForTask!.headline}'
                 : 'New Idea')
             : 'Define new ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const HomeButton(),
       ),
       body: Column(
         children: [

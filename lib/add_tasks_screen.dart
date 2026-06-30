@@ -12,6 +12,7 @@ import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/widgets/add_task_manually_button.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
+import 'package:meaning_to/widgets/home_button.dart';
 
 class AddTasksScreen extends StatefulWidget {
   final Category category;
@@ -1446,10 +1447,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       appBar: AppBar(
         title: Text(
             'New ${NamingUtils.tasksName(capitalize: true, plural: true)} to ${widget.category.headline}'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const HomeButton(),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),

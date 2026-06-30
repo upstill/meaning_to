@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
+import 'package:meaning_to/widgets/home_button.dart';
 
 class AuthOtpVerificationScreen extends StatefulWidget {
   const AuthOtpVerificationScreen({super.key});
@@ -49,20 +50,11 @@ class _AuthOtpVerificationScreenState extends State<AuthOtpVerificationScreen> {
         final pendingToken = await InviteTokenStore.get();
         if (pendingToken != null && mounted) {
           try {
-            final categoryId = await ApiClient.redeemInvitation(pendingToken);
-            await InviteTokenStore.clear();
-            if (mounted) {
-              Navigator.pushReplacementNamed(
-                context,
-                '/category',
-                arguments: {'categoryId': categoryId.toString()},
-              );
-            }
-            return;
+            await ApiClient.redeemPending(pendingToken);
           } catch (e) {
             print('AuthOtpVerificationScreen: Failed to redeem invite: $e');
-            await InviteTokenStore.clear();
           }
+          await InviteTokenStore.clear();
         }
         if (mounted) Navigator.pushReplacementNamed(context, '/home');
       } else {
@@ -121,10 +113,7 @@ class _AuthOtpVerificationScreenState extends State<AuthOtpVerificationScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Verify Email'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const HomeButton(),
       ),
       body: ListView(
         padding: const EdgeInsets.all(24.0),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/utils/naming.dart';
+import 'package:meaning_to/widgets/home_button.dart';
 
 class HelpScreen extends StatefulWidget {
   const HelpScreen({super.key});
@@ -16,10 +17,7 @@ class _HelpScreenState extends State<HelpScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Help'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const HomeButton(),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),

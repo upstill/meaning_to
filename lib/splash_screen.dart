@@ -127,12 +127,11 @@ class _SplashScreenState extends State<SplashScreen> {
       final pendingToken = await InviteTokenStore.get();
       if (pendingToken != null) {
         try {
-          final categoryId = await ApiClient.redeemInvitation(pendingToken);
+          await ApiClient.redeemPending(pendingToken);
           await InviteTokenStore.clear();
           if (mounted) {
             MyApp.isStateRestored = true;
-            Navigator.of(context).pushReplacementNamed('/category',
-                arguments: {'categoryId': categoryId.toString()});
+            Navigator.of(context).pushReplacementNamed('/home');
           }
           return;
         } catch (e) {

@@ -12,7 +12,7 @@ import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/widgets/edit_category_dialog.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'package:meaning_to/my_shares_screen.dart';
-import 'package:meaning_to/dialogs/share_pursuit_dialog.dart';
+import 'package:meaning_to/share_any_pursuits_screen.dart';
 import 'package:meaning_to/snag_pursuit_screen.dart';
 import 'dart:async';
 
@@ -228,10 +228,19 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                   if (!AuthUtils.isGuestUser())
                     const PopupMenuItem<String>(
-                      value: 'my_shares',
+                      value: 'share_out',
+                      child: ListTile(
+                        leading: Icon(Icons.ios_share),
+                        title: Text('Share Any Pursuit(s)'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  if (!AuthUtils.isGuestUser())
+                    const PopupMenuItem<String>(
+                      value: 'shared_with_me',
                       child: ListTile(
                         leading: Icon(Icons.people_alt_outlined),
-                        title: Text('My Shares'),
+                        title: Text('Shared With Me'),
                         contentPadding: EdgeInsets.zero,
                       ),
                     ),
@@ -316,7 +325,11 @@ class HomeScreenState extends State<HomeScreen> {
               await _shareCategory(_selectedCategory!);
               await _loadTaskListDataInBackground();
             }
-            if (value == 'my_shares') {
+            if (value == 'share_out') {
+              await ShareAnyPursuitsScreen.show(context, _categories);
+              if (mounted) _loadCategories();
+            }
+            if (value == 'shared_with_me') {
               await MySharesScreen.show(
                 context,
                 _categories,
@@ -832,8 +845,83 @@ class HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _loadCategories();
+        _maybeNotifyNewShares();
       }
     });
+  }
+
+  // New-shares notification state. Shown on Home and on key control hits; the
+  // session guard avoids re-popping the same shares after the user picks "Later".
+  final Set<int> _notifiedShareIds = {};
+  bool _shareDialogOpen = false;
+  DateTime? _lastShareCheck;
+
+  /// Surface pursuits newly shared with this user (unseen) that we haven't
+  /// already notified about this session. Called on Home load and on key
+  /// control hits (Hit Me, pursuit selector, task-list toggle) so a share that
+  /// arrives mid-session shows up promptly without needing a realtime channel.
+  Future<void> _maybeNotifyNewShares() async {
+    if (AuthUtils.isGuestUser() || _shareDialogOpen) return;
+    // Light throttle so rapid control hits don't hammer the database.
+    final now = DateTime.now();
+    if (_lastShareCheck != null &&
+        now.difference(_lastShareCheck!) < const Duration(seconds: 8)) {
+      return;
+    }
+    _lastShareCheck = now;
+
+    final unseen = await ApiClient.getUnseenShares();
+    if (!mounted || unseen.isEmpty) return;
+    if (!unseen.any((c) => !_notifiedShareIds.contains(c.id))) return;
+    _notifiedShareIds.addAll(unseen.map((c) => c.id));
+
+    final names = unseen.take(2).map((c) => c.headline).toList();
+    final extra = unseen.length - names.length;
+    _shareDialogOpen = true;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(unseen.length == 1
+            ? 'A Pursuit was shared with you'
+            : 'New Pursuits shared with you'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final name in names)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text('• $name'),
+              ),
+            if (extra > 0)
+              Text('…and $extra more',
+                  style: const TextStyle(color: Colors.grey)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Later'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await MySharesScreen.show(
+                context,
+                _categories,
+                (cat) async {
+                  await _handleCategorySelection(cat);
+                },
+                onRefresh: _loadCategories,
+              );
+              if (mounted) _loadCategories();
+            },
+            child: const Text('Show me'),
+          ),
+        ],
+      ),
+    );
+    _shareDialogOpen = false;
   }
 
   /// Select the initial category if one was provided
@@ -1160,6 +1248,8 @@ class HomeScreenState extends State<HomeScreen> {
     setState(() {
       _showTaskListMode = turningOn;
     });
+
+    unawaited(_maybeNotifyNewShares());
 
     if (turningOn) {
       _rebuildTaskListFromCache();
@@ -1512,7 +1602,7 @@ class HomeScreenState extends State<HomeScreen> {
         title: Text(
             "Release Shared ${NamingUtils.categoriesName(capitalize: true, plural: false)}"),
         content: Text(
-            'Choosing Release will remove "${category.headline}" from your list of ${NamingUtils.categoriesName(capitalize: true, plural: true)}. You can get it back using the "My Shares" item in the ${NamingUtils.categoriesName(capitalize: true, plural: false)}\'s menu.'),
+            'Choosing Release will remove "${category.headline}" from your list of ${NamingUtils.categoriesName(capitalize: true, plural: true)}. You can get it back using the "Shared With Me" item in the ${NamingUtils.categoriesName(capitalize: true, plural: false)}\'s menu.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -1744,7 +1834,7 @@ class HomeScreenState extends State<HomeScreen> {
   /// with a Copy button so the sharer can send it via email/message/etc.
 
   Future<void> _shareCategory(Category category) async {
-    await SharePursuitDialog.show(context, category);
+    await ShareAnyPursuitsScreen.shareSingle(context, category);
   }
 
   /// Opens CategoryPickerDialog so the user can pick a destination pursuit,
@@ -2277,6 +2367,7 @@ class HomeScreenState extends State<HomeScreen> {
     });
 
     if (newValue != null) {
+      unawaited(_maybeNotifyNewShares());
       await _updateCategoryLastAccess(newValue);
       if (newValue.isShared && mounted) {
         await showBorrowExplanationIfNeeded(context);
@@ -3344,6 +3435,8 @@ class HomeScreenState extends State<HomeScreen> {
                                                   await _loadRandomTask(
                                                       _selectedCategory!);
                                                 }
+                                                unawaited(
+                                                    _maybeNotifyNewShares());
                                               } catch (e) {
                                                 print('Error in Hit Me: $e');
                                                 setState(() {
