@@ -5,6 +5,10 @@ import 'package:supabase_flutter/src/supabase_auth.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
 
+/// Landing choice, then a credential form. Sign Up additionally collects a
+/// display name.
+enum _AuthMode { choose, signIn, signUp }
+
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -14,27 +18,45 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _emailFocusNode = FocusNode();
+  final _nameFocusNode = FocusNode();
   bool _isLoading = false;
-  bool _isSignInLoading = false;
   String? _error;
   bool _obscurePassword = true;
+  _AuthMode _mode = _AuthMode.choose;
 
   @override
   void initState() {
     super.initState();
+  }
+
+  /// Switches between the landing choice and the credential forms, focusing the
+  /// first field of the chosen mode.
+  void _switchMode(_AuthMode mode) {
+    setState(() {
+      _mode = mode;
+      _error = null;
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _emailFocusNode.requestFocus();
+      if (!mounted) return;
+      if (mode == _AuthMode.signUp) {
+        _nameFocusNode.requestFocus();
+      } else if (mode == _AuthMode.signIn) {
+        _emailFocusNode.requestFocus();
+      }
     });
   }
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _emailFocusNode.dispose();
+    _nameFocusNode.dispose();
     super.dispose();
   }
 
@@ -43,7 +65,6 @@ class _AuthScreenState extends State<AuthScreen> {
 
     setState(() {
       _isLoading = true;
-      _isSignInLoading = true;
       _error = null;
     });
 
@@ -69,14 +90,16 @@ class _AuthScreenState extends State<AuthScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _isSignInLoading = false;
         });
       }
     }
   }
 
   Future<void> _handleSignUp() async {
+    // In sign-up mode the form includes a required Display name field, so the
+    // form validator covers it.
     if (!_formKey.currentState!.validate()) return;
+    final displayName = _nameController.text.trim();
 
     setState(() {
       _isLoading = true;
@@ -90,6 +113,7 @@ class _AuthScreenState extends State<AuthScreen> {
       final response = await Supabase.instance.client.auth.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
+        data: {'full_name': displayName},
       );
 
       print(
@@ -324,273 +348,269 @@ class _AuthScreenState extends State<AuthScreen> {
         children: [
           Column(
             children: [
-              const Text(
-                'Log in to ROUZME!',
-                style: TextStyle(
+              Text(
+                _mode == _AuthMode.choose
+                    ? 'Welcome to ROUZME!'
+                    : _mode == _AuthMode.signUp
+                        ? 'Create your account'
+                        : 'Sign in to ROUZME!',
+                style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 32,
                 ),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48.0),
-
-              Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _emailController,
-                      focusNode: _emailFocusNode,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Please enter your email';
-                        }
-                        if (!value.contains('@')) {
-                          return 'Please enter a valid email';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _passwordController,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
-                          },
-                        ),
-                      ),
-                      obscureText: _obscurePassword,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) {
-                        if (!_isLoading) _handleSignIn();
-                      },
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your password';
-                        }
-                        if (value.length < 6) {
-                          return 'Password must be at least 6 characters';
-                        }
-                        return null;
-                      },
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        _error!,
-                        style: const TextStyle(color: Colors.red),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SizedBox(
-                            height: 56,
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleSignIn,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.deepPurple,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                elevation: 2,
-                              ),
-                              child: _isSignInLoading
-                                  ? const CircularProgressIndicator(
-                                      color: Colors.white)
-                                  : const Text(
-                                      'Sign In',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: SizedBox(
-                            height: 56,
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleSignUp,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: Colors.deepPurple,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                elevation: 2,
-                              ),
-                              child: _isLoading && !_isSignInLoading
-                                  ? const CircularProgressIndicator(
-                                      color: Colors.deepPurple)
-                                  : const Text(
-                                      'Sign Up',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: _isLoading ? null : _handleForgotPassword,
-                        child: const Text(
-                          'Forgot Password?',
-                          style: TextStyle(
-                            color: Colors.deepPurple,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Divider
-                    const Divider(
-                      thickness: 1,
-                      color: Colors.grey,
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // OAuth Sign-In Buttons (smaller, horizontal)
-                    Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: SizedBox(
-                                height: 48,
-                                child: ElevatedButton.icon(
-                                  onPressed:
-                                      _isLoading ? null : _handleGoogleSignIn,
-                                  icon: const Text(
-                                    'G',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  label: const Text(
-                                    'Google',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    elevation: 2,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: SizedBox(
-                                height: 48,
-                                child: ElevatedButton.icon(
-                                  onPressed:
-                                      _isLoading ? null : _handleGitHubSignIn,
-                                  icon: const Icon(
-                                    Icons.code,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                  label: const Text(
-                                    'GitHub',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.black,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    elevation: 2,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        // Apple sign-in button commented out due to domain verification issues
-                        // const SizedBox(height: 12),
-                        // SizedBox(
-                        //   width: double.infinity,
-                        //   height: 48,
-                        //   child: ElevatedButton.icon(
-                        //     onPressed: _isLoading ? null : _handleAppleSignIn,
-                        //     icon: _appleIcon?.iconData != null
-                        //         ? Image.memory(
-                        //             _appleIcon!.iconData!,
-                        //             width: 26,
-                        //             height: 26,
-                        //             fit: BoxFit.contain,
-                        //           )
-                        //         : const Icon(Icons.apple,
-                        //             color: Colors.white, size: 26),
-                        //     label: const Text(
-                        //       'Apple',
-                        //       style: TextStyle(
-                        //         fontSize: 14,
-                        //         fontWeight: FontWeight.w600,
-                        //         color: Colors.white,
-                        //       ),
-                        //     ),
-                        //     style: ElevatedButton.styleFrom(
-                        //       backgroundColor: Colors.black,
-                        //       shape: RoundedRectangleBorder(
-                        //         borderRadius: BorderRadius.circular(8),
-                        //       ),
-                        //       elevation: 2,
-                        //     ),
-                        //   ),
-                        // ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              if (_mode == _AuthMode.choose)
+                _buildChoose()
+              else
+                _buildCredentialForm(),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  /// Landing screen: pick Sign In or Sign Up (both lead to the credential
+  /// form), or use an OAuth provider.
+  Widget _buildChoose() {
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton(
+            onPressed: () => _switchMode(_AuthMode.signIn),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+              foregroundColor: Colors.white,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+            ),
+            child: const Text('Sign In',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton(
+            onPressed: () => _switchMode(_AuthMode.signUp),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.deepPurple,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+            ),
+            child: const Text('Sign Up',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          ),
+        ),
+        const SizedBox(height: 24),
+        const Divider(thickness: 1, color: Colors.grey),
+        const SizedBox(height: 24),
+        _buildOAuthButtons(),
+      ],
+    );
+  }
+
+  /// Shared credential form. In sign-up mode it also collects a (required)
+  /// display name.
+  Widget _buildCredentialForm() {
+    final isSignUp = _mode == _AuthMode.signUp;
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed:
+                  _isLoading ? null : () => _switchMode(_AuthMode.choose),
+              icon: const Icon(Icons.arrow_back, size: 18),
+              label: const Text('Back'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (isSignUp) ...[
+            TextFormField(
+              controller: _nameController,
+              focusNode: _nameFocusNode,
+              decoration: const InputDecoration(
+                labelText: 'Display name',
+                helperText: 'Shown to people you share with',
+                border: OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.next,
+              validator: (v) => (v == null || v.trim().isEmpty)
+                  ? 'Please enter a display name'
+                  : null,
+            ),
+            const SizedBox(height: 16),
+          ],
+          TextFormField(
+            controller: _emailController,
+            focusNode: _emailFocusNode,
+            decoration: const InputDecoration(
+              labelText: 'Email',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Please enter your email';
+              }
+              if (!value.contains('@')) {
+                return 'Please enter a valid email';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _passwordController,
+            decoration: InputDecoration(
+              labelText: 'Password',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                ),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
+              ),
+            ),
+            obscureText: _obscurePassword,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) {
+              if (!_isLoading) {
+                isSignUp ? _handleSignUp() : _handleSignIn();
+              }
+            },
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter your password';
+              }
+              if (value.length < 6) {
+                return 'Password must be at least 6 characters';
+              }
+              return null;
+            },
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            Text(
+              _error!,
+              style: const TextStyle(color: Colors.red),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 56,
+            child: ElevatedButton(
+              onPressed: _isLoading
+                  ? null
+                  : (isSignUp ? _handleSignUp : _handleSignIn),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                elevation: 2,
+              ),
+              child: _isLoading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : Text(
+                      isSignUp ? 'Create Account' : 'Sign In',
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w600),
+                    ),
+            ),
+          ),
+          if (!isSignUp)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _isLoading ? null : _handleForgotPassword,
+                child: const Text('Forgot Password?',
+                    style: TextStyle(color: Colors.deepPurple, fontSize: 14)),
+              ),
+            ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _isLoading
+                ? null
+                : () => _switchMode(
+                    isSignUp ? _AuthMode.signIn : _AuthMode.signUp),
+            child: Text(
+              isSignUp
+                  ? 'Already have an account? Sign In'
+                  : 'Need an account? Sign Up',
+              style: const TextStyle(color: Colors.deepPurple, fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOAuthButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: _isLoading ? null : _handleGoogleSignIn,
+              icon: const Text('G',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white)),
+              label: const Text('Google',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape:
+                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                elevation: 2,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: _isLoading ? null : _handleGitHubSignIn,
+              icon: const Icon(Icons.code, color: Colors.white, size: 20),
+              label: const Text('GitHub',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.black,
+                shape:
+                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                elevation: 2,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

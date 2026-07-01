@@ -106,7 +106,6 @@ class HomeScreenState extends State<HomeScreen> {
   bool _welcomeDialogShown = false;
 
   // Count of pending (unavailable) shared-with-me categories, shown on empty home screen
-  int _pendingInvitationCount = 0;
 
   // Track if this is the first load (to handle initial category selection from deep link)
   bool _isFirstLoad = true;
@@ -197,6 +196,17 @@ class HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const PopupMenuDivider(),
+                // Always available (even before any Pursuit is selected) so new
+                // users can reach the Pursuits seeded into Shared With Me.
+                if (!AuthUtils.isGuestUser())
+                  const PopupMenuItem<String>(
+                    value: 'shared_with_me',
+                    child: ListTile(
+                      leading: Icon(Icons.people_alt_outlined),
+                      title: Text('Shared With Me'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
                 if (_selectedCategory != null) ...[
                   PopupMenuItem<String>(
                     value: 'add_pursuit',
@@ -232,15 +242,6 @@ class HomeScreenState extends State<HomeScreen> {
                       child: ListTile(
                         leading: Icon(Icons.ios_share),
                         title: Text('Share Any Pursuit(s)'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  if (!AuthUtils.isGuestUser())
-                    const PopupMenuItem<String>(
-                      value: 'shared_with_me',
-                      child: ListTile(
-                        leading: Icon(Icons.people_alt_outlined),
-                        title: Text('Shared With Me'),
                         contentPadding: EdgeInsets.zero,
                       ),
                     ),
@@ -2240,14 +2241,6 @@ class HomeScreenState extends State<HomeScreen> {
         });
         print('Categories loaded successfully');
 
-        // When the list is empty, fetch pending (unavailable) invitations count
-        if (categories.isEmpty && !AuthUtils.isGuestUser()) {
-          ApiClient.getAllSharedWithMe().then((shared) {
-            final count = shared.where((c) => !c.isAvailable).length;
-            if (mounted) setState(() => _pendingInvitationCount = count);
-          }).catchError((_) {});
-        }
-
         // Only select initial category on first load (e.g., from deep link)
         // On subsequent reloads, preserve the user's dropdown selection
         if (_isFirstLoad) {
@@ -2842,7 +2835,7 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                     TextSpan(
                         text:
-                            ' for each one, like "The Godfather" or "Moby Dick".\n\nTo make it easier getting started, you\'re invited to borrow some sample ${NamingUtils.categoriesName(plural: true, capitalize: true)} from others.\n\n(The Help button below will explain more.)'),
+                            ' for each one, like "The Godfather" or "Moby Dick".\n\nTo make it easier getting started, some ${NamingUtils.categoriesName(plural: true, capitalize: true)} have been shared with you. You can snag them using the "Shared With Me" item on the main menu.\n\n(The Help button below will explain more.)'),
                   ],
                 ),
               ),
@@ -3185,38 +3178,23 @@ class HomeScreenState extends State<HomeScreen> {
                                 ],
                               )
                             else ...[
-                              if (_pendingInvitationCount > 0) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  '...but you\'re invited to borrow\nsome ${NamingUtils.categoriesName(plural: true)} from others:',
-                                  style: const TextStyle(
-                                      fontSize: 17, color: Color(0xFF6F6F6F)),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 8),
-                                ElevatedButton.icon(
-                                  onPressed: () async {
-                                    await MySharesScreen.show(
-                                      context,
-                                      _categories,
-                                      (cat) async {
-                                        await _handleCategorySelection(cat);
-                                      },
-                                      onRefresh: _loadCategories,
-                                    );
-                                    if (mounted) _loadCategories();
-                                  },
-                                  icon: const Icon(Icons.inbox),
-                                  label: const Text('Show me'),
-                                  style: AppButtons.goForth(),
-                                ),
-                                const SizedBox(height: 16),
-                                const Text('Otherwise,',
-                                    style: TextStyle(
-                                        fontSize: 17,
-                                        color: Color(0xFF6F6F6F))),
-                                const SizedBox(height: 8),
-                              ],
+                              ElevatedButton.icon(
+                                onPressed: () async {
+                                  await MySharesScreen.show(
+                                    context,
+                                    _categories,
+                                    (cat) async {
+                                      await _handleCategorySelection(cat);
+                                    },
+                                    onRefresh: _loadCategories,
+                                  );
+                                  if (mounted) _loadCategories();
+                                },
+                                icon: const Icon(Icons.inbox),
+                                label: const Text('Take a Shared Pursuit'),
+                                style: AppButtons.goForth(),
+                              ),
+                              const SizedBox(height: 16),
                               ElevatedButton.icon(
                                 onPressed: _navigateToNewCategory,
                                 icon: const Icon(Icons.add),
@@ -3328,6 +3306,21 @@ class HomeScreenState extends State<HomeScreen> {
                                                         size: 22),
                                                     tooltip: 'Copy for Me',
                                                     color: Colors.green[800],
+                                                    visualDensity:
+                                                        VisualDensity.compact,
+                                                    padding: EdgeInsets.zero,
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  IconButton(
+                                                    onPressed: () =>
+                                                        _releaseSharedCategory(
+                                                            cat),
+                                                    icon: const Icon(
+                                                        Icons.playlist_remove,
+                                                        size: 22),
+                                                    tooltip:
+                                                        'Remove from My List',
+                                                    color: Colors.red[700],
                                                     visualDensity:
                                                         VisualDensity.compact,
                                                     padding: EdgeInsets.zero,

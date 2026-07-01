@@ -6,8 +6,6 @@ import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/widgets/home_button.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/widgets/category_form.dart';
-import 'package:meaning_to/utils/app_buttons.dart';
-import 'package:meaning_to/my_shares_screen.dart';
 
 class NewCategoryScreen extends StatefulWidget {
   const NewCategoryScreen({super.key});
@@ -109,7 +107,7 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 24.0),
               child: Text(
-                'A \'${NamingUtils.categoriesName(plural: false, capitalize: false)}\' is a category of activities like \'Watch a Movie\' or \'Tackle a Project\'. If someone has shared a ${NamingUtils.categoriesName(plural: false, capitalize: false)} with you, tap \'View My Invitations\' below.',
+                'A \'${NamingUtils.categoriesName(plural: false, capitalize: false)}\' is a category of activities like \'Watch a Movie\' or \'Tackle a Project\'.',
                 style: const TextStyle(
                   fontSize: 16,
                   fontStyle: FontStyle.italic,
@@ -123,39 +121,6 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
             isEditing: true, // Always in editing mode for new categories
             isLoading: _isLoading,
             onSave: _createCategory,
-          ),
-          const SizedBox(height: 32),
-          Center(
-            child: Text(
-              'Have an invitation to a shared ${NamingUtils.categoriesName(plural: false, capitalize: false)}?',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () async {
-              await MySharesScreen.show(
-                context,
-                const [],
-                (cat) {
-                  if (mounted) Navigator.pop(context, true);
-                },
-              );
-            },
-            icon: const Icon(Icons.inbox),
-            label: const Text(
-              'View My Invitations',
-              style: TextStyle(fontSize: 18),
-            ),
-            style: AppButtons.goForth().copyWith(
-              minimumSize:
-                  const WidgetStatePropertyAll(Size(double.infinity, 50)),
-            ),
           ),
         ],
       ),

@@ -307,41 +307,6 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
         ),
       ));
 
-      final shouldRelease = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(
-              'Release ${widget.sharedCategory.ownerName != null ? '${widget.sharedCategory.ownerName}\'s ' : ''}"${widget.sharedCategory.headline}" from your list?'),
-          content: Text(
-            'Now that you\'ve copied what you wanted, do you want to release this share '
-            'from your ${NamingUtils.categoriesName(capitalize: true, plural: true)} menu?'
-            '(You can always get it back using the "Shared With Me" item in the ${NamingUtils.categoriesName(capitalize: true, plural: false)}\'s menu.)',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Keep It'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red[700],
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Remove It'),
-            ),
-          ],
-        ),
-      );
-
-      if (shouldRelease == true && mounted) {
-        try {
-          await ApiClient.releaseSharedCategory(widget.sharedCategory.id);
-        } catch (e) {
-          debugPrint('Error releasing shared category: $e');
-        }
-      }
-
       if (mounted) Navigator.of(context).pop(target);
     }
   }
