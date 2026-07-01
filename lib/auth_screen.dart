@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' as foundation;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:supabase_flutter/src/supabase_auth.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
 
-/// Landing choice, then a credential form. Sign Up additionally collects a
-/// display name.
-enum _AuthMode { choose, signIn, signUp }
+/// Credential form for signing in or signing up. Sign Up additionally collects
+/// a display name. The choice of mode (and OAuth) lives on the splash screen.
+enum AuthMode { signIn, signUp }
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  final AuthMode initialMode;
+
+  const AuthScreen({super.key, this.initialMode = AuthMode.signIn});
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -26,27 +26,33 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLoading = false;
   String? _error;
   bool _obscurePassword = true;
-  _AuthMode _mode = _AuthMode.choose;
+  late AuthMode _mode;
 
   @override
   void initState() {
     super.initState();
+    _mode = widget.initialMode;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusFirstField();
+    });
   }
 
-  /// Switches between the landing choice and the credential forms, focusing the
-  /// first field of the chosen mode.
-  void _switchMode(_AuthMode mode) {
+  void _focusFirstField() {
+    if (_mode == AuthMode.signUp) {
+      _nameFocusNode.requestFocus();
+    } else {
+      _emailFocusNode.requestFocus();
+    }
+  }
+
+  /// Switches between Sign In and Sign Up in place.
+  void _switchMode(AuthMode mode) {
     setState(() {
       _mode = mode;
       _error = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (mode == _AuthMode.signUp) {
-        _nameFocusNode.requestFocus();
-      } else if (mode == _AuthMode.signIn) {
-        _emailFocusNode.requestFocus();
-      }
+      if (mounted) _focusFirstField();
     });
   }
 
@@ -214,94 +220,6 @@ class _AuthScreenState extends State<AuthScreen> {
     Navigator.pushNamed(context, '/password-reset-request');
   }
 
-  // OAuth Sign-In Methods
-  Future<void> _handleGoogleSignIn() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      // Let Supabase handle the redirect URL automatically
-      // It will use the Site URL configured in Supabase dashboard
-      print('AuthScreen: Starting Google OAuth sign-in');
-
-      // Use custom scheme for mobile, web URL for web
-      final redirectTo = foundation.kIsWeb
-          ? '${Uri.base.origin}/auth/callback'
-          : 'meaningto://auth/callback';
-
-      print('AuthScreen: Using redirect URL: $redirectTo');
-
-      try {
-
-        await Supabase.instance.client.auth.signInWithOAuth(
-          OAuthProvider.google,
-          redirectTo: redirectTo,
-        );
-        print('AuthScreen: OAuth sign-in initiated successfully');
-      } catch (e) {
-        print('AuthScreen: OAuth sign-in error: $e');
-        print('AuthScreen: Error details: ${e.toString()}');
-        rethrow;
-      }
-
-      // For OAuth, we don't immediately get a session
-      // The user will be redirected to the OAuth provider
-      // and then back to the app
-    } catch (e) {
-      print('AuthScreen: Google OAuth error: $e');
-      setState(() {
-        _error = 'Google sign-in failed. Please try again.';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _handleGitHubSignIn() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      print('AuthScreen: Starting GitHub OAuth sign-in');
-
-      // Use custom scheme for mobile, web URL for web
-      final redirectTo = foundation.kIsWeb
-          ? '${Uri.base.origin}/auth/callback'
-          : 'meaningto://auth/callback';
-
-      print('AuthScreen: Using redirect URL: $redirectTo');
-
-      await Supabase.instance.client.auth.signInWithOAuth(
-        OAuthProvider.github,
-        redirectTo: redirectTo,
-      );
-      print('AuthScreen: GitHub OAuth sign-in initiated successfully');
-
-      // For OAuth, we don't immediately get a session
-      // The user will be redirected to the OAuth provider
-      // and then back to the app
-    } catch (e) {
-      print('AuthScreen: GitHub OAuth error: $e');
-      setState(() {
-        _error = 'GitHub sign-in failed. Please try again.';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
   String _getFriendlyErrorMessage(dynamic error, {required bool isSignIn}) {
     final errorString = error.toString().toLowerCase();
 
@@ -349,11 +267,9 @@ class _AuthScreenState extends State<AuthScreen> {
           Column(
             children: [
               Text(
-                _mode == _AuthMode.choose
-                    ? 'Welcome to ROUZME!'
-                    : _mode == _AuthMode.signUp
-                        ? 'Create your account'
-                        : 'Sign in to ROUZME!',
+                _mode == AuthMode.signUp
+                    ? 'Create your account'
+                    : 'Sign in to ROUZME!',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 32,
@@ -361,10 +277,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48.0),
-              if (_mode == _AuthMode.choose)
-                _buildChoose()
-              else
-                _buildCredentialForm(),
+              _buildCredentialForm(),
             ],
           ),
         ],
@@ -372,56 +285,9 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  /// Landing screen: pick Sign In or Sign Up (both lead to the credential
-  /// form), or use an OAuth provider.
-  Widget _buildChoose() {
-    return Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: ElevatedButton(
-            onPressed: () => _switchMode(_AuthMode.signIn),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
-            ),
-            child: const Text('Sign In',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-          ),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: ElevatedButton(
-            onPressed: () => _switchMode(_AuthMode.signUp),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.deepPurple,
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
-            ),
-            child: const Text('Sign Up',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-          ),
-        ),
-        const SizedBox(height: 24),
-        const Divider(thickness: 1, color: Colors.grey),
-        const SizedBox(height: 24),
-        _buildOAuthButtons(),
-      ],
-    );
-  }
-
-  /// Shared credential form. In sign-up mode it also collects a (required)
-  /// display name.
+  /// Credential form. In sign-up mode it also collects a (required) display name.
   Widget _buildCredentialForm() {
-    final isSignUp = _mode == _AuthMode.signUp;
+    final isSignUp = _mode == AuthMode.signUp;
     return Form(
       key: _formKey,
       child: Column(
@@ -430,8 +296,9 @@ class _AuthScreenState extends State<AuthScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed:
-                  _isLoading ? null : () => _switchMode(_AuthMode.choose),
+              onPressed: _isLoading
+                  ? null
+                  : () => Navigator.of(context).pushReplacementNamed('/'),
               icon: const Icon(Icons.arrow_back, size: 18),
               label: const Text('Back'),
             ),
@@ -549,7 +416,7 @@ class _AuthScreenState extends State<AuthScreen> {
             onPressed: _isLoading
                 ? null
                 : () => _switchMode(
-                    isSignUp ? _AuthMode.signIn : _AuthMode.signUp),
+                    isSignUp ? AuthMode.signIn : AuthMode.signUp),
             child: Text(
               isSignUp
                   ? 'Already have an account? Sign In'
@@ -562,55 +429,4 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  Widget _buildOAuthButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: SizedBox(
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: _isLoading ? null : _handleGoogleSignIn,
-              icon: const Text('G',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white)),
-              label: const Text('Google',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                shape:
-                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                elevation: 2,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: SizedBox(
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: _isLoading ? null : _handleGitHubSignIn,
-              icon: const Icon(Icons.code, color: Colors.white, size: 20),
-              label: const Text('GitHub',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                shape:
-                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                elevation: 2,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }

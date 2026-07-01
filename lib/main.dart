@@ -862,8 +862,12 @@ class _MyAppState extends State<MyApp> {
                 builder: (context) => const SplashScreen(),
               );
             case '/auth':
+              final mode = (settings.arguments as Map?)?['mode'];
               return MaterialPageRoute(
-                builder: (context) => const AuthScreen(),
+                builder: (context) => AuthScreen(
+                  initialMode:
+                      mode == 'signUp' ? AuthMode.signUp : AuthMode.signIn,
+                ),
               );
             case '/auth/reset-password':
               final args = settings.arguments as Map<String, dynamic>?;

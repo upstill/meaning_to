@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:meaning_to/main.dart';
 import 'package:meaning_to/utils/auth.dart';
+import 'package:meaning_to/auth_screen.dart' show AuthMode;
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/app_state_manager.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
@@ -110,9 +112,29 @@ class _SplashScreenState extends State<SplashScreen> {
     }
   }
 
-  void _navigateToLogin() {
-    print('SplashScreen: Navigating to login screen');
-    Navigator.of(context).pushReplacementNamed('/auth');
+  void _goToAuth(AuthMode mode) {
+    Navigator.of(context).pushReplacementNamed(
+      '/auth',
+      arguments: {'mode': mode == AuthMode.signUp ? 'signUp' : 'signIn'},
+    );
+  }
+
+  /// Triggers an OAuth sign-in; the onAuthStateChange listener above handles
+  /// navigation once the provider redirects back.
+  Future<void> _signInWithOAuth(OAuthProvider provider, String label) async {
+    try {
+      final redirectTo = kIsWeb
+          ? '${Uri.base.origin}/auth/callback'
+          : 'meaningto://auth/callback';
+      await Supabase.instance.client.auth
+          .signInWithOAuth(provider, redirectTo: redirectTo);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$label sign-in failed. Please try again.')),
+        );
+      }
+    }
   }
 
   /// Attempt to restore the user's last state and navigate accordingly
@@ -271,29 +293,107 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                   const SizedBox(height: 40),
 
-                  // Sign In/Sign Up button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _navigateToLogin,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.deepPurple,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                  // Sign In / Sign Up
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 56,
+                          child: ElevatedButton(
+                            onPressed: () => _goToAuth(AuthMode.signIn),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.deepPurple,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 2,
+                            ),
+                            child: const Text('Sign In',
+                                style: TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.w600)),
+                          ),
                         ),
-                        elevation: 2,
                       ),
-                      child: const Text(
-                        'Sign In/Sign Up',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SizedBox(
+                          height: 56,
+                          child: OutlinedButton(
+                            onPressed: () => _goToAuth(AuthMode.signUp),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(
+                                  color: Colors.white, width: 2),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text('Sign Up',
+                                style: TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.w600)),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
+                  const SizedBox(height: 12),
+
+                  // Google / GitHub
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _signInWithOAuth(
+                                OAuthProvider.google, 'Google'),
+                            icon: const Text('G',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white)),
+                            label: const Text('Google',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8)),
+                              elevation: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SizedBox(
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _signInWithOAuth(
+                                OAuthProvider.github, 'GitHub'),
+                            icon: const Icon(Icons.code,
+                                color: Colors.white, size: 20),
+                            label: const Text('GitHub',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8)),
+                              elevation: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(color: Colors.white30),
                   const SizedBox(height: 16),
 
                   // Guest mode button

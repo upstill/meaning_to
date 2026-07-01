@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/borrow_explanation.dart';
 
@@ -53,6 +54,11 @@ class _MySharesScreenState extends State<MySharesScreen> {
 
   /// Currently-checked pursuits (initialised to those already borrowed).
   final Set<int> _selected = {};
+
+  /// Per-category task preview state (expanded set, fetched tasks, in-flight).
+  final Set<int> _previewExpanded = {};
+  final Map<int, List<Task>> _previewTasks = {};
+  final Set<int> _previewLoading = {};
 
   @override
   void initState() {
@@ -235,9 +241,86 @@ class _MySharesScreenState extends State<MySharesScreen> {
     );
   }
 
+  /// Toggles the inline task preview for [category], lazily loading its shared
+  /// tasks the first time it's opened.
+  Future<void> _togglePreview(Category category) async {
+    final id = category.id;
+    if (_previewExpanded.contains(id)) {
+      setState(() => _previewExpanded.remove(id));
+      return;
+    }
+    setState(() => _previewExpanded.add(id));
+    if (_previewTasks.containsKey(id)) return;
+    setState(() => _previewLoading.add(id));
+    try {
+      final tasks = await ApiClient.getTasksByCategory(id);
+      final shared = tasks.where((t) => t.shared).toList();
+      if (mounted) setState(() => _previewTasks[id] = shared);
+    } catch (_) {
+      if (mounted) setState(() => _previewTasks[id] = []);
+    } finally {
+      if (mounted) setState(() => _previewLoading.remove(id));
+    }
+  }
+
+  /// A tappable up/down arrow that opens the task preview, sized to sit inline
+  /// after the invitation (or owner name).
+  InlineSpan _previewArrowSpan(Category category) {
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: GestureDetector(
+        onTap: () => _togglePreview(category),
+        child: Icon(
+          _previewExpanded.contains(category.id)
+              ? Icons.arrow_drop_up
+              : Icons.arrow_drop_down,
+          color: Colors.blue,
+          size: 24,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreviewTasks(Category category) {
+    if (_previewLoading.contains(category.id)) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 6, left: 8),
+        child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+    final tasks = _previewTasks[category.id] ?? [];
+    if (tasks.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 6, left: 8, bottom: 4),
+        child: Text('No shared tasks.',
+            style: TextStyle(
+                fontSize: 13, color: Colors.grey, fontStyle: FontStyle.italic)),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, left: 8, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final t in tasks)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text('•  ${t.headline}',
+                  style: const TextStyle(fontSize: 14)),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSharedWithMeRow(Category category) {
     final isNew = _newIds.contains(category.id);
     final checked = _selected.contains(category.id);
+    final hasInvitation =
+        category.invitation != null && category.invitation!.isNotEmpty;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Card(
@@ -295,11 +378,11 @@ class _MySharesScreenState extends State<MySharesScreen> {
                               style:
                                   const TextStyle(fontWeight: FontWeight.bold),
                             ),
+                            if (!hasInvitation) _previewArrowSpan(category),
                           ],
                         ),
                       ),
-                    if (category.invitation != null &&
-                        category.invitation!.isNotEmpty)
+                    if (hasInvitation)
                       Builder(builder: (context) {
                         const limit = 100;
                         final full = category.invitation!;
@@ -333,10 +416,13 @@ class _MySharesScreenState extends State<MySharesScreen> {
                                     ),
                                   ),
                                 ),
+                              _previewArrowSpan(category),
                             ],
                           ),
                         );
                       }),
+                    if (_previewExpanded.contains(category.id))
+                      _buildPreviewTasks(category),
                   ],
                 ),
               ),

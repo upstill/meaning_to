@@ -1120,7 +1120,7 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildViewToggle() {
-    return ClipRRect(
+    final toggleButtons = ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1161,81 +1161,97 @@ class HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          if (_showTaskListMode)
-            Expanded(
-              child: Container(
-                height: 35,
-                color: Colors.blue,
-                child: TextField(
-                  controller: _taskSearchController,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                  ),
-                  decoration: InputDecoration(
-                    hintText:
-                        'Search ${_listModeTasks.length} ${NamingUtils.tasksName(capitalize: false, plural: _listModeTasks.length != 1)}',
-                    hintStyle: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
-                      fontSize: 14,
-                    ),
-                    prefixIcon: Icon(
-                      Icons.search,
-                      size: 18,
-                      color: Colors.white.withValues(alpha: 0.7),
-                    ),
-                    suffixIcon: _isSearchingTasks
-                        ? const Padding(
-                            padding: EdgeInsets.all(10),
-                            child: SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            ),
-                          )
-                        : _taskSearchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(
-                                  Icons.clear,
-                                  size: 18,
-                                  color: Colors.white,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _taskSearchController.clear();
-                                    _rebuildTaskListFromCache();
-                                  });
-                                },
-                              )
-                            : null,
-                    border: InputBorder.none,
-                    isCollapsed: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
-                  ),
-                  cursorColor: Colors.white,
-                  onChanged: (_) {
-                    setState(() {
-                      _isSearchingTasks = true;
-                      _rebuildTaskListFromCache();
-                    });
-                    Future.delayed(const Duration(milliseconds: 250), () {
-                      if (mounted) {
-                        setState(() {
-                          _isSearchingTasks = false;
-                        });
-                      }
-                    });
-                  },
-                ),
-              ),
-            ),
         ],
+      ),
+    );
+
+    if (!_showTaskListMode) return toggleButtons;
+
+    // In list mode, drop the search box onto its own full-width row below.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(alignment: Alignment.centerLeft, child: toggleButtons),
+        const SizedBox(height: 8),
+        _buildTaskSearchField(),
+      ],
+    );
+  }
+
+  Widget _buildTaskSearchField() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        height: 35,
+        color: Colors.blue,
+        child: TextField(
+          controller: _taskSearchController,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+          ),
+          decoration: InputDecoration(
+            hintText:
+                'Search ${_listModeTasks.length} ${NamingUtils.tasksName(capitalize: false, plural: _listModeTasks.length != 1)}',
+            hintStyle: TextStyle(
+              color: Colors.white.withValues(alpha: 0.6),
+              fontSize: 14,
+            ),
+            prefixIcon: Icon(
+              Icons.search,
+              size: 18,
+              color: Colors.white.withValues(alpha: 0.7),
+            ),
+            suffixIcon: _isSearchingTasks
+                ? const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
+                  )
+                : _taskSearchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(
+                          Icons.clear,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _taskSearchController.clear();
+                            _rebuildTaskListFromCache();
+                          });
+                        },
+                      )
+                    : null,
+            border: InputBorder.none,
+            isCollapsed: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 8,
+            ),
+          ),
+          cursorColor: Colors.white,
+          onChanged: (_) {
+            setState(() {
+              _isSearchingTasks = true;
+              _rebuildTaskListFromCache();
+            });
+            Future.delayed(const Duration(milliseconds: 250), () {
+              if (mounted) {
+                setState(() {
+                  _isSearchingTasks = false;
+                });
+              }
+            });
+          },
+        ),
       ),
     );
   }
@@ -3405,6 +3421,7 @@ class HomeScreenState extends State<HomeScreen> {
                                 true) ...[
                               const SizedBox(height: 20),
                               Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
                                     child: Center(
