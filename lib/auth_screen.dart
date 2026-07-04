@@ -329,6 +329,9 @@ class _AuthScreenState extends State<AuthScreen> {
               border: OutlineInputBorder(),
             ),
             keyboardType: TextInputType.emailAddress,
+            textCapitalization: TextCapitalization.none,
+            autocorrect: false,
+            enableSuggestions: false,
             textInputAction: TextInputAction.next,
             validator: (value) {
               if (value == null || value.trim().isEmpty) {

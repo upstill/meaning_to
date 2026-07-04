@@ -876,23 +876,41 @@ class HomeScreenState extends State<HomeScreen> {
     if (!unseen.any((c) => !_notifiedShareIds.contains(c.id))) return;
     _notifiedShareIds.addAll(unseen.map((c) => c.id));
 
-    final names = unseen.take(2).map((c) => c.headline).toList();
-    final extra = unseen.length - names.length;
+    final shown = unseen.take(2).toList();
+    final extra = unseen.length - shown.length;
+    final n = unseen.length;
+    final catName = NamingUtils.categoriesName(capitalize: true, plural: n != 1);
+    // If every share is from the same owner, name them in the header and drop
+    // the per-pursuit "from …".
+    final owners = unseen.map((c) => c.ownerName).whereType<String>().toSet();
+    final singleOwner = owners.length == 1 ? owners.first : null;
+    final title = '${n == 1 ? 'A' : '$n'} $catName shared with you'
+        '${singleOwner != null ? ' by $singleOwner' : ''}';
+
     _shareDialogOpen = true;
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(unseen.length == 1
-            ? 'A Pursuit was shared with you'
-            : 'New Pursuits shared with you'),
+        title: Text(title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final name in names)
+            for (final c in shown)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: Text('• $name'),
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(text: '•  ${c.headline}'),
+                      if (singleOwner == null && c.ownerName != null)
+                        TextSpan(
+                          text: '  — from ${c.ownerName}',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             if (extra > 0)
               Text('…and $extra more',
@@ -901,8 +919,34 @@ class HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Later'),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await ApiClient.markSharesSeen();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text(
+                      'You can always see them by selecting "Shared With Me" on the home menu.'),
+                ));
+              }
+            },
+            child: const Text('Pass'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              for (final c in unseen) {
+                await ApiClient.setSharedCategoryAvailable(c.id, true);
+              }
+              await ApiClient.markSharesSeen();
+              if (mounted) {
+                await _loadCategories();
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(
+                      "They've been added to your ${NamingUtils.categoriesName(plural: true, capitalize: true)}, but they're read-only."),
+                ));
+              }
+            },
+            child: const Text('Accept all'),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -917,7 +961,7 @@ class HomeScreenState extends State<HomeScreen> {
               );
               if (mounted) _loadCategories();
             },
-            child: const Text('Show me'),
+            child: const Text('Show Me'),
           ),
         ],
       ),
@@ -951,8 +995,6 @@ class HomeScreenState extends State<HomeScreen> {
           _loadRandomTask(category);
           // Update last_access for the selected category
           _updateCategoryLastAccess(category);
-          // Show one-time welcome when arriving via a share link
-          _showShareWelcomeIfNeeded(category);
         } else {
           print(
               'Category ID mismatch - expected: $categoryId, got: ${category.id}');
@@ -2319,9 +2361,6 @@ class HomeScreenState extends State<HomeScreen> {
         // dialog for authenticated users who have no categories.
         if (!AuthUtils.isGuestUser()) {
           _handleFirstLoginOrEmptyCategories(categories);
-          // Show welcome for any shared categories not yet acknowledged
-          // (covers invite-link redemptions that happen during signup).
-          _showPendingShareWelcomes(categories);
         }
       } catch (e) {
         print('Error loading categories: $e');
@@ -2712,89 +2751,13 @@ class HomeScreenState extends State<HomeScreen> {
       await prefs.setBool('onboarded_$userId', true);
       _showWelcomeDialog(); // non-blocking; sets _welcomeDialogShown internally
       await ApiClient.redeemSampleShares(available: false);
-      // Pre-mark all silently-subscribed shares as welcomed so
-      // _showPendingShareWelcomes doesn't fire a dialog for each one.
-      if (mounted) {
-        final allShared = await ApiClient.getAllSharedWithMe();
-        final prefKey = 'welcomed_shared_$userId';
-        final welcomed = prefs.getStringList(prefKey) ?? [];
-        for (final cat in allShared) {
-          final key = cat.id.toString();
-          if (!welcomed.contains(key)) welcomed.add(key);
-        }
-        await prefs.setStringList(prefKey, welcomed);
-        await _loadCategories();
-      }
+      if (mounted) await _loadCategories();
     }
   }
 
   Future<void> _checkAndShowWelcomeDialog() async {
     if (!_welcomeDialogShown) {
       _showWelcomeDialog();
-    }
-  }
-
-  /// After loading categories, show the share welcome for any shared category
-  /// not yet acknowledged — covers invite redemptions during signup where
-  /// initialCategoryId doesn't survive through the OTP auth flow.
-  Future<void> _showPendingShareWelcomes(List<Category> categories) async {
-    final userId = AuthUtils.getCurrentUserId();
-    if (userId == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    final prefKey = 'welcomed_shared_$userId';
-    final welcomed = prefs.getStringList(prefKey) ?? [];
-    for (final category in categories) {
-      if (category.isShared && !welcomed.contains(category.id.toString())) {
-        await _showShareWelcomeIfNeeded(category);
-      }
-    }
-  }
-
-  /// Show a one-time welcome dialog when a user arrives via a share link.
-  Future<void> _showShareWelcomeIfNeeded(Category category) async {
-    if (!category.isShared) return;
-    final userId = AuthUtils.getCurrentUserId();
-    if (userId == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    final prefKey = 'welcomed_shared_$userId';
-    final welcomed = prefs.getStringList(prefKey) ?? [];
-    final key = category.id.toString();
-    if (welcomed.contains(key)) return;
-    welcomed.add(key);
-    await prefs.setStringList(prefKey, welcomed);
-    if (!mounted) return;
-    final sharer = category.ownerName ?? 'Someone';
-    final categoryName =
-        NamingUtils.categoriesName(capitalize: true, plural: false);
-    final specificParagraph =
-        '$sharer has shared their $categoryName "${category.headline}". '
-        'You can read it, but not add or edit anything. However, you can copy it for your own use by tapping the "Snag this $categoryName" button in the menu.';
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('$categoryName Shared With You'),
-        content: Text(specificParagraph),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('No Thanks'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green[700],
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Sounds Good'),
-          ),
-        ],
-      ),
-    );
-    if (accepted == false && mounted) {
-      try {
-        await ApiClient.setSharedCategoryAvailable(category.id, false);
-        await _loadCategories();
-      } catch (_) {}
     }
   }
 
