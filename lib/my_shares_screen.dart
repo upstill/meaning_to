@@ -77,6 +77,12 @@ class _MySharesScreenState extends State<MySharesScreen> {
       ..addAll(_sharedWithMe.where((c) => c.isAvailable).map((c) => c.id));
   }
 
+  /// When only one user has shared anything, expand their group by default.
+  void _expandSoleOwner() {
+    final owners = _sharedWithMe.map((c) => c.ownerName ?? 'Someone').toSet();
+    if (owners.length == 1) _expandedOwners.add(owners.first);
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
@@ -89,6 +95,7 @@ class _MySharesScreenState extends State<MySharesScreen> {
           _sharedWithMe = results[0];
           _newIds = results[1].map((c) => c.id).toSet();
           _resetSelection();
+          _expandSoleOwner();
           _loading = false;
         });
       }
