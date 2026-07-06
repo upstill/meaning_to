@@ -60,6 +60,9 @@ class _MySharesScreenState extends State<MySharesScreen> {
   final Map<int, List<Task>> _previewTasks = {};
   final Set<int> _previewLoading = {};
 
+  /// Sharer names whose group is expanded (empty = all collapsed by default).
+  final Set<String> _expandedOwners = {};
+
   @override
   void initState() {
     super.initState();
@@ -187,8 +190,7 @@ class _MySharesScreenState extends State<MySharesScreen> {
                       child: ListView(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 8),
-                        children:
-                            _sharedWithMe.map(_buildSharedWithMeRow).toList(),
+                        children: _buildOwnerGroups(),
                       ),
                     ),
                     SafeArea(
@@ -263,21 +265,25 @@ class _MySharesScreenState extends State<MySharesScreen> {
     }
   }
 
-  /// A tappable up/down arrow that opens the task preview, sized to sit inline
-  /// after the invitation (or owner name).
+  /// A tappable up/down arrow that opens the task preview.
+  Widget _previewArrowWidget(Category category) {
+    return GestureDetector(
+      onTap: () => _togglePreview(category),
+      child: Icon(
+        _previewExpanded.contains(category.id)
+            ? Icons.arrow_drop_up
+            : Icons.arrow_drop_down,
+        color: Colors.blue,
+        size: 24,
+      ),
+    );
+  }
+
+  /// The preview arrow as an inline span, to sit at the end of the invitation.
   InlineSpan _previewArrowSpan(Category category) {
     return WidgetSpan(
       alignment: PlaceholderAlignment.middle,
-      child: GestureDetector(
-        onTap: () => _togglePreview(category),
-        child: Icon(
-          _previewExpanded.contains(category.id)
-              ? Icons.arrow_drop_up
-              : Icons.arrow_drop_down,
-          color: Colors.blue,
-          size: 24,
-        ),
-      ),
+      child: _previewArrowWidget(category),
     );
   }
 
@@ -313,6 +319,84 @@ class _MySharesScreenState extends State<MySharesScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  /// Groups the shared pursuits by the user who shared them, each under an
+  /// expandable header.
+  List<Widget> _buildOwnerGroups() {
+    final byOwner = <String, List<Category>>{};
+    for (final c in _sharedWithMe) {
+      byOwner.putIfAbsent(c.ownerName ?? 'Someone', () => []).add(c);
+    }
+    final owners = byOwner.keys.toList()..sort();
+    return [for (final o in owners) _buildOwnerGroup(o, byOwner[o]!)];
+  }
+
+  Widget _buildOwnerGroup(String owner, List<Category> cats) {
+    final expanded = _expandedOwners.contains(owner);
+    final hasNew = cats.any((c) => _newIds.contains(c.id));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() {
+            if (expanded) {
+              _expandedOwners.remove(owner);
+            } else {
+              _expandedOwners.add(owner);
+            }
+          }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            child: Row(
+              children: [
+                Icon(
+                  expanded ? Icons.expand_more : Icons.chevron_right,
+                  color: Colors.grey[700],
+                ),
+                const SizedBox(width: 2),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      style: const TextStyle(fontSize: 16),
+                      children: [
+                        const TextSpan(text: 'from '),
+                        TextSpan(
+                          text: owner,
+                          style:
+                              const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (hasNew)
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text('NEW',
+                        style: TextStyle(fontSize: 10, color: Colors.white)),
+                  ),
+                const SizedBox(width: 8),
+                Text('${cats.length}',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+              ],
+            ),
+          ),
+        ),
+        if (expanded)
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 4),
+            child: Column(children: cats.map(_buildSharedWithMeRow).toList()),
+          ),
+      ],
     );
   }
 
@@ -364,24 +448,10 @@ class _MySharesScreenState extends State<MySharesScreen> {
                                 style: TextStyle(
                                     fontSize: 10, color: Colors.white)),
                           ),
+                        // No invitation → the task-preview arrow rides the headline.
+                        if (!hasInvitation) _previewArrowWidget(category),
                       ],
                     ),
-                    if (category.ownerName != null)
-                      Text.rich(
-                        TextSpan(
-                          style:
-                              TextStyle(fontSize: 16, color: Colors.grey[600]),
-                          children: [
-                            const TextSpan(text: 'from '),
-                            TextSpan(
-                              text: category.ownerName,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            if (!hasInvitation) _previewArrowSpan(category),
-                          ],
-                        ),
-                      ),
                     if (hasInvitation)
                       Builder(builder: (context) {
                         const limit = 100;

@@ -876,7 +876,10 @@ class HomeScreenState extends State<HomeScreen> {
     if (!unseen.any((c) => !_notifiedShareIds.contains(c.id))) return;
     _notifiedShareIds.addAll(unseen.map((c) => c.id));
 
-    final shown = unseen.take(2).toList();
+    // Show the first two, then "…and N more" — but never a lonely "…and 1
+    // more"; if only one would be hidden, just list it too.
+    final shownCount = (unseen.length - 2 == 1) ? unseen.length : 2;
+    final shown = unseen.take(shownCount).toList();
     final extra = unseen.length - shown.length;
     final n = unseen.length;
     final catName = NamingUtils.categoriesName(capitalize: true, plural: n != 1);
