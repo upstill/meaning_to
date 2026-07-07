@@ -115,7 +115,7 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Select the Pursuits you want to share, then tap Proceed to '
+              'Select the Pursuits you want to share, then tap "Share with..." to '
               'choose how to send them. Recipients get read-only access.',
               style: TextStyle(fontSize: 14),
             ),
@@ -137,8 +137,8 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
                 onPressed: _selected.isEmpty ? null : _proceed,
                 icon: const Icon(Icons.arrow_forward),
                 label: Text(_selected.isEmpty
-                    ? 'Proceed'
-                    : 'Proceed with ${_selected.length} '
+                    ? 'Share'
+                    : 'Share ${_selected.length} '
                         'Pursuit${_selected.length == 1 ? '' : 's'}'),
               ),
             ),
@@ -360,6 +360,25 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
     }
   }
 
+  /// A share-action button with the icon stacked above its (centred) label, so
+  /// the three fit comfortably side by side.
+  Widget _actionButton(IconData icon, String label, VoidCallback onPressed) {
+    return ElevatedButton(
+      onPressed: _busy ? null : onPressed,
+      style: ElevatedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon),
+          const SizedBox(height: 6),
+          Text(label, textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final n = widget.pursuits.length;
@@ -393,49 +412,21 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
             const SizedBox(height: 12),
             ...widget.pursuits.map(_buildPursuitRow),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton.icon(
-                    onPressed: _busy ? null : _share,
-                    icon: const Icon(Icons.share),
-                    label: const Text('Share', textAlign: TextAlign.center),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 8),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 4,
-                  child: ElevatedButton.icon(
-                    onPressed: _busy ? null : _copy,
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Copy Link\nfor Sending',
-                        textAlign: TextAlign.center),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 8),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 3,
-                  child: ElevatedButton.icon(
-                    onPressed: _busy ? null : _sendToUser,
-                    icon: const Icon(Icons.person_add_alt_1),
-                    label: const Text('Send To\nUser',
-                        textAlign: TextAlign.center),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 8),
-                    ),
-                  ),
-                ),
-              ],
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _actionButton(Icons.share, 'Share', _share)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: _actionButton(
+                          Icons.copy, 'Copy Link\nfor Sending', _copy)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: _actionButton(Icons.person_add_alt_1,
+                          'Send To\nUser', _sendToUser)),
+                ],
+              ),
             ),
           ],
         ),

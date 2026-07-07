@@ -32,7 +32,7 @@ Future<void> showBorrowExplanationIfNeeded(BuildContext context) async {
                     'When you borrow a ${NamingUtils.categoriesName(plural: false, capitalize: true)} you can read it, but not add or edit anything.'),
             const TextSpan(
                 text:
-                    "\n\nIf you'd like your own copy to work with, tap the Copy button next to the person's name (or the "),
+                    "\n\nIf you'd like your own copy of a pursuit on your Home screen, hit the Copy button next to the person's name (or hit "),
             const TextSpan(
               text: 'Snag this Pursuit',
               style: TextStyle(fontWeight: FontWeight.bold),
