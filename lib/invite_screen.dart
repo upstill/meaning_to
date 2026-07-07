@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/error_dialog.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
 
 /// Handles landing on a share link:
@@ -47,8 +48,10 @@ class _InviteScreenState extends State<InviteScreen> {
         await ApiClient.redeemPending(widget.pending);
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not accept invitation: $e')),
+          await showErrorDialog(
+            context,
+            'Could not accept the shared pursuit(s):\n\n$e',
+            title: 'Could not accept invitation',
           );
         }
       }

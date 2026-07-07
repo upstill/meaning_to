@@ -26,6 +26,7 @@ import 'package:meaning_to/utils/share_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
+import 'package:meaning_to/utils/error_dialog.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/invite_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -202,6 +203,22 @@ void main() async {
     print(
         '🚨🚨🚨 NEW CODE RUNNING - Using serverless API for data operations 🚨🚨🚨');
 
+    // On web, capture a pending share/invite from the launch URL immediately,
+    // independent of login state and the onGenerateRoute path. The Home redeem
+    // backstop (home_screen.dart) picks it up once an authenticated session
+    // reaches /home, so the share surfaces whether the user was already logged
+    // in or signs in / signs up after following the link.
+    if (foundation.kIsWeb) {
+      final q = Uri.base.queryParameters;
+      final shareId = q['share'];
+      final invite = q['invite'];
+      if (shareId != null) {
+        await InviteTokenStore.set('share:$shareId');
+      } else if (invite != null) {
+        await InviteTokenStore.set(invite);
+      }
+    }
+
     runApp(const MyApp());
   } catch (e) {
     print('Error during initialization: $e');
@@ -338,10 +355,13 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _showInviteSnackBar(String message) {
+    // Despite the name, surface invite/redeem errors in a persistent popup with
+    // a Copy button rather than a disappearing snackbar.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scaffoldKey.currentState?.showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 5)),
-      );
+      final ctx = MyApp.navigatorKey.currentContext;
+      if (ctx != null) {
+        showErrorDialog(ctx, message, title: 'Could not accept invitation');
+      }
     });
   }
 
@@ -432,18 +452,14 @@ class _MyAppState extends State<MyApp> {
         final shareId = uri.queryParameters['share'];
         if (shareId != null) {
           MyApp.isHandlingDeepLink = false;
+          // Always stash the pending share, regardless of login state. The Home
+          // redeem backstop (home_screen.dart) redeems it once an authenticated
+          // session reaches /home — covering already-logged-in as well as
+          // post-sign-in / post-sign-up arrivals.
+          await InviteTokenStore.set('share:$shareId');
           final session = Supabase.instance.client.auth.currentSession;
-          if (session != null) {
-            try {
-              await ApiClient.redeemShareLink(shareId);
-            } catch (e) {
-              _showInviteSnackBar('Could not accept the shared pursuits: $e');
-            }
-            MyApp.navigatorKey.currentState?.pushReplacementNamed('/home');
-          } else {
-            await InviteTokenStore.set('share:$shareId');
-            MyApp.navigatorKey.currentState?.pushReplacementNamed('/auth');
-          }
+          MyApp.navigatorKey.currentState
+              ?.pushReplacementNamed(session != null ? '/home' : '/auth');
           return;
         }
 

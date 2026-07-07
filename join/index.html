@@ -5,8 +5,14 @@
   <title>Joining Pursuit…</title>
   <script>
     (function () {
-      var invite = new URLSearchParams(window.location.search).get('invite');
-      if (invite) {
+      var params = new URLSearchParams(window.location.search);
+      var share = params.get('share');
+      var invite = params.get('invite');
+      // Forward to the app root, preserving the token so main() can capture it.
+      // New unified share links use ?share=<id>; legacy invitations use ?invite=.
+      if (share) {
+        window.location.replace('/?share=' + encodeURIComponent(share));
+      } else if (invite) {
         window.location.replace('/?invite=' + encodeURIComponent(invite));
       } else {
         window.location.replace('/');

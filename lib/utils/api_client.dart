@@ -776,7 +776,10 @@ class ApiClient {
       );
       return (rows as List).map((r) {
         final m = r as Map<String, dynamic>;
-        return (id: m['category_id'] as int, headline: m['headline'] as String);
+        return (
+          id: (m['category_id'] as num).toInt(),
+          headline: m['headline'] as String
+        );
       }).toList();
     } catch (e) {
       print('Error redeeming share link: $e');

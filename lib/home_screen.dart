@@ -4,6 +4,8 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/error_dialog.dart';
+import 'package:meaning_to/utils/invite_token_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
@@ -843,12 +845,41 @@ class HomeScreenState extends State<HomeScreen> {
     HomeScreen.needsDataReload.addListener(_handleDataReloadRequest);
 
     // Load categories after first frame
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _loadCategories();
-        _maybeNotifyNewShares();
-      }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      _loadCategories();
+      // Redeem any share link stashed before/through auth, then surface it.
+      // This is the single reliable choke point: every arrival at Home
+      // (already logged in, post-sign-in, post-sign-up, post-OAuth) redeems a
+      // pending share exactly once.
+      await _redeemPendingShareIfAny();
+      if (mounted) _maybeNotifyNewShares();
     });
+  }
+
+  /// Redeems a share/invite token stashed in [InviteTokenStore] (from following
+  /// a share link) now that we've reached an authenticated Home. Idempotent —
+  /// the underlying RPC uses ON CONFLICT DO NOTHING — and clears the token so it
+  /// only fires once. No-op for guests / no session, so a "Continue as Guest"
+  /// user keeps the token stashed until they actually sign up.
+  Future<void> _redeemPendingShareIfAny() async {
+    if (AuthUtils.isGuestUser()) return;
+    final token = await InviteTokenStore.get();
+    if (token == null) return;
+    try {
+      await ApiClient.redeemPending(token);
+    } catch (e) {
+      print('Error redeeming pending share at home: $e');
+      if (mounted) {
+        await showErrorDialog(
+          context,
+          'Could not accept the shared pursuit(s):\n\n$e',
+          title: 'Could not accept invitation',
+        );
+      }
+    }
+    await InviteTokenStore.clear();
+    if (mounted) _loadCategories();
   }
 
   // New-shares notification state. Shown on Home and on key control hits; the
