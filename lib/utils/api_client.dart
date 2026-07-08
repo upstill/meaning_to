@@ -765,6 +765,30 @@ class ApiClient {
     }
   }
 
+  /// Previews a share link (callable while logged out): the inviter's display
+  /// name and how many pursuits it grants. Returns null if the link is unknown.
+  static Future<({String inviterName, int numPursuits})?> getShareLinkPreview(
+      String linkId) async {
+    try {
+      final rows = await _supabase.rpc(
+        'get_share_link_preview',
+        params: {'p_link': linkId},
+      );
+      final list = rows as List;
+      if (list.isEmpty) return null;
+      final m = list.first as Map<String, dynamic>;
+      final name = m['inviter_name'] as String?;
+      if (name == null || name.isEmpty) return null;
+      return (
+        inviterName: name,
+        numPursuits: (m['num_pursuits'] as num?)?.toInt() ?? 0,
+      );
+    } catch (e) {
+      print('Error fetching share link preview: $e');
+      return null;
+    }
+  }
+
   /// Redeems a share link, subscribing the current user to every pursuit it
   /// grants. Returns each granted pursuit's id + headline (for notification).
   static Future<List<({int id, String headline})>> redeemShareLink(

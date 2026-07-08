@@ -694,6 +694,10 @@ class HomeScreenState extends State<HomeScreen> {
       // the catch below so it isn't silently ignored.
       await supabase.rpc('delete_user');
 
+      // Discard any pending invite so the post-delete welcome screen shows the
+      // normal greeting, not a stale "you've been invited" message.
+      await InviteTokenStore.clear();
+
       // Sign out
       await AuthUtils.signOut();
 

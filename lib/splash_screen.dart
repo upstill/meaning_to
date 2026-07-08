@@ -13,7 +13,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  /// When true (a logged-out user following a share link), show the welcome
+  /// screen immediately — no auth-check delay — with an invitation message.
+  final bool startAtWelcome;
+
+  const SplashScreen({super.key, this.startAtWelcome = false});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -25,6 +29,8 @@ class _SplashScreenState extends State<SplashScreen> {
   String _buildNumber = '';
   StreamSubscription<AuthState>? _authSubscription;
   bool _hasNavigated = false;
+  // Set from a pending share link so the welcome screen can say who's inviting.
+  String? _inviterName;
 
   @override
   void initState() {
@@ -46,6 +52,14 @@ class _SplashScreenState extends State<SplashScreen> {
         _handleAuthenticatedUser(data.session!.user.id);
       }
     });
+
+    // Following a share link while logged out: show the welcome screen right
+    // away (with the invitation message) instead of the auth-check delay.
+    if (widget.startAtWelcome) {
+      _loadInvitePreview();
+      setState(() => _showWelcomeScreen = true);
+      return;
+    }
 
     // Check if we're handling a deep link
     if (MyApp.isHandlingDeepLink) {
@@ -77,6 +91,7 @@ class _SplashScreenState extends State<SplashScreen> {
         await AppStateManager.clearState();
         // Mark state restoration as complete for non-authenticated users
         MyApp.isStateRestored = true;
+        _loadInvitePreview(); // name the inviter if a share link is pending
         setState(() {
           _showWelcomeScreen = true;
         });
@@ -98,6 +113,18 @@ class _SplashScreenState extends State<SplashScreen> {
     }
     _hasNavigated = true;
     _navigateWithStateRestoration(userId);
+  }
+
+  /// If a share link is pending, look up who's inviting so the welcome screen
+  /// can name them. Safe to call whenever the welcome screen is about to show.
+  Future<void> _loadInvitePreview() async {
+    final token = await InviteTokenStore.get();
+    if (token == null || !token.startsWith('share:')) return;
+    final preview =
+        await ApiClient.getShareLinkPreview(token.substring('share:'.length));
+    if (preview != null && mounted) {
+      setState(() => _inviterName = preview.inviterName);
+    }
   }
 
   Future<void> _loadVersionInfo() async {
@@ -273,19 +300,23 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                   const SizedBox(height: 60),
 
-                  // Welcome message
-                  const Text(
-                    'Welcome!',
-                    style: TextStyle(
+                  // Welcome message — invitation copy if a share link is pending.
+                  Text(
+                    _inviterName != null ? 'You\'ve been invited!' : 'Welcome!',
+                    style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'How would you like to get started?',
-                    style: TextStyle(
+                  Text(
+                    _inviterName != null
+                        ? '$_inviterName has something to share with you… '
+                            'To check it out, sign in or create an account.'
+                        : 'How would you like to get started?',
+                    style: const TextStyle(
                       fontSize: 16,
                       color: Colors.white70,
                     ),

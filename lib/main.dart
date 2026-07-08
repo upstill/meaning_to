@@ -458,8 +458,10 @@ class _MyAppState extends State<MyApp> {
           // post-sign-in / post-sign-up arrivals.
           await InviteTokenStore.set('share:$shareId');
           final session = Supabase.instance.client.auth.currentSession;
+          // Logged in → straight to Home (backstop redeems). Logged out → the
+          // welcome screen, which names the inviter and offers sign in / sign up.
           MyApp.navigatorKey.currentState
-              ?.pushReplacementNamed(session != null ? '/home' : '/auth');
+              ?.pushReplacementNamed(session != null ? '/home' : '/welcome');
           return;
         }
 
@@ -876,6 +878,12 @@ class _MyAppState extends State<MyApp> {
             case '/':
               return MaterialPageRoute(
                 builder: (context) => const SplashScreen(),
+              );
+            case '/welcome':
+              // Logged-out landing for a followed share link: the welcome screen
+              // shown immediately, with an invitation message.
+              return MaterialPageRoute(
+                builder: (context) => const SplashScreen(startAtWelcome: true),
               );
             case '/auth':
               final mode = (settings.arguments as Map?)?['mode'];

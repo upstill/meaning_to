@@ -57,10 +57,11 @@ class _InviteScreenState extends State<InviteScreen> {
       }
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
     } else {
-      // Not signed in — stash pending value, redirect to auth.
+      // Not signed in — stash pending value, land on the welcome screen (which
+      // names the inviter and offers Sign In / Create Account).
       await InviteTokenStore.set(widget.pending);
       if (mounted) {
-        Navigator.pushReplacementNamed(context, '/auth');
+        Navigator.pushReplacementNamed(context, '/welcome');
       }
     }
   }
