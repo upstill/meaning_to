@@ -106,6 +106,9 @@ class HomeScreenState extends State<HomeScreen> {
 
   // Track if welcome dialog has been shown
   bool _welcomeDialogShown = false;
+  // True while the "Welcome to ROUZME!" dialog is pending/open, so the
+  // new-shares advisory holds back until the greeting is dismissed.
+  bool _welcomeDialogOpen = false;
 
   // Count of pending (unavailable) shared-with-me categories, shown on empty home screen
 
@@ -581,9 +584,6 @@ class HomeScreenState extends State<HomeScreen> {
 
   /// Handle delete account action
   Future<void> _handleDeleteAccount() async {
-    final isDevUser =
-        AuthUtils.getCurrentUserEmail()?.toLowerCase() == 'upstill@gmail.com';
-
     // Show confirmation dialog
     final bool? confirmed = await showDialog<bool>(
       context: context,
@@ -594,7 +594,7 @@ class HomeScreenState extends State<HomeScreen> {
             children: [
               const Icon(Icons.warning, color: Colors.red, size: 32),
               const SizedBox(width: 8),
-              Text(isDevUser ? 'Reset Account Data' : 'Delete Account'),
+              const Text('Delete Account'),
             ],
           ),
           content: Column(
@@ -616,38 +616,31 @@ class HomeScreenState extends State<HomeScreen> {
                     fontStyle: FontStyle.italic),
               ),
               const SizedBox(height: 12),
-              if (isDevUser) ...[
-                const Text(
-                  'This will delete all data for this account (tasks, categories, shares) but keep the login intact.',
-                  style: TextStyle(fontSize: 14),
+              const Text(
+                'WARNING: This action cannot be undone!',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                  fontSize: 16,
                 ),
-              ] else ...[
-                const Text(
-                  'WARNING: This action cannot be undone!',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red,
-                    fontSize: 16,
-                  ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Deleting your account will permanently remove:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text('• All your tasks'),
+              const Text('• All your categories'),
+              const Text('• Your user account'),
+              const SizedBox(height: 16),
+              const Text(
+                'This data cannot be recovered.',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontStyle: FontStyle.italic,
                 ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Deleting your account will permanently remove:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text('• All your tasks'),
-                const Text('• All your categories'),
-                const Text('• Your user account'),
-                const SizedBox(height: 16),
-                const Text(
-                  'This data cannot be recovered.',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
+              ),
             ],
           ),
           actions: [
@@ -661,7 +654,7 @@ class HomeScreenState extends State<HomeScreen> {
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
               ),
-              child: Text(isDevUser ? 'Reset My Data' : 'Delete My Account'),
+              child: const Text('Delete My Account'),
             ),
           ],
         );
@@ -677,20 +670,16 @@ class HomeScreenState extends State<HomeScreen> {
   Future<void> _deleteAccountData() async {
     if (!mounted) return;
 
-    final userId = AuthUtils.getCurrentUserId();
-    final isDevUser =
-        AuthUtils.getCurrentUserEmail()?.toLowerCase() == 'upstill@gmail.com';
-
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
-        return AlertDialog(
+        return const AlertDialog(
           content: Row(
             children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: 16),
-              Text(isDevUser ? 'Resetting account...' : 'Deleting account...'),
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Deleting account...'),
             ],
           ),
         );
@@ -698,47 +687,12 @@ class HomeScreenState extends State<HomeScreen> {
     );
 
     try {
-      // Delete subscriptions this user holds in other people's categories.
-      await supabase.from('shared_categories').delete().eq('user_id', userId);
-
-      // Delete all tasks for this user (also cascades share_invitations via category deletion below).
-      await supabase.from('Tasks').delete().eq('owner_id', userId);
-
-      // Delete share_invitations for this user's categories.
-      final catIds = (await supabase
-              .from('Categories')
-              .select('id')
-              .eq('owner_id', userId))
-          .map((r) => r['id'])
-          .toList();
-      if (catIds.isNotEmpty) {
-        await supabase
-            .from('share_invitations')
-            .delete()
-            .inFilter('category_id', catIds);
-        await supabase
-            .from('shared_categories')
-            .delete()
-            .inFilter('category_id', catIds);
-      }
-
-      // Delete all categories for this user.
-      await supabase.from('Categories').delete().eq('owner_id', userId);
-
-      if (isDevUser) {
-        // Dev reset: keep the auth user so they can sign back in without re-registering.
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('onboarded_$userId');
-        await prefs.remove('welcomed_shared_$userId');
-        await prefs.remove('borrow_explained_$userId');
-      } else {
-        // Normal delete: remove the auth user entry via RPC.
-        try {
-          await supabase.rpc('delete_user');
-        } catch (rpcError) {
-          print('Could not delete auth user via RPC: $rpcError');
-        }
-      }
+      // Full deletion happens server-side in delete_user(): it removes the user's
+      // Tasks and Categories (the only NO ACTION foreign keys to auth.users) and
+      // then the auth.users row itself — everything else (their subscriptions,
+      // share links, invitations, sessions) cascades. Any failure propagates to
+      // the catch below so it isn't silently ignored.
+      await supabase.rpc('delete_user');
 
       // Sign out
       await AuthUtils.signOut();
@@ -755,8 +709,7 @@ class HomeScreenState extends State<HomeScreen> {
           builder: (BuildContext context) {
             return AlertDialog(
               title: const Text('Error'),
-              content: Text(
-                  'Failed to ${isDevUser ? 'reset' : 'delete'} account: $e'),
+              content: Text('Failed to delete account: $e'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -844,16 +797,19 @@ class HomeScreenState extends State<HomeScreen> {
     // Listen for data reload requests (categories and tasks)
     HomeScreen.needsDataReload.addListener(_handleDataReloadRequest);
 
-    // Load categories after first frame
+    // Load categories after first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      _loadCategories();
-      // Redeem any share link stashed before/through auth, then surface it.
-      // This is the single reliable choke point: every arrival at Home
-      // (already logged in, post-sign-in, post-sign-up, post-OAuth) redeems a
-      // pending share exactly once.
+      // Load categories FIRST: on first login this shows the "Welcome to
+      // ROUZME!" greeting, detected from the pre-redeem state (an unredeemed
+      // account has no shares yet). THEN redeem any pending share link — the
+      // single reliable choke point that redeems exactly once on every arrival
+      // at Home (already logged in, post-sign-in/up, post-OAuth). The new-shares
+      // advisory is deferred until after the greeting: for a first-login user it
+      // fires when the welcome dialog is dismissed; otherwise it fires here.
+      await _loadCategories();
       await _redeemPendingShareIfAny();
-      if (mounted) _maybeNotifyNewShares();
+      if (mounted && !_welcomeDialogShown) _maybeNotifyNewShares();
     });
   }
 
@@ -893,7 +849,9 @@ class HomeScreenState extends State<HomeScreen> {
   /// control hits (Hit Me, pursuit selector, task-list toggle) so a share that
   /// arrives mid-session shows up promptly without needing a realtime channel.
   Future<void> _maybeNotifyNewShares() async {
-    if (AuthUtils.isGuestUser() || _shareDialogOpen) return;
+    // Hold back while the first-login greeting is pending/open — it re-fires this
+    // when the welcome dialog is dismissed, so "Welcome to ROUZME!" comes first.
+    if (AuthUtils.isGuestUser() || _shareDialogOpen || _welcomeDialogOpen) return;
     // Light throttle so rapid control hits don't hammer the database.
     final now = DateTime.now();
     if (_lastShareCheck != null &&
@@ -2392,9 +2350,10 @@ class HomeScreenState extends State<HomeScreen> {
         }
 
         // Show onboarding dialogs on first login; fall back to welcome
-        // dialog for authenticated users who have no categories.
+        // dialog for authenticated users who have no categories. Awaited so
+        // _welcomeDialogShown is set before _loadCategories returns.
         if (!AuthUtils.isGuestUser()) {
-          _handleFirstLoginOrEmptyCategories(categories);
+          await _handleFirstLoginOrEmptyCategories(categories);
         }
       } catch (e) {
         print('Error loading categories: $e');
@@ -2768,18 +2727,16 @@ class HomeScreenState extends State<HomeScreen> {
     final userId = AuthUtils.getCurrentUserId();
     if (userId == null) return;
 
-    // Use local pref as a fast check, but verify against server state
-    // to handle new-device / cleared-browser-data scenarios.
+    // Use local pref as a fast check, but verify against server state to handle
+    // new-device / cleared-browser-data scenarios. Only the user's OWN
+    // categories mean they've used the app before — borrowed shares do NOT
+    // count, since a brand-new user who followed a share link already has shares
+    // but is still seeing the app (and needs the welcome) for the first time.
     final localOnboarded = prefs.getBool('onboarded_$userId') ?? false;
     bool isFirstLogin = !localOnboarded;
-    if (isFirstLogin) {
-      // Double-check server-side: if user already has shared subscriptions,
-      // they were onboarded on another device — don't show welcome again.
-      final existingShares = await ApiClient.getAllSharedWithMe();
-      if (existingShares.isNotEmpty || categories.isNotEmpty) {
-        isFirstLogin = false;
-        await prefs.setBool('onboarded_$userId', true);
-      }
+    if (isFirstLogin && categories.isNotEmpty) {
+      isFirstLogin = false;
+      await prefs.setBool('onboarded_$userId', true);
     }
     if (isFirstLogin) {
       await prefs.setBool('onboarded_$userId', true);
@@ -2799,10 +2756,11 @@ class HomeScreenState extends State<HomeScreen> {
     if (_welcomeDialogShown) return;
 
     _welcomeDialogShown = true;
+    _welcomeDialogOpen = true;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (mounted) {
-        showDialog(
+        await showDialog(
           context: context,
           barrierDismissible: true,
           builder: (BuildContext context) {
@@ -2885,6 +2843,10 @@ class HomeScreenState extends State<HomeScreen> {
           },
         );
       }
+      // Greeting dismissed — now surface any new-shares advisory (e.g. pursuits
+      // from a share link the user just followed).
+      _welcomeDialogOpen = false;
+      if (mounted) _maybeNotifyNewShares();
     });
   }
 
