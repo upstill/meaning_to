@@ -30,16 +30,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 enum HomeTaskSortOption { alphabetical, priority, age }
 
-// Assert-based debug check works correctly on all platforms including Flutter web.
-bool _isDebugMode() {
-  var debug = false;
-  assert(() {
-    debug = true;
-    return true;
-  }());
-  return debug;
-}
-
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> needsDataReload = ValueNotifier<bool>(false);
@@ -103,6 +93,10 @@ class HomeScreenState extends State<HomeScreen> {
 
   // True when viewing a shared (read-only) category
   bool get _isReadOnly => _selectedCategory?.isShared ?? false;
+
+  // Non-null when a guest is previewing a share link's pursuits (its link id);
+  // the preview's tasks are read via an anon RPC since RLS hides them otherwise.
+  String? _guestPreviewLinkId;
 
   // Track if welcome dialog has been shown
   bool _welcomeDialogShown = false;
@@ -215,7 +209,10 @@ class HomeScreenState extends State<HomeScreen> {
                 if (_selectedCategory != null) ...[
                   PopupMenuItem<String>(
                     value: 'add_pursuit',
+                    // Guests can't create their own pursuits — show it disabled.
+                    enabled: !AuthUtils.isGuestUser(),
                     child: ListTile(
+                      enabled: !AuthUtils.isGuestUser(),
                       leading: const Icon(Icons.add),
                       title: Text(
                           'New ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
@@ -262,7 +259,7 @@ class HomeScreenState extends State<HomeScreen> {
                         contentPadding: EdgeInsets.zero,
                       ),
                     ),
-                  if (_isReadOnly)
+                  if (_isReadOnly && !AuthUtils.isGuestUser())
                     PopupMenuItem<String>(
                       value: 'snag_all',
                       child: ListTile(
@@ -272,7 +269,7 @@ class HomeScreenState extends State<HomeScreen> {
                         contentPadding: EdgeInsets.zero,
                       ),
                     ),
-                  if (_isReadOnly)
+                  if (_isReadOnly && !AuthUtils.isGuestUser())
                     const PopupMenuItem<String>(
                       value: 'release',
                       child: ListTile(
@@ -294,22 +291,13 @@ class HomeScreenState extends State<HomeScreen> {
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
-                const PopupMenuItem<String>(
-                  value: 'delete',
-                  child: ListTile(
-                    leading: Icon(Icons.delete_forever, color: Colors.red),
-                    title: Text('Delete Account',
-                        style: TextStyle(color: Colors.red)),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-                if (_isDebugMode())
+                if (!AuthUtils.isGuestUser())
                   const PopupMenuItem<String>(
-                    value: 'take_intent',
+                    value: 'delete',
                     child: ListTile(
-                      leading: Icon(Icons.link, color: Colors.orange),
-                      title: Text('Take Intent',
-                          style: TextStyle(color: Colors.orange)),
+                      leading: Icon(Icons.delete_forever, color: Colors.red),
+                      title: Text('Delete Account',
+                          style: TextStyle(color: Colors.red)),
                       contentPadding: EdgeInsets.zero,
                     ),
                   ),
@@ -317,7 +305,6 @@ class HomeScreenState extends State<HomeScreen> {
             );
             if (value == 'logout') await _handleLogout();
             if (value == 'delete') await _handleDeleteAccount();
-            if (value == 'take_intent') await _showTakeIntentDialog();
             if (value == 'add_pursuit') _navigateToNewCategory();
             if (value == 'edit_pursuit' && _selectedCategory != null) {
               final updated = await showDialog<Category>(
@@ -727,70 +714,6 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _showTakeIntentDialog() async {
-    final controller = TextEditingController();
-    String? error;
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Take Intent'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Paste a link to process it as an incoming intent.',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'https://...',
-                  border: const OutlineInputBorder(),
-                  errorText: error,
-                ),
-                onChanged: (_) {
-                  if (error != null) setDialogState(() => error = null);
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final text = controller.text.trim();
-                final uri = Uri.tryParse(text);
-                if (uri == null || !uri.hasScheme) {
-                  setDialogState(() => error = 'Enter a valid URL');
-                  return;
-                }
-                Navigator.of(ctx).pop();
-                MyApp.handleDeepLink?.call(uri);
-              },
-              child: const Text('Go'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    // Defer disposal so any ongoing dismiss animation can finish using the
-    // controller before it's torn down (immediate disposal causes a
-    // "used after disposed" crash when navigation closes the dialog mid-animation).
-    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
-  }
-
-  /// Debug function to fix raw URLs in task links
-  /// Converts any raw URL strings in the links array to proper HTML link format
-  /// Processes all tasks in descending ID order
   @override
   void initState() {
     super.initState();
@@ -1860,10 +1783,14 @@ class HomeScreenState extends State<HomeScreen> {
                         _toggleTaskShareFromList(task, newSharedState),
                 isCategoryPrivate: _selectedCategory?.isPrivate ?? false,
                 isSnagged: taskSnagged,
-                onSnag: _isReadOnly && !taskSnagged
+                onSnag: _isReadOnly &&
+                        !taskSnagged &&
+                        !AuthUtils.isGuestUser()
                     ? () => unawaited(_snagTaskFromList(task))
                     : null,
-                onSnagAgain: _isReadOnly && taskSnagged
+                onSnagAgain: _isReadOnly &&
+                        taskSnagged &&
+                        !AuthUtils.isGuestUser()
                     ? () => unawaited(_snagTaskToOtherPursuit(task))
                     : null,
               );
@@ -2286,7 +2213,25 @@ class HomeScreenState extends State<HomeScreen> {
 
       try {
         print('Fetching categories from API...');
-        final categories = await ApiClient.getCategories();
+        // A guest who followed a share link previews ONLY that link's pursuits,
+        // read-only, instead of the demo categories.
+        List<Category> categories;
+        if (AuthUtils.isGuestUser()) {
+          final token = await InviteTokenStore.get();
+          if (token != null && token.startsWith('share:')) {
+            _guestPreviewLinkId = token.substring('share:'.length);
+            categories =
+                await ApiClient.getShareLinkPursuits(_guestPreviewLinkId!);
+          } else {
+            _guestPreviewLinkId = null;
+            categories = await ApiClient.getCategories();
+          }
+        } else {
+          _guestPreviewLinkId = null;
+          categories = await ApiClient.getCategories();
+        }
+        // Route preview task reads through the anon RPC (see CacheManager).
+        _cacheManager.previewShareLinkId = _guestPreviewLinkId;
         print('API response: ${categories.length} categories');
 
         setState(() {
@@ -3271,39 +3216,45 @@ class HomeScreenState extends State<HomeScreen> {
                                                       color: Color(0xFF1A237E),
                                                     ),
                                                   ),
-                                                  const SizedBox(width: 6),
-                                                  IconButton(
-                                                    onPressed: () async {
-                                                      await showBorrowExplanationIfNeeded(
-                                                          context);
-                                                      if (mounted)
-                                                        unawaited(
-                                                            _showSnagPursuitScreen(
-                                                                cat));
-                                                    },
-                                                    icon: const Icon(Icons.copy,
-                                                        size: 22),
-                                                    tooltip: 'Copy for Me',
-                                                    color: Colors.green[800],
-                                                    visualDensity:
-                                                        VisualDensity.compact,
-                                                    padding: EdgeInsets.zero,
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  IconButton(
-                                                    onPressed: () =>
-                                                        _releaseSharedCategory(
-                                                            cat),
-                                                    icon: const Icon(
-                                                        Icons.playlist_remove,
-                                                        size: 22),
-                                                    tooltip:
-                                                        'Remove from My List',
-                                                    color: Colors.red[700],
-                                                    visualDensity:
-                                                        VisualDensity.compact,
-                                                    padding: EdgeInsets.zero,
-                                                  ),
+                                                  // Guests can't own or borrow,
+                                                  // so hide Copy/Remove for them.
+                                                  if (!AuthUtils
+                                                      .isGuestUser()) ...[
+                                                    const SizedBox(width: 6),
+                                                    IconButton(
+                                                      onPressed: () async {
+                                                        await showBorrowExplanationIfNeeded(
+                                                            context);
+                                                        if (mounted)
+                                                          unawaited(
+                                                              _showSnagPursuitScreen(
+                                                                  cat));
+                                                      },
+                                                      icon: const Icon(
+                                                          Icons.copy,
+                                                          size: 22),
+                                                      tooltip: 'Copy for Me',
+                                                      color: Colors.green[800],
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                      padding: EdgeInsets.zero,
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    IconButton(
+                                                      onPressed: () =>
+                                                          _releaseSharedCategory(
+                                                              cat),
+                                                      icon: const Icon(
+                                                          Icons.playlist_remove,
+                                                          size: 22),
+                                                      tooltip:
+                                                          'Remove from My List',
+                                                      color: Colors.red[700],
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                      padding: EdgeInsets.zero,
+                                                    ),
+                                                  ],
                                                 ],
                                               ),
                                             ],
@@ -3905,7 +3856,10 @@ class HomeScreenState extends State<HomeScreen> {
                                                       ),
                                                     ),
                                                   ),
-                                                ] else ...[
+                                                ] else if (!AuthUtils
+                                                    .isGuestUser()) ...[
+                                                  // Guests preview read-only —
+                                                  // no snag button.
                                                   const SizedBox(height: 8),
                                                   Center(
                                                     child: ElevatedButton.icon(

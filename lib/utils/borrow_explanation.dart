@@ -7,6 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Safe to call on every borrow action — it tracks whether the user has
 /// already seen the explanation and skips it after the first time.
 Future<void> showBorrowExplanationIfNeeded(BuildContext context) async {
+  // Guests only preview shared pursuits — they never borrow — so the
+  // "Borrowed Pursuit" explanation would be confusing. Skip it for them.
+  if (AuthUtils.isGuestUser()) return;
+
   final userId = AuthUtils.getCurrentUserId();
   if (userId == null) return;
 

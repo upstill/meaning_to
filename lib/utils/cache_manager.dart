@@ -26,6 +26,10 @@ class CacheManager with PerformanceMonitoring {
   String? _currentUserId;
   bool _isUnsavedCategory = false;
 
+  // When set (a guest previewing a share link), tasks for a not-owned category
+  // are read via the anon get_share_link_tasks RPC, since RLS hides them.
+  String? previewShareLinkId;
+
   // Notification stream for cache changes
   static final StreamController<void> _cacheChangeController =
       StreamController<void>.broadcast();
@@ -96,12 +100,20 @@ class CacheManager with PerformanceMonitoring {
       // category is genuinely owned by someone else.
       final isOwnedByCurrentUser =
           _currentCategory!.ownerId == _currentUserId;
-      final tasks = isOwnedByCurrentUser
-          ? await ApiClient.getTasksByCategoryAndUser(
-              _currentCategory!.id, _currentUserId!)
-          : (await ApiClient.getTasksByCategory(_currentCategory!.id))
-              .where((t) => t.shared)
-              .toList();
+      final List<Task> tasks;
+      if (isOwnedByCurrentUser) {
+        tasks = await ApiClient.getTasksByCategoryAndUser(
+            _currentCategory!.id, _currentUserId!);
+      } else if (previewShareLinkId != null) {
+        // Guest previewing a share link — RLS hides these, so use the anon RPC
+        // (already filtered to shared=true server-side).
+        tasks = await ApiClient.getShareLinkTasks(
+            previewShareLinkId!, _currentCategory!.id);
+      } else {
+        tasks = (await ApiClient.getTasksByCategory(_currentCategory!.id))
+            .where((t) => t.shared)
+            .toList();
+      }
 
       _currentTasks = tasks;
 

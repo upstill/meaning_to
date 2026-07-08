@@ -314,7 +314,8 @@ class _SplashScreenState extends State<SplashScreen> {
                   Text(
                     _inviterName != null
                         ? '$_inviterName has something to share with you… '
-                            'To check it out, sign in or create an account.'
+                            'To check it out, sign in or create an account. '
+                            'If that\'s too much commitment, check it out as a guest.'
                         : 'How would you like to get started?',
                     style: const TextStyle(
                       fontSize: 16,

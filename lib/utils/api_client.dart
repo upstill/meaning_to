@@ -789,6 +789,46 @@ class ApiClient {
     }
   }
 
+  /// The pursuits a share link grants, for a guest read-only preview. Uses an
+  /// anon RPC because RLS otherwise hides another user's categories from a
+  /// guest. Each is marked shared with the owner's display name.
+  static Future<List<Category>> getShareLinkPursuits(String linkId) async {
+    try {
+      final rows = await _supabase
+          .rpc('get_share_link_pursuits', params: {'p_link': linkId});
+      return (rows as List).map((r) {
+        final m = r as Map<String, dynamic>;
+        final cat = Category.fromJson(m['category'] as Map<String, dynamic>);
+        return cat.copyWithShared(
+          isShared: true,
+          ownerName: (m['owner_name'] as String?) ?? 'Someone',
+          // Available=true so they appear in the main list + pursuit dropdown
+          // (that dropdown hides shared-but-unavailable categories).
+          isAvailable: true,
+        );
+      }).toList();
+    } catch (e) {
+      print('Error fetching share link pursuits: $e');
+      return [];
+    }
+  }
+
+  /// The shared (non-private) tasks of one of a share link's categories, for a
+  /// guest read-only preview (anon RPC, same RLS reason as above).
+  static Future<List<Task>> getShareLinkTasks(
+      String linkId, int categoryId) async {
+    try {
+      final rows = await _supabase.rpc('get_share_link_tasks',
+          params: {'p_link': linkId, 'p_category': categoryId});
+      return (rows as List)
+          .map((t) => Task.fromJson(t as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      print('Error fetching share link tasks: $e');
+      return [];
+    }
+  }
+
   /// Redeems a share link, subscribing the current user to every pursuit it
   /// grants. Returns each granted pursuit's id + headline (for notification).
   static Future<List<({int id, String headline})>> redeemShareLink(
