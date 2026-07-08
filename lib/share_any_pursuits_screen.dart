@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:meaning_to/models/category.dart';
@@ -40,7 +41,8 @@ class ShareAnyPursuitsScreen extends StatefulWidget {
 class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
   final Set<int> _selected = {};
 
-  List<({String linkId, List<Category> categories})> _links = [];
+  List<({String linkId, List<Category> categories, List<String> takers})>
+      _links = [];
   bool _loadingLinks = true;
 
   /// The owner's own pursuits (shared-in ones can't be re-shared).
@@ -69,24 +71,25 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
     final pursuits =
         _ownedPursuits.where((c) => _selected.contains(c.id)).toList();
     if (pursuits.isEmpty) return;
-    await ShareActionDialog.show(context, pursuits);
-    if (mounted) {
+    final shared = await ShareActionDialog.show(context, pursuits);
+    if (!mounted) return;
+    if (shared == true) {
+      Navigator.of(context).pop(); // return to Home once a medium is chosen
+    } else {
       setState(() => _selected.clear());
-      await _loadLinks(); // a Share/Copy may have created a new link
+      await _loadLinks();
     }
   }
 
-  Future<void> _copyExistingLink(String linkId) async {
-    final url = DeepLinkGenerator.generateShareLink(linkId);
-    if (kIsWeb) {
-      await Clipboard.setData(ClipboardData(text: url));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Link copied to clipboard')),
-        );
-      }
+  /// Re-opens the share dialog for an existing link's pursuits — same flow as
+  /// the top "Share…" button (Share / Copy Link for Sending / Send To User).
+  Future<void> _inviteAgain(List<Category> pursuits) async {
+    final shared = await ShareActionDialog.show(context, pursuits);
+    if (!mounted) return;
+    if (shared == true) {
+      Navigator.of(context).pop(); // return to Home once a medium is chosen
     } else {
-      await Share.share(url, subject: 'Join my Pursuit on ROUZME!');
+      await _loadLinks();
     }
   }
 
@@ -115,7 +118,7 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Select the Pursuits you want to share, then tap "Share with..." to '
+              'Select the Pursuits you want to share, then tap "Share..." to '
               'choose how to send them. Recipients get read-only access.',
               style: TextStyle(fontSize: 14),
             ),
@@ -217,7 +220,8 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
     );
   }
 
-  Widget _buildLinkCard(({String linkId, List<Category> categories}) link) {
+  Widget _buildLinkCard(
+      ({String linkId, List<Category> categories, List<String> takers}) link) {
     final names = link.categories.map((c) => c.headline).join(', ');
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -230,14 +234,32 @@ class _ShareAnyPursuitsScreenState extends State<ShareAnyPursuitsScreen> {
               names.isEmpty ? '(no pursuits)' : names,
               style: const TextStyle(fontSize: 14),
             ),
+            const SizedBox(height: 2),
+            link.takers.isEmpty
+                ? const Text(
+                    'Not yet taken up',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        fontStyle: FontStyle.italic),
+                  )
+                : Text(
+                    'Taken up by: ${link.takers.join(', ')}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                  ),
             Row(
               children: [
                 const Spacer(),
-                IconButton(
-                  onPressed: () => _copyExistingLink(link.linkId),
-                  icon: const Icon(Icons.copy),
-                  tooltip: 'Copy Link',
-                  visualDensity: VisualDensity.compact,
+                TextButton.icon(
+                  onPressed: () => _inviteAgain(link.categories),
+                  icon: const Icon(Icons.person_add_alt_1, size: 16),
+                  label: const Text('Invite Again',
+                      style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  ),
                 ),
                 TextButton.icon(
                   onPressed: () => _deleteLink(link.linkId),
@@ -270,8 +292,10 @@ class ShareActionDialog extends StatefulWidget {
 
   const ShareActionDialog({super.key, required this.pursuits});
 
-  static Future<void> show(BuildContext context, List<Category> pursuits) {
-    return showDialog<void>(
+  /// Resolves to `true` if the user chose a share medium (Share / Copy / Send),
+  /// or `null`/`false` if they just dismissed the dialog.
+  static Future<bool?> show(BuildContext context, List<Category> pursuits) {
+    return showDialog<bool>(
       context: context,
       builder: (_) => ShareActionDialog(pursuits: pursuits),
     );
@@ -285,6 +309,15 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
   bool _busy = false;
 
   List<int> get _ids => widget.pursuits.map((c) => c.id).toList();
+
+  /// The OS share sheet is only meaningful on mobile. On web/desktop the Share
+  /// action falls back to a clipboard copy (same as the Copy button), so we
+  /// hide Share there. Check kIsWeb first — in a browser defaultTargetPlatform
+  /// still reports the underlying OS.
+  bool get _nativeShareAvailable =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
 
   /// Creates a share link for the pursuits, returning its URL (or null on
   /// error, after showing a snackbar via [messenger]).
@@ -317,7 +350,7 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
     } else {
       await Share.share(url, subject: 'Join my Pursuit on ROUZME!');
     }
-    navigator.pop();
+    navigator.pop(true);
   }
 
   Future<void> _copy() async {
@@ -333,7 +366,7 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
     messenger.showSnackBar(
       const SnackBar(content: Text('Link copied — paste it into a message to send')),
     );
-    navigator.pop();
+    navigator.pop(true);
   }
 
   Future<void> _sendToUser() async {
@@ -351,7 +384,7 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
               : '${user.name} already has those Pursuits'),
         ),
       );
-      navigator.pop();
+      navigator.pop(true);
     } catch (e) {
       messenger.showSnackBar(
         SnackBar(content: Text('Could not send: $e')),
@@ -416,8 +449,14 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(child: _actionButton(Icons.share, 'Share', _share)),
-                  const SizedBox(width: 8),
+                  // The native Share sheet only exists on mobile; on web and
+                  // desktop "Share" just copies the link — identical to Copy —
+                  // so hide it there to avoid a redundant button.
+                  if (_nativeShareAvailable) ...[
+                    Expanded(
+                        child: _actionButton(Icons.share, 'Share', _share)),
+                    const SizedBox(width: 8),
+                  ],
                   Expanded(
                       child: _actionButton(
                           Icons.copy, 'Copy Link\nfor Sending', _copy)),

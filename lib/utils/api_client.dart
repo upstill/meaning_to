@@ -839,8 +839,9 @@ class ApiClient {
     }
   }
 
-  /// Returns the current user's share links, each with the pursuits it grants.
-  static Future<List<({String linkId, List<Category> categories})>>
+  /// Returns the current user's share links, each with the pursuits it grants
+  /// and the display names of who has taken it up.
+  static Future<List<({String linkId, List<Category> categories, List<String> takers})>>
       getMyShareLinks() async {
     final userId = AuthUtils.getCurrentUserId();
     if (userId == null) return [];
@@ -851,13 +852,37 @@ class ApiClient {
               'id, created_at, share_link_categories(category_id, Categories(*))')
           .eq('created_by', userId)
           .order('created_at', ascending: false);
+      // Who currently holds each link's pursuits. RLS hides other users'
+      // subscriptions, so this comes from a SECURITY DEFINER function scoped to
+      // the caller's own links (inferred by category overlap).
+      final takersByLink = <String, List<String>>{};
+      try {
+        final takerRows =
+            (await _supabase.rpc('get_share_link_takers') as List?) ?? [];
+        for (final r in takerRows) {
+          final m = r as Map<String, dynamic>;
+          final lid = m['link_id'] as String;
+          final name = m['taker'] as String?;
+          if (name != null && name.isNotEmpty) {
+            final list = takersByLink[lid] ??= <String>[];
+            if (!list.contains(name)) list.add(name);
+          }
+        }
+      } catch (e) {
+        print('Error fetching share-link takers: $e');
+      }
       return (rows as List).map((row) {
         final items = (row['share_link_categories'] as List?) ?? [];
         final cats = items
             .map((it) => Category.fromJson((it as Map<String, dynamic>)['Categories']
                 as Map<String, dynamic>))
             .toList();
-        return (linkId: row['id'] as String, categories: cats);
+        final lid = row['id'] as String;
+        return (
+          linkId: lid,
+          categories: cats,
+          takers: takersByLink[lid] ?? <String>[],
+        );
       }).toList();
     } catch (e) {
       print('Error fetching share links: $e');
