@@ -26,6 +26,7 @@ import 'package:meaning_to/utils/share_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
+import 'package:meaning_to/utils/pending_intent_store.dart';
 import 'package:meaning_to/utils/error_dialog.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/invite_screen.dart';
@@ -216,6 +217,13 @@ void main() async {
         await InviteTokenStore.set('share:$shareId');
       } else if (invite != null) {
         await InviteTokenStore.set(invite);
+      }
+      // From the "Send to ROUZME" browser extension: ?addlink=<url>&title=<t>.
+      // Stashed so it survives the sign-in flow; processed once an authenticated
+      // Home is reached (see _maybeProcessPendingAddLink).
+      final addLink = q['addlink'];
+      if (addLink != null && addLink.isNotEmpty) {
+        await PendingIntentStore.set(addLink, q['title'] ?? '');
       }
     }
 

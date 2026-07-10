@@ -58,6 +58,7 @@ class LinkToTaskConverter {
     String url,
     String userId, {
     Category? currentCategory,
+    String? preProvidedTitle,
   }) async {
     print('LinkToTaskConverter: Processing URL: $url');
 
@@ -67,11 +68,20 @@ class LinkToTaskConverter {
         .normalizedUrl;
     print('LinkToTaskConverter: Normalized URL: $normalizedUrl');
 
-    // Fetch webpage metadata
-    final webpageContent =
-        await LinkProcessor.validateAndProcessLink(normalizedUrl);
-    final pageTitle = webpageContent.title ?? 'Untitled';
-    final pageDescription = webpageContent.description;
+    // When the caller already knows the title (e.g. the browser extension
+    // supplied the page title), skip fetching the page entirely.
+    final String pageTitle;
+    final String? pageDescription;
+    if (preProvidedTitle != null && preProvidedTitle.trim().isNotEmpty) {
+      pageTitle = preProvidedTitle.trim();
+      pageDescription = null;
+      print('LinkToTaskConverter: Using pre-provided title, skipping fetch');
+    } else {
+      final webpageContent =
+          await LinkProcessor.validateAndProcessLink(normalizedUrl);
+      pageTitle = webpageContent.title ?? 'Untitled';
+      pageDescription = webpageContent.description;
+    }
 
     print('LinkToTaskConverter: Page title: "$pageTitle"');
     print(

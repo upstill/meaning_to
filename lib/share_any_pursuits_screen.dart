@@ -449,21 +449,20 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // The native Share sheet only exists on mobile; on web and
-                  // desktop "Share" just copies the link — identical to Copy —
-                  // so hide it there to avoid a redundant button.
-                  if (_nativeShareAvailable) ...[
+                  // On mobile the native Share sheet already offers copy, so
+                  // show Share; on web/desktop Share just copies, so show Copy
+                  // Link instead. Either way it's two buttons with Send To User.
+                  if (_nativeShareAvailable)
                     Expanded(
-                        child: _actionButton(Icons.share, 'Share', _share)),
-                    const SizedBox(width: 8),
-                  ],
-                  Expanded(
-                      child: _actionButton(
-                          Icons.copy, 'Copy Link\nfor Sending', _copy)),
+                        child: _actionButton(Icons.share, 'Share', _share))
+                  else
+                    Expanded(
+                        child: _actionButton(
+                            Icons.copy, 'Copy Link', _copy)),
                   const SizedBox(width: 8),
                   Expanded(
-                      child: _actionButton(Icons.person_add_alt_1,
-                          'Send To\nUser', _sendToUser)),
+                      child: _actionButton(
+                          Icons.person_add, 'Send To User', _sendToUser)),
                 ],
               ),
             ),

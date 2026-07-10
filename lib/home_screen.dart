@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:meaning_to/main.dart' show MyApp;
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/error_dialog.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
+import 'package:meaning_to/utils/pending_intent_store.dart';
+import 'package:meaning_to/utils/incoming_link_processor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
@@ -33,6 +34,10 @@ enum HomeTaskSortOption { alphabetical, priority, age }
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<bool> needsTaskReload = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> needsDataReload = ValueNotifier<bool>(false);
+  // Toggled when an incoming link intent (native share / extension) is stashed
+  // while Home is already open, so it's processed promptly.
+  static final ValueNotifier<bool> needsIntentProcessing =
+      ValueNotifier<bool>(false);
 
   final String? initialCategoryId;
 
@@ -723,6 +728,8 @@ class HomeScreenState extends State<HomeScreen> {
     HomeScreen.needsTaskReload.addListener(_handleTaskReloadRequest);
     // Listen for data reload requests (categories and tasks)
     HomeScreen.needsDataReload.addListener(_handleDataReloadRequest);
+    // Process an incoming link intent that arrives while Home is already open.
+    HomeScreen.needsIntentProcessing.addListener(_handleIntentProcessingRequest);
 
     // Load categories after first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -737,6 +744,7 @@ class HomeScreenState extends State<HomeScreen> {
       await _loadCategories();
       await _redeemPendingShareIfAny();
       if (mounted && !_welcomeDialogShown) _maybeNotifyNewShares();
+      if (mounted) await _maybeProcessPendingIntent();
     });
   }
 
@@ -763,6 +771,93 @@ class HomeScreenState extends State<HomeScreen> {
     }
     await InviteTokenStore.clear();
     if (mounted) _loadCategories();
+  }
+
+  /// From the "Send to ROUZME" browser extension: if a page (url + title) was
+  /// stashed via ?addlink=, show the normal "add this link" picker with the
+  /// title pre-filled so no page fetch is needed. Real signed-in users only.
+  /// [targetCategory], when set (the pursuit the user just created for this
+  /// task), files the task straight in — no picker.
+  Future<void> _maybeProcessPendingIntent({Category? targetCategory}) async {
+    if (AuthUtils.isGuestUser()) return;
+    final pending = await PendingIntentStore.get();
+    if (pending == null) return;
+    final title = pending.title.isEmpty ? null : pending.title;
+    final owned = _categories.where((c) => !c.isShared).toList();
+
+    // A pursuit was created specifically for this task → file straight in.
+    if (targetCategory != null) {
+      await PendingIntentStore.clear();
+      if (!mounted) return;
+      await _fileIntentInto(pending.url, title, targetCategory);
+      return;
+    }
+
+    // No pursuit of their own yet (brand-new user taking a task): the Welcome
+    // dialog's "Create a Pursuit" flow handles it — leave the link stashed until
+    // they've made a pursuit (then _navigateToNewCategory re-runs with a target).
+    if (owned.isEmpty) return;
+
+    // Exactly one pursuit → a simple confirmation instead of a full picker.
+    if (owned.length == 1) {
+      final choice = await _confirmAddToSolePursuit(owned.first, pending.title);
+      if (!mounted) return;
+      if (choice == 'add') {
+        await PendingIntentStore.clear();
+        await _fileIntentInto(pending.url, title, owned.first);
+      } else if (choice == 'create') {
+        // Keep it stashed; creating a pursuit re-runs this with a target.
+        _navigateToNewCategory();
+      } else {
+        await PendingIntentStore.clear(); // dismissed
+      }
+      return;
+    }
+
+    // Several pursuits → the full picker.
+    await PendingIntentStore.clear();
+    if (!mounted) return;
+    await IncomingLinkProcessor.showLinkActionDialog(context, pending.url,
+        defaultCategory: _selectedCategory, preTitle: title);
+  }
+
+  /// When a taken task has exactly one owned pursuit to go in, confirm rather
+  /// than show a full picker: add to it, or create a new pursuit instead.
+  Future<String?> _confirmAddToSolePursuit(
+      Category pursuit, String taskTitle) {
+    final pursuitName =
+        NamingUtils.categoriesName(plural: false, capitalize: true);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(taskTitle.isEmpty ? 'Add this' : 'Add "$taskTitle"'),
+        content: Text(
+            'Add it to your $pursuitName "${pursuit.headline}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('create'),
+            child: Text('New $pursuitName'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop('add'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+            ),
+            child: Text('Add to "${pursuit.headline}"'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Files a taken link directly into [category] (no picker), then refreshes the
+  /// home so the new task shows immediately instead of "All out of ideas".
+  Future<void> _fileIntentInto(
+      String url, String? title, Category category) async {
+    await IncomingLinkProcessor.showLinkActionDialog(context, url,
+        defaultCategory: category, preTitle: title, targetCategory: category);
+    if (mounted) _handleEditComplete();
   }
 
   // New-shares notification state. Shown on Home and on key control hits; the
@@ -930,6 +1025,8 @@ class HomeScreenState extends State<HomeScreen> {
   void dispose() {
     HomeScreen.needsTaskReload.removeListener(_handleTaskReloadRequest);
     HomeScreen.needsDataReload.removeListener(_handleDataReloadRequest);
+    HomeScreen.needsIntentProcessing
+        .removeListener(_handleIntentProcessingRequest);
     _taskSearchController.dispose();
     _findController.dispose();
     _findDebounceTimer?.cancel();
@@ -2372,6 +2469,10 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _handleIntentProcessingRequest() {
+    if (mounted) unawaited(_maybeProcessPendingIntent());
+  }
+
   void _handleTaskReloadRequest() {
     print('HomeScreen: Task reload requested');
     if (HomeScreen.needsTaskReload.value && mounted) {
@@ -2426,9 +2527,15 @@ class HomeScreenState extends State<HomeScreen> {
       if (result != null) {
         print(
             'HomeScreen: Category was created or imported, reloading categories');
-        _loadCategories().then((_) {
+        _loadCategories().then((_) async {
           if (result is Category && mounted) {
-            _handleCategorySelection(result);
+            await _handleCategorySelection(result);
+          }
+          // If a task was waiting for a pursuit (the ?addlink first-login flow),
+          // file it straight into the pursuit just created — no picker.
+          if (mounted) {
+            await _maybeProcessPendingIntent(
+                targetCategory: result is Category ? result : null);
           }
         });
       }
@@ -2689,7 +2796,17 @@ class HomeScreenState extends State<HomeScreen> {
     }
     if (isFirstLogin) {
       await prefs.setBool('onboarded_$userId', true);
-      _showWelcomeDialog(); // non-blocking; sets _welcomeDialogShown internally
+      // If they arrived while taking a task (?addlink from the extension) and
+      // have no pursuit of their own to file it into, the greeting explains
+      // they must create one and offers "Create a Pursuit".
+      final pending = await PendingIntentStore.get();
+      final takingTitle = (pending != null &&
+              pending.title.isNotEmpty &&
+              !categories.any((c) => !c.isShared))
+          ? pending.title
+          : null;
+      _showWelcomeDialog(
+          takingTaskTitle: takingTitle); // non-blocking; sets _welcomeDialogShown
       await ApiClient.redeemSampleShares(available: false);
       if (mounted) await _loadCategories();
     }
@@ -2701,7 +2818,11 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _showWelcomeDialog() {
+  /// [takingTaskTitle] is set when a brand-new user arrived while taking a task
+  /// (an ?addlink intent) and has no pursuit yet to file it into: the greeting
+  /// then explains they must create a pursuit and offers a "Create a Pursuit"
+  /// button instead of "Got It".
+  void _showWelcomeDialog({String? takingTaskTitle}) {
     if (_welcomeDialogShown) return;
 
     _welcomeDialogShown = true;
@@ -2753,9 +2874,22 @@ class HomeScreenState extends State<HomeScreen> {
                           NamingUtils.tasksName(plural: true, capitalize: true),
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    TextSpan(
-                        text:
-                            ' for each one, like "The Godfather" or "Moby Dick".\n\nTo make it easier getting started, some ${NamingUtils.categoriesName(plural: true, capitalize: true)} have been shared with you. You can snag them using the "Shared With Me" item on the main menu.\n\n(The Help button below will explain more.)'),
+                    if (takingTaskTitle != null) ...[
+                      const TextSpan(
+                          text: ' for each one, like "The Godfather" or '
+                              '"Moby Dick".\n\n'),
+                      TextSpan(
+                          text: 'What ${NamingUtils.categoriesName(plural: false)} does "$takingTaskTitle" serve? '
+                              'Create it now to save this ${NamingUtils.tasksName(plural: false)}.\n\n'),
+                      TextSpan(
+                          text:
+                              'PS: a starter set of ${NamingUtils.categoriesName(plural: true, capitalize: true)} '
+                              'have also been shared with you. '
+                              'Hit the "Shared With Me" item on the main menu to peruse them.'),
+                    ] else
+                      TextSpan(
+                          text:
+                              ' for each one, like "The Godfather" or "Moby Dick".\n\nTo make it easier getting started, some ${NamingUtils.categoriesName(plural: true, capitalize: true)} have been shared with you. You can snag them using the "Shared With Me" item on the main menu.\n\n(The Help button below will explain more.)'),
                   ],
                 ),
               ),
@@ -2772,19 +2906,36 @@ class HomeScreenState extends State<HomeScreen> {
                       tooltip: 'Help',
                     ),
                     const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepPurple,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 12),
+                    if (takingTaskTitle != null)
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _navigateToNewCategory();
+                        },
+                        icon: const Icon(Icons.add),
+                        label: Text(
+                            'Create a ${NamingUtils.categoriesName(plural: false, capitalize: true)}'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[700],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                        ),
+                      )
+                    else
+                      ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                        ),
+                        child: const Text(
+                          'Got It',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
                       ),
-                      child: const Text(
-                        'Got It',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
                   ],
                 ),
               ],

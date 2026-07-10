@@ -57,8 +57,22 @@ enum LinkAction {
 
 /// Service for processing incoming shared links
 class IncomingLinkProcessor {
+  /// Title for the pursuit-picker: names the idea when we know its title,
+  /// otherwise the generic "for New Idea".
+  static String _pickerTitle(String? headline) {
+    final pursuit =
+        NamingUtils.categoriesName(capitalize: true, plural: false);
+    final h = headline?.trim();
+    if (h != null && h.isNotEmpty) {
+      return 'Select $pursuit to take "$h"';
+    }
+    return 'Select $pursuit for New '
+        '${NamingUtils.tasksName(capitalize: true, plural: false)}';
+  }
+
   /// Process an incoming link and return comprehensive results
-  static Future<LinkProcessingResult> processIncomingLink(String url) async {
+  static Future<LinkProcessingResult> processIncomingLink(String url,
+      {String? preTitle}) async {
     print('IncomingLinkProcessor: Processing incoming link: $url');
 
     // Normalize and validate URL
@@ -72,7 +86,8 @@ class IncomingLinkProcessor {
     // Run enrichment (via LinkToTaskConverter) and URL-duplicate search in parallel
     print('IncomingLinkProcessor: Starting parallel enrichment + duplicate check');
     final results = await Future.wait([
-      LinkToTaskConverter.createProposedTaskFromLink(normalizedUrl, userId)
+      LinkToTaskConverter.createProposedTaskFromLink(normalizedUrl, userId,
+              preProvidedTitle: preTitle)
           .then<ProposedTask?>((t) => t)
           .catchError((e) {
         print('IncomingLinkProcessor: LinkToTaskConverter failed: $e');
@@ -334,6 +349,8 @@ class IncomingLinkProcessor {
     BuildContext context,
     String url, {
     Category? defaultCategory,
+    String? preTitle,
+    Category? targetCategory,
   }) async {
     print('IncomingLinkProcessor: Processing incoming link: $url');
 
@@ -364,7 +381,7 @@ class IncomingLinkProcessor {
 
     try {
       // Parse the incoming text as if it's from an import
-      result = await processIncomingLink(url);
+      result = await processIncomingLink(url, preTitle: preTitle);
 
       if (!context.mounted) return;
 
@@ -375,8 +392,17 @@ class IncomingLinkProcessor {
 
       // Check for URL duplicates first
       if (result.duplicates.isNotEmpty) {
-        // Link exists - go to Edit Task
-        await _navigateToEditExistingTask(context, result.duplicates.first);
+        // Link exists - offer to edit it or keep as new. Pass the original
+        // result so "Keep New" reuses the known title instead of re-fetching.
+        await _navigateToEditExistingTask(context, result.duplicates.first,
+            originalResult: result);
+        return;
+      }
+
+      // A target category was supplied (e.g. the user just created a pursuit
+      // specifically for this task) — file it there directly, no picker.
+      if (targetCategory != null) {
+        await _createTaskDirectly(result, targetCategory);
         return;
       }
     } catch (e) {
@@ -475,8 +501,9 @@ class IncomingLinkProcessor {
   /// Navigate to Edit Task screen for existing duplicate task
   static Future<void> _navigateToEditExistingTask(
     BuildContext context,
-    DuplicateMatch duplicate,
-  ) async {
+    DuplicateMatch duplicate, {
+    LinkProcessingResult? originalResult,
+  }) async {
     if (!context.mounted) return;
 
     try {
@@ -507,19 +534,28 @@ class IncomingLinkProcessor {
           ),
         );
       } else if (userChoice == 'new') {
-        // User chose to create a new task anyway
+        // User chose to create a new task anyway. Reuse the original processing
+        // result (which already has the correct title) rather than re-fetching
+        // the page, which loses a supplied title and can yield a garbage one.
         print(
             'IncomingLinkProcessor: User chose to create new task despite duplicate');
-        // Get the URL from the duplicate to use for the new task
-        final url = duplicate.matchingUrl;
-
-        // Process the link and navigate to create new task
-        final result = await processIncomingLink(url);
+        final result = originalResult ??
+            await processIncomingLink(duplicate.matchingUrl);
 
         if (!context.mounted) return;
 
-        // Navigate to new task screen
-        await _navigateToTaskEditScreen(context, result, null);
+        // Navigate to new task screen (with the duplicate warning cleared).
+        await _navigateToTaskEditScreen(
+            context,
+            LinkProcessingResult(
+              url: result.url,
+              title: result.title,
+              description: result.description,
+              duplicates: const [],
+              hasValidMetadata: result.hasValidMetadata,
+              proposedTask: result.proposedTask,
+            ),
+            null);
       }
       // If userChoice is null or 'done', do nothing (user chose "All Done")
     } catch (e) {
@@ -706,7 +742,7 @@ class IncomingLinkProcessor {
       await CategoryPickerDialog.show(
         context,
         title:
-            'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
+            _pickerTitle(result.title),
         defaultCategory: defaultCategory,
         suggestedCategoryIds:
             result.proposedTask?.suggestedCategoryOriginalIds,
@@ -785,7 +821,7 @@ class IncomingLinkProcessor {
       await CategoryPickerDialog.show(
         context,
         title:
-            'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
+            _pickerTitle(result.title),
         defaultCategory: defaultCategory,
         suggestedCategoryIds:
             result.proposedTask?.suggestedCategoryOriginalIds,
@@ -889,8 +925,7 @@ class IncomingLinkProcessor {
 
     await CategoryPickerDialog.show(
       context,
-      title:
-          'Select ${NamingUtils.categoriesName(capitalize: true, plural: false)} for New ${NamingUtils.tasksName(capitalize: true, plural: false)}',
+      title: _pickerTitle(result.title),
       defaultCategory: defaultCategory,
       suggestedCategoryIds: result.proposedTask?.suggestedCategoryOriginalIds,
       linkUrl: result.url,

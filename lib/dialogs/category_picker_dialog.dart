@@ -302,6 +302,14 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     return count;
   }
 
+  /// Whether there is anything at all to pick — the default, any suggested, or
+  /// any other pursuit. Guards the picker body so it isn't hidden when the only
+  /// choices happen to be the default/suggested ones (which _baseListCount omits).
+  bool get _hasAnyChoice =>
+      widget.defaultCategory != null ||
+      _suggestedCategories.isNotEmpty ||
+      _baseListCount > 0;
+
   List<Category> get _filteredCategories {
     var filtered = _categories;
 
@@ -456,14 +464,14 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
             ],
 
             // Everything below the divider only when there are pursuits to offer
-            if (!_isLoading && _baseListCount > 0) ...[
+            if (!_isLoading && _hasAnyChoice) ...[
               const SizedBox(height: 10),
               const Divider(height: 1),
               const SizedBox(height: 10),
             ],
 
             // Guidance text (if provided)
-            if (!_isLoading && _baseListCount > 0 && widget.subtitle != null) ...[
+            if (!_isLoading && _hasAnyChoice && widget.subtitle != null) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Text(
@@ -479,7 +487,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
             ],
 
             // Combined default and suggested categories section
-            if (!_isLoading && _baseListCount > 0 &&
+            if (!_isLoading &&
                 (widget.defaultCategory != null ||
                     _suggestedCategories.isNotEmpty)) ...[
               Container(

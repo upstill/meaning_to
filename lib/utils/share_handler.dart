@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:share_handler/share_handler.dart';
 import 'dart:async';
 import 'package:meaning_to/home_screen.dart';
-import 'package:meaning_to/utils/incoming_link_processor.dart';
-import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/models/category.dart';
-import 'package:meaning_to/main.dart';
+import 'package:meaning_to/utils/pending_intent_store.dart';
 
 class ShareHandler {
   static final ShareHandler _instance = ShareHandler._internal();
@@ -230,8 +227,8 @@ class ShareHandler {
   String? get sharedText => _sharedText;
 
   /// Process shared content for URLs and trigger link processing workflow
-  void _processSharedContent(BuildContext? context, String? content,
-      Map<String, dynamic> contextInfo) {
+  Future<void> _processSharedContent(BuildContext? context, String? content,
+      Map<String, dynamic> contextInfo) async {
     print('ShareHandler: _processSharedContent called');
     print('ShareHandler: context = ${context != null ? 'not null' : 'NULL'}');
     print('ShareHandler: content = ${content ?? 'NULL'}');
@@ -260,105 +257,23 @@ class ShareHandler {
       return;
     }
 
-    // Get the default category from current context and cache
-    Category? defaultCategory;
     try {
-      print('ShareHandler: Getting default category from cache...');
-      // First try to get from cache manager
-      defaultCategory = CacheManager().currentCategory;
-      if (defaultCategory != null) {
-        print(
-            'ShareHandler: Using cached category: ${defaultCategory.headline}');
-      } else {
-        final currentCategoryName =
-            contextInfo['context']['currentCategory'] as String?;
-        if (currentCategoryName != null) {
-          print(
-              'ShareHandler: Current category context: $currentCategoryName (no cached object)');
-        } else {
-          print('ShareHandler: No current category available');
-        }
-      }
-    } catch (e, stackTrace) {
-      print('ShareHandler: Error getting current category: $e');
-      print('ShareHandler: Stack trace: $stackTrace');
-    }
-
-    try {
-      // Process the first URL (for now - could be enhanced to handle multiple URLs)
+      // Process the first URL (could be enhanced to handle multiple URLs).
       final firstUrl = urls.first;
       print('ShareHandler: Processing first URL: $firstUrl');
-
-      // Wait for state restoration to complete before showing the dialog
-      print(
-          'ShareHandler: URL found, waiting for state restoration to complete...');
-      _waitForStateRestorationThenShowDialog(
-          context, firstUrl, defaultCategory);
-      print('ShareHandler: Called _waitForStateRestorationThenShowDialog');
+      // Stash as a pending intent (no title) and nudge Home to process it via
+      // the same robust pipeline as the browser extension (?addlink): survives
+      // sign-in, and handles no-pursuit / single-pursuit / picker uniformly.
+      await PendingIntentStore.set(firstUrl, '');
+      HomeScreen.needsIntentProcessing.value =
+          !HomeScreen.needsIntentProcessing.value;
+      print('ShareHandler: Stashed intent and signalled Home');
     } catch (e, stackTrace) {
-      print('ShareHandler: ERROR in URL processing: $e');
+      print('ShareHandler: ERROR stashing shared URL: $e');
       print('ShareHandler: Stack trace: $stackTrace');
     }
   }
 
-  /// Wait for state restoration to complete, then show the link action dialog
-  Future<void> _waitForStateRestorationThenShowDialog(
-      BuildContext? context, String url, Category? defaultCategory) async {
-    if (context == null) return;
-
-    print('ShareHandler: Waiting for state restoration to complete...');
-
-    // Poll for state restoration completion with a reasonable timeout
-    int attempts = 0;
-    const maxAttempts = 20; // 10 seconds total (500ms * 20)
-
-    while (!MyApp.isStateRestored && attempts < maxAttempts) {
-      await Future.delayed(const Duration(milliseconds: 500));
-      attempts++;
-
-      if (attempts % 4 == 0) {
-        // Log every 2 seconds
-        print(
-            'ShareHandler: Still waiting for state restoration... (${attempts * 500}ms)');
-      }
-    }
-
-    if (MyApp.isStateRestored) {
-      print('ShareHandler: State restoration complete, showing link dialog');
-
-      // Re-check for updated category from cache after restoration
-      Category? updatedDefaultCategory = defaultCategory;
-      try {
-        final currentCategory = CacheManager().currentCategory;
-        if (currentCategory != null) {
-          updatedDefaultCategory = currentCategory;
-          print(
-              'ShareHandler: Using restored category: ${currentCategory.headline}');
-        }
-      } catch (e) {
-        print('ShareHandler: Error getting restored category: $e');
-      }
-
-      // Show the dialog if context is still valid
-      if (context.mounted) {
-        IncomingLinkProcessor.showLinkActionDialog(
-          context,
-          url,
-          defaultCategory: updatedDefaultCategory,
-        );
-      }
-    } else {
-      print(
-          'ShareHandler: Timeout waiting for state restoration, proceeding anyway');
-      if (context.mounted) {
-        IncomingLinkProcessor.showLinkActionDialog(
-          context,
-          url,
-          defaultCategory: defaultCategory,
-        );
-      }
-    }
-  }
 
   /// Schedule content processing for when context becomes available
   void _scheduleContentProcessing(String type, dynamic data) {

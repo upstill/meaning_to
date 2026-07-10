@@ -1693,19 +1693,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
+                ElevatedButton.icon(
                   onPressed: _isLoading ? null : _addLink,
                   icon: const Icon(Icons.add, size: 18),
-                  style: AppButtons.iconGoForth(),
-                  constraints: const BoxConstraints(
-                      minWidth: 29, minHeight: 29,
-                      maxWidth: 29, maxHeight: 29),
-                  padding: EdgeInsets.zero,
-                ),
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: _isLoading ? null : _addLink,
-                  child: const Text('Add Link'),
+                  label: const Text('Add Link'),
+                  style: AppButtons.goForth(),
                 ),
                 const SizedBox(width: 4),
                 IconButton(
