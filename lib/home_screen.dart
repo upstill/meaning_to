@@ -793,10 +793,22 @@ class HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // No pursuit of their own yet (brand-new user taking a task): the Welcome
-    // dialog's "Create a Pursuit" flow handles it — leave the link stashed until
-    // they've made a pursuit (then _navigateToNewCategory re-runs with a target).
-    if (owned.isEmpty) return;
+    // No pursuit of their own yet. On first login the Welcome dialog's "Create
+    // a Pursuit" flow handles it (leave the link stashed until they've made one,
+    // then _navigateToNewCategory re-runs with a target). On a later visit no
+    // Welcome shows, so prompt here rather than silently dropping the share.
+    if (owned.isEmpty) {
+      if (_welcomeDialogShown) return; // Welcome is driving the create flow
+      if (!mounted) return;
+      final choice = await _confirmCreatePursuitForIntent(title);
+      if (!mounted) return;
+      if (choice == 'create') {
+        _navigateToNewCategory(); // keeps stash; re-runs with a target on return
+      } else {
+        await PendingIntentStore.clear();
+      }
+      return;
+    }
 
     // Exactly one pursuit → a simple confirmation instead of a full picker.
     if (owned.length == 1) {
@@ -845,6 +857,39 @@ class HomeScreenState extends State<HomeScreen> {
               foregroundColor: Colors.white,
             ),
             child: Text('Add to "${pursuit.headline}"'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A taken link arrived but the user has no pursuit of their own to file it
+  /// into (and no first-login Welcome is driving the create flow). Prompt to
+  /// create one; returns 'create' or null.
+  Future<String?> _confirmCreatePursuitForIntent(String? taskTitle) {
+    final pursuitName =
+        NamingUtils.categoriesName(plural: false, capitalize: true);
+    final label =
+        (taskTitle == null || taskTitle.isEmpty) ? 'this link' : '"$taskTitle"';
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Create a $pursuitName'),
+        content: Text(
+            'To save $label you need a $pursuitName to put it in. Create one now?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('Not now'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.of(ctx).pop('create'),
+            icon: const Icon(Icons.add),
+            label: Text('New $pursuitName'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+            ),
           ),
         ],
       ),
@@ -2775,6 +2820,17 @@ class HomeScreenState extends State<HomeScreen> {
   /// Called after every category load for authenticated users.
   /// On first login silently subscribes the user to shares from supstill@mac.com
   /// (available=false so they appear in My Shares but not the main list).
+  /// A readable stand-in title for a shared link with no title of its own
+  /// (e.g. a native share that was just a bare URL): its host, or a generic.
+  String _shareLabelFromUrl(String url) {
+    try {
+      final host = Uri.parse(url).host;
+      return host.isNotEmpty ? host : 'the page you shared';
+    } catch (_) {
+      return 'the page you shared';
+    }
+  }
+
   Future<void> _handleFirstLoginOrEmptyCategories(
       List<Category> categories) async {
     if (_welcomeDialogShown) return;
@@ -2801,9 +2857,10 @@ class HomeScreenState extends State<HomeScreen> {
       // they must create one and offers "Create a Pursuit".
       final pending = await PendingIntentStore.get();
       final takingTitle = (pending != null &&
-              pending.title.isNotEmpty &&
               !categories.any((c) => !c.isShared))
-          ? pending.title
+          ? (pending.title.isNotEmpty
+              ? pending.title
+              : _shareLabelFromUrl(pending.url))
           : null;
       _showWelcomeDialog(
           takingTaskTitle: takingTitle); // non-blocking; sets _welcomeDialogShown

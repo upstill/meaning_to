@@ -261,10 +261,16 @@ class ShareHandler {
       // Process the first URL (could be enhanced to handle multiple URLs).
       final firstUrl = urls.first;
       print('ShareHandler: Processing first URL: $firstUrl');
-      // Stash as a pending intent (no title) and nudge Home to process it via
-      // the same robust pipeline as the browser extension (?addlink): survives
-      // sign-in, and handles no-pursuit / single-pursuit / picker uniformly.
-      await PendingIntentStore.set(firstUrl, '');
+      // Many apps share "Page Title <url>" (or "Title\n<url>"); keep the
+      // non-URL remainder as the title so a native share carries one just like
+      // the browser extension does (no page fetch needed downstream).
+      final derivedTitle =
+          content.replaceAll(firstUrl, '').replaceAll(RegExp(r'\s+'), ' ').trim();
+      print('ShareHandler: Derived title: "${derivedTitle}"');
+      // Stash as a pending intent and nudge Home to process it via the same
+      // robust pipeline as the extension: survives sign-in, and handles
+      // no-pursuit / single-pursuit / picker uniformly.
+      await PendingIntentStore.set(firstUrl, derivedTitle);
       HomeScreen.needsIntentProcessing.value =
           !HomeScreen.needsIntentProcessing.value;
       print('ShareHandler: Stashed intent and signalled Home');

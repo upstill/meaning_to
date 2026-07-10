@@ -125,7 +125,17 @@ open class ShareHandlerIosViewController: UIViewController {
         let data = try await attachment.loadItem(forTypeIdentifier: urlContentType, options: nil)
 
             if let item = data as? URL {
-                sharedText.append(item.absoluteString)
+                // Safari (and most apps) put the page title in the item's content
+                // text. Pass it as "Title\nURL" so the host app gets the real
+                // title without fetching the page (bot-hostile sites like IMDb
+                // block server-side fetches). The app splits title from URL.
+                let pageTitle = content.attributedContentText?.string
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !pageTitle.isEmpty && pageTitle != item.absoluteString {
+                    sharedText.append("\(pageTitle)\n\(item.absoluteString)")
+                } else {
+                    sharedText.append(item.absoluteString)
+                }
             } else {
                 dismissWithError()
             }

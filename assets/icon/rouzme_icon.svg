@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ROUZME app / extension icon: head silhouette with a knocked-out "!".
+     Tweak the palette via the two vars below and re-rasterize. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Background: brand blue (matches AppButtons.goForthBg = Colors.blue) -->
+  <rect x="0" y="0" width="1024" height="1024" rx="0" fill="#2196F3"/>
+
+  <!-- Head + the "!" as one shape using even-odd, so the mark is negative
+       space (blue background shows through the white head). -->
+  <path fill="#FFFFFF" fill-rule="evenodd" d="
+      M 512 150
+      C 655 150 760 275 760 445
+      C 760 615 655 745 512 745
+      C 369 745 264 615 264 445
+      C 264 275 369 150 512 150
+      Z
+      M 512 250
+      C 476 250 449 279 452 315
+      L 470 520
+      C 471 543 490 561 512 561
+      C 534 561 553 543 554 520
+      L 572 315
+      C 575 279 548 250 512 250
+      Z
+      M 512 610
+      C 484 610 462 632 462 660
+      C 462 688 484 710 512 710
+      C 540 710 562 688 562 660
+      C 562 632 540 610 512 610
+      Z
+  "/>
+
+  <!-- Shoulders/bust, so it reads as a person at a glance -->
+  <path fill="#FFFFFF" d="
+      M 512 780
+      C 640 780 748 852 792 968
+      C 800 990 784 1012 760 1012
+      L 264 1012
+      C 240 1012 224 990 232 968
+      C 276 852 384 780 512 780
+      Z
+  "/>
+</svg>
