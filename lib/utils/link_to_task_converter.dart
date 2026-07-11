@@ -4,6 +4,7 @@ import 'package:link_enrichment_core/service/enrichment_service.dart';
 import 'package:link_enrichment_core/utils/url_canonicalizer.dart';
 import 'package:meaning_to/utils/category_suggestion_registry.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/utils/title_cleaner.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/models/task.dart';
@@ -70,7 +71,7 @@ class LinkToTaskConverter {
 
     // When the caller already knows the title (e.g. the browser extension
     // supplied the page title), skip fetching the page entirely.
-    final String pageTitle;
+    String pageTitle;
     final String? pageDescription;
     if (preProvidedTitle != null && preProvidedTitle.trim().isNotEmpty) {
       pageTitle = preProvidedTitle.trim();
@@ -81,6 +82,14 @@ class LinkToTaskConverter {
           await LinkProcessor.validateAndProcessLink(normalizedUrl);
       pageTitle = webpageContent.title ?? 'Untitled';
       pageDescription = webpageContent.description;
+    }
+
+    // Strip site boilerplate (e.g. Tidal's "Listen to X on your streaming
+    // service") so the task gets the essential title.
+    final rawTitle = pageTitle;
+    pageTitle = TitleCleaner.clean(pageTitle, url: normalizedUrl);
+    if (pageTitle != rawTitle) {
+      print('LinkToTaskConverter: Cleaned title "$rawTitle" -> "$pageTitle"');
     }
 
     print('LinkToTaskConverter: Page title: "$pageTitle"');

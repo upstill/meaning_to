@@ -2012,7 +2012,7 @@ class HomeScreenState extends State<HomeScreen> {
 
   /// For read-only (shared) categories with no tasks visible: explain that
   /// we'll create an owned copy of the pursuit, offer to copy existing tasks,
-  /// then open NewContentScreen in the new pursuit.
+  /// then open the New Task editor in the new pursuit.
   Future<void> _addIdeaViaPickedPursuit() async {
     final sharedCategory = _selectedCategory;
     if (sharedCategory == null) return;

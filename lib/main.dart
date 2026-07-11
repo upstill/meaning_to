@@ -16,7 +16,6 @@ import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:meaning_to/new_category_screen.dart';
-import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/shop_endeavors_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/help_screen.dart';
@@ -990,18 +989,6 @@ class _MyAppState extends State<MyApp> {
               return MaterialPageRoute(
                 builder: (context) => const NewCategoryScreen(),
               );
-            case '/new-content':
-              final args = settings.arguments as Map<String, dynamic>?;
-              return MaterialPageRoute(
-                builder: (context) => NewContentScreen(
-                  selectedCategory: args?['selectedCategory'] as Category?,
-                  initialLinks: args?['initialLinks'] as List<String>?,
-                  initialHeadline: args?['initialHeadline'] as String?,
-                  initialNotes: args?['initialNotes'] as String?,
-                  originalId: args?['originalId'] as String?,
-                  categoryLocked: args?['categoryLocked'] as bool? ?? false,
-                ),
-              );
             case '/shop-endeavors':
               final args = settings.arguments as Map<String, dynamic>?;
               return MaterialPageRoute(
@@ -1013,28 +1000,17 @@ class _MyAppState extends State<MyApp> {
               final args = settings.arguments as Map<String, dynamic>;
               final task = args['task'] as Task?;
               final category = args['category'] as Category;
-
-              if (task == null) {
-                // New task creation - use new content screen in locked mode
-                return MaterialPageRoute(
-                  builder: (context) => NewContentScreen(
-                    selectedCategory: category,
-                    categoryLocked: true,
-                    initialLinks: args['initialLinks'] as List<String>?,
-                    initialHeadline: args['initialHeadline'] as String?,
-                    initialNotes: args['initialNotes'] as String?,
-                    originalId: args['originalId'] as String?,
-                  ),
-                );
-              } else {
-                // Existing task editing - continue using TaskEditScreen
-                return MaterialPageRoute(
-                  builder: (context) => TaskEditScreen(
-                    category: category,
-                    task: task,
-                  ),
-                );
-              }
+              // New or existing task alike → the unified TaskEditScreen.
+              return MaterialPageRoute(
+                builder: (context) => TaskEditScreen(
+                  category: category,
+                  task: task,
+                  initialLinks: args['initialLinks'] as List<String>?,
+                  initialHeadline: args['initialHeadline'] as String?,
+                  initialNotes: args['initialNotes'] as String?,
+                  showAlternativeOptions: task == null,
+                ),
+              );
             case '/letterboxd-import':
               final args = settings.arguments as Map<String, dynamic>;
               return MaterialPageRoute(
