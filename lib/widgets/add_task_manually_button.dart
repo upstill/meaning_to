@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/utils/naming.dart';
-import 'package:meaning_to/new_content_screen.dart';
+import 'package:meaning_to/task_edit_screen.dart';
 
 class AddTaskManuallyButton extends StatelessWidget {
   final Category category;
@@ -17,12 +17,13 @@ class AddTaskManuallyButton extends StatelessWidget {
   });
 
   Future<void> _createTask(BuildContext context) async {
+    // The unified New Task editor, locked to this pursuit (no selector).
     final result = await Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => NewContentScreen(
-          selectedCategory: category,
-          categoryLocked: true,
+        builder: (context) => TaskEditScreen(
+          category: category,
+          showAlternativeOptions: true,
         ),
       ),
     );

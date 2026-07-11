@@ -7,11 +7,11 @@ import 'package:meaning_to/utils/error_dialog.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
 import 'package:meaning_to/utils/pending_intent_store.dart';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
+import 'package:meaning_to/utils/category_ordering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/task_edit_screen.dart';
-import 'package:meaning_to/new_content_screen.dart';
 import 'package:meaning_to/widgets/edit_category_dialog.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
 import 'package:meaning_to/my_shares_screen.dart';
@@ -64,6 +64,15 @@ class HomeScreen extends StatefulWidget {
 }
 
 class HomeScreenState extends State<HomeScreen> {
+  // Sentinel value for the "New Pursuit" item in the pursuit-switcher menu
+  // (PopupMenuButton treats a null selection as a cancel, so we need a real one).
+  static final Category _newPursuitSentinel = Category(
+    id: -1,
+    headline: '',
+    ownerId: '',
+    createdAt: DateTime(0),
+  );
+
   List<Category> _categories = [];
   Category? _selectedCategory;
   Task? _randomTask;
@@ -810,57 +819,12 @@ class HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // Exactly one pursuit → a simple confirmation instead of a full picker.
-    if (owned.length == 1) {
-      final choice = await _confirmAddToSolePursuit(owned.first, pending.title);
-      if (!mounted) return;
-      if (choice == 'add') {
-        await PendingIntentStore.clear();
-        await _fileIntentInto(pending.url, title, owned.first);
-      } else if (choice == 'create') {
-        // Keep it stashed; creating a pursuit re-runs this with a target.
-        _navigateToNewCategory();
-      } else {
-        await PendingIntentStore.clear(); // dismissed
-      }
-      return;
-    }
-
-    // Several pursuits → the full picker.
+    // Otherwise (one pursuit or many) → the uniform New Task editor: a pursuit
+    // selector on top defaulting to the most sensible pursuit, where the user
+    // edits the title/links and confirms or cancels.
     await PendingIntentStore.clear();
     if (!mounted) return;
-    await IncomingLinkProcessor.showLinkActionDialog(context, pending.url,
-        defaultCategory: _selectedCategory, preTitle: title);
-  }
-
-  /// When a taken task has exactly one owned pursuit to go in, confirm rather
-  /// than show a full picker: add to it, or create a new pursuit instead.
-  Future<String?> _confirmAddToSolePursuit(
-      Category pursuit, String taskTitle) {
-    final pursuitName =
-        NamingUtils.categoriesName(plural: false, capitalize: true);
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(taskTitle.isEmpty ? 'Add this' : 'Add "$taskTitle"'),
-        content: Text(
-            'Add it to your $pursuitName "${pursuit.headline}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('create'),
-            child: Text('New $pursuitName'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop('add'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green[700],
-              foregroundColor: Colors.white,
-            ),
-            child: Text('Add to "${pursuit.headline}"'),
-          ),
-        ],
-      ),
-    );
+    await _fileIntentInto(pending.url, title, null);
   }
 
   /// A taken link arrived but the user has no pursuit of their own to file it
@@ -896,12 +860,13 @@ class HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Files a taken link directly into [category] (no picker), then refreshes the
-  /// home so the new task shows immediately instead of "All out of ideas".
+  /// Opens the uniform New Task editor for a taken link, defaulting the pursuit
+  /// selector to [defaultCategory] (or the most sensible pursuit when null),
+  /// then refreshes Home so a saved task shows immediately.
   Future<void> _fileIntentInto(
-      String url, String? title, Category category) async {
+      String url, String? title, Category? defaultCategory) async {
     await IncomingLinkProcessor.showLinkActionDialog(context, url,
-        defaultCategory: category, preTitle: title, targetCategory: category);
+        defaultCategory: defaultCategory, preTitle: title);
     if (mounted) _handleEditComplete();
   }
 
@@ -2143,12 +2108,18 @@ class HomeScreenState extends State<HomeScreen> {
 
     if (mounted) {
       await _loadCategories();
-      Navigator.push(
+      if (!mounted) return;
+      // Add a task to the just-created/cloned pursuit via the unified editor.
+      await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => NewContentScreen(selectedCategory: target),
+          builder: (_) => TaskEditScreen(
+            category: target,
+            showAlternativeOptions: true,
+          ),
         ),
-      ).then((_) => _loadCategories());
+      );
+      if (mounted) await _loadCategories();
     }
   }
 
@@ -2587,6 +2558,40 @@ class HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  /// Only a brand-new user (no pursuits yet) who taps "+" sees this — it
+  /// explains the idea and offers to create their first pursuit.
+  Future<bool?> _confirmNewbieCreatePursuit() {
+    final pursuit = NamingUtils.categoriesName(plural: false, capitalize: true);
+    final pursuits = NamingUtils.categoriesName(plural: true);
+    final task = NamingUtils.tasksName(plural: false);
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Create your first $pursuit'),
+        content: Text(
+            'ROUZME keeps track of what you\'ve been meaning to do, organized '
+            'into $pursuits — things like "Watch a Movie" or "Read a Book". '
+            'Before you can add $task, you\'ll need a $pursuit to put it in. '
+            'Create one now?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Not now'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            icon: const Icon(Icons.add),
+            label: Text('Create a $pursuit'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _navigateToNewContent() async {
     print('HomeScreen: Starting navigation to new content screen...');
 
@@ -2595,88 +2600,54 @@ class HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // Navigate directly to New Content screen
-    // It will show New Task variant if categories exist, or New Category variant if not
-    Navigator.push(
+    final owned = _categories.where((c) => !c.isShared).toList();
+
+    // No pursuit of one's own yet (only a brand-new user reaches this) → a
+    // newbie-oriented prompt to create their first pursuit, then continue into
+    // the New Task editor.
+    if (owned.isEmpty) {
+      final create = await _confirmNewbieCreatePursuit();
+      if (!mounted || create != true) return;
+      final result = await Navigator.pushNamed(context, '/new-category');
+      if (!mounted || result is! Category) return;
+      await _loadCategories();
+      if (!mounted) return;
+      _handleCategorySelection(result);
+      _navigateToNewContent(); // a pursuit now exists → the New Task editor
+      return;
+    }
+
+    // Otherwise → the unified New Task editor (identical to the incoming-share
+    // flow): a pursuit selector on top defaulting to the current pursuit, with
+    // the Alternative Options (bulk import, JustWatch, Letterboxd) below.
+    final ordering = await orderCategoriesBySensibility(owned);
+    if (!mounted) return;
+    final ordered = ordering.ordered;
+    final defaultCat = (_selectedCategory != null &&
+            owned.any((c) => c.id == _selectedCategory!.id))
+        ? _selectedCategory!
+        : ordered.first;
+
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => NewContentScreen(
-          selectedCategory: _selectedCategory,
+        builder: (context) => TaskEditScreen(
+          category: defaultCat,
+          selectableCategories: ordered,
+          showPursuitSelector: true,
+          showAlternativeOptions: true,
         ),
       ),
-    ).then((result) async {
-      if (result != null) {
-        if (result is Category) {
-          // New Pursuit created - select it
-          await _loadCategories();
-          _handleCategorySelection(result);
-        } else if (result is Map<String, dynamic>) {
-          final count = result['count'] ?? 1;
-          if (count == 1) {
-            // Single task created - show popup
-            await _handleSingleTaskCreated(result);
-          } else {
-            // Multiple tasks created - go to Edit Category
-            await _handleMultipleTasksCreated(result);
-          }
-        } else if (result == true) {
-          // Bulk import (AddTasksScreen / JustWatch) - reload and switch to list mode
-          print('HomeScreen: Bulk tasks created, switching to list mode');
-          setState(() {
-            _showTaskListMode = false;
-          });
-          await _loadCategories();
-          if (mounted) _toggleTaskListMode();
-        }
-      }
-    });
-  }
+    );
+    if (!mounted || result == null) return;
 
-  Future<void> _handleSingleTaskCreated(Map<String, dynamic> result) async {
-    final taskData = result['task'];
-    final categoryData = result['category'];
-    final category = Category.fromJson(categoryData);
-    final task = Task.fromJson(taskData);
-
-    if (!mounted) return;
-
-    setState(() {
-      _selectedCategory = category;
-      _showTaskListMode = false;
-      _isLoadingTask = true;
-    });
-
-    // Initialise cache for this category so the spinner clears
-    final userId = AuthUtils.getCurrentUserId();
-    await _cacheManager.initializeWithSavedCategory(category, userId);
-
-    if (!mounted) return;
-
-    setState(() {
-      _randomTask = task;
-      _isLoadingTask = false;
-    });
-
-    _loadCategories(); // refresh category list in background
-  }
-
-  Future<void> _handleMultipleTasksCreated(Map<String, dynamic> result) async {
-    final categoryData = result['category'];
-    final category = Category.fromJson(categoryData);
-
-    if (!mounted) return;
-
-    // Select the category and ensure list mode is off before toggling on
-    setState(() {
-      _selectedCategory = category;
-      _showTaskListMode = false;
-    });
-
+    // A task was created (true) or an import returned its pursuit (Category):
+    // reload and drop into the list so the new content shows.
     await _loadCategories();
-
     if (!mounted) return;
-
-    _toggleTaskListMode(); // switches to list mode and loads fresh tasks
+    if (result is Category) _handleCategorySelection(result);
+    setState(() => _showTaskListMode = false);
+    _toggleTaskListMode();
   }
 
   Future<void> _showEditPanel(Task task) async {
@@ -3479,47 +3450,69 @@ class HomeScreenState extends State<HomeScreen> {
                                         Icons.arrow_drop_down,
                                         size: 32,
                                       ),
-                                      enabled: _categories.length > 1,
+                                      // Enabled even at N==1 for non-guests so the
+                                      // "New Pursuit" option is always reachable.
+                                      enabled: _categories.length > 1 ||
+                                          !AuthUtils.isGuestUser(),
                                       onSelected: (category) {
-                                        unawaited(
-                                            _handleCategorySelection(category));
+                                        if (category.id ==
+                                            _newPursuitSentinel.id) {
+                                          _navigateToNewCategory();
+                                        } else {
+                                          unawaited(_handleCategorySelection(
+                                              category));
+                                        }
                                       },
-                                      itemBuilder: (context) => _categories
-                                          .where((c) =>
-                                              !c.isShared || c.isAvailable)
-                                          .map(
-                                            (category) =>
-                                                PopupMenuItem<Category>(
-                                              value: category,
-                                              child: category.isShared
-                                                  ? Column(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      children: [
-                                                        Text(category.headline),
-                                                        Text(
-                                                          'from ${category.ownerName}',
-                                                          style: TextStyle(
-                                                            fontSize: (Theme.of(
-                                                                            context)
-                                                                        .textTheme
-                                                                        .bodyMedium
-                                                                        ?.fontSize ??
-                                                                    14) *
-                                                                0.8,
-                                                            fontStyle: FontStyle
-                                                                .italic,
+                                      itemBuilder: (context) => [
+                                        ..._categories
+                                            .where((c) =>
+                                                !c.isShared || c.isAvailable)
+                                            .map(
+                                              (category) =>
+                                                  PopupMenuItem<Category>(
+                                                value: category,
+                                                child: category.isShared
+                                                    ? Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          Text(category
+                                                              .headline),
+                                                          Text(
+                                                            'from ${category.ownerName}',
+                                                            style: TextStyle(
+                                                              fontSize: (Theme.of(context)
+                                                                          .textTheme
+                                                                          .bodyMedium
+                                                                          ?.fontSize ??
+                                                                      14) *
+                                                                  0.8,
+                                                              fontStyle:
+                                                                  FontStyle
+                                                                      .italic,
+                                                            ),
                                                           ),
-                                                        ),
-                                                      ],
-                                                    )
-                                                  : Text(category.headline),
+                                                        ],
+                                                      )
+                                                    : Text(category.headline),
+                                              ),
                                             ),
-                                          )
-                                          .toList(),
+                                        if (!AuthUtils.isGuestUser()) ...[
+                                          const PopupMenuDivider(),
+                                          PopupMenuItem<Category>(
+                                            value: _newPursuitSentinel,
+                                            child: ListTile(
+                                              leading: const Icon(Icons.add),
+                                              title: Text(
+                                                  'New ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
+                                              contentPadding: EdgeInsets.zero,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                   ],
                                 ),

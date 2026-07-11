@@ -7,7 +7,8 @@ import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/dialogs/category_picker_dialog.dart';
+import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/category_ordering.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
@@ -57,18 +58,6 @@ enum LinkAction {
 
 /// Service for processing incoming shared links
 class IncomingLinkProcessor {
-  /// Title for the pursuit-picker: names the idea when we know its title,
-  /// otherwise the generic "for New Idea".
-  static String _pickerTitle(String? headline) {
-    final pursuit =
-        NamingUtils.categoriesName(capitalize: true, plural: false);
-    final h = headline?.trim();
-    if (h != null && h.isNotEmpty) {
-      return 'Select $pursuit to take "$h"';
-    }
-    return 'Select $pursuit for New '
-        '${NamingUtils.tasksName(capitalize: true, plural: false)}';
-  }
 
   /// Process an incoming link and return comprehensive results
   static Future<LinkProcessingResult> processIncomingLink(String url,
@@ -350,7 +339,6 @@ class IncomingLinkProcessor {
     String url, {
     Category? defaultCategory,
     String? preTitle,
-    Category? targetCategory,
   }) async {
     print('IncomingLinkProcessor: Processing incoming link: $url');
 
@@ -399,12 +387,6 @@ class IncomingLinkProcessor {
         return;
       }
 
-      // A target category was supplied (e.g. the user just created a pursuit
-      // specifically for this task) — file it there directly, no picker.
-      if (targetCategory != null) {
-        await _createTaskDirectly(result, targetCategory);
-        return;
-      }
     } catch (e) {
       print('IncomingLinkProcessor: Error processing link: $e');
       if (context.mounted) {
@@ -525,11 +507,32 @@ class IncomingLinkProcessor {
 
         final category = Category.fromJson(categoryResponse);
 
+        // Offer the pursuit selector here too, so the user can move/copy the
+        // existing task to another pursuit while editing it.
+        final orderingResult = originalResult ??
+            LinkProcessingResult(
+              url: duplicate.matchingUrl,
+              title: null,
+              description: null,
+              duplicates: const [],
+              hasValidMetadata: false,
+              proposedTask: null,
+            );
+        final ordered = await _orderedOwnedFor(orderingResult);
+        // Make sure the task's current pursuit is present as the default.
+        final selectable = ordered.any((c) => c.id == category.id)
+            ? ordered
+            : [category, ...ordered];
+        if (!context.mounted) return;
+
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => TaskEditScreen(
               category: category,
               task: duplicate.task,
+              showPursuitSelector: selectable.isNotEmpty,
+              selectableCategories:
+                  selectable.isNotEmpty ? selectable : null,
             ),
           ),
         );
@@ -555,7 +558,8 @@ class IncomingLinkProcessor {
               hasValidMetadata: result.hasValidMetadata,
               proposedTask: result.proposedTask,
             ),
-            null);
+            null,
+            forceCreate: true); // explicit "Make New" over the duplicate
       }
       // If userChoice is null or 'done', do nothing (user chose "All Done")
     } catch (e) {
@@ -737,23 +741,14 @@ class IncomingLinkProcessor {
     if (!context.mounted) return;
 
     try {
-      // Always show the category picker so the user can choose where to file
-      // the link. Pass defaultCategory as a pre-selected hint if available.
-      await CategoryPickerDialog.show(
-        context,
-        title:
-            _pickerTitle(result.title),
-        defaultCategory: defaultCategory,
-        suggestedCategoryIds:
-            result.proposedTask?.suggestedCategoryOriginalIds,
-        linkUrl: result.url,
-        onCategorySelected: (Category selectedCategory,
-            {bool? shouldMove, bool? applyToAll}) async {
-          await Future.delayed(const Duration(milliseconds: 100));
-          await _openTaskEditScreenWithArtistWork(
-              context, result, selectedCategory, artistWorkInfo);
-        },
-      );
+      // Open the New Task editor directly with a pursuit selector on top
+      // (ordered by sensibility, defaulting to the most sensible) instead of a
+      // separate "choose a pursuit" step.
+      final ordered = await _orderedOwnedFor(result);
+      if (ordered.isEmpty || !context.mounted) return;
+      await _openTaskEditScreenWithArtistWork(
+          context, result, defaultCategory ?? ordered.first, artistWorkInfo,
+          selectable: ordered);
     } catch (e) {
       print(
           'IncomingLinkProcessor: Error navigating to task edit screen with artist/work: $e');
@@ -765,8 +760,9 @@ class IncomingLinkProcessor {
     BuildContext context,
     LinkProcessingResult result,
     Category category,
-    ArtistWorkInfo artistWorkInfo,
-  ) async {
+    ArtistWorkInfo artistWorkInfo, {
+    List<Category>? selectable,
+  }) async {
     try {
       print(
           'IncomingLinkProcessor: Opening TaskEditScreen with artist: ${artistWorkInfo.artist}, work: ${artistWorkInfo.work}');
@@ -790,6 +786,8 @@ class IncomingLinkProcessor {
             initialNotes:
                 proposed?.notes ?? artistWorkInfo.work, // Work as notes
             showAlternativeOptions: false,
+            showPursuitSelector: selectable != null,
+            selectableCategories: selectable,
           ),
         ),
       );
@@ -807,31 +805,38 @@ class IncomingLinkProcessor {
     }
   }
 
+  /// Owned pursuits ordered by sensibility for [result] (suggested → recent →
+  /// domain-relevant → rest), for the New Task editor's pursuit selector.
+  static Future<List<Category>> _orderedOwnedFor(
+      LinkProcessingResult result) async {
+    final all = await ApiClient.getCategories();
+    final owned = all.where((c) => !c.isShared).toList();
+    final ordering = await orderCategoriesBySensibility(
+      owned,
+      suggestedOriginalIds: result.proposedTask?.suggestedCategoryOriginalIds,
+      linkUrl: result.url,
+    );
+    return ordering.ordered;
+  }
+
   /// Navigate to TaskEditScreen with the processed link data
   static Future<void> _navigateToTaskEditScreen(
     BuildContext context,
     LinkProcessingResult result,
-    Category? defaultCategory,
-  ) async {
+    Category? defaultCategory, {
+    bool forceCreate = false,
+  }) async {
     if (!context.mounted) return;
 
     try {
-      // Always show the category picker so the user can choose where to file
-      // the link. Pass defaultCategory as a pre-selected hint if available.
-      await CategoryPickerDialog.show(
-        context,
-        title:
-            _pickerTitle(result.title),
-        defaultCategory: defaultCategory,
-        suggestedCategoryIds:
-            result.proposedTask?.suggestedCategoryOriginalIds,
-        linkUrl: result.url,
-        onCategorySelected: (Category selectedCategory,
-            {bool? shouldMove, bool? applyToAll}) async {
-          await Future.delayed(const Duration(milliseconds: 100));
-          await _openTaskEditScreen(context, result, selectedCategory);
-        },
-      );
+      // Open the New Task editor directly with a pursuit selector on top
+      // (ordered by sensibility, defaulting to the most sensible) — no separate
+      // "choose a pursuit" step.
+      final ordered = await _orderedOwnedFor(result);
+      if (ordered.isEmpty || !context.mounted) return;
+      await _openTaskEditScreen(
+          context, result, defaultCategory ?? ordered.first,
+          selectable: ordered, forceCreate: forceCreate);
     } catch (e) {
       print('IncomingLinkProcessor: Error navigating to task edit screen: $e');
     }
@@ -841,8 +846,10 @@ class IncomingLinkProcessor {
   static Future<void> _openTaskEditScreen(
     BuildContext context,
     LinkProcessingResult result,
-    Category category,
-  ) async {
+    Category category, {
+    List<Category>? selectable,
+    bool forceCreate = false,
+  }) async {
     try {
       print(
           'IncomingLinkProcessor: Opening TaskEditScreen with category: ${category.headline}');
@@ -874,6 +881,9 @@ class IncomingLinkProcessor {
             initialNotes: proposed?.notes,
             showAlternativeOptions:
                 false, // Hide bulk import options for single task
+            showPursuitSelector: selectable != null,
+            selectableCategories: selectable,
+            forceCreate: forceCreate,
           ),
         ),
       );
@@ -902,127 +912,6 @@ class IncomingLinkProcessor {
       }
     } catch (e) {
       print('IncomingLinkProcessor: Error opening TaskEditScreen: $e');
-    }
-  }
-
-  /// Show category selection dialog for new task creation
-  static Future<void> _showCategorySelectionDialog(
-    BuildContext context,
-    LinkProcessingResult result, {
-    Category? defaultCategory,
-  }) async {
-    print('IncomingLinkProcessor: Showing category selection dialog');
-
-    // Check if context is still mounted
-    if (!context.mounted) {
-      print(
-          'IncomingLinkProcessor: Context no longer mounted, cannot show category dialog');
-      return;
-    }
-
-    // Store the context at the root level to avoid context becoming unmounted
-    final rootContext = context;
-
-    await CategoryPickerDialog.show(
-      context,
-      title: _pickerTitle(result.title),
-      defaultCategory: defaultCategory,
-      suggestedCategoryIds: result.proposedTask?.suggestedCategoryOriginalIds,
-      linkUrl: result.url,
-      onCategorySelected: (Category category, {bool? shouldMove, bool? applyToAll}) async {
-        // Use the stored root context instead of the dialog context
-        // Add a small delay to ensure the dialog is fully dismissed
-        await Future.delayed(const Duration(milliseconds: 100));
-
-        // Try to create the task using a different approach
-        await _createTaskDirectly(result, category);
-      },
-    );
-  }
-
-  /// Create a new task directly without relying on context
-  static Future<void> _createTaskDirectly(
-    LinkProcessingResult result,
-    Category category,
-  ) async {
-    print(
-        'IncomingLinkProcessor: Creating task directly for category: ${category.headline}');
-    print('IncomingLinkProcessor: URL: ${result.url}');
-    print('IncomingLinkProcessor: Title: ${result.title}');
-
-    try {
-      // Validate that we have a URL
-      if (result.url.isEmpty) {
-        throw ArgumentError('Cannot create task with empty URL');
-      }
-
-      final proposed = result.proposedTask;
-
-      // Create HTML link(s) with proper title
-      final List<String> links = (proposed != null && proposed.links.isNotEmpty)
-          ? proposed.links
-          : [
-              result.hasValidMetadata && result.title != null
-                  ? '<a href="${result.url}">${result.title}</a>'
-                  : '<a href="${result.url}">${result.url}</a>'
-            ];
-
-      print(
-          'IncomingLinkProcessor: Prepared ${links.length} link(s) for new task');
-
-      // Find the original_id by checking if any other task has this same link
-      print('IncomingLinkProcessor: Looking for original_id...');
-      final originalId = await findOriginalIdForLink(result.url);
-
-      // Format description for synopsis if available
-      String? synopsis = proposed?.synopsis;
-      if ((synopsis == null || synopsis.isEmpty) &&
-          result.description != null &&
-          result.description!.isNotEmpty) {
-        synopsis = result.description!.length > 200
-            ? '${result.description!.substring(0, 200)}... <a href="${result.url}">(more)</a>'
-            : '${result.description!} <a href="${result.url}">(reference)</a>';
-      }
-
-      // Create the task data
-      final taskData = {
-        'category_id': category.id,
-        'headline': proposed?.headline ?? result.title ?? 'New Task',
-        'links':
-            links, // Ensure this is always an array with at least one element
-        'notes': proposed?.notes,
-        'synopsis': synopsis, // Auto-fetched description
-        'original_id': originalId, // Link to original task if it exists
-        'owner_id': AuthUtils.getCurrentUserId(),
-        'suggestible_at': null,
-        'triggers_at': null,
-        'deferral': 0,
-        'finished': false,
-        'shared': true,
-      };
-
-      print(
-          'IncomingLinkProcessor: Task data prepared: ${taskData['headline']}');
-      print(
-          'IncomingLinkProcessor: Links array length: ${(taskData['links'] as List).length}');
-      print('IncomingLinkProcessor: original_id: $originalId');
-
-      // Save to database
-      final response = await supabase.from('Tasks').insert(taskData).select();
-
-      if (response.isNotEmpty) {
-        print('IncomingLinkProcessor: Task created successfully');
-
-        // Notify cache manager to refresh
-        await CacheManager().refreshCurrentCategoryTasks();
-
-        // Show success message (we'll need to get context from somewhere)
-        print('IncomingLinkProcessor: Task created - ${result.title}');
-      } else {
-        print('IncomingLinkProcessor: Failed to create task - no response');
-      }
-    } catch (e) {
-      print('IncomingLinkProcessor: Error creating task directly: $e');
     }
   }
 

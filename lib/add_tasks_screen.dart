@@ -3,6 +3,7 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/api_client.dart';
+import 'package:meaning_to/utils/category_ordering.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
@@ -32,6 +33,12 @@ class AddTasksScreenState extends State<AddTasksScreen> {
   final _textInputController = TextEditingController();
   bool _isLoading = false;
 
+  // The pursuit the list will go into; selectable via the dropdown on top.
+  Category? _selectedCategory;
+  Category get _category => _selectedCategory ?? widget.category;
+  List<Category> _selectable = []; // pursuits offered, ordered by sensibility
+  int _selectorEpoch = 0; // forces the dropdown to rebuild from _category
+
   // Duplicate handling state
   bool? _rememberDuplicateChoice; // null = ask each time, true = add link, false = create new
   bool _applyToAllDuplicates = false;
@@ -43,11 +50,46 @@ class AddTasksScreenState extends State<AddTasksScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedCategory = widget.category;
+    _selectable = [widget.category];
+    _loadSelectablePursuits();
     _textInputController.addListener(() {
       setState(() {
         // Trigger rebuild when text changes to update button state
       });
     });
+  }
+
+  /// Load the owned pursuits (ordered by sensibility) for the selector.
+  Future<void> _loadSelectablePursuits() async {
+    try {
+      final all = await ApiClient.getCategories();
+      final owned = all.where((c) => !c.isShared).toList();
+      final ordering = await orderCategoriesBySensibility(owned);
+      if (!mounted) return;
+      setState(() {
+        _selectable = ordering.ordered.isEmpty ? [widget.category] : ordering.ordered;
+      });
+    } catch (e) {
+      print('AddTasksScreen: Error loading selectable pursuits: $e');
+    }
+  }
+
+  /// Create a new pursuit inline from the selector, then select it for the list.
+  Future<void> _createNewPursuitInline() async {
+    final result = await Navigator.of(context).pushNamed('/new-category');
+    if (!mounted) return;
+    if (result is Category) {
+      setState(() {
+        if (!_selectable.any((c) => c.id == result.id)) {
+          _selectable = [result, ..._selectable];
+        }
+        _selectedCategory = result;
+      });
+    } else {
+      // Cancelled: snap the dropdown back to the current pursuit.
+      setState(() => _selectorEpoch++);
+    }
   }
 
   @override
@@ -128,7 +170,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       // Process the file contents using TaskEnricher.processBulkInput
       final results = await TaskEnricher.processBulkInput(
         inputText: processedContents,
-        categoryId: widget.category.id,
+        categoryId: _category.id,
         ownerId: userId,
         originSiteHint: originHint,
       );
@@ -161,7 +203,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           links: result.enrichedTask.links,
           processedLinks: result.enrichedTask.processedLinks,
           finished: result.enrichedTask.finished,
-          shared: !widget.category
+          shared: !_category
               .tasksArePrivate, // Use category's tasksArePrivate setting
         );
 
@@ -496,7 +538,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     const streamingMusicCategories = [41, 54, 74]; // Streaming media categories
     const movieTvCategories = [1, 2]; // Movie and TV categories
     final specialCategories = [...streamingMusicCategories, ...movieTvCategories];
-    final isSpecialCategory = specialCategories.contains(widget.category.originalId);
+    final isSpecialCategory = specialCategories.contains(_category.originalId);
 
     // Use efficient query-based duplicate detection
     // Only searches within user's categories that have matching original_ids
@@ -721,7 +763,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       final userId = AuthUtils.getCurrentUserId();
 
       // Using query-based duplicate detection - no need to load all tasks into memory
-      print('AddTasksScreen: Category: ${widget.category.headline}');
+      print('AddTasksScreen: Category: ${_category.headline}');
       print('AddTasksScreen: User ID: $userId');
       print('AddTasksScreen: Using query-based duplicate detection');
 
@@ -741,7 +783,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         try {
           final enrichmentResult = await TaskEnricher.processSingleLineInput(
             inputLine: linkToProcess,
-            categoryId: widget.category.id,
+            categoryId: _category.id,
             ownerId: userId,
           );
 
@@ -757,7 +799,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             links: enrichmentResult.enrichedTask.links,
             processedLinks: enrichmentResult.enrichedTask.processedLinks,
             finished: enrichmentResult.enrichedTask.finished,
-            shared: !widget.category
+            shared: !_category
                 .tasksArePrivate, // Use category's tasksArePrivate setting
           );
 
@@ -983,7 +1025,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             // Use TaskEnricher for non-URL text
             final enrichmentResult = await TaskEnricher.processSingleLineInput(
               inputLine: trimmedText,
-              categoryId: widget.category.id,
+              categoryId: _category.id,
               ownerId: userId,
             );
 
@@ -999,7 +1041,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               links: enrichmentResult.enrichedTask.links,
               processedLinks: enrichmentResult.enrichedTask.processedLinks,
               finished: enrichmentResult.enrichedTask.finished,
-              shared: !widget.category
+              shared: !_category
                   .tasksArePrivate, // Use category's tasksArePrivate setting
             );
           }
@@ -1244,7 +1286,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
             // Use TaskEnricher for non-URL text
             final enrichmentResult = await TaskEnricher.processSingleLineInput(
               inputLine: line,
-              categoryId: widget.category.id,
+              categoryId: _category.id,
               ownerId: userId,
             );
 
@@ -1260,7 +1302,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
               links: enrichmentResult.enrichedTask.links,
               processedLinks: enrichmentResult.enrichedTask.processedLinks,
               finished: enrichmentResult.enrichedTask.finished,
-              shared: !widget.category
+              shared: !_category
                   .tasksArePrivate, // Use category's tasksArePrivate setting
             );
           }
@@ -1415,7 +1457,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
 
       // Refresh cache after creating tasks
       final cacheManager = CacheManager();
-      await cacheManager.initializeWithSavedCategory(widget.category, userId);
+      await cacheManager.initializeWithSavedCategory(_category, userId);
 
       // Clear the text input
       _textInputController.clear();
@@ -1446,7 +1488,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-            'New ${NamingUtils.tasksName(capitalize: true, plural: true)} to ${widget.category.headline}'),
+            'New ${NamingUtils.tasksName(capitalize: true, plural: true)} to ${_category.headline}'),
         leading: const HomeButton(),
       ),
       body: SingleChildScrollView(
@@ -1454,6 +1496,49 @@ class AddTasksScreenState extends State<AddTasksScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Pursuit selector — choose (or create) the pursuit for this list.
+            DropdownButtonFormField<Category?>(
+              key: ValueKey(_selectorEpoch),
+              value: _category,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText:
+                    NamingUtils.categoriesName(plural: false, capitalize: true),
+                border: const OutlineInputBorder(),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+              ),
+              items: [
+                for (final c in _selectable)
+                  DropdownMenuItem<Category?>(
+                    value: c,
+                    child: Text(c.headline, overflow: TextOverflow.ellipsis),
+                  ),
+                DropdownMenuItem<Category?>(
+                  value: null,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add, size: 18, color: AppButtons.goForthBg),
+                      const SizedBox(width: 6),
+                      Text(
+                        'New ${NamingUtils.categoriesName(plural: false, capitalize: true)}',
+                        style: TextStyle(color: AppButtons.goForthBg),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              onChanged: _isLoading
+                  ? null
+                  : (c) {
+                      if (c == null) {
+                        _createNewPursuitInline();
+                        return;
+                      }
+                      setState(() => _selectedCategory = c);
+                    },
+            ),
+            const SizedBox(height: 16),
             // Task creation section
             Card(
               child: Padding(
@@ -1581,7 +1666,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
                       child: FractionallySizedBox(
                         widthFactor: 0.6,
                         child: AddTaskManuallyButton(
-                          category: widget.category,
+                          category: _category,
                           isLoading: _isLoading,
                           onTaskAdded: () {
                             setState(() {

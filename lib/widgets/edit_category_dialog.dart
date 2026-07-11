@@ -86,20 +86,11 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
               TextFormField(
                 controller: _headlineController,
                 autofocus: true,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Name',
-                  border: const OutlineInputBorder(),
+                  border: OutlineInputBorder(),
                   floatingLabelBehavior: FloatingLabelBehavior.always,
-                  floatingLabelStyle: const TextStyle(fontSize: 16),
-                  suffixIcon: Tooltip(
-                    message: _isPrivate ? 'Make Public' : 'Make Private',
-                    child: IconButton(
-                      icon: Icon(_isPrivate ? Icons.lock : Icons.lock_open),
-                      onPressed: _isLoading
-                          ? null
-                          : () => setState(() => _isPrivate = !_isPrivate),
-                    ),
-                  ),
+                  floatingLabelStyle: TextStyle(fontSize: 16),
                 ),
                 validator: (value) =>
                     (value == null || value.trim().isEmpty)

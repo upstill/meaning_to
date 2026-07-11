@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/utils/supabase_client.dart';
+import 'package:meaning_to/utils/category_ordering.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/new_category_screen.dart';
 
@@ -132,22 +132,20 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       print('CategoryPickerDialog: ${ownedCategories.length} owned, '
           '${sharedCategories.length} shared');
 
-      // Get recent categories from cache (owned only)
-      final recentCategories = await _getRecentCategories(ownedCategories);
-
-      // Get suggested categories if IDs provided (owned only)
-      final suggestedCategories = _getSuggestedCategories(ownedCategories);
-
-      // Calculate domain-based relevance scores if link URL provided
-      final domainScores =
-          await _calculateDomainRelevanceScores(ownedCategories);
+      // Rank signals (recent/suggested/domain) via the shared utility so this
+      // picker and the TaskEditScreen pursuit selector order pursuits identically.
+      final ordering = await orderCategoriesBySensibility(
+        ownedCategories,
+        suggestedOriginalIds: widget.suggestedCategoryIds,
+        linkUrl: widget.linkUrl,
+      );
 
       setState(() {
         _categories = ownedCategories;
         _sharedCategories = sharedCategories;
-        _recentCategories = recentCategories;
-        _suggestedCategories = suggestedCategories;
-        _domainRelevanceScores = domainScores;
+        _recentCategories = ordering.recent;
+        _suggestedCategories = ordering.suggested;
+        _domainRelevanceScores = ordering.domainScores;
         _isLoading = false;
       });
     } catch (e) {
@@ -157,136 +155,6 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
         _isLoading = false;
       });
     }
-  }
-
-  Future<List<Category>> _getRecentCategories(
-      List<Category> allCategories) async {
-    try {
-      // Get recently accessed category IDs from cache
-      final recentIds = await CacheManager.getRecentCategoryIds();
-
-      // Filter and sort categories by recent access
-      final recent = <Category>[];
-      for (final id in recentIds) {
-        final category = allCategories.where((c) => c.id == id).firstOrNull;
-        if (category != null) {
-          recent.add(category);
-        }
-      }
-
-      return recent;
-    } catch (e) {
-      print('CategoryPickerDialog: Error loading recent categories: $e');
-      return [];
-    }
-  }
-
-  List<Category> _getSuggestedCategories(List<Category> allCategories) {
-    if (widget.suggestedCategoryIds == null ||
-        widget.suggestedCategoryIds!.isEmpty) {
-      return [];
-    }
-
-    // Find categories matching the suggested IDs (by original_id)
-    final suggested = <Category>[];
-    for (final suggestedId in widget.suggestedCategoryIds!) {
-      final category =
-          allCategories.where((c) => c.originalId == suggestedId).firstOrNull;
-      if (category != null) {
-        suggested.add(category);
-      }
-    }
-
-    return suggested;
-  }
-
-  /// Calculate domain-based relevance scores for categories
-  /// Returns a map of category ID -> count of tasks with links to the same domain
-  Future<Map<int, int>> _calculateDomainRelevanceScores(
-      List<Category> allCategories) async {
-    final scores = <int, int>{};
-
-    // If no link URL provided, return empty scores
-    if (widget.linkUrl == null || widget.linkUrl!.isEmpty) {
-      return scores;
-    }
-
-    try {
-      // Extract domain from the link URL
-      final uri = Uri.tryParse(widget.linkUrl!);
-      if (uri == null) {
-        print('CategoryPickerDialog: Invalid link URL: ${widget.linkUrl}');
-        return scores;
-      }
-
-      final domain = uri.host;
-      print(
-          'CategoryPickerDialog: Calculating domain relevance scores for domain: $domain');
-
-      // For each category, calculate its relevance score
-      for (final category in allCategories) {
-        // Find all categories with the same original_id
-        final relatedCategoryIds = <int>[];
-
-        // Add the category's own ID
-        relatedCategoryIds.add(category.id);
-
-        // If this category has an original_id, find all categories with the same original_id
-        if (category.originalId != null) {
-          for (final otherCategory in allCategories) {
-            if (otherCategory.originalId == category.originalId &&
-                otherCategory.id != category.id) {
-              relatedCategoryIds.add(otherCategory.id);
-            }
-          }
-        }
-
-        // Also find categories that have this category as their original
-        for (final otherCategory in allCategories) {
-          if (otherCategory.originalId == category.id) {
-            relatedCategoryIds.add(otherCategory.id);
-          }
-        }
-
-        print(
-            'CategoryPickerDialog: Category "${category.headline}" has ${relatedCategoryIds.length} related categories');
-
-        // Query to count tasks in these categories that have links to the domain
-        final response = await supabase
-            .from('Tasks')
-            .select('id, links')
-            .inFilter('category_id', relatedCategoryIds);
-
-        final tasksData = response as List<dynamic>;
-        int matchCount = 0;
-
-        // Count tasks that have links to this domain
-        for (final taskData in tasksData) {
-          final links = taskData['links'] as List<dynamic>?;
-          if (links != null) {
-            for (final link in links) {
-              if (link is String && link.contains(domain)) {
-                matchCount++;
-                break; // Count each task only once
-              }
-            }
-          }
-        }
-
-        scores[category.id] = matchCount;
-        if (matchCount > 0) {
-          print(
-              'CategoryPickerDialog: Category "${category.headline}" has $matchCount tasks with links to $domain');
-        }
-      }
-
-      print('CategoryPickerDialog: Domain relevance scores calculated');
-    } catch (e) {
-      print(
-          'CategoryPickerDialog: Error calculating domain relevance scores: $e');
-    }
-
-    return scores;
   }
 
   /// Total list items available, ignoring the current search query.

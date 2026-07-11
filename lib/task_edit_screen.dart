@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
+import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/link_edit_screen.dart';
@@ -13,7 +14,6 @@ import 'package:meaning_to/utils/cache_manager.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
-import 'package:meaning_to/shop_endeavors_screen.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/justwatch_import_screen.dart';
 import 'package:meaning_to/letterboxd_import_screen.dart';
@@ -87,6 +87,9 @@ class TaskEditScreen extends StatefulWidget {
   final String? infoMessage; // Optional informational message to display at top
   final bool isPanel; // true when displayed as modal bottom sheet
   final void Function(Category)? onCategoryChange; // called when panel wants category change
+  final bool showPursuitSelector; // new task from a share: show a pursuit dropdown on top
+  final List<Category>? selectableCategories; // pursuits to choose from, pre-ordered by sensibility
+  final bool forceCreate; // "Make New" over a duplicate: insert, skip the merge check
 
   const TaskEditScreen({
     super.key,
@@ -99,6 +102,9 @@ class TaskEditScreen extends StatefulWidget {
     this.infoMessage,
     this.isPanel = false,
     this.onCategoryChange,
+    this.showPursuitSelector = false,
+    this.selectableCategories,
+    this.forceCreate = false,
   });
 
   @override
@@ -120,14 +126,35 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   // Local copy of the task for editing
   Task? _localTask;
 
+  // The pursuit this task will go in. Mutable only when the pursuit selector is
+  // shown (new task from a share); otherwise null so [_category] tracks
+  // widget.category (respecting panel category-change rebuilds).
+  Category? _selectedCategory;
+  Category get _category => _selectedCategory ?? widget.category;
+  // Pursuits offered in the selector; a pursuit created inline is prepended.
+  List<Category> _selectable = [];
+  // For an existing task retargeted to a different pursuit: true = copy (keep the
+  // original and add a copy), false = move (change the task's pursuit).
+  bool _copyMode = false;
+  // Bumped to force the pursuit dropdown to rebuild from _category (its
+  // FormField caches the user's tap, so a cancel needs a fresh instance).
+  int _selectorEpoch = 0;
+
   @override
   void initState() {
     super.initState();
 
+    // New task from a share: default to the most sensible pursuit (first in the
+    // pre-ordered selectableCategories); the selector lets the user change it.
+    if (widget.showPursuitSelector) {
+      _selectedCategory = widget.category;
+      _selectable = List<Category>.from(widget.selectableCategories ?? const []);
+    }
+
     print('TaskEditScreen: ============ initState CALLED ============');
-    print('TaskEditScreen: Category: ${widget.category.headline}');
+    print('TaskEditScreen: Category: ${_category.headline}');
     print(
-        'TaskEditScreen: Category original_id: ${widget.category.originalId}');
+        'TaskEditScreen: Category original_id: ${_category.originalId}');
     print('TaskEditScreen: Is new task: ${widget.task == null}');
     print('TaskEditScreen: widget.initialHeadline: ${widget.initialHeadline}');
     print('TaskEditScreen: widget.initialNotes: ${widget.initialNotes}');
@@ -193,7 +220,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // New task: use category's tasksArePrivate setting
       // If tasksArePrivate is true, tasks start private (shared = false)
       // If tasksArePrivate is false, tasks start shared (shared = true)
-      _isShared = !widget.category.tasksArePrivate;
+      _isShared = !_category.tasksArePrivate;
     }
 
     // Add listener to track headline changes and detect pasted URLs
@@ -296,11 +323,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       print('TaskEditScreen: Fetched title: "$fetchedTitle"');
 
       // Check if this is a streaming media link in a streaming media category
-      final isStreamingCategory = widget.category.originalId != null &&
-          STREAMING_MEDIA_CATEGORY_IDS.contains(widget.category.originalId);
+      final isStreamingCategory = _category.originalId != null &&
+          STREAMING_MEDIA_CATEGORY_IDS.contains(_category.originalId);
 
       print(
-          'TaskEditScreen: Category original_id: ${widget.category.originalId}');
+          'TaskEditScreen: Category original_id: ${_category.originalId}');
       print('TaskEditScreen: Is streaming category: $isStreamingCategory');
       print('TaskEditScreen: Is streaming URL: ${isStreamingMediaUrl(url)}');
 
@@ -367,7 +394,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => TaskEditScreen(
-                      category: widget.category,
+                      category: _category,
                       task: existingTask,
                       initialNotes: existingTask.notes != null
                           ? '${existingTask.notes}\n${artistWorkInfo.work}'
@@ -417,13 +444,86 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
+  /// Create a new pursuit inline from the selector (via the new-category route),
+  /// then add it to the selector and make it the current pick.
+  Future<void> _createNewPursuitInline() async {
+    final result = await Navigator.of(context).pushNamed('/new-category');
+    if (!mounted || result is! Category) return;
+
+    // A brand-new pursuit now exists — tell Home so it appears without a refresh.
+    HomeScreen.needsDataReload.value = true;
+
+    // Taking a pre-existing task into the new pursuit is still a move-or-copy
+    // question; a genuinely new task just files there.
+    if (_localTask != null) {
+      final mode = await _askCopyOrMove(widget.category, result);
+      if (!mounted) return;
+      if (mode == null) {
+        // Cancelled: pursuit was created but not taken; restore the selector.
+        setState(() => _selectorEpoch++);
+        return;
+      }
+      setState(() {
+        if (!_selectable.any((c) => c.id == result.id)) {
+          _selectable = [result, ..._selectable];
+        }
+        _selectedCategory = result;
+        _copyMode = mode == 'copy';
+      });
+      return;
+    }
+
+    setState(() {
+      if (!_selectable.any((c) => c.id == result.id)) {
+        _selectable = [result, ..._selectable];
+      }
+      _selectedCategory = result;
+      _copyMode = false;
+      _isShared = !result.tasksArePrivate;
+    });
+  }
+
+  /// Existing task moved to a different pursuit: ask move vs copy.
+  /// Returns 'move', 'copy', or null (cancel).
+  Future<String?> _askCopyOrMove(Category source, Category target) {
+    final taskName = NamingUtils.tasksName(plural: false);
+    final catName = NamingUtils.categoriesName(plural: false);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Move or copy?'),
+        content: Text(
+            'This $taskName is part of the $catName "${source.headline}". Should we move it to "${target.headline}", '
+            'or keep the original and add a copy there?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('copy'),
+            child: const Text('Copy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop('move'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Move'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _addLink() async {
     final result = await Navigator.push<ProposedTask?>(
       context,
       MaterialPageRoute(
         builder: (context) => LinkEditScreen(
           currentTask: _currentTaskState,
-          currentCategory: widget.category,
+          currentCategory: _category,
         ),
       ),
     );
@@ -446,7 +546,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         builder: (context) => LinkEditScreen(
           initialLink: _links[index],
           currentTask: _currentTaskState,
-          currentCategory: widget.category,
+          currentCategory: _category,
         ),
       ),
     );
@@ -518,8 +618,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       if (!isStreamingMediaUrl(url)) return;
 
       // Check if current category is a streaming media category
-      final isStreamingCategory = widget.category.originalId != null &&
-          STREAMING_MEDIA_CATEGORY_IDS.contains(widget.category.originalId);
+      final isStreamingCategory = _category.originalId != null &&
+          STREAMING_MEDIA_CATEGORY_IDS.contains(_category.originalId);
 
       if (!isStreamingCategory) {
         print(
@@ -593,7 +693,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => TaskEditScreen(
-                  category: widget.category,
+                  category: _category,
                   task: existingTask,
                   initialNotes: existingTask.notes != null
                       ? '${existingTask.notes}\n${artistWorkInfo.work}'
@@ -651,7 +751,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'in ${widget.category.headline}',
+                    'in ${_category.headline}',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey[600],
@@ -777,7 +877,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     final response = await supabase
         .from('Tasks')
         .select()
-        .eq('category_id', widget.category.id)
+        .eq('category_id', _category.id)
         .eq('owner_id', userId)
         .order('created_at', ascending: false);
 
@@ -1192,8 +1292,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         print('TaskEditScreen: Fetched webpage title: "$fetchedTitle"');
 
         // Check if this is a streaming media link in a streaming media category
-        final isStreamingCategory = widget.category.originalId != null &&
-            STREAMING_MEDIA_CATEGORY_IDS.contains(widget.category.originalId);
+        final isStreamingCategory = _category.originalId != null &&
+            STREAMING_MEDIA_CATEGORY_IDS.contains(_category.originalId);
 
         if (isStreamingMediaUrl(cleanURL) &&
             isStreamingCategory &&
@@ -1331,6 +1431,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     try {
       final userId = AuthUtils.getCurrentUserId();
 
+      // "Copy" of an existing task into another pursuit is a fresh insert, so
+      // treat it like a new task below (leaving the original untouched).
+      final bool creatingNew = _localTask == null || _copyMode;
+
       // Process the headline text to extract links and set appropriate headline.
       // Skip colon-splitting for existing tasks so user edits like "Mission: Impossible"
       // aren't silently truncated.
@@ -1352,7 +1456,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       final data = {
         'headline': processedHeadline,
         'notes': finalNotes,
-        'category_id': widget.category.id,
+        'category_id': _category.id,
         'owner_id': userId,
         'finished': _localTask?.finished ?? false,
         'shared': _isShared,
@@ -1360,8 +1464,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             allLinks, // PostgreSQL array - always store as array, even if empty
       };
 
-      // For new tasks, explicitly set suggestible_at to null to ensure they appear at the top
-      if (_localTask == null) {
+      // For new tasks (and copies), explicitly set suggestible_at to null so they appear at the top
+      if (creatingNew) {
         data['suggestible_at'] = null;
         print(
             'TaskEditScreen: Explicitly setting suggestible_at to null for new task to ensure it appears at top of list');
@@ -1407,11 +1511,14 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       }
 
       Task? updatedTask;
-      if (_localTask == null) {
-        // Check for duplicates before creating new task
+      if (creatingNew) {
+        // A genuinely new task checks for an existing duplicate to merge into; a
+        // deliberate copy into another pursuit always inserts a fresh row.
         print(
             'TaskEditScreen: Checking for duplicates before creating new task...');
-        final existingTask = await _checkForDuplicateAndMerge(data, userId);
+        final existingTask = (_copyMode || widget.forceCreate)
+            ? null
+            : await _checkForDuplicateAndMerge(data, userId);
 
         if (existingTask != null) {
           // Found a duplicate - use the existing task
@@ -1510,13 +1617,15 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       print('TaskEditScreen: Updating task cache...');
       final cacheManager = CacheManager();
 
-      // Check if category changed (for existing tasks only)
-      final bool categoryChanged =
-          _localTask != null && _localTask!.categoryId != widget.category.id;
+      // Check if category changed (an existing task MOVED to another pursuit;
+      // a copy leaves the original in place, so it's not a "change").
+      final bool categoryChanged = _localTask != null &&
+          !_copyMode &&
+          _localTask!.categoryId != _category.id;
 
       if (categoryChanged) {
         print(
-            'TaskEditScreen: Category changed from ${_localTask!.categoryId} to ${widget.category.id}');
+            'TaskEditScreen: Category changed from ${_localTask!.categoryId} to ${_category.id}');
         // If the cache is on the old category, refresh from API to get updated task list
         if (cacheManager.currentCategory?.id == _localTask!.categoryId) {
           print('TaskEditScreen: Refreshing old category cache from API...');
@@ -1525,7 +1634,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         // Note: If cache is on the new category, it will be refreshed when user navigates there
       } else {
         // Category didn't change, update normally if cache is on this category
-        if (cacheManager.currentCategory?.id == widget.category.id) {
+        if (cacheManager.currentCategory?.id == _category.id) {
           print(
               'TaskEditScreen: Updating task in cache... (new task: ${_localTask == null})');
           if (updatedTask != null) {
@@ -1533,7 +1642,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           }
         } else {
           print(
-              'TaskEditScreen: Cache is on different category (${cacheManager.currentCategory?.id} vs ${widget.category.id}), skipping cache update');
+              'TaskEditScreen: Cache is on different category (${cacheManager.currentCategory?.id} vs ${_category.id}), skipping cache update');
         }
       }
 
@@ -1609,7 +1718,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // Update the task cache using CacheManager
       print('TaskEditScreen: Updating task cache after deletion...');
       final cacheManager = CacheManager();
-      if (cacheManager.currentCategory?.id == widget.category.id) {
+      if (cacheManager.currentCategory?.id == _category.id) {
         print('TaskEditScreen: Removing task from cache...');
         await cacheManager.removeTask(_localTask!.id);
         print('TaskEditScreen: Task removed from cache successfully');
@@ -1780,6 +1889,82 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
   List<Widget> _buildFormChildren() {
     return [
+              // New task from a share: pursuit selector on top, defaulting to the
+              // most sensible pursuit; the user can retarget before confirming.
+              if (widget.showPursuitSelector &&
+                  widget.selectableCategories != null) ...[
+                DropdownButtonFormField<Category?>(
+                  key: ValueKey(_selectorEpoch),
+                  value: _category,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: NamingUtils.categoriesName(
+                        plural: false, capitalize: true),
+                    border: const OutlineInputBorder(),
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                  ),
+                  items: [
+                    for (final c in _selectable)
+                      DropdownMenuItem<Category?>(
+                        value: c,
+                        child:
+                            Text(c.headline, overflow: TextOverflow.ellipsis),
+                      ),
+                    // A null value opens the new-pursuit flow.
+                    DropdownMenuItem<Category?>(
+                      value: null,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add,
+                              size: 18, color: AppButtons.goForthBg),
+                          const SizedBox(width: 6),
+                          Text(
+                            'New ${NamingUtils.categoriesName(plural: false, capitalize: true)}',
+                            style: TextStyle(color: AppButtons.goForthBg),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  onChanged: _isLoading
+                      ? null
+                      : (c) async {
+                          if (c == null) {
+                            _createNewPursuitInline();
+                            return;
+                          }
+                          // An existing task retargeted to a *different* pursuit
+                          // → ask whether to move it or copy it there.
+                          if (_localTask != null &&
+                              c.id != _localTask!.categoryId) {
+                            final mode =
+                                await _askCopyOrMove(widget.category, c);
+                            if (!mounted) return;
+                            if (mode == null) {
+                              // Cancelled: keep the current pursuit; snap the
+                              // selector back to it.
+                              setState(() => _selectorEpoch++);
+                              return;
+                            }
+                            setState(() {
+                              _selectedCategory = c;
+                              _copyMode = mode == 'copy';
+                            });
+                            return;
+                          }
+                          setState(() {
+                            _selectedCategory = c;
+                            _copyMode = false; // original pursuit / new task
+                            // Re-seed the private/shared bit from the new pursuit.
+                            if (_localTask == null) {
+                              _isShared = !c.tasksArePrivate;
+                            }
+                          });
+                        },
+                ),
+                const SizedBox(height: 16),
+              ],
               // Info message banner (if provided)
               if (widget.infoMessage != null) ...[
                 Container(
@@ -1955,24 +2140,23 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                          // Cancel button (only show when editing existing task)
-                          if (_localTask != null) ...[
-                            Expanded(
-                              flex: 1,
-                              child: ElevatedButton(
-                                onPressed: _isLoading
-                                    ? null
-                                    : () => Navigator.pop(context),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.grey[300],
-                                  foregroundColor: Colors.black,
-                                  minimumSize: const Size(0, 48),
-                                ),
-                                child: const Text('Cancel'),
+                          // Cancel — discards a new task, or abandons edits to
+                          // an existing one.
+                          Expanded(
+                            flex: 1,
+                            child: ElevatedButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () => Navigator.pop(context),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.grey[300],
+                                foregroundColor: Colors.black,
+                                minimumSize: const Size(0, 48),
                               ),
+                              child: const Text('Cancel'),
                             ),
-                            const SizedBox(width: 16),
-                          ],
+                          ),
+                          const SizedBox(width: 16),
                           // Save button
                           Expanded(
                             flex: 2,
@@ -2042,7 +2226,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                                       context,
                                       MaterialPageRoute(
                                         builder: (context) => AddTasksScreen(
-                                          category: widget.category,
+                                          category: _category,
                                           currentTask: _currentTaskState,
                                         ),
                                       ),
@@ -2054,70 +2238,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                             style: AppButtons.goForth(),
                           ),
                         ),
-                        const SizedBox(height: 24),
-                        // Separator with helpful text for shop suggestions
-                        Row(
-                          children: [
-                            const Expanded(child: Divider()),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16.0),
-                              child: Text(
-                                '** You can also get ${NamingUtils.tasksName(plural: true)} from other people! **',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[600],
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ),
-                            const Expanded(child: Divider()),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        // Shop for Suggestions button with pre-check
-                        FutureBuilder<bool>(
-                          future: ShopEndeavorsScreen
-                              .hasAnyPublicSuggestionsForCategory(
-                                  widget.category),
-                          builder: (context, snapshot) {
-                            final hasSuggestions = snapshot.data == true;
-                            return FractionallySizedBox(
-                              widthFactor: 0.7,
-                              child: ElevatedButton.icon(
-                                onPressed: (_isLoading || !hasSuggestions)
-                                    ? null
-                                    : () async {
-                                        final result =
-                                            await Navigator.pushReplacement(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                ShopEndeavorsScreen(
-                                              existingCategory: widget.category,
-                                            ),
-                                          ),
-                                        );
-                                        print(
-                                            'TaskEditScreen: ShopEndeavorsScreen returned: $result');
-                                      },
-                                icon: const Icon(Icons.shopping_cart),
-                                label: Text(hasSuggestions
-                                    ? 'Shop for Suggestions'
-                                    : 'No Suggestions Out There'),
-                                style: hasSuggestions
-                                    ? AppButtons.goForth()
-                                    : ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.grey[300],
-                                        foregroundColor: Colors.grey[600],
-                                      ),
-                              ),
-                            );
-                          },
-                        ),
-                        if (widget.category.originalId != null &&
-                            (widget.category.originalId == 1 ||
-                                widget.category.originalId == 2)) ...[
+                        if (_category.originalId != null &&
+                            (_category.originalId == 1 ||
+                                _category.originalId == 2)) ...[
                           const SizedBox(height: 24),
                           // Separator with helpful text for JustWatch import
                           Row(
@@ -2149,14 +2272,14 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                                       print(
                                           'Import from JustWatch button pressed');
                                       print(
-                                          'Category: ${widget.category.headline}');
+                                          'Category: ${_category.headline}');
 
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
                                           builder: (context) =>
                                               JustWatchImportScreen(
-                                            category: widget.category,
+                                            category: _category,
                                           ),
                                         ),
                                       ).then((result) {
@@ -2177,7 +2300,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                           ),
                         ],
                         // Add Letterboxd import button only for category original_id == 1
-                        if (widget.category.originalId == 1) ...[
+                        if (_category.originalId == 1) ...[
                           const SizedBox(height: 16),
                           // Separator for Letterboxd import
                           Row(
@@ -2209,14 +2332,14 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                                       print(
                                           'Import from Letterboxd button pressed');
                                       print(
-                                          'Category: ${widget.category.headline}');
+                                          'Category: ${_category.headline}');
 
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
                                           builder: (context) =>
                                               LetterboxdImportScreen(
-                                            category: widget.category,
+                                            category: _category,
                                           ),
                                         ),
                                       ).then((result) {
@@ -2282,8 +2405,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           ),
           title: Text(
             _localTask == null
-                ? 'New ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}'
-                : 'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${widget.category.headline}',
+                ? 'New ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${_category.headline}'
+                : 'Edit ${NamingUtils.tasksName(capitalize: true, plural: false)} to ${_category.headline}',
           ),
           actions: [
             // Only show delete button for authenticated users
