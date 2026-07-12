@@ -13,12 +13,14 @@ class MySharesScreen extends StatefulWidget {
   final List<Category> allCategories;
   final void Function(Category) onSelect;
   final VoidCallback? onRefresh;
+  final Set<String> expandOwners; // sharer groups to open on load
 
   const MySharesScreen({
     super.key,
     required this.allCategories,
     required this.onSelect,
     this.onRefresh,
+    this.expandOwners = const {},
   });
 
   static Future<void> show(
@@ -26,6 +28,7 @@ class MySharesScreen extends StatefulWidget {
     List<Category> allCategories,
     void Function(Category) onSelect, {
     VoidCallback? onRefresh,
+    Set<String> expandOwners = const {},
   }) {
     return Navigator.push<void>(
       context,
@@ -34,6 +37,7 @@ class MySharesScreen extends StatefulWidget {
           allCategories: allCategories,
           onSelect: onSelect,
           onRefresh: onRefresh,
+          expandOwners: expandOwners,
         ),
       ),
     );
@@ -96,6 +100,7 @@ class _MySharesScreenState extends State<MySharesScreen> {
           _newIds = results[1].map((c) => c.id).toSet();
           _resetSelection();
           _expandSoleOwner();
+          _expandedOwners.addAll(widget.expandOwners);
           _loading = false;
         });
       }

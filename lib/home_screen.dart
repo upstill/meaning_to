@@ -903,13 +903,17 @@ class HomeScreenState extends State<HomeScreen> {
     final shown = unseen.take(shownCount).toList();
     final extra = unseen.length - shown.length;
     final n = unseen.length;
-    final catName = NamingUtils.categoriesName(capitalize: true, plural: n != 1);
     // If every share is from the same owner, name them in the header and drop
     // the per-pursuit "from …".
     final owners = unseen.map((c) => c.ownerName).whereType<String>().toSet();
     final singleOwner = owners.length == 1 ? owners.first : null;
-    final title = '${n == 1 ? 'A' : '$n'} $catName shared with you'
-        '${singleOwner != null ? ' by $singleOwner' : ''}';
+    // "a Pursuit" for one, "N pursuits" for several.
+    final countPhrase = n == 1
+        ? 'a ${NamingUtils.categoriesName(capitalize: true, plural: false)}'
+        : '$n ${NamingUtils.categoriesName(capitalize: false, plural: true)}';
+    final title = singleOwner != null
+        ? '$singleOwner wants to share $countPhrase with you'
+        : '${countPhrase[0].toUpperCase()}${countPhrase.substring(1)} shared with you';
 
     _shareDialogOpen = true;
     await showDialog<void>(
@@ -970,7 +974,7 @@ class HomeScreenState extends State<HomeScreen> {
                 ));
               }
             },
-            child: const Text('Accept all'),
+            child: Text(n == 1 ? 'Accept' : 'Accept all'),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -982,6 +986,9 @@ class HomeScreenState extends State<HomeScreen> {
                   await _handleCategorySelection(cat);
                 },
                 onRefresh: _loadCategories,
+                // Open the notifying sharer(s)' group(s) expanded.
+                expandOwners:
+                    unseen.map((c) => c.ownerName ?? 'Someone').toSet(),
               );
               if (mounted) _loadCategories();
             },
