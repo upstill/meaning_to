@@ -1,9 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Send to ROUZME",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Send the current page (link + title) to ROUZME as a new task.",
   "permissions": ["activeTab"],
+  "host_permissions": [
+    "https://meaning-to.me/*",
+    "http://localhost:8080/*"
+  ],
   "action": {
     "default_title": "Send this page to ROUZME",
     "default_icon": {

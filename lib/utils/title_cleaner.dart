@@ -10,6 +10,10 @@ class TitleCleaner {
     'tidal.com': [
       _Rule.extract(RegExp(r'^Listen to (.+?) on .+$', caseSensitive: false)),
     ],
+    'justwatch.com': [
+      // "Lolita streaming: where to watch movie online?" -> "Lolita".
+      _Rule.extract(RegExp(r'^(.+?) streaming:.*$', caseSensitive: false)),
+    ],
     'spotify.com': [
       _Rule.extract(RegExp(r'^Listen to (.+?) on .+$', caseSensitive: false)),
       _Rule.strip(RegExp(r'\s*[|–-]\s*Spotify$', caseSensitive: false)),

@@ -232,39 +232,42 @@ class _LinkEditScreenState extends State<LinkEditScreen> {
       final normalizedUrl = LinkToTaskConverter.normalizeUrl(url);
       print('LinkEditScreen: Save Link - Normalized URL: $normalizedUrl');
 
-      // Use LinkToTaskConverter to get properly cleaned metadata (including OMDb for IMDb)
-      final userId = AuthUtils.getCurrentUserId();
-      final proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
-        normalizedUrl,
-        userId,
-        currentCategory: widget.currentCategory,
-      );
+      String linkText = _textController.text.trim();
 
-      // If the text field was empty, populate it with the link text from proposedTask.links
-      // (e.g., "Continuum by John Mayer on TIDAL")
-      String linkText;
-      if (_textController.text.trim().isEmpty && proposedTask.links.isNotEmpty) {
-        final htmlLink = proposedTask.links.first;
-        final (_, extractedLinkText) = LinkProcessor.parseHtmlLink(htmlLink);
-        linkText = extractedLinkText ?? proposedTask.headline;
-      } else {
-        linkText = _textController.text.trim();
+      // Only reach out to the web when we actually need a title — i.e. the user
+      // supplied no link text. If they typed/edited the text, or it was already
+      // filled in (from a paste/auto-verify), the URL is effectively validated
+      // and we skip the slow re-fetch. The saved link is the URL + text either
+      // way (the caller uses only the link, not the fetched metadata).
+      ProposedTask? proposedTask;
+      if (linkText.isEmpty) {
+        // Cleaned metadata (including OMDb for IMDb) to derive a link title.
+        final userId = AuthUtils.getCurrentUserId();
+        proposedTask = await LinkToTaskConverter.createProposedTaskFromLink(
+          normalizedUrl,
+          userId,
+          currentCategory: widget.currentCategory,
+        );
+        if (proposedTask.links.isNotEmpty) {
+          final (_, extractedLinkText) =
+              LinkProcessor.parseHtmlLink(proposedTask.links.first);
+          linkText = extractedLinkText ?? proposedTask.headline;
+        }
       }
 
-      // Create HTML link with custom text (preserving user's edit)
+      // Create HTML link with the user's (or derived) text.
       final customHtmlLink = '<a href="$normalizedUrl">$linkText</a>';
 
-      // Create new ProposedTask with custom link text
       final customProposedTask = ProposedTask(
-        headline: proposedTask.headline,
-        notes: proposedTask.notes,
-        links: [customHtmlLink], // Use custom HTML link with user's text
-        synopsis: proposedTask.synopsis,
-        suggestedCategoryOriginalIds: proposedTask.suggestedCategoryOriginalIds,
-        existingTaskOriginalId: proposedTask.existingTaskOriginalId,
+        headline: proposedTask?.headline ?? linkText,
+        notes: proposedTask?.notes,
+        links: [customHtmlLink],
+        synopsis: proposedTask?.synopsis,
+        suggestedCategoryOriginalIds:
+            proposedTask?.suggestedCategoryOriginalIds ?? const [],
+        existingTaskOriginalId: proposedTask?.existingTaskOriginalId,
       );
 
-      // Return ProposedTask with metadata
       if (mounted) {
         Navigator.pop(context, customProposedTask);
       }

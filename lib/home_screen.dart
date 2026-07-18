@@ -970,7 +970,9 @@ class HomeScreenState extends State<HomeScreen> {
                 await _loadCategories();
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content: Text(
-                      "They've been added to your ${NamingUtils.categoriesName(plural: true, capitalize: true)}, but they're read-only."),
+                      n == 1
+                          ? "It's been added to your ${NamingUtils.categoriesName(plural: true, capitalize: true)}, but it's read-only."
+                          : "They've been added to your ${NamingUtils.categoriesName(plural: true, capitalize: true)}, but they're read-only."),
                 ));
               }
             },
