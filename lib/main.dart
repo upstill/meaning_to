@@ -16,7 +16,6 @@ import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:meaning_to/new_category_screen.dart';
-import 'package:meaning_to/shop_endeavors_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/help_screen.dart';
 import 'package:meaning_to/models/category.dart';
@@ -988,13 +987,6 @@ class _MyAppState extends State<MyApp> {
             case '/new-category':
               return MaterialPageRoute(
                 builder: (context) => const NewCategoryScreen(),
-              );
-            case '/shop-endeavors':
-              final args = settings.arguments as Map<String, dynamic>?;
-              return MaterialPageRoute(
-                builder: (context) => ShopEndeavorsScreen(
-                  existingCategory: args?['category'] as Category?,
-                ),
               );
             case '/edit-task':
               final args = settings.arguments as Map<String, dynamic>;

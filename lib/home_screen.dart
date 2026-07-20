@@ -28,6 +28,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import 'package:meaning_to/widgets/task_display.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:meaning_to/widgets/linkified_text.dart';
 
 enum HomeTaskSortOption { alphabetical, priority, age }
 
@@ -3529,7 +3530,7 @@ class HomeScreenState extends State<HomeScreen> {
                                     .trim()
                                     .isNotEmpty) ...[
                                   const SizedBox(height: 8),
-                                  Text(
+                                  LinkifiedText(
                                     _selectedCategory!.invitation!,
                                     style: const TextStyle(
                                       fontSize: 15,

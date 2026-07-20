@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:meaning_to/widgets/linkified_text.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
@@ -67,12 +69,23 @@ class _MySharesScreenState extends State<MySharesScreen> {
   /// Sharer names whose group is expanded (empty = all collapsed by default).
   final Set<String> _expandedOwners = {};
 
+  /// Tap recognizers for URLs linkified in descriptions (disposed on close).
+  final List<TapGestureRecognizer> _linkRecognizers = [];
+
   @override
   void initState() {
     super.initState();
     _sharedWithMe = widget.allCategories.where((c) => c.isShared).toList();
     _resetSelection();
     _load();
+  }
+
+  @override
+  void dispose() {
+    for (final r in _linkRecognizers) {
+      r.dispose();
+    }
+    super.dispose();
   }
 
   void _resetSelection() {
@@ -474,15 +487,18 @@ class _MySharesScreenState extends State<MySharesScreen> {
                         final shown = (needsTrunc && !expanded)
                             ? full.substring(0, limit).trimRight()
                             : full;
+                        final descStyle = TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        );
                         return Text.rich(
                           TextSpan(
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey[600],
-                              fontStyle: FontStyle.italic,
-                            ),
+                            style: descStyle,
                             children: [
-                              TextSpan(text: shown),
+                              ...linkifySpans(shown,
+                                  baseStyle: descStyle,
+                                  recognizers: _linkRecognizers),
                               if (needsTrunc && !expanded)
                                 WidgetSpan(
                                   child: GestureDetector(
