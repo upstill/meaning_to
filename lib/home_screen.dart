@@ -29,6 +29,7 @@ import 'package:meaning_to/widgets/task_display.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:meaning_to/widgets/linkified_text.dart';
+import 'package:meaning_to/widgets/pursuit_switcher_sheet.dart';
 
 enum HomeTaskSortOption { alphabetical, priority, age }
 
@@ -65,15 +66,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class HomeScreenState extends State<HomeScreen> {
-  // Sentinel value for the "New Pursuit" item in the pursuit-switcher menu
-  // (PopupMenuButton treats a null selection as a cancel, so we need a real one).
-  static final Category _newPursuitSentinel = Category(
-    id: -1,
-    headline: '',
-    ownerId: '',
-    createdAt: DateTime(0),
-  );
-
   List<Category> _categories = [];
   Category? _selectedCategory;
   Task? _randomTask;
@@ -3453,7 +3445,7 @@ class HomeScreenState extends State<HomeScreen> {
                                             style: headlineStyle);
                                       }(),
                                     ),
-                                    PopupMenuButton<Category>(
+                                    IconButton(
                                       tooltip:
                                           'Choose ${NamingUtils.categoriesName(capitalize: false, plural: false)}',
                                       icon: const Icon(
@@ -3462,67 +3454,23 @@ class HomeScreenState extends State<HomeScreen> {
                                       ),
                                       // Enabled even at N==1 for non-guests so the
                                       // "New Pursuit" option is always reachable.
-                                      enabled: _categories.length > 1 ||
-                                          !AuthUtils.isGuestUser(),
-                                      onSelected: (category) {
-                                        if (category.id ==
-                                            _newPursuitSentinel.id) {
-                                          _navigateToNewCategory();
-                                        } else {
-                                          unawaited(_handleCategorySelection(
-                                              category));
-                                        }
-                                      },
-                                      itemBuilder: (context) => [
-                                        ..._categories
-                                            .where((c) =>
-                                                !c.isShared || c.isAvailable)
-                                            .map(
-                                              (category) =>
-                                                  PopupMenuItem<Category>(
-                                                value: category,
-                                                child: category.isShared
-                                                    ? Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          Text(category
-                                                              .headline),
-                                                          Text(
-                                                            'from ${category.ownerName}',
-                                                            style: TextStyle(
-                                                              fontSize: (Theme.of(context)
-                                                                          .textTheme
-                                                                          .bodyMedium
-                                                                          ?.fontSize ??
-                                                                      14) *
-                                                                  0.8,
-                                                              fontStyle:
-                                                                  FontStyle
-                                                                      .italic,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      )
-                                                    : Text(category.headline),
-                                              ),
-                                            ),
-                                        if (!AuthUtils.isGuestUser()) ...[
-                                          const PopupMenuDivider(),
-                                          PopupMenuItem<Category>(
-                                            value: _newPursuitSentinel,
-                                            child: ListTile(
-                                              leading: const Icon(Icons.add),
-                                              title: Text(
-                                                  'New ${NamingUtils.categoriesName(capitalize: true, plural: false)}'),
-                                              contentPadding: EdgeInsets.zero,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
+                                      onPressed: (_categories.length > 1 ||
+                                              !AuthUtils.isGuestUser())
+                                          ? () => PursuitSwitcherSheet.show(
+                                                context,
+                                                categories: _categories
+                                                    .where((c) =>
+                                                        !c.isShared ||
+                                                        c.isAvailable)
+                                                    .toList(),
+                                                onSelect: (c) => unawaited(
+                                                    _handleCategorySelection(c)),
+                                                onNewPursuit:
+                                                    AuthUtils.isGuestUser()
+                                                        ? null
+                                                        : _navigateToNewCategory,
+                                              )
+                                          : null,
                                     ),
                                   ],
                                 ),
