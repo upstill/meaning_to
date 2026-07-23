@@ -127,7 +127,10 @@ if $BUILD_WEB; then
         # Commit and push web build files so Vercel's GitHub integration
         # doesn't overwrite the deployment with stale files on the next push.
         echo "📦 Committing web build files to git..."
-        git add build_id.txt flutter_service_worker.js main.dart.js version.json .last_build_id 2>/dev/null || true
+        # Include index.html + manifest.json so the GitHub-integration redeploy
+        # (triggered by this push) serves the same files as the CLI deploy —
+        # otherwise stale committed copies (e.g. an old <title>) override it.
+        git add build_id.txt flutter_service_worker.js main.dart.js version.json .last_build_id index.html manifest.json 2>/dev/null || true
         git diff --cached --quiet || git commit -m "Deploy web build $FLUTTER_VERSION" --no-verify
         git push
       else
