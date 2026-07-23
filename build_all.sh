@@ -76,6 +76,7 @@ DART_DEFINES=(
   "--dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
 )
 [ -n "${YOUTUBE_API_KEY:-}" ] && DART_DEFINES+=("--dart-define=YOUTUBE_API_KEY=$YOUTUBE_API_KEY")
+[ -n "${OMDB_API_KEY:-}" ] && DART_DEFINES+=("--dart-define=OMDB_API_KEY=$OMDB_API_KEY")
 
 FLUTTER_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
 BUILD_NAME=$(echo "$FLUTTER_VERSION" | cut -d'+' -f1)

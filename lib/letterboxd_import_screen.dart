@@ -5,6 +5,7 @@ import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
+import 'package:meaning_to/utils/omdb_client.dart';
 import 'package:meaning_to/home_screen.dart';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
@@ -128,6 +129,33 @@ class _LetterboxdImportScreenState extends State<LetterboxdImportScreen> {
 
     // No matches found, include this item
     return true;
+  }
+
+  /// Resolve a film description, preferring the sanctioned OMDb API (keyed by
+  /// title + year) and falling back to scraping the Letterboxd page only when
+  /// OMDb is unavailable or has no match.
+  ///
+  /// OMDb also works on the web platform (CORS-enabled JSON), so descriptions
+  /// can now populate there too — unlike the scrape, which bails out on web.
+  Future<String?> _fetchFilmDescription(
+      String name, String? year, String uri) async {
+    if (OmdbClient.isAvailable) {
+      try {
+        final info = await OmdbClient.getByTitle(name, year: year);
+        if (info?.plot != null && info!.plot!.isNotEmpty) {
+          print('LetterboxdImport: Using OMDb plot for "$name": "${info.plot}"');
+          return info.plot;
+        }
+        print(
+            'LetterboxdImport: OMDb had no plot for "$name" (year: $year), falling back to scrape');
+      } catch (e) {
+        print('LetterboxdImport: OMDb lookup failed for "$name": $e');
+      }
+    } else {
+      print('LetterboxdImport: OMDb not configured, using page scrape');
+    }
+
+    return _fetchLetterboxdDescription(uri);
   }
 
   /// Fetch description meta tag from a URL
@@ -626,9 +654,13 @@ class _LetterboxdImportScreenState extends State<LetterboxdImportScreen> {
         headers.indexWhere((h) => h.toLowerCase().contains('name'));
     final uriIndex =
         headers.indexWhere((h) => h.toLowerCase().contains('letterboxd uri'));
+    // Year is used to disambiguate OMDb lookups (optional column).
+    final yearIndex =
+        headers.indexWhere((h) => h.toLowerCase().trim() == 'year');
 
     print('LetterboxdImport: Name column index: $nameIndex');
     print('LetterboxdImport: URI column index: $uriIndex');
+    print('LetterboxdImport: Year column index: $yearIndex');
 
     if (nameIndex == -1 || uriIndex == -1) {
       print(
@@ -651,8 +683,12 @@ class _LetterboxdImportScreenState extends State<LetterboxdImportScreen> {
       if (fields.length > nameIndex && fields.length > uriIndex) {
         final name = fields[nameIndex].trim();
         final uri = fields[uriIndex].trim();
+        final year = (yearIndex != -1 && fields.length > yearIndex)
+            ? fields[yearIndex].trim()
+            : '';
 
-        print('LetterboxdImport: Extracted - Name: "$name", URI: "$uri"');
+        print(
+            'LetterboxdImport: Extracted - Name: "$name", Year: "$year", URI: "$uri"');
 
         if (name.isNotEmpty && uri.isNotEmpty) {
           totalValidItems++; // Count all valid items before filtering
@@ -662,6 +698,7 @@ class _LetterboxdImportScreenState extends State<LetterboxdImportScreen> {
             print('LetterboxdImport: Adding new item: $name');
             items.add({
               'Name': name,
+              'Year': year,
               'Letterboxd URI': uri,
             });
           } else {
@@ -731,11 +768,12 @@ class _LetterboxdImportScreenState extends State<LetterboxdImportScreen> {
       for (final item in _parsedItems) {
         final name = item['Name']!;
         final uri = item['Letterboxd URI']!;
+        final year = item['Year'];
 
         print('LetterboxdImport: Processing new item: $name with URI: $uri');
 
-        // Fetch description from the Letterboxd page
-        final description = await _fetchLetterboxdDescription(uri);
+        // Resolve description via OMDb (title + year), falling back to scrape
+        final description = await _fetchFilmDescription(name, year, uri);
 
         // Format notes similar to JustWatch imports
         String? formattedNotes;
@@ -782,8 +820,8 @@ class _LetterboxdImportScreenState extends State<LetterboxdImportScreen> {
         print(
             'LetterboxdImport: Updating description for existing task: ${task.headline}');
 
-        // Fetch description from the Letterboxd page
-        final description = await _fetchLetterboxdDescription(uri);
+        // Resolve description via OMDb (title), falling back to scrape
+        final description = await _fetchFilmDescription(task.headline, null, uri);
 
         String? formattedNotes;
         if (description != null && description.isNotEmpty) {
