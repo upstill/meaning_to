@@ -269,7 +269,7 @@ class _AuthScreenState extends State<AuthScreen> {
               Text(
                 _mode == AuthMode.signUp
                     ? 'Create your account'
-                    : 'Sign in to ROUZME!',
+                    : 'Sign in to RouzMe',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 32,

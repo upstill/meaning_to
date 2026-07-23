@@ -107,7 +107,7 @@ class HomeScreenState extends State<HomeScreen> {
 
   // Track if welcome dialog has been shown
   bool _welcomeDialogShown = false;
-  // True while the "Welcome to ROUZME!" dialog is pending/open, so the
+  // True while the "Welcome to RouzMe" dialog is pending/open, so the
   // new-shares advisory holds back until the greeting is dismissed.
   bool _welcomeDialogOpen = false;
 
@@ -737,7 +737,7 @@ class HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       // Load categories FIRST: on first login this shows the "Welcome to
-      // ROUZME!" greeting, detected from the pre-redeem state (an unredeemed
+      // RouzMe" greeting, detected from the pre-redeem state (an unredeemed
       // account has no shares yet). THEN redeem any pending share link — the
       // single reliable choke point that redeems exactly once on every arrival
       // at Home (already logged in, post-sign-in/up, post-OAuth). The new-shares
@@ -775,7 +775,7 @@ class HomeScreenState extends State<HomeScreen> {
     if (mounted) _loadCategories();
   }
 
-  /// From the "Send to ROUZME" browser extension: if a page (url + title) was
+  /// From the "Send to RouzMe" browser extension: if a page (url + title) was
   /// stashed via ?addlink=, show the normal "add this link" picker with the
   /// title pre-filled so no page fetch is needed. Real signed-in users only.
   /// [targetCategory], when set (the pursuit the user just created for this
@@ -875,7 +875,7 @@ class HomeScreenState extends State<HomeScreen> {
   /// arrives mid-session shows up promptly without needing a realtime channel.
   Future<void> _maybeNotifyNewShares() async {
     // Hold back while the first-login greeting is pending/open — it re-fires this
-    // when the welcome dialog is dismissed, so "Welcome to ROUZME!" comes first.
+    // when the welcome dialog is dismissed, so "Welcome to RouzMe" comes first.
     if (AuthUtils.isGuestUser() || _shareDialogOpen || _welcomeDialogOpen) return;
     // Light throttle so rapid control hits don't hammer the database.
     final now = DateTime.now();
@@ -2571,7 +2571,7 @@ class HomeScreenState extends State<HomeScreen> {
       builder: (ctx) => AlertDialog(
         title: Text('Create your first $pursuit'),
         content: Text(
-            'ROUZME keeps track of what you\'ve been meaning to do, organized '
+            'RouzMe keeps track of what you\'ve been meaning to do, organized '
             'into $pursuits — things like "Watch a Movie" or "Read a Book". '
             'Before you can add $task, you\'ll need a $pursuit to put it in. '
             'Create one now?'),
@@ -2870,7 +2870,7 @@ class HomeScreenState extends State<HomeScreen> {
                 children: [
                   const Expanded(
                     child: Text(
-                      'Welcome to ROUZME!',
+                      'Welcome to RouzMe',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -3189,7 +3189,7 @@ class HomeScreenState extends State<HomeScreen> {
                 onChanged: _onFindChanged,
                 onSubmitted: (_) => _submitSearch(),
               )
-            : const Text('ROUZME!'),
+            : const Text('RouzMe'),
         automaticallyImplyLeading: false,
         actions: _buildAppBarActions(),
       ),

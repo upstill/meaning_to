@@ -5,9 +5,7 @@
   "description": "Send the current page (link + title) to RouzMe as a new task.",
   "permissions": ["activeTab"],
   "host_permissions": [
-    "https://rouzme.com/*",
-    "https://meaning-to.me/*",
-    "http://localhost:8080/*"
+    "https://rouzme.com/*"
   ],
   "action": {
     "default_title": "Send this page to RouzMe",

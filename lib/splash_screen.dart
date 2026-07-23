@@ -281,7 +281,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                   const SizedBox(height: 24),
                   const Text(
-                    'ROUZME!',
+                    'RouzMe',
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,

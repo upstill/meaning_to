@@ -2,8 +2,9 @@ import 'package:flutter/foundation.dart';
 
 /// Utility class for generating deep links to categories
 class DeepLinkGenerator {
-  /// Base URL for web deep links - use meaning-to.me for production
-  static const String _webBaseUrl = 'https://meaning-to.me';
+  /// Base URL for web deep links. rouzme.com is the canonical domain;
+  /// meaning-to.me remains a permanent alias so older links keep working.
+  static const String _webBaseUrl = 'https://rouzme.com';
 
   /// Custom scheme for mobile deep links
   static const String _customScheme = 'meaningto';
@@ -69,8 +70,10 @@ class DeepLinkGenerator {
   static String convertToDebugUrl(String url) {
     if (!isDebugMode) return url;
 
-    // Replace meaning-to.me with localhost and the configured debug port
-    final debugUrl = url.replaceAll('meaning-to.me', 'localhost:$_debugPort');
+    // Replace either production host with localhost and the configured debug port
+    final debugUrl = url
+        .replaceAll('rouzme.com', 'localhost:$_debugPort')
+        .replaceAll('meaning-to.me', 'localhost:$_debugPort');
     print('DeepLinkGenerator: Converting $url to debug URL: $debugUrl');
     return debugUrl;
   }

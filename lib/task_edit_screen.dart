@@ -1823,10 +1823,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         "time you see this Idea.\n\n"
                         "(Incidentally, if you're on a phone, you can create "
                         "an Idea from any app that has a Share button. Click "
-                        "it, select ROUZME!, and we'll walk you through selecting "
+                        "it, select RouzMe, and we'll walk you through selecting "
                         "a Pursuit to add it to.)\n\n"
 			  "Pro Tip: When making a new Task, you can just paste "
-			  "that address-bar gobbledygook into the title and ROUZME! "
+			  "that address-bar gobbledygook into the title and RouzMe "
 			  "will sort it all out."
 			),
                       actions: [

@@ -1,12 +1,9 @@
-// Send to ROUZME — MV3 service worker.
-// On toolbar click, hand the active tab's URL + title to the ROUZME web app,
+// Send to RouzMe — MV3 service worker (store build; production origin only).
+// On toolbar click, hand the active tab's URL + title to the RouzMe web app,
 // which prompts for a Pursuit and creates a task (no page fetch needed — the
 // title comes from here).
 
-// DEV: set true to target a local dev server (flip back to false before
-// committing/shipping — the production build must use meaning-to.me).
-const DEV = false;
-const ROUZME_ORIGIN = DEV ? "http://localhost:8080" : "https://rouzme.com";
+const ROUZME_ORIGIN = "https://rouzme.com";
 
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab || !tab.url || !/^https?:/i.test(tab.url)) {
@@ -19,9 +16,9 @@ chrome.action.onClicked.addListener(async (tab) => {
     "&title=" +
     encodeURIComponent(tab.title || "");
 
-  // Reuse an already-open ROUZME tab instead of piling up new ones. Updating
+  // Reuse an already-open RouzMe tab instead of piling up new ones. Updating
   // its URL reloads the app, which processes the new link. Prefer a tab in the
-  // current window; fall back to any ROUZME tab, then to opening a new one.
+  // current window; fall back to any RouzMe tab, then to opening a new one.
   try {
     const rouzTabs = await chrome.tabs.query({ url: ROUZME_ORIGIN + "/*" });
     if (rouzTabs && rouzTabs.length) {
@@ -34,7 +31,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       return;
     }
   } catch (e) {
-    // Any failure (e.g. missing permission) → just open a new tab below.
+    // Any failure → just open a new tab below.
   }
   chrome.tabs.create({ url });
 });

@@ -26,7 +26,7 @@ class _HelpScreenState extends State<HelpScreen> {
           const Padding(
             padding: EdgeInsets.only(bottom: 24.0),
             child: Text(
-              'Welcome to ROUZME!',
+              'Welcome to RouzMe',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -42,7 +42,7 @@ class _HelpScreenState extends State<HelpScreen> {
             content: '''
 Who doesn't have a painfully long list in their lives? Whether it's Likes in a music app, or lists of to-do's, books to read or movies to watch, the sheer length of a list can be overwhelming.
 
-But help is here! ROUZME moves you to actually do stuff. Use ROUZME to help you organize and track the ideas, goals, and interests you've had nagging at you.
+But help is here! RouzMe moves you to actually do stuff. Use RouzMe to help you organize and track the ideas, goals, and interests you've had nagging at you.
 
 Think of it as a way to keep track of all those things you say "I've been meaning to..." about.
 
@@ -125,7 +125,7 @@ Pro tip: Just paste a URL into the headline when adding a new ${NamingUtils.task
                   ),
                   TextSpan(
                     text: ' button in that app\n'
-                        '3. Select "ROUZME!" from the available targets.\n'
+                        '3. Select "RouzMe" from the available targets.\n'
                         '4. Tell the app what ${NamingUtils.categoriesName(capitalize: false, plural: false)} it pertains to\n'
                         '5. The app will create a new ${NamingUtils.tasksName(capitalize: false, plural: false)} with the shared link\n\n'
                         'This is a fast way to capture ideas on the go in the course of regular browsing. '
@@ -206,7 +206,7 @@ If you want to share your accumulated wisdom, you can let anyone see (but not ch
 2. In the menu on the ${NamingUtils.categoriesName(plural: false, capitalize: true)} card, choose "Share this ${NamingUtils.categoriesName(plural: false, capitalize: true)}".
 3. If you want to edit which which ${NamingUtils.tasksName(plural: true, capitalize: true)} will be visible to the sharee, tap the pencil icon.
 4. Tap "Issue Link" to copy the invite link to your clipboard.
-5. Paste the link into a message to your friend with flowery words about how great ROUZME! is. When they tap that link, they'll land in ROUZME! with the ${NamingUtils.categoriesName(plural: false, capitalize: true)} added to their account.
+5. Paste the link into a message to your friend with flowery words about how great RouzMe is. When they tap that link, they'll land in RouzMe with the ${NamingUtils.categoriesName(plural: false, capitalize: true)} added to their account.
 
 PS To manage all your shares, hit the "Manage Shares" item on the main menu (top right).
 ''',

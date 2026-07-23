@@ -348,7 +348,7 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
         const SnackBar(content: Text('Link copied to clipboard')),
       );
     } else {
-      await Share.share(url, subject: 'Join my Pursuit on ROUZME!');
+      await Share.share(url, subject: 'Join my Pursuit on RouzMe');
     }
     navigator.pop(true);
   }

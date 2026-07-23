@@ -530,7 +530,8 @@ class LinkProcessor {
 
   /// Checks if a URL is an internal link to a category
   static bool _isInternalCategoryLink(String url, String domain) {
-    return domain == 'meaning-to.me' && url.contains('/category/');
+    return (domain == 'rouzme.com' || domain == 'meaning-to.me') &&
+        url.contains('/category/');
   }
 
   /// Handles internal category links by looking up the category in the database

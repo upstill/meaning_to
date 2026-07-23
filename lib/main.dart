@@ -216,7 +216,7 @@ void main() async {
       } else if (invite != null) {
         await InviteTokenStore.set(invite);
       }
-      // From the "Send to ROUZME" browser extension: ?addlink=<url>&title=<t>.
+      // From the "Send to RouzMe" browser extension: ?addlink=<url>&title=<t>.
       // Stashed so it survives the sign-in flow; processed once an authenticated
       // Home is reached (see _maybeProcessPendingAddLink).
       final addLink = q['addlink'];

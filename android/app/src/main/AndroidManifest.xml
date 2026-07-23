@@ -11,7 +11,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <application
-        android:label="I've Been Meaning To"
+        android:label="RouzMe"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true"
@@ -54,6 +54,8 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <!-- rouzme.com is canonical; meaning-to.me kept as a permanent alias -->
+                <data android:scheme="https" android:host="rouzme.com" android:pathPrefix="/" />
                 <data android:scheme="https" android:host="meaning-to.me" android:pathPrefix="/" />
             </intent-filter>
             <!-- Add this intent-filter for sharing text and files -->
