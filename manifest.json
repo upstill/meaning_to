@@ -1,11 +1,11 @@
 {
-    "name": "I've Been Meaning To",
-    "short_name": "I've Been Meaning To",
+    "name": "RouzMe",
+    "short_name": "RouzMe",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "RouzMe — track what you've been meaning to do.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
