@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RouzMe — Help</title>
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <style>
+    :root { --blue: #2196F3; --ink: #1a1a1a; --muted: #555; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      line-height: 1.6;
+      background: #fff;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 40px 20px 80px; }
+    header { border-bottom: 3px solid var(--blue); padding-bottom: 16px; margin-bottom: 24px; }
+    h1 { color: var(--blue); font-size: 2rem; margin: 0; }
+    details {
+      border: 1px solid #e2e2e2;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    summary {
+      cursor: pointer;
+      padding: 14px 16px;
+      font-size: 1.15rem;
+      font-weight: 600;
+      background: #f7f9fb;
+      list-style: none;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: "▸ "; color: var(--blue); }
+    details[open] summary::before { content: "▾ "; }
+    .body { padding: 4px 20px 16px; }
+    .body p { margin: 12px 0; }
+    ul { padding-left: 1.25rem; }
+    li { margin-bottom: 4px; }
+    a { color: var(--blue); }
+    pre {
+      background: #f4f4f4;
+      border-radius: 6px;
+      padding: 12px;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    footer { margin-top: 40px; color: var(--muted); font-size: 0.9rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header><h1>Welcome to RouzMe</h1></header>
+
+    <details open>
+      <summary>What Is This Thing?</summary>
+      <div class="body">
+        <p>Who doesn't have a painfully long list in their lives? Whether it's
+        Likes in a music app, or lists of to-do's, books to read or movies to
+        watch, the sheer length of a list can be overwhelming.</p>
+        <p>But help is here! RouzMe moves you to actually do stuff. Use RouzMe to
+        help you organize and track the ideas, goals, and interests you've had
+        nagging at you.</p>
+        <p>Think of it as a way to keep track of all those things you say
+        "I've been meaning to…" about.</p>
+        <p>The app helps you:</p>
+        <ul>
+          <li>Keep your Ideas organized into collections (Pursuits), with notes
+          reminding you where they came from and/or why they're here;</li>
+          <li>Link your Ideas to external resources like movies, books, music,
+          and more;</li>
+          <li>Get a random (more or less) suggestion when you're ready to act;</li>
+          <li>Track what you've accomplished;</li>
+          <li>Get ideas from others and share yours.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>Compiling Pursuits</summary>
+      <div class="body">
+        <p>Pursuits are the main way to organize your ideas. Each pursuit
+        represents a type of activity or interest.</p>
+        <p>Examples of Pursuits:</p>
+        <ul>
+          <li>"Watch a Movie"</li>
+          <li>"Read a Book"</li>
+          <li>"Try a Restaurant"</li>
+          <li>"Learn a Skill"</li>
+          <li>"Visit a Place"</li>
+        </ul>
+        <p>Within each pursuit, you add individual Ideas — the specific things you
+        want to do. For example, in "Watch a Movie", you might add "The Godfather",
+        "Blade Runner", or "Spirited Away".</p>
+        <p>You can share your Pursuits with others, or keep them private for your
+        eyes only.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Linking Elsewhere</summary>
+      <div class="body">
+        <p>You can add links pointing to external resources for your Ideas. This
+        makes it easy to jump directly to relevant content.</p>
+        <p>Supported link types:</p>
+        <ul>
+          <li>Streaming services (Netflix, Amazon Prime, Apple TV+, etc.)</li>
+          <li>Music services (Spotify, Apple Music, YouTube Music, Tidal)</li>
+          <li>Websites and articles</li>
+          <li>Any other URL you want to save</li>
+        </ul>
+        <p>When you add a link, the app will try to automatically fetch information
+        like titles and descriptions. For some services (like movies and music), it
+        can even find where content is available to stream.</p>
+        <p><strong>Pro tip:</strong> Just paste a URL into the headline when adding
+        a new Idea, and the app will handle the rest!</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Take Shares from other apps</summary>
+      <div class="body">
+        <p>On mobile, you can quickly capture content from other apps by using the
+        Share feature. On the desktop, the "Send to RouzMe" browser extension does
+        the same from any web page.</p>
+        <p>How it works:</p>
+        <ul>
+          <li>Find something interesting in another app (a website, article,
+          video, etc.)</li>
+          <li>Tap the Share button in that app (or the RouzMe extension button in
+          your browser)</li>
+          <li>Select "RouzMe" from the available targets</li>
+          <li>Tell the app what pursuit it pertains to</li>
+          <li>The app will create a new Idea with the shared link</li>
+        </ul>
+        <p>This is a fast way to capture ideas on the go in the course of regular
+        browsing. The shared content is automatically added as a link to your new
+        Idea, and you can organize it into the appropriate pursuit later.</p>
+        <p>Perfect for saving articles to read, videos to watch, recordings to
+        play, or anything else you come across in the wild world online!</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Import a whole collection of Ideas</summary>
+      <div class="body">
+        <p>Already have a list of things you've been meaning to do? You can import
+        them in bulk from other sources.</p>
+        <p>How to import:</p>
+        <ul>
+          <li>On the home screen, select the pursuit you want to add to, possibly
+          creating it first as needed.</li>
+          <li>Hit the "Add an Idea" button, then choose "Add a List of Ideas".</li>
+          <li>Paste the list into the text box, or hit the Import button and select
+          a data source file to upload.</li>
+          <li>The app will process your data and add the Ideas automatically.</li>
+        </ul>
+        <p>Supported import formats:</p>
+        <ul>
+          <li>Plain text files in a variety of formats (see Example Formats below)</li>
+          <li>JSON files (one item per line)</li>
+          <li>CSV files (spreadsheets exported from Excel, Google Sheets, etc.)</li>
+          <li>Letterboxd (for movie watchlists)</li>
+          <li>JustWatch (for streaming content)</li>
+          <li>Other structured data formats</li>
+        </ul>
+        <p>This is perfect if you're migrating from another app or have been keeping
+        lists in spreadsheets. Import hundreds of items at once instead of entering
+        them one by one!</p>
+        <p><strong>Example Formats</strong></p>
+        <p>Plain text (a bare URL on a line has its title fetched automatically):</p>
+        <pre><code>Movie Title 1
+Movie Title 2
+https://www.justwatch.com/us/movie/inception</code></pre>
+        <p>JSON (one item per line):</p>
+        <pre><code>{"title": "Inception", "link": "https://www.justwatch.com/us/movie/inception"}
+{"title": "The Matrix", "link": "https://www.justwatch.com/us/movie/the-matrix"}</code></pre>
+        <p>JSON array:</p>
+        <pre><code>[{"title": "Inception"}, {"title": "The Matrix", "link": "https://www.justwatch.com/us/movie/the-matrix"}]</code></pre>
+        <p>Markdown links:</p>
+        <pre><code>[Inception](https://example.com/inception)
+[The Matrix](https://example.com/matrix)</code></pre>
+        <p>HTML links:</p>
+        <pre><code>&lt;a href="https://www.justwatch.com/us/movie/inception"&gt;Inception&lt;/a&gt;
+&lt;a href="https://www.justwatch.com/us/movie/the-matrix"&gt;The Matrix&lt;/a&gt;</code></pre>
+      </div>
+    </details>
+
+    <details>
+      <summary>Share a Pursuit with a friend</summary>
+      <div class="body">
+        <p>If you want to share your accumulated wisdom, you can let anyone see
+        (but not change!) one of your Pursuits. Here's how:</p>
+        <ul>
+          <li>On the Home screen, pick the Pursuit you want to share.</li>
+          <li>In the menu on the Pursuit card, choose "Share this Pursuit".</li>
+          <li>To edit which Ideas will be visible to the recipient, tap the pencil
+          icon.</li>
+          <li>Tap "Issue Link" to copy the invite link to your clipboard.</li>
+          <li>Paste the link into a message to your friend with flowery words about
+          how great RouzMe is. When they tap that link, they'll land in RouzMe with
+          the Pursuit added to their account.</li>
+        </ul>
+        <p>PS: To manage all your shares, hit the "Shared With Me" item on the main
+        menu (top right).</p>
+      </div>
+    </details>
+
+    <footer>
+      Need more help? Contact us at
+      <a href="mailto:support@rouzme.com">support@rouzme.com</a><br>
+      © 2026 RouzMe · <a href="https://rouzme.com">rouzme.com</a>
+    </footer>
+  </div>
+</body>
+</html>
