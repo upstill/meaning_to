@@ -30,11 +30,23 @@
       font-size: 1.15rem;
       font-weight: 600;
       background: #f7f9fb;
-      list-style: none;
+      list-style: none; /* hide default marker (Firefox) */
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
     }
-    summary::-webkit-details-marker { display: none; }
-    summary::before { content: "▸ "; color: var(--blue); }
-    details[open] summary::before { content: "▾ "; }
+    summary::-webkit-details-marker { display: none; } /* hide default marker (Safari/Chrome) */
+    summary::after {
+      content: "+";
+      color: var(--blue);
+      font-size: 1.5rem;
+      font-weight: 700;
+      line-height: 1;
+      flex: none;
+    }
+    details[open] summary::after { content: "\2212"; } /* minus sign */
+    summary:hover { background: #eef4fa; }
     .body { padding: 4px 20px 16px; }
     .body p { margin: 12px 0; }
     ul { padding-left: 1.25rem; }
