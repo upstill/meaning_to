@@ -291,6 +291,14 @@ class HomeScreenState extends State<HomeScreen> {
                   const PopupMenuDivider(),
                 ],
                 const PopupMenuItem<String>(
+                  value: 'privacy',
+                  child: ListTile(
+                    leading: Icon(Icons.privacy_tip_outlined),
+                    title: Text('Privacy Policy'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuItem<String>(
                   value: 'logout',
                   child: ListTile(
                     leading: Icon(Icons.logout),
@@ -310,6 +318,9 @@ class HomeScreenState extends State<HomeScreen> {
                   ),
               ],
             );
+            if (value == 'privacy') {
+              await openUrlExternal('https://rouzme.com/privacy');
+            }
             if (value == 'logout') await _handleLogout();
             if (value == 'delete') await _handleDeleteAccount();
             if (value == 'add_pursuit') _navigateToNewCategory();

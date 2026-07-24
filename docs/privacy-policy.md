@@ -1,6 +1,6 @@
 # RouzMe Privacy Policy
 
-_Last updated: 2026-07-23_
+_Last updated: 2026-07-24_
 
 > **Hosting note (remove before publishing):** host this at the canonical
 > domain's `/privacy` — `https://rouzme.com/privacy` once the domain transition
@@ -23,6 +23,15 @@ profile information you authorize (such as your name and email).
 **Your content.** The Pursuits, tasks, links, titles, and notes you create — and
 any Pursuits shared with you — are stored in your account so they sync across
 your devices.
+
+**Link enrichment.** When you save a link, the RouzMe app may fetch additional
+*public* information about that page — such as a short description or synopsis —
+to enrich your task. For certain kinds of links (for example, movies and TV
+shows), this description may be retrieved from a third-party service such as the
+OMDb API, to which we send only the page's title or link in order to look it up.
+This enrichment uses only publicly available page metadata; it is performed by
+the RouzMe app (not the browser extension), and we do not collect your private
+browsing history.
 
 **Content you send via the browser extension.** When you click the "Send to
 RouzMe" button on a web page, the extension reads **only the current page's link
@@ -50,9 +59,11 @@ RouzMe.
 ## Sharing
 
 Your data is stored with our infrastructure provider, **Supabase**, which hosts
-the database and authentication on our behalf. We do not share your personal
-information with any other third parties except as required to operate the
-service or comply with the law.
+the database and authentication on our behalf. To enrich a saved link with a
+description, the app may also query a metadata provider such as the **OMDb API**,
+sending only the link or its title (see "Link enrichment" above). We do not share
+your personal information with any other third parties except as required to
+operate the service or comply with the law.
 
 When you choose to share a Pursuit with another user, the pursuit and its tasks
 you have marked as shared become visible to the people you share with. You

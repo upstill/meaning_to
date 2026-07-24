@@ -31,7 +31,7 @@
 <body>
   <div class="wrap">
     <header><h1>RouzMe Privacy Policy</h1></header>
-    <p class="updated">Last updated: July 23, 2026</p>
+    <p class="updated">Last updated: July 24, 2026</p>
 
     <p class="lead">RouzMe helps you keep track of the things you've been meaning
     to do, organized into Pursuits, with your data stored in your RouzMe account.
@@ -48,6 +48,16 @@
     <p><strong>Your content.</strong> The Pursuits, tasks, links, titles, and
     notes you create — and any Pursuits shared with you — are stored in your
     account so they sync across your devices.</p>
+
+    <p><strong>Link enrichment.</strong> When you save a link, the RouzMe app may
+    fetch additional <em>public</em> information about that page — such as a short
+    description or synopsis — to enrich your task. For certain kinds of links (for
+    example, movies and TV shows), this description may be retrieved from a
+    third-party service such as the <a href="https://www.omdbapi.com/">OMDb API</a>,
+    to which we send only the page's title or link in order to look it up. This
+    enrichment uses only publicly available page metadata; it is performed by the
+    RouzMe app (not the browser extension), and we do not collect your private
+    browsing history.</p>
 
     <p><strong>Content you send via the browser extension.</strong> When you click
     the "Send to RouzMe" button on a web page, the extension reads
@@ -76,9 +86,11 @@
 
     <h2>Sharing</h2>
     <p>Your data is stored with our infrastructure provider, <strong>Supabase</strong>,
-    which hosts the database and authentication on our behalf. We do not share your
-    personal information with any other third parties except as required to operate
-    the service or comply with the law.</p>
+    which hosts the database and authentication on our behalf. To enrich a saved
+    link with a description, the app may also query a metadata provider such as the
+    <strong>OMDb API</strong>, sending only the link or its title (see "Link
+    enrichment" above). We do not share your personal information with any other
+    third parties except as required to operate the service or comply with the law.</p>
     <p>When you choose to share a Pursuit with another user, the pursuit and its
     tasks you have marked as shared become visible to the people you share with.
     You control what you share.</p>
