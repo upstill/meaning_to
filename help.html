@@ -37,17 +37,22 @@
       gap: 12px;
     }
     summary::-webkit-details-marker { display: none; } /* hide default marker (Safari/Chrome) */
+    /* Chevron drawn from two borders: points down (expand), rotates up (collapse). */
     summary::after {
-      content: "+";
-      color: var(--blue);
-      font-size: 2.2rem;
-      font-weight: 700;
-      line-height: 1;
+      content: "";
       flex: none;
-      width: 1.4rem;
-      text-align: center;
+      width: 12px;
+      height: 12px;
+      margin: 0 6px 6px 0;
+      border-right: 3px solid var(--blue);
+      border-bottom: 3px solid var(--blue);
+      transform: rotate(45deg);
+      transition: transform 0.2s ease;
     }
-    details[open] summary::after { content: "\2212"; } /* minus sign */
+    details[open] summary::after {
+      transform: rotate(-135deg);
+      margin: 6px 6px 0 0;
+    }
     summary:hover { background: #eef4fa; }
     .body { padding: 4px 20px 16px; }
     .body p { margin: 12px 0; }
