@@ -752,7 +752,7 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return WebWidthWrapper(
       child: MaterialApp(
-        title: 'I\'ve Been Meaning To',
+        title: 'RouzMe',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
