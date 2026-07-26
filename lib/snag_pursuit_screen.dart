@@ -160,7 +160,6 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
   }
 
   Future<void> _snagSelected() async {
-    if (_selectedIds.isEmpty) return;
     final selected =
         _allTasks.where((t) => _selectedIds.contains(t.id)).toList();
 
@@ -178,9 +177,11 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
     if (!mounted) return;
     await CategoryPickerDialog.show(
       context,
-      title: 'Copy to which Pursuit?',
-      subtitle: 'Select one of your own Pursuits to copy these '
-          '${NamingUtils.tasksName(plural: true, capitalize: false)} into.',
+      title: selected.isEmpty ? 'Add to which Pursuit?' : 'Copy to which Pursuit?',
+      subtitle: selected.isEmpty
+          ? 'Take an empty copy of this ${NamingUtils.categoriesName(plural: false, capitalize: false)}.'
+          : 'Select one of your own Pursuits to copy these '
+              '${NamingUtils.tasksName(plural: true, capitalize: false)} into.',
       showCreateNew: true,
       hideShared: true,
       excludeCategory: cloneCategory,
@@ -530,14 +531,16 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
                     ),
                     const SizedBox(width: 12),
                     ElevatedButton(
-                      onPressed: _selectedIds.isEmpty ? null : _snagSelected,
+                      // Always enabled: snagging with nothing selected takes an
+                      // empty copy of the pursuit (compile tasks yourself later).
+                      onPressed: _snagSelected,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green[700],
                         foregroundColor: Colors.white,
                       ),
                       child: Text(
                         _selectedIds.isEmpty
-                            ? 'Snag Selected'
+                            ? 'Snag For Me'
                             : 'Snag ${_selectedIds.length} Selected',
                       ),
                     ),

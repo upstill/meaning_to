@@ -227,11 +227,17 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void _navigateAsGuest() async {
+    // Guard against re-taps: resetGuestTasks() is a slow network call, so the
+    // button can feel unresponsive and get tapped again. Without this, the
+    // second completion calls Navigator.of(context) on an unmounted State.
+    if (_hasNavigated) return;
+    _hasNavigated = true;
     print('SplashScreen: Guest mode requested, resetting tasks first...');
 
     // Reset all guest tasks before navigating
     await Task.resetGuestTasks();
 
+    if (!mounted) return;
     print('SplashScreen: Navigating to home screen as guest');
     Navigator.of(context).pushReplacementNamed('/home');
   }

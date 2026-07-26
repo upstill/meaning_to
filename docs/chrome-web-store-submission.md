@@ -45,11 +45,8 @@ For each item Chrome asks you to justify, use:
 - **activeTab** — Reads the URL and title of the page the user is currently
   viewing, *only* when the user clicks the RouzMe toolbar button, to create a
   task from it. No background or automatic page access.
-- **Host `https://rouzme.com/*`** — The extension opens (or reuses) a RouzMe
-  tab at rouzme.com and hands it the captured link + title via the URL, so
-  the RouzMe web app can create the task in the signed-in user's account. It
-  also queries for an existing RouzMe tab (matched by this host) to reuse it
-  rather than opening a new one.
+- **Host `https://rouzme.com/*`** — 
+  The extension opens (or reuses) a RouzMe tab at rouzme.com and hands it the captured link + title via the URL, so the RouzMe web app can create the task in the signed-in user's account. It also queries for an existing RouzMe tab (matched by this host) to reuse it rather than opening a new one.
 - **Remote code** — None. The extension contains no remote or eval'd code; all
   executable code is bundled in the package. It only passes the current page's
   link and title to the RouzMe web app (rouzme.com) via a URL parameter; no

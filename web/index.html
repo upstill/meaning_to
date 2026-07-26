@@ -33,8 +33,10 @@
   <link rel="manifest" href="manifest.json">
 
   <script>
-    // The value below is injected by flutter build, do not touch.
-    const serviceWorkerVersion = "3487715736";
+    // Injected by `flutter build` — the real hash for the offline PWA strategy,
+    // or null for `--pwa-strategy none` (no service worker). Must be the
+    // placeholder, NOT a hardcoded string, or the SW cache never invalidates.
+    const serviceWorkerVersion = {{flutter_service_worker_version}};
   </script>
   <!-- This script adds the flutter initialization JS code -->
   <script src="flutter.js" defer></script>

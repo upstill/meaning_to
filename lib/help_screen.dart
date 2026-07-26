@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/widgets/home_button.dart';
+import 'package:meaning_to/widgets/ideas_for_using_section.dart';
 
 class HelpScreen extends StatefulWidget {
   const HelpScreen({super.key});
@@ -17,7 +18,19 @@ class _HelpScreenState extends State<HelpScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Help'),
-        leading: const HomeButton(),
+        // Force a high-contrast foreground so the leading/action icons are
+        // visible on the light M3 AppBar (they render invisibly on web with
+        // the default inherited icon color).
+        foregroundColor: Colors.black87,
+        leading: const HomeButton(color: Colors.black87),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close),
+            color: Colors.black87,
+            tooltip: 'Close',
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
@@ -212,12 +225,22 @@ PS To manage all your shares, hit the "Manage Shares" item on the main menu (top
 ''',
           ),
 
+          const SizedBox(height: 8),
+
+          // Ideas for Using RouzMe
+          _buildHelpSection(
+            context: context,
+            index: 6,
+            title: 'Ideas for Using RouzMe',
+            contentWidget: const IdeasForUsingSection(),
+          ),
+
           const SizedBox(height: 32),
 
           // Footer
           const Center(
             child: Text(
-              'Need more help? Contact us at support@example.com',
+              'Need more help? Contact us at support@rouzme.com',
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.grey,

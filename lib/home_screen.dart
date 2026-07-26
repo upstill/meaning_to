@@ -30,6 +30,8 @@ import 'package:flutter_html/flutter_html.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:meaning_to/widgets/linkified_text.dart';
 import 'package:meaning_to/widgets/pursuit_switcher_sheet.dart';
+import 'package:meaning_to/dialogs/allowed_senders_dialog.dart';
+import 'package:meaning_to/utils/pending_channel_store.dart';
 
 enum HomeTaskSortOption { alphabetical, priority, age }
 
@@ -64,6 +66,11 @@ class HomeScreen extends StatefulWidget {
     return wasModified;
   }
 }
+
+/// Direct in-app sharing between users (the email-gated "accept future shares"
+/// channel and the "Send To User" picker) is held back pending a minor-safety
+/// design. Set true to re-enable; the machinery is left in place.
+const bool kDirectSharingEnabled = false;
 
 class HomeScreenState extends State<HomeScreen> {
   List<Category> _categories = [];
@@ -213,6 +220,15 @@ class HomeScreenState extends State<HomeScreen> {
                       contentPadding: EdgeInsets.zero,
                     ),
                   ),
+                if (kDirectSharingEnabled && !AuthUtils.isGuestUser())
+                  const PopupMenuItem<String>(
+                    value: 'allowed_senders',
+                    child: ListTile(
+                      leading: Icon(Icons.mark_email_read_outlined),
+                      title: Text('Who Can Send Me Things'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
                 if (_selectedCategory != null) ...[
                   PopupMenuItem<String>(
                     value: 'add_pursuit',
@@ -320,6 +336,9 @@ class HomeScreenState extends State<HomeScreen> {
             );
             if (value == 'privacy') {
               await openUrlExternal('https://rouzme.com/privacy');
+            }
+            if (value == 'allowed_senders') {
+              await AllowedSendersDialog.show(context);
             }
             if (value == 'logout') await _handleLogout();
             if (value == 'delete') await _handleDeleteAccount();
@@ -901,6 +920,16 @@ class HomeScreenState extends State<HomeScreen> {
     if (!unseen.any((c) => !_notifiedShareIds.contains(c.id))) return;
     _notifiedShareIds.addAll(unseen.map((c) => c.id));
 
+    // If these shares came from following a link, check whether the sender
+    // invited THIS user's email — drives the "also take future shares" checkbox
+    // (on a match) or an advisory (invited, but a different email).
+    final pendingLink = await PendingChannelStore.get();
+    final channel = pendingLink == null
+        ? null
+        : await ApiClient.shareChannelStatus(pendingLink);
+    if (!mounted) return;
+    bool acceptChannel = false; // checkbox state (default off)
+
     // Show the first two, then "…and N more" — but never a lonely "…and 1
     // more"; if only one would be hidden, just list it too.
     final shownCount = (unseen.length - 2 == 1) ? unseen.length : 2;
@@ -924,36 +953,68 @@ class HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final c in shown)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(text: '•  ${c.headline}'),
-                      if (singleOwner == null && c.ownerName != null)
-                        TextSpan(
-                          text: '  — from ${c.ownerName}',
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
-                    ],
+        content: StatefulBuilder(
+          builder: (ctx, setInner) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final c in shown)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: '•  ${c.headline}'),
+                        if (singleOwner == null && c.ownerName != null)
+                          TextSpan(
+                            text: '  — from ${c.ownerName}',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            if (extra > 0)
-              Text('…and $extra more',
-                  style: const TextStyle(color: Colors.grey)),
-          ],
+              if (extra > 0)
+                Text('…and $extra more',
+                    style: const TextStyle(color: Colors.grey)),
+              // Direct-send consent, only when the link carried invite emails.
+              // Held back for now (kDirectSharingEnabled) pending minor safety.
+              if (kDirectSharingEnabled &&
+                  channel != null &&
+                  channel.hasInvites) ...[
+                const Divider(height: 20),
+                if (channel.emailMatches)
+                  CheckboxListTile(
+                    value: acceptChannel,
+                    onChanged: (v) =>
+                        setInner(() => acceptChannel = v ?? false),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(
+                      'Also let ${channel.creatorName} send me '
+                      '${NamingUtils.categoriesName(plural: true)} directly '
+                      'in the future.',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  )
+                else
+                  Text(
+                    '${channel.creatorName} tried to enable direct shares to '
+                    'you, but for a different email. To allow that, have them '
+                    'invite the email on this account.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                  ),
+              ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () async {
               Navigator.of(ctx).pop();
               await ApiClient.markSharesSeen();
+              await PendingChannelStore.clear();
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                   content: Text(
@@ -970,6 +1031,15 @@ class HomeScreenState extends State<HomeScreen> {
                 await ApiClient.setSharedCategoryAvailable(c.id, true);
               }
               await ApiClient.markSharesSeen();
+              // Open the direct-send channel if the user ticked the box.
+              if (acceptChannel && pendingLink != null) {
+                try {
+                  await ApiClient.acceptShareChannel(pendingLink);
+                } catch (e) {
+                  print('Error accepting share channel: $e');
+                }
+              }
+              await PendingChannelStore.clear();
               if (mounted) {
                 await _loadCategories();
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -985,6 +1055,14 @@ class HomeScreenState extends State<HomeScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.of(ctx).pop();
+              if (acceptChannel && pendingLink != null) {
+                try {
+                  await ApiClient.acceptShareChannel(pendingLink);
+                } catch (e) {
+                  print('Error accepting share channel: $e');
+                }
+              }
+              await PendingChannelStore.clear();
               await MySharesScreen.show(
                 context,
                 _categories,
@@ -1672,20 +1750,83 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showSnagPursuitScreen(Category category) async {
-    final result = await SnagPursuitScreen.push(
-      context,
-      sharedCategory: category,
-      allCategories: _categories,
-    );
+    // If the shared pursuit carries no shared tasks, the snag screen would be
+    // empty (nothing to select, Snag disabled). Skip it: just note that and
+    // offer to take an empty copy.
+    final sharedTasks = (await ApiClient.getTasksByCategory(category.id))
+        .where((t) => t.shared)
+        .toList();
+    if (!mounted) return;
+
+    Category? result;
+    if (sharedTasks.isEmpty) {
+      final pursuit = NamingUtils.categoriesName(plural: false);
+      final tasks = NamingUtils.tasksName(plural: true);
+      final accept = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Copy this $pursuit?'),
+          content: Text(
+              'Note: this $pursuit doesn\'t come with any $tasks — '
+              'you\'ll want to compile those yourself.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green[700],
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Accept Anyway'),
+            ),
+          ],
+        ),
+      );
+      if (accept != true || !mounted) return;
+      result = await _createOwnedCloneOf(category);
+    } else {
+      result = await SnagPursuitScreen.push(
+        context,
+        sharedCategory: category,
+        allCategories: _categories,
+      );
+    }
+
     if (result != null && mounted) {
       await _loadCategories();
       if (mounted) {
+        final r = result;
         final match = _categories.firstWhere(
-          (c) => c.id == result.id,
-          orElse: () => result,
+          (c) => c.id == r.id,
+          orElse: () => r,
         );
         await _handleCategorySelection(match);
       }
+    }
+  }
+
+  /// Creates an owned, empty clone of a shared [category] (same headline /
+  /// original_id / description), for snagging a task-less pursuit.
+  Future<Category?> _createOwnedCloneOf(Category category) async {
+    final userId = AuthUtils.getCurrentUserId();
+    if (userId == null) return null;
+    try {
+      return await ApiClient.createCategory({
+        'headline': category.headline,
+        'owner_id': userId,
+        'original_id': category.originalId ?? category.id,
+        if (category.invitation != null) 'invitation': category.invitation,
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not create Pursuit: $e')),
+        );
+      }
+      return null;
     }
   }
 

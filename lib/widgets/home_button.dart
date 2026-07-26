@@ -8,7 +8,11 @@ class HomeButton extends StatelessWidget {
   /// Return `true` to proceed, `false` to cancel navigation.
   final Future<bool> Function()? onBeforeNavigate;
 
-  const HomeButton({super.key, this.onBeforeNavigate});
+  /// Explicit icon color. Needed on some light M3 AppBars where the inherited
+  /// foreground color doesn't reach the icon on web (renders invisible).
+  final Color? color;
+
+  const HomeButton({super.key, this.onBeforeNavigate, this.color});
 
   Future<void> _goHome(BuildContext context) async {
     if (onBeforeNavigate != null) {
@@ -23,7 +27,10 @@ class HomeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: const Icon(Icons.home),
+      // Color set on the Icon itself so it always wins over the AppBar's
+      // IconTheme / IconButtonTheme (which can leave it invisible on web M3).
+      icon: Icon(Icons.home, color: color),
+      color: color,
       tooltip: 'Home',
       onPressed: () => _goHome(context),
     );

@@ -5,8 +5,8 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
+import 'package:meaning_to/home_screen.dart' show kDirectSharingEnabled;
 import 'package:meaning_to/edit_share_tasks_screen.dart';
-import 'package:meaning_to/dialogs/find_user_dialog.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// Lets the owner pick one or more of their own pursuits, then proceed to the
@@ -307,8 +307,53 @@ class ShareActionDialog extends StatefulWidget {
 
 class _ShareActionDialogState extends State<ShareActionDialog> {
   bool _busy = false;
+  final _emailController = TextEditingController();
+
+  // People who've allowed the current user to send them Pursuits directly.
+  // Usually empty — the search + "Send To User" are hidden unless non-empty.
+  final _recipientFilter = TextEditingController();
+  List<({String id, String name})> _recipients = [];
+  ({String id, String name})? _selectedRecipient;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kDirectSharingEnabled) _loadRecipients();
+    _recipientFilter.addListener(() => setState(() {}));
+  }
+
+  Future<void> _loadRecipients() async {
+    final people = await ApiClient.searchUsers(''); // all my recipients
+    if (!mounted) return;
+    setState(() => _recipients = people);
+  }
+
+  List<({String id, String name})> get _filteredRecipients {
+    final q = _recipientFilter.text.trim().toLowerCase();
+    if (q.isEmpty) return _recipients;
+    return _recipients
+        .where((r) => r.name.toLowerCase().contains(q))
+        .toList();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _recipientFilter.dispose();
+    super.dispose();
+  }
 
   List<int> get _ids => widget.pursuits.map((c) => c.id).toList();
+
+  /// Emails typed into the optional invite field (comma/space separated). Only
+  /// a redeemer whose account email matches one of these is offered a direct-send
+  /// channel — the email is a gate, never used to deliver the link.
+  List<String> get _inviteEmails => _emailController.text
+      .split(RegExp(r'[,\s]+'))
+      .map((e) => e.trim().toLowerCase())
+      .where((e) => e.contains('@') && e.length >= 3)
+      .toSet()
+      .toList();
 
   /// The OS share sheet is only meaningful on mobile. On web/desktop the Share
   /// action falls back to a clipboard copy (same as the Copy button), so we
@@ -323,7 +368,8 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
   /// error, after showing a snackbar via [messenger]).
   Future<String?> _createLink(ScaffoldMessengerState messenger) async {
     try {
-      final linkId = await ApiClient.createShareLink(_ids);
+      final linkId =
+          await ApiClient.createShareLink(_ids, emails: _inviteEmails);
       return DeepLinkGenerator.generateShareLink(linkId);
     } catch (e) {
       messenger.showSnackBar(
@@ -372,8 +418,8 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
   Future<void> _sendToUser() async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    final user = await FindUserDialog.show(context);
-    if (user == null || !mounted) return;
+    final user = _selectedRecipient;
+    if (user == null) return;
     setState(() => _busy = true);
     try {
       final n = await ApiClient.sendShareToUser(_ids, user.id);
@@ -395,19 +441,17 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
 
   /// A share-action button with the icon stacked above its (centred) label, so
   /// the three fit comfortably side by side.
-  Widget _actionButton(IconData icon, String label, VoidCallback onPressed) {
-    return ElevatedButton(
+  Widget _actionButton(IconData icon, String label, VoidCallback? onPressed,
+      {Color? background, Color? foreground}) {
+    // Icon inline with the label; the button sizes to fit its content.
+    return ElevatedButton.icon(
       onPressed: _busy ? null : onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
       style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon),
-          const SizedBox(height: 6),
-          Text(label, textAlign: TextAlign.center),
-        ],
+        backgroundColor: background,
+        foregroundColor: foreground,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       ),
     );
   }
@@ -437,35 +481,106 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Recipients get read-only access. Use Tasks to choose which '
-              'tasks are shared, then pick how to send:',
-              style: TextStyle(fontSize: 13),
+            Text(
+              (_nativeShareAvailable
+                      ? ''
+                      : 'Copy this link and paste into a message to someone '
+                          'you want to share with. ') +
+                  'Recipients get read-only access. Hit Tasks below to choose '
+                      'which tasks to share.',
+              style: const TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 12),
             ...widget.pursuits.map(_buildPursuitRow),
             const SizedBox(height: 16),
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // On mobile the native Share sheet already offers copy, so
-                  // show Share; on web/desktop Share just copies, so show Copy
-                  // Link instead. Either way it's two buttons with Send To User.
-                  if (_nativeShareAvailable)
-                    Expanded(
-                        child: _actionButton(Icons.share, 'Share', _share))
-                  else
-                    Expanded(
-                        child: _actionButton(
-                            Icons.copy, 'Copy Link', _copy)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: _actionButton(
-                          Icons.person_add, 'Send To User', _sendToUser)),
-                ],
+            // In-app direct send — only to people who've allowed you. Hidden
+            // entirely (with its button) when you have no such recipients.
+            // Also held back overall for now (kDirectSharingEnabled).
+            if (kDirectSharingEnabled && _recipients.isNotEmpty) ...[
+              const Text('Send directly to:',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              if (_recipients.length > 4)
+                TextField(
+                  controller: _recipientFilter,
+                  enabled: !_busy,
+                  decoration: const InputDecoration(
+                    hintText: 'Filter by name…',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 160),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final r in _filteredRecipients)
+                      RadioListTile<String>(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        value: r.id,
+                        groupValue: _selectedRecipient?.id,
+                        onChanged: _busy
+                            ? null
+                            : (_) =>
+                                setState(() => _selectedRecipient = r),
+                        title: Text(r.name),
+                      ),
+                  ],
+                ),
               ),
+              const SizedBox(height: 12),
+            ],
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed:
+                      _busy ? null : () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                // On mobile the native Share sheet already offers copy, so
+                // show Share; on web/desktop Share just copies, so show Copy.
+                if (_nativeShareAvailable)
+                  _actionButton(Icons.share, 'Share', _share)
+                else
+                  _actionButton(Icons.copy, 'Copy Link', _copy,
+                      background: Colors.amber, foreground: Colors.black87),
+                // Send To User only when there's someone to send to.
+                if (kDirectSharingEnabled && _recipients.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  _actionButton(
+                    Icons.person_add,
+                    'Send To User',
+                    _selectedRecipient == null ? null : _sendToUser,
+                  ),
+                ],
+              ],
             ),
+            // OPTIONAL email gate, below the buttons — held back for now
+            // (kDirectSharingEnabled). Only someone whose account email matches
+            // can later accept direct shares from you.
+            if (kDirectSharingEnabled) ...[
+              const SizedBox(height: 16),
+              TextField(
+                controller: _emailController,
+                enabled: !_busy,
+                keyboardType: TextInputType.emailAddress,
+                minLines: 1,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText:
+                      'OPTIONAL: include their email here for greater security',
+                  hintText: 'friend@example.com',
+                  helperMaxLines: 3,
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ],
           ],
         ),
       ),

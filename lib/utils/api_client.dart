@@ -1,6 +1,7 @@
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
+import 'package:meaning_to/utils/pending_channel_store.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiClient {
@@ -716,9 +717,12 @@ class ApiClient {
 
   /// Searches other users by name or email substring, returning id + display
   /// name only (never email). Empty list for queries shorter than 2 chars.
+  /// Searches the people who have granted the current user a direct-send channel
+  /// (their recipients), by name. An empty/short query returns the full recipient
+  /// list, so this doubles as the "who can I send to" picker. No longer searches
+  /// all users or by email — there is no stranger discovery.
   static Future<List<({String id, String name})>> searchUsers(
       String query) async {
-    if (query.trim().length < 2) return [];
     try {
       final rows = await _supabase.rpc(
         'search_users',
@@ -751,18 +755,72 @@ class ApiClient {
   }
 
   /// Creates a reusable share link granting [categoryIds] (all must be owned by
-  /// the caller). Returns the new link id.
-  static Future<String> createShareLink(List<int> categoryIds) async {
+  /// the caller). Optionally attaches target [emails] — only a redeemer whose
+  /// account email matches one of these is offered a direct-send channel to the
+  /// creator (the email is a gate, never revealed and never used for delivery).
+  /// Returns the link id.
+  static Future<String> createShareLink(List<int> categoryIds,
+      {List<String> emails = const []}) async {
     try {
       final response = await _supabase.rpc(
         'create_share_link',
-        params: {'p_category_ids': categoryIds},
+        params: {'p_category_ids': categoryIds, 'p_emails': emails},
       );
       return response as String;
     } catch (e) {
       print('Error creating share link: $e');
       rethrow;
     }
+  }
+
+  /// For the share-accept dialog: the link creator, whether the link carries any
+  /// invite emails, and whether the current user's account email is among them.
+  /// Null when not applicable (unknown link, or the caller is the creator).
+  static Future<({String creatorName, bool hasInvites, bool emailMatches})?>
+      shareChannelStatus(String linkId) async {
+    try {
+      final rows = await _supabase
+          .rpc('share_channel_status', params: {'p_link': linkId});
+      final list = rows as List;
+      if (list.isEmpty) return null;
+      final m = list.first as Map<String, dynamic>;
+      return (
+        creatorName: m['creator_name'] as String,
+        hasInvites: m['has_invites'] as bool,
+        emailMatches: m['email_matches'] as bool,
+      );
+    } catch (e) {
+      print('Error checking share channel status: $e');
+      return null;
+    }
+  }
+
+  /// Accepts a direct-send channel from the creator of [linkId] (email-gated
+  /// server-side). Idempotent.
+  static Future<void> acceptShareChannel(String linkId) async {
+    await _supabase.rpc('accept_share_channel', params: {'p_link': linkId});
+  }
+
+  /// People who have granted the current user a direct-send channel — i.e. those
+  /// the user may send Pursuits to. (For the "manage" view of my own inbound
+  /// permissions, use [listAllowedSenders].)
+  static Future<List<({String id, String name})>> listAllowedSenders() async {
+    try {
+      final rows = await _supabase.rpc('list_allowed_senders');
+      return (rows as List).map((r) {
+        final m = r as Map<String, dynamic>;
+        return (id: m['id'] as String, name: m['name'] as String);
+      }).toList();
+    } catch (e) {
+      print('Error listing allowed senders: $e');
+      return [];
+    }
+  }
+
+  /// Revoke a sender's channel (unfriend) — they can no longer send you Pursuits.
+  static Future<void> revokeAllowedSender(String senderId) async {
+    await _supabase
+        .rpc('revoke_allowed_sender', params: {'p_sender': senderId});
   }
 
   /// Previews a share link (callable while logged out): the inviter's display
@@ -855,7 +913,11 @@ class ApiClient {
   /// a legacy invitation token (raw uuid). Returns the number of pursuits granted.
   static Future<int> redeemPending(String stashed) async {
     if (stashed.startsWith('share:')) {
-      final granted = await redeemShareLink(stashed.substring('share:'.length));
+      final linkId = stashed.substring('share:'.length);
+      final granted = await redeemShareLink(linkId);
+      // Record the link so Home can offer the direct-send channel afterward,
+      // regardless of which redemption path ran.
+      await PendingChannelStore.set(linkId);
       return granted.length;
     }
     await redeemInvitation(stashed);
