@@ -25,6 +25,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
 import 'package:meaning_to/utils/pending_intent_store.dart';
+import 'package:meaning_to/utils/url_bar.dart';
 import 'package:meaning_to/utils/error_dialog.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/invite_screen.dart';
@@ -223,6 +224,10 @@ void main() async {
       if (addLink != null && addLink.isNotEmpty) {
         await PendingIntentStore.set(addLink, q['title'] ?? '');
       }
+      // Now that these launch params are captured into local stores, strip them
+      // from the address bar so a later page load (e.g. after logout) can't
+      // re-read ?share= / ?invite= and resurrect an already-redeemed invite.
+      stripUrlQueryParams(['share', 'invite', 'addlink', 'title']);
     }
 
     runApp(const MyApp());
@@ -351,6 +356,18 @@ class _MyAppState extends State<MyApp> {
       scaffoldKey: _scaffoldKey,
       navigatorKey: MyApp.navigatorKey,
     );
+    // Re-strip the launch query params after the first frame: the Flutter web
+    // engine re-establishes the initial browser URL during startup, which can
+    // revert the strip done in main(). Doing it post-frame makes it stick.
+    if (foundation.kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        stripUrlQueryParams(['share', 'invite', 'addlink', 'title']);
+      });
+      // And again after routing/engine settle, in case they re-establish it.
+      Timer(const Duration(milliseconds: 600), () {
+        stripUrlQueryParams(['share', 'invite', 'addlink', 'title']);
+      });
+    }
   }
 
   @override
@@ -395,7 +412,17 @@ class _MyAppState extends State<MyApp> {
         print('Initial deep link detected, handling immediately');
         _handleDeepLink(uri);
       } else {
-        _pendingDeepLink = uri; // Store for onGenerateRoute (web paths)
+        // On web, main() already captured the launch URL's ?share=/?invite=
+        // into the token store. Do NOT route them through the deep-link handler
+        // too: getInitialAppLink can resolve late and re-stash the token after
+        // it was legitimately redeemed/cleared, resurrecting a ghost invite on
+        // the Welcome screen. (Other web deep links still route normally.)
+        final alreadyHandled = foundation.kIsWeb &&
+            (uri.queryParameters.containsKey('share') ||
+                uri.queryParameters.containsKey('invite'));
+        if (!alreadyHandled) {
+          _pendingDeepLink = uri; // Store for onGenerateRoute (web paths)
+        }
       }
     } else {
       print('No initial app link found');

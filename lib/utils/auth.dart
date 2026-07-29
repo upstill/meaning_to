@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/utils/guest_user_manager.dart';
+import 'package:meaning_to/utils/invite_token_store.dart';
 
 /// Utility class for handling authentication
 /// This class now delegates guest user functionality to GuestUserManager
@@ -29,9 +30,20 @@ class AuthUtils {
     return GuestUserManager.isGuestUserId(userId);
   }
 
-  /// Sign out the current user
+  /// Sign out the current user. If a REAL (authenticated) user logs out, also
+  /// discard any pending share/invite token — a not-yet-redeemed invite from a
+  /// prior session is stale and would otherwise haunt the Welcome screen
+  /// ("X wants to share…") indefinitely.
+  ///
+  /// A GUEST has no session, so this preserves their token: a guest previewing a
+  /// share who then routes to sign-in (even via a "logout" control) keeps the
+  /// invite, so it still redeems into the account they sign into.
   static Future<void> signOut() async {
-    return GuestUserManager.signOut();
+    final wasLoggedIn = Supabase.instance.client.auth.currentUser != null;
+    await GuestUserManager.signOut();
+    if (wasLoggedIn) {
+      await InviteTokenStore.clear();
+    }
   }
 
   /// Get the current user email, or guest email if no user is logged in
