@@ -75,3 +75,6 @@ app.*.map.json
 .vercel
 AuthKey_6L983MM3BW.p8
 .gitignore
+
+# Local DB backups (contain user data — never commit)
+backups/
