@@ -88,6 +88,7 @@ class HomeScreenState extends State<HomeScreen> {
   static const int _initialListTaskCount = 16;
   static const int _listBatchSize = 24;
   Set<int> _snaggedOriginalIds = {}; // original_ids of tasks user already snagged
+  bool _snagInProgress = false; // serializes per-task snags (avoid duplicate clones)
   bool _isLoading = true;
   bool _isLoadingTask = false;
   String? _error;
@@ -2125,18 +2126,32 @@ class HomeScreenState extends State<HomeScreen> {
     final sharedCategory = _selectedCategory;
     if (sharedCategory == null) return;
 
-    final sharedOriginalId = sharedCategory.originalId ?? sharedCategory.id;
-    final cloneCategory = _categories
-        .where((c) => !c.isShared && c.originalId == sharedOriginalId)
-        .firstOrNull;
-
-    if (cloneCategory != null) {
-      await _copySelectedTasksTo(cloneCategory, overrideTasks: [task]);
-    } else {
-      await _snagTaskToNewClone(task, sharedCategory);
+    // Serialize snags: the buttons fire unawaited, so two quick taps could both
+    // find no clone and each create a duplicate like-named pursuit. Waiting here
+    // means the second tap runs after the first has created (and reloaded) the
+    // clone, so it reuses it.
+    while (_snagInProgress) {
+      await Future.delayed(const Duration(milliseconds: 50));
     }
-    // Refresh snagged IDs so the button updates
-    await _loadSnaggedOriginalIds();
+    _snagInProgress = true;
+    try {
+      final sharedOriginalId = sharedCategory.originalId ?? sharedCategory.id;
+      final cloneCategory = _categories
+          .where((c) => !c.isShared && c.originalId == sharedOriginalId)
+          .firstOrNull;
+
+      if (cloneCategory != null) {
+        await _copySelectedTasksTo(cloneCategory, overrideTasks: [task]);
+      } else {
+        await _snagTaskToNewClone(task, sharedCategory);
+      }
+      // Reload so (1) the pursuit menu shows the new owned clone and (2) the
+      // NEXT snag finds it instead of creating a second like-named pursuit.
+      if (mounted) await _loadCategories();
+      await _loadSnaggedOriginalIds();
+    } finally {
+      _snagInProgress = false;
+    }
   }
 
   /// Snag a task that's already been snagged once into a different pursuit.
