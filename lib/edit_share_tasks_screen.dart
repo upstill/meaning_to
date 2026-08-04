@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:meaning_to/theme/app_colors.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
@@ -151,7 +152,7 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Error: $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.danger,
         ));
       }
     } finally {
@@ -182,7 +183,7 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
     final headlineStyle = TextStyle(
       fontSize: headlineFontSize,
       fontWeight: FontWeight.bold,
-      color: const Color(0xFF1A237E),
+      color: AppColors.text,
     );
 
     final allSelected = _displayedTasks.isNotEmpty &&
@@ -310,9 +311,9 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
                             height: 30,
                             decoration: BoxDecoration(
                               color: allSelected
-                                  ? Colors.green.shade600
+                                  ? AppColors.primary
                                   : someSelected
-                                      ? Colors.green.shade300
+                                      ? AppColors.primary.withOpacity(0.45)
                                       : Colors.grey.shade200,
                               borderRadius: BorderRadius.circular(6),
                             ),
@@ -385,7 +386,7 @@ class _EditShareTasksScreenState extends State<EditShareTasksScreen> {
                     ElevatedButton(
                       onPressed: _saving || _loading ? null : _save,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[700],
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
                       ),
                       child: _saving

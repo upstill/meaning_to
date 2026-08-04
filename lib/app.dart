@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:meaning_to/theme/app_theme.dart';
 import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/task_edit_screen.dart';
@@ -14,10 +15,7 @@ class MeaningToApp extends StatelessWidget {
     return MaterialApp(
       title: 'RouzMe',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.light,
       initialRoute: '/',
       routes: {
         '/': (context) => const HomeScreen(),

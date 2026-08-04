@@ -118,7 +118,10 @@ class _PursuitSwitcherSheetState extends State<PursuitSwitcherSheet> {
                   for (final c in filtered)
                     ListTile(
                       dense: true,
-                      title: Text(c.headline),
+                      title: Text(c.headline,
+                          // ~50% larger than the default dense title, with a
+                          // tight line height so rows don't gain vertical space.
+                          style: const TextStyle(fontSize: 21, height: 1.0)),
                       subtitle: (c.isShared && c.ownerName != null)
                           ? Text('from ${c.ownerName}',
                               style: TextStyle(

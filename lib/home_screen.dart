@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:meaning_to/theme/app_colors.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/auth.dart';
@@ -521,7 +522,7 @@ class HomeScreenState extends State<HomeScreen> {
                         category.headline,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.bold,
-                              color: Colors.green,
+                              color: AppColors.primary,
                             ),
                       ),
                     ),
@@ -562,7 +563,7 @@ class HomeScreenState extends State<HomeScreen> {
                           ElevatedButton(
                             onPressed: () => Navigator.pop(context, true),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
+                              backgroundColor: AppColors.danger,
                               foregroundColor: Colors.white,
                             ),
                             child: const Text('Delete'),
@@ -676,7 +677,7 @@ class HomeScreenState extends State<HomeScreen> {
             ElevatedButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: AppColors.danger,
                 foregroundColor: Colors.white,
               ),
               child: const Text('Delete My Account'),
@@ -875,7 +876,7 @@ class HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.add),
             label: Text('New $pursuitName'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green[700],
+              backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
             ),
           ),
@@ -1292,7 +1293,7 @@ class HomeScreenState extends State<HomeScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 13),
               height: 35,
-              color: !_showTaskListMode ? Colors.green : Colors.grey.shade400,
+              color: !_showTaskListMode ? AppColors.primary : Colors.grey.shade400,
               alignment: Alignment.center,
               child: const Text(
                 '—',
@@ -1312,7 +1313,7 @@ class HomeScreenState extends State<HomeScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 13),
               height: 35,
-              color: _showTaskListMode ? Colors.blue : Colors.grey.shade400,
+              color: _showTaskListMode ? AppColors.primary : Colors.grey.shade400,
               alignment: Alignment.center,
               child: const Icon(
                 Icons.menu,
@@ -1656,7 +1657,7 @@ class HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error updating task: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -1701,7 +1702,7 @@ class HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error deleting task: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -1743,7 +1744,7 @@ class HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error deleting $catName: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -1778,7 +1779,7 @@ class HomeScreenState extends State<HomeScreen> {
             ElevatedButton(
               onPressed: () => Navigator.of(ctx).pop(true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[700],
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
               ),
               child: const Text('Accept Anyway'),
@@ -1851,7 +1852,7 @@ class HomeScreenState extends State<HomeScreen> {
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green[700],
+              backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
             ),
             child: const Text('Release'),
@@ -1869,7 +1870,7 @@ class HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error releasing Pursuit: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -1911,7 +1912,7 @@ class HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error updating share state: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -1988,7 +1989,7 @@ class HomeScreenState extends State<HomeScreen> {
                   style: const TextStyle(fontSize: 20),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
+                  backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                   minimumSize: const Size(200, 56),
                 ),
@@ -2232,7 +2233,7 @@ class HomeScreenState extends State<HomeScreen> {
             ElevatedButton(
               onPressed: () => Navigator.of(ctx).pop(true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[700],
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
               ),
               child: const Text('Proceed'),
@@ -2451,7 +2452,7 @@ class HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error reviving task: $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.danger,
         ),
       );
     }
@@ -2752,7 +2753,7 @@ class HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.add),
             label: Text('Create a $pursuit'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green[700],
+              backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
             ),
           ),
@@ -3113,7 +3114,7 @@ class HomeScreenState extends State<HomeScreen> {
                         label: Text(
                             'Create a ${NamingUtils.categoriesName(plural: false, capitalize: true)}'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[700],
+                          backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 12),
@@ -3123,7 +3124,7 @@ class HomeScreenState extends State<HomeScreen> {
                       ElevatedButton(
                         onPressed: () => Navigator.of(context).pop(),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
+                          backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 12),
@@ -3540,7 +3541,7 @@ class HomeScreenState extends State<HomeScreen> {
                                         final headlineStyle = TextStyle(
                                           fontSize: headlineFontSize,
                                           fontWeight: FontWeight.bold,
-                                          color: Color(0xFF1A237E),
+                                          color: AppColors.text,
                                         );
                                         if (cat.isShared) {
                                           return Column(
@@ -3561,7 +3562,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                               0.7,
                                                       fontStyle:
                                                           FontStyle.italic,
-                                                      color: Color(0xFF1A237E),
+                                                      color: AppColors.text,
                                                     ),
                                                   ),
                                                   // Guests can't own or borrow,
@@ -3582,7 +3583,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                           Icons.copy,
                                                           size: 22),
                                                       tooltip: 'Copy for Me',
-                                                      color: Colors.green[800],
+                                                      color: AppColors.primary,
                                                       visualDensity:
                                                           VisualDensity.compact,
                                                       padding: EdgeInsets.zero,
@@ -3701,7 +3702,7 @@ class HomeScreenState extends State<HomeScreen> {
                                               style: TextStyle(fontSize: 18),
                                             ),
                                             style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.green,
+                                              backgroundColor: AppColors.primary,
                                               foregroundColor: Colors.white,
                                               minimumSize: const Size(0, 44),
                                             ),
@@ -3734,7 +3735,7 @@ class HomeScreenState extends State<HomeScreen> {
                                           _navigateToNewContent();
                                         },
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.deepPurple,
+                                          backgroundColor: AppColors.primary,
                                           foregroundColor: Colors.white,
                                           padding: EdgeInsets.zero,
                                           shape: RoundedRectangleBorder(
@@ -3786,7 +3787,7 @@ class HomeScreenState extends State<HomeScreen> {
                                       key: ValueKey(
                                         'task_${_randomTask!.id}_${_randomTask!.headline}',
                                       ),
-                                      color: const Color(0xFF4A148C),
+                                      color: AppColors.primary,
                                       child: Stack(
                                         children: [
                                           Padding(
@@ -4092,6 +4093,13 @@ class HomeScreenState extends State<HomeScreen> {
                                                                 linkText: link,
                                                                 showIcon: true,
                                                                 showTitle: true,
+                                                                // On the blue
+                                                                // featured-task
+                                                                // card, blue-on-
+                                                                // blue is unread-
+                                                                // able → white.
+                                                                linkColor:
+                                                                    Colors.white,
                                                               ),
                                                             ))
                                                         .toList(),
@@ -4201,8 +4209,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                         backgroundColor:
                                                             Colors.white,
                                                         foregroundColor:
-                                                            const Color(
-                                                                0xFF4A148C),
+                                                            AppColors.primary,
                                                         visualDensity:
                                                             VisualDensity
                                                                 .compact,
@@ -4251,7 +4258,7 @@ class HomeScreenState extends State<HomeScreen> {
                                           style: const TextStyle(fontSize: 20),
                                         ),
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.green,
+                                          backgroundColor: AppColors.primary,
                                           foregroundColor: Colors.white,
                                           minimumSize: const Size(200, 56),
                                         ),

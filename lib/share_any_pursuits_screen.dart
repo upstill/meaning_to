@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:meaning_to/utils/app_buttons.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/deep_link_generator.dart';
@@ -536,9 +537,9 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(
-                  onPressed:
-                      _busy ? null : () => Navigator.of(context).pop(),
+                OutlinedButton(
+                  onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                  style: AppButtons.cancelOutlined(),
                   child: const Text('Cancel'),
                 ),
                 const SizedBox(width: 8),
@@ -547,8 +548,7 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
                 if (_nativeShareAvailable)
                   _actionButton(Icons.share, 'Share', _share)
                 else
-                  _actionButton(Icons.copy, 'Copy Link', _copy,
-                      background: Colors.amber, foreground: Colors.black87),
+                  _actionButton(Icons.copy, 'Copy Link', _copy),
                 // Send To User only when there's someone to send to.
                 if (kDirectSharingEnabled && _recipients.isNotEmpty) ...[
                   const SizedBox(width: 8),

@@ -843,6 +843,10 @@ class LinkDisplayWidget extends StatelessWidget {
   final VoidCallback? onTap;
   final bool isEditing;
 
+  /// Colour for the link title text. Defaults to blue; pass e.g. white when the
+  /// link sits on a coloured (dark) background like the featured-task card.
+  final Color? linkColor;
+
   const LinkDisplayWidget({
     super.key,
     required this.linkText,
@@ -850,6 +854,7 @@ class LinkDisplayWidget extends StatelessWidget {
     this.showTitle = true,
     this.onTap,
     this.isEditing = false,
+    this.linkColor,
   });
 
   Widget _buildFavicon(String? faviconUrl, [DomainIcon? domainIcon]) {
@@ -955,8 +960,8 @@ class LinkDisplayWidget extends StatelessWidget {
               Expanded(
                 child: Text(
                   processedLink.displayTitle,
-                  style: const TextStyle(
-                    color: Colors.blue,
+                  style: TextStyle(
+                    color: linkColor ?? Colors.blue,
                     decoration: TextDecoration.underline,
                     fontSize: 16, // Increased by 4 from default
                   ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:meaning_to/theme/app_colors.dart';
 import 'package:meaning_to/main.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/auth_screen.dart' show AuthMode;
@@ -270,7 +271,7 @@ class _SplashScreenState extends State<SplashScreen> {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Colors.deepPurple, Colors.purple],
+              colors: [AppColors.primaryDark, AppColors.brand],
             ),
           ),
           child: SafeArea(
@@ -341,7 +342,7 @@ class _SplashScreenState extends State<SplashScreen> {
                             onPressed: () => _goToAuth(AuthMode.signIn),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.white,
-                              foregroundColor: Colors.deepPurple,
+                              foregroundColor: AppColors.primary,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -522,7 +523,7 @@ class _SplashScreenState extends State<SplashScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.deepPurple, Colors.purple],
+            colors: [AppColors.primaryDark, AppColors.brand],
           ),
         ),
         child: SafeArea(

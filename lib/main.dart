@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import 'package:flutter/services.dart';
+import 'package:meaning_to/theme/app_theme.dart';
 import 'package:meaning_to/splash_screen.dart';
 import 'package:meaning_to/auth_screen.dart';
 import 'package:meaning_to/home_screen.dart';
@@ -781,10 +782,7 @@ class _MyAppState extends State<MyApp> {
       child: MaterialApp(
         title: 'RouzMe',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          useMaterial3: true,
-        ),
+        theme: AppTheme.light,
         scaffoldMessengerKey: _scaffoldKey,
         navigatorKey: MyApp.navigatorKey,
         localizationsDelegates: const [

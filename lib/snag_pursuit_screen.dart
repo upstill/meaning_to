@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:meaning_to/theme/app_colors.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/api_client.dart';
@@ -337,7 +338,7 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
     final headlineStyle = TextStyle(
       fontSize: headlineFontSize,
       fontWeight: FontWeight.bold,
-      color: const Color(0xFF1A237E),
+      color: AppColors.text,
     );
 
     final allSelected = _displayedTasks.isNotEmpty &&
@@ -426,7 +427,7 @@ class _SnagPursuitScreenState extends State<SnagPursuitScreen> {
                           style: TextStyle(
                             fontSize: headlineFontSize * 0.7,
                             fontStyle: FontStyle.italic,
-                            color: const Color(0xFF1A237E),
+                            color: AppColors.text,
                           ),
                         ),
                     ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:meaning_to/theme/app_colors.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
@@ -127,7 +128,7 @@ class _AuthOtpVerificationScreenState extends State<AuthOtpVerificationScreen> {
                 const Icon(
                   Icons.email_outlined,
                   size: 80,
-                  color: Colors.deepPurple,
+                  color: AppColors.primary,
                 ),
                 const SizedBox(height: 32),
                 Text(
@@ -148,7 +149,7 @@ class _AuthOtpVerificationScreenState extends State<AuthOtpVerificationScreen> {
                   email,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: Colors.deepPurple,
+                        color: AppColors.primary,
                       ),
                   textAlign: TextAlign.center,
                 ),
@@ -225,7 +226,7 @@ class _AuthOtpVerificationScreenState extends State<AuthOtpVerificationScreen> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : () => _verifyOtp(email),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:meaning_to/theme/app_colors.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
@@ -390,7 +391,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   ? null
                   : (isSignUp ? _handleSignUp : _handleSignIn),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
@@ -411,7 +412,7 @@ class _AuthScreenState extends State<AuthScreen> {
               child: TextButton(
                 onPressed: _isLoading ? null : _handleForgotPassword,
                 child: const Text('Forgot Password?',
-                    style: TextStyle(color: Colors.deepPurple, fontSize: 14)),
+                    style: TextStyle(color: AppColors.primary, fontSize: 14)),
               ),
             ),
           const SizedBox(height: 8),
@@ -424,7 +425,7 @@ class _AuthScreenState extends State<AuthScreen> {
               isSignUp
                   ? 'Already have an account? Sign In'
                   : 'Need an account? Sign Up',
-              style: const TextStyle(color: Colors.deepPurple, fontSize: 14),
+              style: const TextStyle(color: AppColors.primary, fontSize: 14),
             ),
           ),
         ],

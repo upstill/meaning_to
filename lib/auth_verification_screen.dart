@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:meaning_to/theme/app_colors.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -285,7 +286,7 @@ class _AuthVerificationScreenState extends State<AuthVerificationScreen> {
                   child: ElevatedButton(
                     onPressed: () => Navigator.pushReplacementNamed(context, '/auth'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),

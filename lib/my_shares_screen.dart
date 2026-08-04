@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:meaning_to/theme/app_colors.dart';
 import 'package:meaning_to/widgets/linkified_text.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
@@ -243,7 +244,7 @@ class _MySharesScreenState extends State<MySharesScreen> {
                                 child: ElevatedButton(
                                   onPressed: _saving ? null : _onOkay,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green[700],
+                                    backgroundColor: AppColors.primary,
                                     foregroundColor: Colors.white,
                                   ),
                                   child: _saving
