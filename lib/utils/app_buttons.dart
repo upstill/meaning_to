@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:meaning_to/theme/app_colors.dart';
+import 'package:meaning_to/theme/design.dart';
 
-/// Semantic button styles for RouzMe ("Refined Blue" scheme).
+/// Semantic button styles for RouzMe, all derived from [Design]
+/// (lib/theme/design.dart — the single source of design decisions).
 ///
 /// Roles (use these — not raw colors):
 ///   • primary     — the ONE main action per view (Save, Go, Accept, Snag). Filled blue.
@@ -14,28 +15,27 @@ import 'package:meaning_to/theme/app_colors.dart';
 /// call sites compile; `finalize` now maps to the single primary blue (no more
 /// blue-vs-green split). New code should use the semantic names above.
 class AppButtons {
-  // ---- Palette (kept for direct references; sourced from tokens) ----
-  static const Color primaryBg = AppColors.primary;
-  static const Color primaryFg = AppColors.onPrimary;
-  static const Color successBg = AppColors.success;
+  // ---- Palette (kept for direct references; sourced from Design) ----
+  static const Color primaryBg = Design.primary;
+  static const Color primaryFg = Design.onPrimary;
+  static const Color successBg = Design.success;
   static const Color successFg = Colors.white;
-  static const Color dangerBg = AppColors.danger;
+  static const Color dangerBg = Design.danger;
   static const Color dangerFg = Colors.white;
-  static const Color neutralFg = AppColors.textMuted;
+  static const Color neutralFg = Design.textMuted;
 
   // Legacy aliases (do not use in new code).
-  static const Color finalizeBg = AppColors.primary; // was green -> now primary
-  static const Color finalizeFg = AppColors.onPrimary;
-  static const Color goForthBg = AppColors.primary;
-  static const Color goForthFg = AppColors.onPrimary;
-  static const Color cancelBg = AppColors.textMuted;
+  static const Color finalizeBg = Design.primary; // was green -> now primary
+  static const Color finalizeFg = Design.onPrimary;
+  static const Color goForthBg = Design.primary;
+  static const Color goForthFg = Design.onPrimary;
+  static const Color cancelBg = Design.textMuted;
   static const Color cancelFg = Colors.white;
 
-  static const _radius = 12.0;
   static final _shape = RoundedRectangleBorder(
-    borderRadius: BorderRadius.circular(_radius),
+    borderRadius: BorderRadius.circular(Design.radiusMd),
   );
-  static const _pad = EdgeInsets.symmetric(horizontal: 20, vertical: 12);
+  static const _pad = Design.buttonPadding;
 
   // ---- Filled (ElevatedButton) ----
   static ButtonStyle primary() => ElevatedButton.styleFrom(
@@ -90,12 +90,12 @@ class AppButtons {
 
   // ---- Icon buttons ----
   static ButtonStyle iconPrimary() => IconButton.styleFrom(
-        backgroundColor: AppColors.primaryTint,
+        backgroundColor: Design.primaryTint,
         foregroundColor: primaryBg,
       );
 
   static ButtonStyle iconDestructive() => IconButton.styleFrom(
-        backgroundColor: AppColors.dangerTint,
+        backgroundColor: Design.dangerTint,
         foregroundColor: dangerBg,
       );
 
@@ -107,14 +107,14 @@ class AppButtons {
   static ButtonStyle goForthOutlined() => secondary();
   static ButtonStyle cancelOutlined() => OutlinedButton.styleFrom(
         foregroundColor: neutralFg,
-        side: const BorderSide(color: AppColors.border),
+        side: const BorderSide(color: Design.border),
         padding: _pad,
         shape: _shape,
       );
   static ButtonStyle iconGoForth() => iconPrimary();
   static ButtonStyle iconFinalize() => iconPrimary();
   static ButtonStyle iconCancel() => IconButton.styleFrom(
-        backgroundColor: AppColors.surfaceMuted,
+        backgroundColor: Design.surfaceMuted,
         foregroundColor: neutralFg,
       );
 }

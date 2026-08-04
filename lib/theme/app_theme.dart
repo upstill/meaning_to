@@ -1,175 +1,180 @@
 import 'package:flutter/material.dart';
-import 'package:meaning_to/theme/app_colors.dart';
+import 'package:meaning_to/theme/design.dart';
 
-/// The single light theme for RouzMe, built from [AppColors] tokens.
+/// The single light theme for RouzMe, built entirely from [Design] tokens.
 ///
-/// This carries most of the visual consistency: app bar, buttons, cards,
-/// inputs, dialogs and list tiles all pull from one ColorScheme, so screens
-/// that don't hardcode colors inherit the "Refined Blue" look automatically.
+/// This is wiring, not decisions: app bar, buttons, cards, inputs, dialogs and
+/// list tiles all pull from [Design] (lib/theme/design.dart), so to restyle the
+/// app you edit Design — not this file. Screens that don't hardcode colours
+/// inherit the "Refined Blue" look automatically.
 class AppTheme {
   AppTheme._();
 
   static ThemeData get light {
     final scheme = ColorScheme.fromSeed(
-      seedColor: AppColors.primary,
-      primary: AppColors.primary,
-      onPrimary: AppColors.onPrimary,
-      secondary: AppColors.brand,
-      error: AppColors.danger,
-      surface: AppColors.surface,
+      seedColor: Design.primary,
+      primary: Design.primary,
+      onPrimary: Design.onPrimary,
+      secondary: Design.brand,
+      error: Design.danger,
+      surface: Design.surface,
       brightness: Brightness.light,
     );
 
-    const radius = 12.0;
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(radius),
+    final buttonShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(Design.radiusMd),
+    );
+    final buttonTextStyle = TextStyle(
+      fontSize: Design.fontButton,
+      fontWeight: Design.weightSemibold,
     );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: AppColors.background,
-      canvasColor: AppColors.background,
-      dividerColor: AppColors.border,
+      scaffoldBackgroundColor: Design.background,
+      canvasColor: Design.background,
+      dividerColor: Design.border,
       dividerTheme: const DividerThemeData(
-        color: AppColors.border,
-        thickness: 1,
+        color: Design.border,
+        thickness: Design.dividerThickness,
         space: 1,
       ),
       textTheme: Typography.blackMountainView.apply(
-        bodyColor: AppColors.text,
-        displayColor: AppColors.text,
+        bodyColor: Design.text,
+        displayColor: Design.text,
       ),
 
       appBarTheme: const AppBarTheme(
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.onPrimary,
+        backgroundColor: Design.primary,
+        foregroundColor: Design.onPrimary,
         elevation: 0,
         centerTitle: false,
         titleTextStyle: TextStyle(
-          color: AppColors.onPrimary,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
+          color: Design.onPrimary,
+          fontSize: Design.fontAppBarTitle,
+          fontWeight: Design.weightSemibold,
         ),
       ),
 
       cardTheme: CardThemeData(
-        color: AppColors.surface,
+        color: Design.surface,
         elevation: 0,
-        margin: const EdgeInsets.symmetric(vertical: 6),
+        margin: Design.cardMargin,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radius),
-          side: const BorderSide(color: AppColors.border),
+          borderRadius: BorderRadius.circular(Design.radiusMd),
+          side: const BorderSide(color: Design.border),
         ),
       ),
 
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: AppColors.onPrimary,
+          backgroundColor: Design.primary,
+          foregroundColor: Design.onPrimary,
           elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          shape: shape,
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          padding: Design.buttonPadding,
+          shape: buttonShape,
+          textStyle: buttonTextStyle,
         ),
       ),
 
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: AppColors.onPrimary,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          shape: shape,
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          backgroundColor: Design.primary,
+          foregroundColor: Design.onPrimary,
+          padding: Design.buttonPadding,
+          shape: buttonShape,
+          textStyle: buttonTextStyle,
         ),
       ),
 
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
-          side: const BorderSide(color: AppColors.primary),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          shape: shape,
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          foregroundColor: Design.primary,
+          side: const BorderSide(color: Design.primary),
+          padding: Design.buttonPadding,
+          shape: buttonShape,
+          textStyle: buttonTextStyle,
         ),
       ),
 
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.primary,
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          foregroundColor: Design.primary,
+          textStyle: buttonTextStyle,
         ),
       ),
 
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.onPrimary,
+        backgroundColor: Design.primary,
+        foregroundColor: Design.onPrimary,
       ),
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.surface,
+        fillColor: Design.surface,
         isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: Design.inputPadding,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderRadius: BorderRadius.circular(Design.radiusInput),
+          borderSide: const BorderSide(color: Design.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderRadius: BorderRadius.circular(Design.radiusInput),
+          borderSide: const BorderSide(color: Design.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          borderRadius: BorderRadius.circular(Design.radiusInput),
+          borderSide: const BorderSide(
+              color: Design.primary, width: Design.inputFocusBorderWidth),
         ),
-        hintStyle: const TextStyle(color: AppColors.textFaint),
+        hintStyle: const TextStyle(color: Design.textFaint),
       ),
 
       dialogTheme: DialogThemeData(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Design.surface,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(Design.radiusLg),
         ),
         titleTextStyle: const TextStyle(
-          color: AppColors.text,
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
+          color: Design.text,
+          fontSize: Design.fontDialogTitle,
+          fontWeight: Design.weightBold,
         ),
-        contentTextStyle:
-            const TextStyle(color: AppColors.text, fontSize: 15, height: 1.4),
+        contentTextStyle: const TextStyle(
+            color: Design.text, fontSize: Design.fontBody, height: 1.4),
       ),
 
       bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Design.surface,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(Design.radiusSheet)),
         ),
       ),
 
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.text,
+        backgroundColor: Design.text,
         contentTextStyle: const TextStyle(color: Colors.white),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(Design.radiusInput),
         ),
       ),
 
       listTileTheme: const ListTileThemeData(
-        iconColor: AppColors.textMuted,
-        textColor: AppColors.text,
+        iconColor: Design.textMuted,
+        textColor: Design.text,
       ),
 
       chipTheme: ChipThemeData(
-        backgroundColor: AppColors.surfaceMuted,
-        side: const BorderSide(color: AppColors.border),
-        labelStyle: const TextStyle(color: AppColors.text),
+        backgroundColor: Design.surfaceMuted,
+        side: const BorderSide(color: Design.border),
+        labelStyle: const TextStyle(color: Design.text),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(Design.radiusSm),
         ),
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/utils/naming.dart';
 import 'package:meaning_to/utils/app_buttons.dart';
+import 'package:meaning_to/theme/design.dart';
 
 /// A keyboard-friendly modal bottom sheet for switching pursuits. Shows a
 /// search field (only once there are [searchThreshold]+ pursuits) that filters
@@ -92,7 +93,8 @@ class _PursuitSwitcherSheetState extends State<PursuitSwitcherSheet> {
                 alignment: Alignment.centerLeft,
                 child: Text('Choose a $pursuit',
                     style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
+                        fontSize: Design.fontSectionTitle,
+                        fontWeight: Design.weightBold)),
               ),
             ),
             if (showSearch)
@@ -119,9 +121,11 @@ class _PursuitSwitcherSheetState extends State<PursuitSwitcherSheet> {
                     ListTile(
                       dense: true,
                       title: Text(c.headline,
-                          // ~50% larger than the default dense title, with a
-                          // tight line height so rows don't gain vertical space.
-                          style: const TextStyle(fontSize: 21, height: 1.0)),
+                          // Enlarged (Design.fontPursuitMenuTitle) with a tight
+                          // line height so rows don't gain vertical space.
+                          style: const TextStyle(
+                              fontSize: Design.fontPursuitMenuTitle,
+                              height: 1.0)),
                       subtitle: (c.isShared && c.ownerName != null)
                           ? Text('from ${c.ownerName}',
                               style: TextStyle(
