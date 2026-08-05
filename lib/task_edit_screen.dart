@@ -122,6 +122,12 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   bool _isProcessingUrl = false;
   String? _lastProcessedUrl;
   bool _isProgrammaticUpdate = false;
+
+  // Memoized link-preview future so the FutureBuilder in build() doesn't kick
+  // off a fresh network fetch on every rebuild (each setState). Recomputed only
+  // when the headline text actually changes.
+  String? _previewSourceText;
+  Future<Map<String, dynamic>>? _previewFuture;
   bool _isShared = false;
 
   // Local copy of the task for editing
@@ -285,6 +291,17 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
+  /// Stable link-preview future for the given headline [text]. Returns the
+  /// cached future while the text is unchanged so rebuilds don't re-trigger the
+  /// (network-bound) headline processing.
+  Future<Map<String, dynamic>> _headlinePreviewFuture(String text) {
+    if (_previewFuture == null || _previewSourceText != text) {
+      _previewSourceText = text;
+      _previewFuture = _processHeadlineText(text);
+    }
+    return _previewFuture!;
+  }
+
   /// Process a URL found in the headline field
   Future<void> _processUrlInHeadline(
       String url, String originalHeadline) async {
@@ -298,7 +315,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
     setState(() {
       _isProcessingUrl = true;
-      _error = 'Processing link...'; // Show visual feedback
+      _error = null; // Not an error state; _isProcessingUrl drives any spinner.
     });
 
     try {
@@ -314,10 +331,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       final fetchedTitle = processedLink.title;
 
       if (fetchedTitle == null) {
-        print('TaskEditScreen: ERROR - Could not fetch title for URL');
-        setState(() {
-          _error = 'Could not fetch title from link';
-        });
+        // Non-fatal: the URL is still captured as a link below/by the preview.
+        // Don't surface a red error — just leave the headline as typed.
+        print('TaskEditScreen: Could not fetch title — leaving URL as the link');
+        if (mounted) setState(() => _error = null);
         return;
       }
 
@@ -429,12 +446,12 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
       print('TaskEditScreen: === URL PROCESSING COMPLETE ===');
     } catch (e, stackTrace) {
-      print('TaskEditScreen: === ERROR PROCESSING URL ===');
-      print('TaskEditScreen: Error: $e');
+      // A failed metadata fetch (e.g. a page that blocks the request / CORS on
+      // web, like JustWatch) is NOT fatal: the URL is still captured as a link
+      // by the preview/extraction path, so don't flash a scary red error.
+      print('TaskEditScreen: Metadata fetch failed (non-fatal): $e');
       print('TaskEditScreen: Stack trace: $stackTrace');
-      setState(() {
-        _error = 'Error processing link: $e';
-      });
+      if (mounted) setState(() => _error = null);
     } finally {
       print('TaskEditScreen: Cleaning up - resetting flags');
       _isProgrammaticUpdate = false; // Ensure flag is reset
@@ -2051,7 +2068,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         const SizedBox(height: 8),
                         FutureBuilder<Map<String, dynamic>>(
                           future:
-                              _processHeadlineText(_headlineController.text),
+                              _headlinePreviewFuture(_headlineController.text),
                           builder: (context, snapshot) {
                             if (snapshot.hasData) {
                               final processedData = snapshot.data!;

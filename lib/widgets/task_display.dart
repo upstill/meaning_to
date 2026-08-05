@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:meaning_to/theme/app_colors.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/utils/auth.dart';
@@ -205,7 +206,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
           width: 27,
           height: 27,
           decoration: BoxDecoration(
-            color: isShared ? Colors.green.shade600 : Colors.grey.shade200,
+            color: isShared ? AppColors.primary : Colors.grey.shade200,
             borderRadius: BorderRadius.circular(5),
           ),
           child: Icon(
@@ -393,7 +394,7 @@ class _TaskDisplayState extends State<TaskDisplay> {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: Colors.green.shade600,
+                                  color: AppColors.primary,
                                   borderRadius: BorderRadius.circular(5),
                                 ),
                                 child: const Row(

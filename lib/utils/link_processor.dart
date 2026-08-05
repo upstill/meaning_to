@@ -986,8 +986,8 @@ class LinkDisplayWidget extends StatelessWidget {
                   Expanded(
                     child: Text(
                       processedLink.displayTitle,
-                      style: const TextStyle(
-                        color: Colors.blue,
+                      style: TextStyle(
+                        color: linkColor ?? Colors.blue,
                         decoration: TextDecoration.underline,
                         fontSize: 16, // Increased by 4 from default
                       ),
