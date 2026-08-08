@@ -87,7 +87,7 @@ flutter:
   assets:
     - .env
     - docs/help.md
-    - assets/icon/rouzme_icon_1024.png
+    - web/rouzme_icon.png
     - web/help-extension.png
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg

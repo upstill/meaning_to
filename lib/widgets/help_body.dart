@@ -36,10 +36,11 @@ class _HelpBodyState extends State<HelpBody> {
       case 'share-icon':
         return const Icon(Icons.share, size: 18, color: AppColors.text);
       case 'rouzme-icon':
+        // Use the copy under web/ (not assets/, which build_all wipes each
+        // deploy — breaking the Android/iOS builds that run after web).
         return ClipRRect(
           borderRadius: BorderRadius.circular(4),
-          child: Image.asset('assets/icon/rouzme_icon_1024.png',
-              width: 20, height: 20),
+          child: Image.asset('web/rouzme_icon.png', width: 20, height: 20),
         );
       default:
         return null;
