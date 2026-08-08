@@ -121827,7 +121827,7 @@ if(o!=null){o.aU(0)
 p.db=null}p.jJ()}this.aq()},
 asj(a){var s=null
 switch(a){case"share-icon":return B.VU
-case"rouzme-icon":return A.afR(A.bL(4),A.b1X("assets/icon/rouzme_icon_1024.png",s,s,s,20,s,20),B.cH)
+case"rouzme-icon":return A.afR(A.bL(4),A.b1X("web/rouzme_icon.png",s,s,s,20,s,20),B.cH)
 default:return s}},
 Nl(a){var s,r,q,p,o,n,m,l=null,k=A.c([],t.VO)
 for(s=J.ap(a),r=this.d;s.p();){q=s.gJ(s)
