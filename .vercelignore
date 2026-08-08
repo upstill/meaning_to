@@ -20,8 +20,9 @@ pubspec.yaml
 # Ignore build artifacts except web output
 build/
 
-# Ignore docs and config
-docs/
+# Ignore docs and config. NOTE: anchor docs/ to the repo root (leading slash)
+# so it doesn't also strip the Flutter-bundled asset at assets/docs/help.md.
+/docs/
 documents/
 supabase/
 *.sql
@@ -38,3 +39,5 @@ node_modules/
 # Keep these:
 !web/
 !api/
+# In-app web Help loads this bundled asset; the *.md rule above would strip it.
+!assets/docs/help.md
