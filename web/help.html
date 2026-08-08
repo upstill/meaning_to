@@ -58,6 +58,9 @@
     .body p { margin: 12px 0; }
     ul { padding-left: 1.25rem; }
     li { margin-bottom: 4px; }
+    .steps { margin: 12px 0; }
+    .step { display: flex; gap: 8px; margin-bottom: 4px; }
+    .step .marker { flex: none; min-width: 1.7em; font-variant-numeric: tabular-nums; }
     a { color: var(--blue); }
     pre {
       background: #f4f4f4;
@@ -68,6 +71,7 @@
       line-height: 1.4;
     }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .shot { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #e2e2e2; margin: 8px 0; }
     footer { margin-top: 40px; color: var(--muted); font-size: 0.9rem; text-align: center; }
   </style>
 </head>
@@ -78,20 +82,13 @@
     <details open>
       <summary>What Is This Thing?</summary>
       <div class="body">
-        <p>Who doesn't have a painfully long list in their lives? Whether it's
-        Likes in a music app, or lists of to-do's, books to read or movies to
-        watch, the sheer length of a list can be overwhelming.</p>
-        <p>But help is here! RouzMe moves you to actually do stuff. Use RouzMe to
-        help you organize and track the ideas, goals, and interests you've had
-        nagging at you.</p>
-        <p>Think of it as a way to keep track of all those things you say
-        "I've been meaning to…" about.</p>
+        <p>Who doesn't have a painfully long list in their lives? Whether it's Likes in a music app, or lists of to-do's, books to read or movies to watch, the sheer length of a list can be overwhelming.</p>
+        <p>But help is here! RouzMe moves you to actually do stuff. Use RouzMe to help you organize and track the ideas, goals, and interests you've had nagging at you.</p>
+        <p>Think of it as a way to keep track of all those things you say "I've been meaning to…" about.</p>
         <p>The app helps you:</p>
         <ul>
-          <li>Keep your Ideas organized into collections (Pursuits), with notes
-          reminding you where they came from and/or why they're here;</li>
-          <li>Link your Ideas to external resources like movies, books, music,
-          and more;</li>
+          <li>Keep your Ideas organized into collections (Pursuits), with notes reminding you where they came from and/or why they're here;</li>
+          <li>Link your Ideas to external resources like movies, books, music, and more;</li>
           <li>Get a random (more or less) suggestion when you're ready to act;</li>
           <li>Track what you've accomplished;</li>
           <li>Get ideas from others and share yours.</li>
@@ -102,8 +99,7 @@
     <details>
       <summary>Compiling Pursuits</summary>
       <div class="body">
-        <p>Pursuits are the main way to organize your ideas. Each pursuit
-        represents a type of activity or interest.</p>
+        <p>Pursuits are the main way to organize your ideas. Each pursuit represents a type of activity or interest.</p>
         <p>Examples of Pursuits:</p>
         <ul>
           <li>"Watch a Movie"</li>
@@ -112,19 +108,15 @@
           <li>"Learn a Skill"</li>
           <li>"Visit a Place"</li>
         </ul>
-        <p>Within each pursuit, you add individual Ideas — the specific things you
-        want to do. For example, in "Watch a Movie", you might add "The Godfather",
-        "Blade Runner", or "Spirited Away".</p>
-        <p>You can share your Pursuits with others, or keep them private for your
-        eyes only.</p>
+        <p>Within each pursuit, you add individual Ideas — the specific things you want to do. For example, in "Watch a Movie", you might add "The Godfather", "Blade Runner", or "Spirited Away".</p>
+        <p>You can share your Pursuits with others, or keep them private for your eyes only.</p>
       </div>
     </details>
 
     <details>
       <summary>Linking Elsewhere</summary>
       <div class="body">
-        <p>You can add links pointing to external resources for your Ideas. This
-        makes it easy to jump directly to relevant content.</p>
+        <p>You can add links pointing to external resources for your Ideas. This makes it easy to jump directly to relevant content.</p>
         <p>Supported link types:</p>
         <ul>
           <li>Streaming services (Netflix, Amazon Prime, Apple TV+, etc.)</li>
@@ -132,52 +124,33 @@
           <li>Websites and articles</li>
           <li>Any other URL you want to save</li>
         </ul>
-        <p>When you add a link, the app will try to automatically fetch information
-        like titles and descriptions. For some services (like movies and music), it
-        can even find where content is available to stream.</p>
-        <p><strong>Pro tip:</strong> Just paste a URL into the headline when adding
-        a new Idea, and the app will handle the rest!</p>
+        <p>When you add a link, the app will try to automatically fetch information like titles and descriptions. For some services (like movies and music), it can even find where content is available to stream.</p>
+        <p><strong>Pro tip:</strong> Just paste a URL into the headline when adding a new Idea, and the app will handle the rest!</p>
       </div>
     </details>
 
     <details>
       <summary>Take Shares from other apps</summary>
       <div class="body">
-        <p>On mobile, you can quickly capture content from other apps by using the
-        Share feature. On the desktop, the "Send to RouzMe" browser extension does
-        the same from any web page.</p>
-        <p>How it works:</p>
-        <ul>
-          <li>Find something interesting in another app (a website, article,
-          video, etc.)</li>
-          <li>Tap the Share button in that app (or the RouzMe extension button in
-          your browser)</li>
-          <li>Select "RouzMe" from the available targets</li>
-          <li>Tell the app what pursuit it pertains to</li>
-          <li>The app will create a new Idea with the shared link</li>
-        </ul>
-        <p>This is a fast way to capture ideas on the go in the course of regular
-        browsing. The shared content is automatically added as a link to your new
-        Idea, and you can organize it into the appropriate pursuit later.</p>
-        <p>Perfect for saving articles to read, videos to watch, recordings to
-        play, or anything else you come across in the wild world online!</p>
+        <p>Perfect for recording ideas for articles to read, videos to watch, recordings to play, or anything else you come across in the wild world online. Once you send something to RouzMe, it will help you keep it as an Idea.</p>
+        <p>"Sending something" is a little different if you're on mobile (phone, pad) or in a browser. On mobile, you use the Share feature. Most apps will have this icon: <svg viewBox="0 0 24 24" width="18" height="18" style="vertical-align:-0.2em;fill:currentColor" aria-label="Share"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>. Tap that to start the process, then find and tap the RouzMe icon.</p>
+        <p>In a browser, the "Send to RouzMe" browser extension does the same from any web page. Get the extension for Chrome at <a href="https://chromewebstore.google.com/detail/send-to-rouzme/ngimiedpjjenmdblfdpceghkgiamgnkj">here</a>, which will land the RouzMe icon (<img src="rouzme_icon.png" alt="RouzMe" width="20" height="20" style="vertical-align:-0.35em;border-radius:4px"/>) next to the address bar:</p>
+        <p><img src="help-extension.png" alt="The RouzMe extension button next to the browser address bar" class="shot"/></p>
+        <p>Either way, RouzMe will start a new Idea from the shared material. You can edit the Idea to suit (change the title, add a note reminding you why it's there, choose the pursuit to keep it under...), then hit Create to save it for posterity.</p>
       </div>
     </details>
 
     <details>
       <summary>Import a whole collection of Ideas</summary>
       <div class="body">
-        <p>Already have a list of things you've been meaning to do? You can import
-        them in bulk from other sources.</p>
+        <p>Already have a list of things you've been meaning to do? You can import them in bulk from other sources.</p>
         <p>How to import:</p>
-        <ul>
-          <li>On the home screen, select the pursuit you want to add to, possibly
-          creating it first as needed.</li>
-          <li>Hit the "Add an Idea" button, then choose "Add a List of Ideas".</li>
-          <li>Paste the list into the text box, or hit the Import button and select
-          a data source file to upload.</li>
-          <li>The app will process your data and add the Ideas automatically.</li>
-        </ul>
+        <div class="steps">
+          <div class="step"><span class="marker">1.</span><span>On the Home screen, select the pursuit you want to add to, or start a new one.</span></div>
+          <div class="step"><span class="marker">2.</span><span>Hit the "Add an Idea" button, then choose "Add a List of Ideas".</span></div>
+          <div class="step"><span class="marker">3.</span><span>Paste the list into the text box, or hit the Import button and select a data source file to upload.</span></div>
+          <div class="step"><span class="marker">4.</span><span>The app will process your data and add the Ideas individually to the Pursuit.</span></div>
+        </div>
         <p>Supported import formats:</p>
         <ul>
           <li>Plain text files in a variety of formats (see Example Formats below)</li>
@@ -187,9 +160,7 @@
           <li>JustWatch (for streaming content)</li>
           <li>Other structured data formats</li>
         </ul>
-        <p>This is perfect if you're migrating from another app or have been keeping
-        lists in spreadsheets. Import hundreds of items at once instead of entering
-        them one by one!</p>
+        <p>This is perfect if you're migrating from another app or have been keeping lists in spreadsheets. Import hundreds of items at once instead of entering them one by one!</p>
         <p><strong>Example Formats</strong></p>
         <p>Plain text (a bare URL on a line has its title fetched automatically):</p>
         <pre><code>Movie Title 1
@@ -212,20 +183,15 @@ https://www.justwatch.com/us/movie/inception</code></pre>
     <details>
       <summary>Share a Pursuit with a friend</summary>
       <div class="body">
-        <p>If you want to share your accumulated wisdom, you can let anyone see
-        (but not change!) one of your Pursuits. Here's how:</p>
-        <ul>
-          <li>On the Home screen, pick the Pursuit you want to share.</li>
-          <li>In the menu on the Pursuit card, choose "Share this Pursuit".</li>
-          <li>To edit which Ideas will be visible to the recipient, tap the pencil
-          icon.</li>
-          <li>Tap "Issue Link" to copy the invite link to your clipboard.</li>
-          <li>Paste the link into a message to your friend with flowery words about
-          how great RouzMe is. When they tap that link, they'll land in RouzMe with
-          the Pursuit added to their account.</li>
-        </ul>
-        <p>PS: To manage all your shares, hit the "Shared With Me" item on the main
-        menu (top right).</p>
+        <p>If you want to share your accumulated wisdom, you can let anyone see (but not change!) any of your Pursuits. Here's how:</p>
+        <div class="steps">
+          <div class="step"><span class="marker">1.</span><span>On the Home screen, pick the Pursuit you want to share.</span></div>
+          <div class="step"><span class="marker">2.</span><span>In the menu (top right), choose "Share this Pursuit". (Pro tip: the adjacent "Share Any Pursuit(s)" lets you send them in bulk.)</span></div>
+          <div class="step"><span class="marker">3.</span><span>To select which Ideas will be visible to the recipient, tap the pencil icon.</span></div>
+          <div class="step"><span class="marker">4a.</span><span>On mobile, tap the Share button (<svg viewBox="0 0 24 24" width="18" height="18" style="vertical-align:-0.2em;fill:currentColor" aria-label="Share"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>), then either Copy Link or choose another app (e.g., an email app)to share through.</span></div>
+          <div class="step"><span class="marker">4b.</span><span>In a browser, you'll have to Copy Link directly and paste it into a message to your friend with flowery words about how great RouzMe is. When they tap that link, they'll land in RouzMe and be offered the shared pursuit(s).</span></div>
+        </div>
+        <p>PS: To manage your shares, both incoming and outgoing, hit the "Shared With Me" item on the main menu (top right).</p>
       </div>
     </details>
 

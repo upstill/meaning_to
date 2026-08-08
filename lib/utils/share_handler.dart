@@ -4,6 +4,7 @@ import 'package:share_handler/share_handler.dart';
 import 'dart:async';
 import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/utils/pending_intent_store.dart';
+import 'package:meaning_to/utils/pending_list_store.dart';
 
 class ShareHandler {
   static final ShareHandler _instance = ShareHandler._internal();
@@ -238,6 +239,22 @@ class ShareHandler {
       return;
     }
 
+    // Multi-line share (e.g. a Notes list) → divert to the bulk "Add a List of
+    // Ideas" editor instead of mashing every line into one Idea's title. A lone
+    // "Title\n<url>" is still a single item, so exclude that 2-line shape.
+    if (_looksLikeList(content)) {
+      print('ShareHandler: Detected multi-line list → routing to Add Ideas');
+      try {
+        await PendingListStore.set(content);
+        HomeScreen.needsListProcessing.value =
+            !HomeScreen.needsListProcessing.value;
+      } catch (e, stackTrace) {
+        print('ShareHandler: ERROR stashing shared list: $e');
+        print('ShareHandler: Stack trace: $stackTrace');
+      }
+      return;
+    }
+
     List<String> urls = [];
     try {
       // Extract URLs from the shared content
@@ -321,6 +338,22 @@ class ShareHandler {
         _retryContentProcessing();
       });
     }
+  }
+
+  /// True when [content] is a multi-line list (route to bulk Add Ideas) rather
+  /// than a single item. A lone "Title\n<url>" (exactly two lines, one a bare
+  /// URL) is treated as a single item, not a list.
+  bool _looksLikeList(String content) {
+    final lines = content
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    if (lines.length < 2) return false;
+    final urlOnly = RegExp(r'^https?://\S+$', caseSensitive: false);
+    final urlLineCount = lines.where((l) => urlOnly.hasMatch(l)).length;
+    if (lines.length == 2 && urlLineCount == 1) return false;
+    return true;
   }
 
   /// Extract URLs from text content

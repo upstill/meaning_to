@@ -7,6 +7,8 @@ import 'package:meaning_to/utils/api_client.dart';
 import 'package:meaning_to/utils/error_dialog.dart';
 import 'package:meaning_to/utils/invite_token_store.dart';
 import 'package:meaning_to/utils/pending_intent_store.dart';
+import 'package:meaning_to/utils/pending_list_store.dart';
+import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
 import 'package:meaning_to/utils/category_ordering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,6 +44,11 @@ class HomeScreen extends StatefulWidget {
   // Toggled when an incoming link intent (native share / extension) is stashed
   // while Home is already open, so it's processed promptly.
   static final ValueNotifier<bool> needsIntentProcessing =
+      ValueNotifier<bool>(false);
+
+  // Toggled when a multi-line "list" share (e.g. a Notes list) is stashed, so
+  // Home opens the bulk "Add a List of Ideas" editor pre-filled with the text.
+  static final ValueNotifier<bool> needsListProcessing =
       ValueNotifier<bool>(false);
 
   final String? initialCategoryId;
@@ -540,11 +547,25 @@ class HomeScreenState extends State<HomeScreen> {
                   task: task,
                   withControls: true,
                   onEdit: () async {
+                    // Same pursuit selector as elsewhere: lets the user move/copy
+                    // this task to another owned pursuit (hidden for borrowed ones).
+                    final owned =
+                        _categories.where((c) => !c.isShared).toList();
+                    List<Category>? selectable;
+                    if (owned.any((c) => c.id == category.id)) {
+                      final ordering = await orderCategoriesBySensibility(owned);
+                      if (!mounted) return;
+                      selectable = ordering.ordered;
+                    }
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) =>
-                            TaskEditScreen(category: category, task: task),
+                        builder: (context) => TaskEditScreen(
+                          category: category,
+                          task: task,
+                          showPursuitSelector: selectable != null,
+                          selectableCategories: selectable,
+                        ),
                       ),
                     );
                     _performFind();
@@ -764,6 +785,8 @@ class HomeScreenState extends State<HomeScreen> {
     HomeScreen.needsDataReload.addListener(_handleDataReloadRequest);
     // Process an incoming link intent that arrives while Home is already open.
     HomeScreen.needsIntentProcessing.addListener(_handleIntentProcessingRequest);
+    // Process a multi-line list share (opens the bulk Add Ideas editor).
+    HomeScreen.needsListProcessing.addListener(_handleListProcessingRequest);
 
     // Load categories after first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -779,6 +802,7 @@ class HomeScreenState extends State<HomeScreen> {
       await _redeemPendingShareIfAny();
       if (mounted && !_welcomeDialogShown) _maybeNotifyNewShares();
       if (mounted) await _maybeProcessPendingIntent();
+      if (mounted) await _maybeProcessPendingList();
     });
   }
 
@@ -1130,6 +1154,8 @@ class HomeScreenState extends State<HomeScreen> {
     HomeScreen.needsDataReload.removeListener(_handleDataReloadRequest);
     HomeScreen.needsIntentProcessing
         .removeListener(_handleIntentProcessingRequest);
+    HomeScreen.needsListProcessing
+        .removeListener(_handleListProcessingRequest);
     _taskSearchController.dispose();
     _findController.dispose();
     _findDebounceTimer?.cancel();
@@ -1341,79 +1367,56 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTaskSearchField() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        height: 35,
-        color: Colors.blue,
-        child: TextField(
-          controller: _taskSearchController,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-          ),
-          decoration: InputDecoration(
-            hintText:
-                'Search ${_listModeTasks.length} ${NamingUtils.tasksName(capitalize: false, plural: _listModeTasks.length != 1)}',
-            hintStyle: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
-              fontSize: 14,
-            ),
-            prefixIcon: Icon(
-              Icons.search,
-              size: 18,
-              color: Colors.white.withValues(alpha: 0.7),
-            ),
-            suffixIcon: _isSearchingTasks
-                ? const Padding(
-                    padding: EdgeInsets.all(10),
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    ),
+    return TextField(
+      controller: _taskSearchController,
+      style: const TextStyle(color: AppColors.text, fontSize: 14),
+      cursorColor: AppColors.primary,
+      decoration: InputDecoration(
+        hintText:
+            'Search ${_listModeTasks.length} ${NamingUtils.tasksName(capitalize: false, plural: _listModeTasks.length != 1)}',
+        // Magnifying glass inside the box (grey so it reads on the white fill).
+        prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.textMuted),
+        suffixIcon: _isSearchingTasks
+            ? const Padding(
+                padding: EdgeInsets.all(10),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.primary,
+                  ),
+                ),
+              )
+            : _taskSearchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    color: AppColors.textMuted,
+                    onPressed: () {
+                      setState(() {
+                        _taskSearchController.clear();
+                        _rebuildTaskListFromCache();
+                      });
+                    },
                   )
-                : _taskSearchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(
-                          Icons.clear,
-                          size: 18,
-                          color: Colors.white,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _taskSearchController.clear();
-                            _rebuildTaskListFromCache();
-                          });
-                        },
-                      )
-                    : null,
-            border: InputBorder.none,
-            isCollapsed: true,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 8,
-            ),
-          ),
-          cursorColor: Colors.white,
-          onChanged: (_) {
-            setState(() {
-              _isSearchingTasks = true;
-              _rebuildTaskListFromCache();
-            });
-            Future.delayed(const Duration(milliseconds: 250), () {
-              if (mounted) {
-                setState(() {
-                  _isSearchingTasks = false;
-                });
-              }
-            });
-          },
-        ),
+                : null,
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       ),
+      onChanged: (_) {
+        setState(() {
+          _isSearchingTasks = true;
+          _rebuildTaskListFromCache();
+        });
+        Future.delayed(const Duration(milliseconds: 250), () {
+          if (mounted) {
+            setState(() {
+              _isSearchingTasks = false;
+            });
+          }
+        });
+      },
     );
   }
 
@@ -2659,6 +2662,50 @@ class HomeScreenState extends State<HomeScreen> {
     if (mounted) unawaited(_maybeProcessPendingIntent());
   }
 
+  void _handleListProcessingRequest() {
+    if (mounted) unawaited(_maybeProcessPendingList());
+  }
+
+  /// A multi-line "list" share (e.g. a Notes list) was stashed → open the bulk
+  /// "Add a List of Ideas" editor, pre-filled, so each line becomes its own
+  /// Idea. The editor's own pursuit dropdown lets the user pick/create the
+  /// target; we default it to the current or first owned pursuit (creating one
+  /// first if the user has none yet).
+  Future<void> _maybeProcessPendingList() async {
+    if (AuthUtils.isGuestUser()) return;
+    final text = await PendingListStore.get();
+    if (text == null) return;
+    await PendingListStore.clear();
+    if (!mounted) return;
+
+    final owned = _categories.where((c) => !c.isShared).toList();
+    Category target;
+    if (_selectedCategory != null &&
+        owned.any((c) => c.id == _selectedCategory!.id)) {
+      target = _selectedCategory!;
+    } else if (owned.isNotEmpty) {
+      target = owned.first;
+    } else {
+      // No pursuit of one's own yet — create one first, then file the list in.
+      final result = await Navigator.of(context).pushNamed('/new-category');
+      if (!mounted || result is! Category) return;
+      await _loadCategories();
+      if (!mounted) return;
+      target = result;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddTasksScreen(category: target, initialText: text),
+      ),
+    );
+    if (mounted) {
+      await _loadCategories();
+      _handleEditComplete();
+    }
+  }
+
   void _handleTaskReloadRequest() {
     print('HomeScreen: Task reload requested');
     if (HomeScreen.needsTaskReload.value && mounted) {
@@ -2827,6 +2874,18 @@ class HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    // Offer the same pursuit selector as the New Task flow so the user can
+    // re-target this task to a different owned pursuit (move or copy). Only when
+    // the task's current pursuit is one of your own — borrowed pursuits are
+    // read-only, and a null selectable list keeps the selector hidden.
+    final owned = _categories.where((c) => !c.isShared).toList();
+    List<Category>? selectable;
+    if (owned.any((c) => c.id == _selectedCategory!.id)) {
+      final ordering = await orderCategoriesBySensibility(owned);
+      if (!mounted) return;
+      selectable = ordering.ordered;
+    }
+
     setState(() => _editingTask = task);
 
     TaskEditScreen.onEditComplete = () {
@@ -2854,6 +2913,8 @@ class HomeScreenState extends State<HomeScreen> {
             category: _selectedCategory!,
             task: task,
             isPanel: true,
+            showPursuitSelector: selectable != null,
+            selectableCategories: selectable,
             onCategoryChange: (newCategory) =>
                 _handleEditPanelCategoryChange(task, newCategory),
           ),

@@ -18,11 +18,13 @@ import 'package:meaning_to/widgets/home_button.dart';
 class AddTasksScreen extends StatefulWidget {
   final Category category;
   final Task? currentTask; // Optional current task being edited
+  final String? initialText; // Pre-fill the paste box (e.g. a shared list)
 
   const AddTasksScreen({
     super.key,
     required this.category,
     this.currentTask,
+    this.initialText,
   });
 
   @override
@@ -52,6 +54,9 @@ class AddTasksScreenState extends State<AddTasksScreen> {
     super.initState();
     _selectedCategory = widget.category;
     _selectable = [widget.category];
+    if (widget.initialText != null && widget.initialText!.trim().isNotEmpty) {
+      _textInputController.text = widget.initialText!;
+    }
     _loadSelectablePursuits();
     _textInputController.addListener(() {
       setState(() {

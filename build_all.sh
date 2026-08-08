@@ -103,6 +103,10 @@ MACOS_RESULT=""
 if $BUILD_WEB; then
   echo ""
   echo "── 🌐  Web ──────────────────────────────────"
+  # Regenerate the static help page from its single source (docs/help.md) so it
+  # ships in this build; runs before the flutter build that bundles web/.
+  echo "📝 Generating web/help.html from docs/help.md..."
+  dart run tool/generate_help_html.dart || echo "⚠️  help generation failed (continuing)"
   if flutter build web --release "${DART_DEFINES[@]}"; then
     # Copy output to repo root (where Vercel serves from)
     rm -f index.html flutter.js flutter_bootstrap.js flutter_service_worker.js \

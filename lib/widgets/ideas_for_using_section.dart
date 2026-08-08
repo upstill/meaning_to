@@ -94,7 +94,13 @@ class _IdeasForUsingSectionState extends State<IdeasForUsingSection> {
   Future<void> _loadOwned() async {
     try {
       final categories = await ApiClient.getCategories();
+      // Only the user's OWN creations count as "added" — a borrowed/sample
+      // share (new users get these seeded) shouldn't lock the idea, since the
+      // whole point here is to let them build their own starting set. Borrowed
+      // source rows are self-referential (id == original_id), so without this
+      // filter every seeded sample would show "(added)" and disable Create.
       final owned = categories
+          .where((c) => !c.isShared)
           .map((c) => c.originalId)
           .whereType<int>()
           .toSet();
@@ -143,16 +149,41 @@ class _IdeasForUsingSectionState extends State<IdeasForUsingSection> {
 
     if (mounted) {
       setState(() => _creating = false);
-      final noun = created == 1 ? 'Pursuit' : 'Pursuits';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(created > 0
-              ? 'Created $created $noun.'
-              : 'Nothing created.'),
-          backgroundColor: created > 0 ? Colors.green : Colors.orange,
-        ),
-      );
+      if (created > 0) {
+        await _showCreatedReminder(created);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Nothing created.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     }
+  }
+
+  /// After creating starter Pursuits, remind the user they arrive EMPTY — it's
+  /// on them to stock each one with their own Ideas.
+  Future<void> _showCreatedReminder(int created) async {
+    final pursuits = created == 1 ? 'Pursuit' : 'Pursuits';
+    final them = created == 1 ? 'it' : 'them';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Created $created $pursuits'),
+        content: Text(
+          "Your new $pursuits start out empty — it's up to you to fill $them "
+          'with your own Ideas! Pick a Pursuit on the Home screen and tap '
+          '"Add an Idea" to get going.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -172,6 +203,22 @@ class _IdeasForUsingSectionState extends State<IdeasForUsingSection> {
       );
     }
 
+    // For signed-in users, drop ideas they've already created their own copy
+    // of (and any group left empty) — no point offering what's already there.
+    final visibleGroups = _signedIn
+        ? [
+            for (final g in _groups)
+              if (g.items.any((i) => !_ownedOriginalIds.contains(i.id)))
+                (
+                  category: g.category,
+                  items: [
+                    for (final i in g.items)
+                      if (!_ownedOriginalIds.contains(i.id)) i
+                  ]
+                ),
+          ]
+        : _groups;
+
     final children = <Widget>[
       const Text(
         'So you can get a feel for what RouzMe can do for you, here are some '
@@ -179,6 +226,19 @@ class _IdeasForUsingSectionState extends State<IdeasForUsingSection> {
         style: bodyStyle,
       ),
     ];
+
+    // Signed in but nothing left to offer → they've added them all.
+    if (_signedIn && visibleGroups.isEmpty) {
+      children.add(const SizedBox(height: 8));
+      children.add(const Text(
+        "You've added all of these to your own collection. Nice!",
+        style: bodyStyle,
+      ));
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      );
+    }
 
     if (_signedIn) {
       children.add(const SizedBox(height: 8));
@@ -189,7 +249,7 @@ class _IdeasForUsingSectionState extends State<IdeasForUsingSection> {
       ));
     }
 
-    for (final group in _groups) {
+    for (final group in visibleGroups) {
       children.add(const SizedBox(height: 20));
       children.add(Text(
         group.category,
