@@ -137,7 +137,10 @@ if $BUILD_WEB; then
         # Static help page + its images (served at the site root) and the
         # in-app help assets (docs/help.md, web/*.png) the Flutter web app loads
         # — all must be committed so the GitHub-integration redeploy serves them.
-        git add -f build_id.txt flutter_service_worker.js main.dart.js version.json .last_build_id index.html manifest.json privacy.html help.html help-extension.png rouzme_icon.png assets/docs/help.md assets/web/help-extension.png assets/web/rouzme_icon.png 2>/dev/null || true
+        # favicon.png + icons/ are the browser-tab / PWA icons served at the
+        # site root; commit them too so the redeploy doesn't serve the stale
+        # generic Flutter icons.
+        git add -f build_id.txt flutter_service_worker.js main.dart.js version.json .last_build_id index.html manifest.json privacy.html help.html help-extension.png rouzme_icon.png favicon.png icons/ assets/docs/help.md assets/web/help-extension.png assets/web/rouzme_icon.png 2>/dev/null || true
         git diff --cached --quiet || git commit -m "Deploy web build $FLUTTER_VERSION" --no-verify
         git push
       else
