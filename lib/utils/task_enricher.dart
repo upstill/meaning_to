@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/utils/text_importer.dart';
 
 /// Specification for what fields should be enriched in a Task
 class TaskEnrichmentSpec {
@@ -222,7 +223,12 @@ class TaskEnricher {
     required String ownerId,
     TaskEnrichmentSpec spec = TaskEnrichmentSpec.webContent,
   }) async {
-    final trimmedLine = inputLine.trim();
+    // Strip a leading checklist checkbox (e.g. a Google Keep list arrives as
+    // "[ ] Buy milk" / "[x] Walk dog"); a checked box marks the item done.
+    // Done before URL detection so "[x] https://…" is still recognised.
+    final checkbox = TextImporter.stripChecklistCheckbox(inputLine);
+    final bool checklistDone = checkbox.done;
+    final trimmedLine = checkbox.text.trim();
 
     if (trimmedLine.isEmpty) {
       throw Exception('Input line is empty');
@@ -275,6 +281,7 @@ class TaskEnricher {
               'Link Task', // Prefer HTML title, fall back to fetched title
           notes: processedLink.description, // Use description from webpage
           ownerId: ownerId,
+          finished: checklistDone,
           links: [htmlToProcess], // Use the corrected HTML link
           spec: const TaskEnrichmentSpec(
             enrichLinks: false, // Don't re-enrich since we already processed
@@ -293,6 +300,7 @@ class TaskEnricher {
           headline: title ?? 'Link Task',
           notes: 'Failed to validate URL: $url',
           ownerId: ownerId,
+          finished: checklistDone,
           links: [htmlToProcess], // Use the corrected HTML link
           spec: const TaskEnrichmentSpec(
             enrichLinks: false,
@@ -322,6 +330,7 @@ class TaskEnricher {
           notes: processedLink
               .description, // Use the description from ProcessedLink
           ownerId: ownerId,
+          finished: checklistDone,
           links: [processedLink.originalLink],
           spec: const TaskEnrichmentSpec(
             enrichLinks:
@@ -343,6 +352,7 @@ class TaskEnricher {
           headline: fallbackTitle,
           notes: 'Failed to fetch webpage title',
           ownerId: ownerId,
+          finished: checklistDone,
           links: ['<a href="$urlToCheck">$fallbackTitle</a>'],
           spec: spec,
         );
@@ -367,6 +377,7 @@ class TaskEnricher {
         headline: headline,
         notes: notes,
         ownerId: ownerId,
+        finished: checklistDone,
         spec: spec,
       );
     }

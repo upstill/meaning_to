@@ -1134,7 +1134,7 @@ class CacheManager with PerformanceMonitoring {
         notes: item.description,
         ownerId: _currentUserId!,
         createdAt: DateTime.now(),
-        finished: false,
+        finished: item.finished,
       );
 
       // Add the new task to cache

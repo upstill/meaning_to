@@ -13,12 +13,17 @@ class ImportItem {
   final String? domain;
   final Map<String, dynamic> metadata;
 
+  /// True when the source marked this item as already done (e.g. a checked
+  /// "[x]" box in a Google Keep checklist). Maps to Task.finished.
+  final bool finished;
+
   ImportItem({
     required this.title,
     this.description,
     String? link,
     String? domain,
     this.metadata = const {},
+    this.finished = false,
   })  : link =
             (link != null && TextImporter.extractedDomainFromUrl(link) != null)
                 ? link
@@ -44,7 +49,7 @@ class ImportItem {
       links: link != null ? [link!] : <String>[],
       createdAt: now,
       suggestibleAt: now,
-      finished: false,
+      finished: finished,
       shared:
           !category.tasksArePrivate, // Use category's tasksArePrivate setting
     );
@@ -62,6 +67,22 @@ class ImportItem {
 
 /// A class for importing items from text data sources
 class TextImporter {
+  /// Strips a leading checklist checkbox — as exported by Google Keep and
+  /// similar note apps — from [line]: an optional markdown list marker
+  /// ("- "/"* "), then "[ ]", "[]", "[x]" or "[X]", plus trailing whitespace.
+  /// Returns the cleaned text and whether an "X" marked the item done.
+  ///
+  /// Deliberately leaves JSON arrays ("[{...}]") and markdown links
+  /// ("[title](url)") untouched: the checkbox must contain only an optional
+  /// x/X, and must not be immediately followed by "(".
+  static ({String text, bool done}) stripChecklistCheckbox(String line) {
+    final match = RegExp(r'^\s*(?:[-*]\s+)?\[\s*([xX]?)\s*\]\s*(?!\()')
+        .firstMatch(line);
+    if (match == null) return (text: line, done: false);
+    final done = (match.group(1) ?? '').toLowerCase() == 'x';
+    return (text: line.substring(match.end), done: done);
+  }
+
   /// Process text data into a stream of ImportItems
   static Stream<ImportItem> processTextData(
     String textData, {
@@ -191,7 +212,7 @@ class TextImporter {
         processedLinks: null,
         createdAt: now,
         suggestibleAt: now,
-        finished: false,
+        finished: item.finished,
       );
     }
   }
@@ -218,7 +239,7 @@ class TextImporter {
         processedLinks: null,
         createdAt: now,
         suggestibleAt: now,
-        finished: false,
+        finished: item.finished,
       );
     }
   }
@@ -345,7 +366,18 @@ class TextImporter {
       return null;
     }
 
-    final trimmedInput = text.trim();
+    // Strip a leading checklist checkbox (e.g. Google Keep exports each item as
+    // "[ ] Title" or "[x] Title"); a checked box marks the item already done.
+    final checkbox = stripChecklistCheckbox(text.trim());
+    final bool finished = checkbox.done;
+    final trimmedInput = checkbox.text.trim();
+    if (trimmedInput.isEmpty) {
+      print('    -> Only a checkbox with no title, returning null');
+      return null;
+    }
+    if (finished) {
+      print('    -> Detected checked checklist item (finished)');
+    }
 
     // 1. Try JSON object detection first (before any URL extraction)
     if (trimmedInput.startsWith('{')) {
@@ -380,6 +412,7 @@ class TextImporter {
           title: title ?? 'Link',
           link: url,
           metadata: {'source': 'html_link'},
+          finished: finished,
         );
         print('    -> Created ImportItem from HTML link: "${item.title}"');
         return item;
@@ -407,6 +440,7 @@ class TextImporter {
         link: url.isEmpty ? null : url,
         description: description?.isNotEmpty == true ? description : null,
         metadata: {'source': 'markdown_link'},
+        finished: finished,
       );
       print('    -> Created ImportItem from markdown: "${item.title}"');
       return item;
@@ -470,6 +504,7 @@ class TextImporter {
                 ? 'plain_text_with_url'
                 : 'plain_text_with_colon'
           },
+          finished: finished,
         );
         print('    -> Created ImportItem with colon: "${item.title}"');
         return item;
@@ -499,6 +534,7 @@ class TextImporter {
       title: cleanTitle,
       description: notesFromParentheses,
       metadata: {'source': 'plain_text'},
+      finished: finished,
     );
     print('    -> Created ImportItem from plain text: "${item.title}"');
     return item;
@@ -527,7 +563,7 @@ class TextImporter {
       processedLinks: null,
       createdAt: now,
       suggestibleAt: now,
-      finished: false,
+      finished: item.finished,
     );
   }
 
