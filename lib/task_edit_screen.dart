@@ -2240,7 +2240,13 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                             onPressed: _isLoading
                                 ? null
                                 : () async {
-                                    await Navigator.pushReplacement(
+                                    // push (not pushReplacement): keep this route
+                                    // on the stack so we can await which pursuit
+                                    // the list landed in and forward it to the
+                                    // caller (Home), which selects + shows it.
+                                    // pushReplacement discarded that result, so a
+                                    // newly-created pursuit stayed invisible.
+                                    final landed = await Navigator.push(
                                       context,
                                       MaterialPageRoute(
                                         builder: (context) => AddTasksScreen(
@@ -2249,6 +2255,13 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                                         ),
                                       ),
                                     );
+                                    if (!mounted) return;
+                                    // On a completed import AddTasksScreen returns
+                                    // the target Category; a cancel returns null
+                                    // (stay in this editor).
+                                    if (landed != null) {
+                                      Navigator.pop(context, landed);
+                                    }
                                   },
                             icon: const Icon(Icons.add_task),
                             label: Text(

@@ -1739,8 +1739,35 @@ class HomeScreenState extends State<HomeScreen> {
     if (confirmed != true) return;
 
     try {
+      // Remove the pursuit's tasks first: the dialog promises it, there is no
+      // DB-level cascade, and leaving them orphans a task set that points at a
+      // category that no longer exists (and can linger in the list view).
+      await supabase.from('Tasks').delete().eq('category_id', category.id);
       await supabase.from('Categories').delete().eq('id', category.id);
-      if (mounted) await _loadCategories();
+      if (!mounted) return;
+      // If we just deleted the selected pursuit, drop the selection and its
+      // cached tasks so the list doesn't keep showing the deleted items under
+      // whatever pursuit gets selected next.
+      final deletedSelected = _selectedCategory?.id == category.id;
+      if (deletedSelected) {
+        _cacheManager.clearCache();
+        setState(() {
+          _selectedCategory = null;
+          _randomTask = null;
+          _listModeTasks = <Task>[];
+        });
+      }
+      await _loadCategories();
+      if (!mounted) return;
+      // If we deleted the selected pursuit, land on another owned one and load
+      // it fully (tasks + random) so we don't sit in a half-loaded "all out of
+      // ideas" state until the user hits Hit Me.
+      if (deletedSelected) {
+        final owned = _categories.where((c) => !c.isShared).toList();
+        if (owned.isNotEmpty) {
+          await _handleCategorySelection(owned.first);
+        }
+      }
     } catch (e, st) {
       debugPrint('Error deleting category "${category.headline}": $e\n$st');
       if (mounted) {
@@ -2694,14 +2721,27 @@ class HomeScreenState extends State<HomeScreen> {
       target = result;
     }
 
-    await Navigator.push(
+    final landedRaw = await Navigator.push<Object?>(
       context,
       MaterialPageRoute(
         builder: (_) => AddTasksScreen(category: target, initialText: text),
       ),
     );
-    if (mounted) {
-      await _loadCategories();
+    if (!mounted) return;
+    await _loadCategories();
+    if (!mounted) return;
+    // Select and show the pursuit the list actually landed in. It may be one the
+    // user created inline in the editor (via the "New Pursuit" option), which
+    // otherwise stays unselected — and so invisible — until a manual refresh.
+    final landed = landedRaw is Category ? landedRaw : target;
+    final match = _categories.where((c) => c.id == landed.id).toList();
+    if (match.isNotEmpty) {
+      setState(() => _selectedCategory = match.first);
+      await _loadRandomTask(match.first);
+      if (mounted && _showTaskListMode) {
+        setState(() => _rebuildTaskListFromCache());
+      }
+    } else {
       _handleEditComplete();
     }
   }
@@ -2862,7 +2902,18 @@ class HomeScreenState extends State<HomeScreen> {
     // reload and drop into the list so the new content shows.
     await _loadCategories();
     if (!mounted) return;
-    if (result is Category) _handleCategorySelection(result);
+    if (result is Category) {
+      // Select + show the pursuit the content landed in (it may be one created
+      // inline in the editor). Match the FRESHLY-loaded instance by id — the
+      // Category the editor returned is a stale object that isn't in
+      // _categories, so the dropdown can't reflect it and the task load misses.
+      final matches = _categories.where((c) => c.id == result.id).toList();
+      if (matches.isNotEmpty) {
+        setState(() => _showTaskListMode = true);
+        await _handleCategorySelection(matches.first);
+        return;
+      }
+    }
     setState(() => _showTaskListMode = false);
     _toggleTaskListMode();
   }

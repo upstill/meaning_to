@@ -245,7 +245,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       );
 
       if (mounted) {
-        Navigator.pop(context, true);
+        Navigator.pop(context, _category);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -841,7 +841,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           _textInputController.clear();
 
           if (mounted) {
-            Navigator.pop(context, true);
+            Navigator.pop(context, _category);
           }
           return;
         } catch (e) {
@@ -972,7 +972,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
 
                 _textInputController.clear();
                 if (mounted) {
-                  Navigator.pop(context, true);
+                  Navigator.pop(context, _category);
                 }
                 return;
               }
@@ -1069,7 +1069,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
           _textInputController.clear();
 
           if (mounted) {
-            Navigator.pop(context, true);
+            Navigator.pop(context, _category);
           }
           return;
         } catch (e) {
@@ -1468,7 +1468,7 @@ class AddTasksScreenState extends State<AddTasksScreen> {
       _textInputController.clear();
 
       if (mounted) {
-        Navigator.pop(context, true);
+        Navigator.pop(context, _category);
       }
     } catch (e) {
       print('=== Text Input Error ===');
