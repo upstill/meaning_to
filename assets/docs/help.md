@@ -85,6 +85,17 @@ Supported import formats:
 
 This is perfect if you're migrating from another app or have been keeping lists in spreadsheets. Import hundreds of items at once instead of entering them one by one!
 
+**From Apple Notes (and similar apps)**
+
+Have a list sitting in Apple Notes? There are two easy ways to bring it over, and each line becomes its own Idea:
+
+- **Copy and paste (most reliable):** In Notes, tap into the note, choose Select All, and Copy. Then in RouzMe open "Add a List of Ideas" and paste.
+- **Share the selection (on an iPhone):** In Notes, select the note's text, tap Share on the *selection*, and choose RouzMe. Use the text selection's Share button — not the note's Share button in the top corner, which tends to offer an iCloud collaboration link instead of the text itself.
+
+Obviously the list of tasks will need to land under some Pursuit. When the Add A List Of Tasks window opens in RouzMe, you can select an existing Pursuit at the top of the screen, or hit the last item in that popup list to create a new one.
+
+Note: for checklist items imported this way, items that were checked off in Notes will be marked Complete in RouzMe: they won't be suggested unless you uncheck them as a task in RouzMe.
+
 **Example Formats**
 
 Plain text (a bare URL on a line has its title fetched automatically):
