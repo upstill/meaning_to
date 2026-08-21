@@ -29,6 +29,7 @@ import 'package:meaning_to/utils/synopsis_fetcher.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import 'package:meaning_to/widgets/task_display.dart';
+import 'package:meaning_to/widgets/task_search_results.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:meaning_to/widgets/linkified_text.dart';
@@ -448,176 +449,90 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFindResults() {
-    final Map<int, List<Task>> tasksByCategory = {};
-    for (final task in _findResults) {
-      tasksByCategory.putIfAbsent(task.categoryId, () => []).add(task);
-    }
-    final Map<int, Category> categoryMap = {
-      for (final cat in _categories) cat.id: cat
-    };
-
-    if (_isFindSearching) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Searching...', style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      );
-    }
-
-    if (_findController.text.trim().isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Enter a search term to find tasks',
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_findResults.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text('No tasks found',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600])),
-            const SizedBox(height: 8),
-            Text('Try a different search term',
-                style: TextStyle(fontSize: 14, color: Colors.grey[500])),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      itemCount: tasksByCategory.length,
-      itemBuilder: (context, index) {
-        final categoryId = tasksByCategory.keys.elementAt(index);
-        final category = categoryMap[categoryId];
-        final tasks = tasksByCategory[categoryId]!;
-        if (category == null) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: InkWell(
-                onTap: () {
-                  final query = _findController.text.trim();
-                  _taskSearchController.text = query;
-                  _showTaskListMode = true;
-                  _closeSearch();
-                  _handleCategorySelection(category);
-                },
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        category.headline,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                      ),
-                    ),
-                    const Icon(Icons.arrow_forward_ios,
-                        size: 16, color: Colors.grey),
-                  ],
-                ),
-              ),
-            ),
-            ...tasks.map(
-              (task) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: TaskDisplay(
-                  key: ValueKey('find-task-${task.id}'),
-                  task: task,
-                  withControls: true,
-                  onEdit: () async {
-                    // Same pursuit selector as elsewhere: lets the user move/copy
-                    // this task to another owned pursuit (hidden for borrowed ones).
-                    final owned =
-                        _categories.where((c) => !c.isShared).toList();
-                    List<Category>? selectable;
-                    if (owned.any((c) => c.id == category.id)) {
-                      final ordering = await orderCategoriesBySensibility(owned);
-                      if (!mounted) return;
-                      selectable = ordering.ordered;
-                    }
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => TaskEditScreen(
-                          category: category,
-                          task: task,
-                          showPursuitSelector: selectable != null,
-                          selectableCategories: selectable,
-                        ),
-                      ),
-                    );
-                    _performFind();
-                  },
-                  onDelete: () async {
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Delete Task'),
-                        content: Text('Delete "${task.headline}"?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Cancel'),
-                          ),
-                          ElevatedButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.danger,
-                              foregroundColor: Colors.white,
-                            ),
-                            child: const Text('Delete'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirmed == true) {
-                      await ApiClient.deleteTask(task.id.toString());
-                      _performFind();
-                    }
-                  },
-                  onTap: () async {
-                    await ApiClient.updateTaskFinished(task.id, !task.finished);
-                    _performFind();
-                  },
-                  onUpdateSuggestibleAt: (DateTime newTime) async {
-                    await ApiClient.updateTaskSuggestibleAt(
-                        task.id, newTime.toIso8601String());
-                    _performFind();
-                  },
-                  onShareToggle: (bool newSharedState) async {
-                    await ApiClient.updateTaskShared(task.id, newSharedState);
-                    _performFind();
-                  },
-                  isCategoryPrivate: category.isPrivate,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-        );
+    return TaskSearchResults(
+      results: _findResults,
+      isSearching: _isFindSearching,
+      query: _findController.text,
+      categories: _categories,
+      onCategoryTap: (category) {
+        final query = _findController.text.trim();
+        _taskSearchController.text = query;
+        _showTaskListMode = true;
+        _closeSearch();
+        _handleCategorySelection(category);
       },
+      taskTileBuilder: (task, category) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: TaskDisplay(
+          key: ValueKey('find-task-${task.id}'),
+          task: task,
+          withControls: true,
+          onEdit: () async {
+            // Same pursuit selector as elsewhere: lets the user move/copy
+            // this task to another owned pursuit (hidden for borrowed ones).
+            final owned = _categories.where((c) => !c.isShared).toList();
+            List<Category>? selectable;
+            if (owned.any((c) => c.id == category.id)) {
+              final ordering = await orderCategoriesBySensibility(owned);
+              if (!mounted) return;
+              selectable = ordering.ordered;
+            }
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => TaskEditScreen(
+                  category: category,
+                  task: task,
+                  showPursuitSelector: selectable != null,
+                  selectableCategories: selectable,
+                ),
+              ),
+            );
+            _performFind();
+          },
+          onDelete: () async {
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Delete Task'),
+                content: Text('Delete "${task.headline}"?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.danger,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed == true) {
+              await ApiClient.deleteTask(task.id.toString());
+              _performFind();
+            }
+          },
+          onTap: () async {
+            await ApiClient.updateTaskFinished(task.id, !task.finished);
+            _performFind();
+          },
+          onUpdateSuggestibleAt: (DateTime newTime) async {
+            await ApiClient.updateTaskSuggestibleAt(
+                task.id, newTime.toIso8601String());
+            _performFind();
+          },
+          onShareToggle: (bool newSharedState) async {
+            await ApiClient.updateTaskShared(task.id, newSharedState);
+            _performFind();
+          },
+          isCategoryPrivate: category.isPrivate,
+        ),
+      ),
     );
   }
 

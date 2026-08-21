@@ -9,6 +9,7 @@ import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/utils/link_to_task_converter.dart';
 import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/link_edit_screen.dart';
 import 'package:meaning_to/utils/auth.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
@@ -23,6 +24,7 @@ import 'package:meaning_to/utils/streaming_media_constants.dart';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
 import 'package:meaning_to/utils/synopsis_fetcher.dart';
 import 'package:meaning_to/widgets/home_button.dart';
+import 'package:meaning_to/add_to_existing_task_screen.dart';
 
 // Widget to display favicon for a domain
 class DomainFaviconWidget extends StatelessWidget {
@@ -91,6 +93,7 @@ class TaskEditScreen extends StatefulWidget {
   final bool showPursuitSelector; // new task from a share: show a pursuit dropdown on top
   final List<Category>? selectableCategories; // pursuits to choose from, pre-ordered by sensibility
   final bool forceCreate; // "Make New" over a duplicate: insert, skip the merge check
+  final bool allowAddToExisting; // incoming single link: offer "Add to existing" redirect
 
   const TaskEditScreen({
     super.key,
@@ -106,6 +109,7 @@ class TaskEditScreen extends StatefulWidget {
     this.showPursuitSelector = false,
     this.selectableCategories,
     this.forceCreate = false,
+    this.allowAddToExisting = false,
   });
 
   @override
@@ -1438,6 +1442,56 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     };
   }
 
+  /// Extract the href from an `<a href="...">` HTML link string.
+  static String? _hrefOf(String htmlLink) =>
+      RegExp(r'<a[^>]+href="([^"]*)"').firstMatch(htmlLink)?.group(1);
+
+  /// Redirect this incoming link onto an existing task instead of creating a
+  /// new one. Opens the cross-pursuit picker; on a pick, merges this link into
+  /// the chosen task and opens its editor for review. If that save succeeds,
+  /// pops this create screen with `true` so the whole incoming-link flow unwinds
+  /// (and the caller refreshes Home).
+  Future<void> _addToExistingTask() async {
+    final picked = await Navigator.of(context).push<({Task task, Category category})?>(
+      MaterialPageRoute(
+        builder: (context) => const AddToExistingTaskScreen(),
+      ),
+    );
+    if (picked == null || !mounted) return;
+
+    final chosen = picked.task;
+    final chosenCategory = picked.category;
+
+    // Merge this link into the chosen task's links, de-duping by URL.
+    final existingLinks = List<String>.from(chosen.links ?? const []);
+    final existingUrls =
+        existingLinks.map(_hrefOf).whereType<String>().toSet();
+    final merged = List<String>.from(existingLinks);
+    for (final link in _links) {
+      final url = _hrefOf(link);
+      if (url == null || !existingUrls.contains(url)) {
+        merged.add(link);
+        if (url != null) existingUrls.add(url);
+      }
+    }
+
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => TaskEditScreen(
+          category: chosenCategory,
+          task: chosen,
+          initialLinks: merged,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (saved == true) {
+      // Unwind the create screen; the incoming-link caller treats `true` as
+      // "a task was saved" and refreshes the Home cache.
+      Navigator.of(context).pop(true);
+    }
+  }
+
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -1877,7 +1931,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: LinkDisplayWidget(
+                      child: LinkDisplay(
                         linkText: _links[index],
                         showIcon: true,
                         showTitle: true,
@@ -2156,6 +2210,22 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       ],
                       _buildLinksList(),
                       const SizedBox(height: 16),
+                      // Incoming single link: redirect it onto an existing task
+                      // instead of creating a new one. Placed above the action
+                      // row so it's visible without scrolling.
+                      if (_localTask == null && widget.allowAddToExisting) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _isLoading ? null : _addToExistingTask,
+                            icon: const Icon(Icons.playlist_add),
+                            label: Text(
+                              'Add to existing ${NamingUtils.tasksName(capitalize: false, plural: false)}',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       Row(
                         children: [
                           // Cancel — discards a new task, or abandons edits to

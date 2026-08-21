@@ -227,13 +227,22 @@ class IncomingLinkProcessor {
             'IncomingLinkProcessor: Error querying tasks by link (RPC may not exist): $e');
         print('IncomingLinkProcessor: Falling back to fetching all tasks...');
 
-        // Fallback: fetch all tasks if RPC doesn't exist
-        final userTasksResponse = await supabase
-            .from('Tasks')
-            .select('*, Categories!Tasks_category_id_fkey(*)')
-            .eq('owner_id', userId);
-
-        final userTasksData = userTasksResponse as List<dynamic>;
+        // Fallback: page through ALL the user's tasks. A plain .select() is
+        // capped at 1000 rows by PostgREST, which silently missed duplicates for
+        // users with more tasks than that (URL matches on older tasks never
+        // fired). Accumulate every page via .range() so the scan is complete.
+        const pageSize = 1000;
+        final userTasksData = <dynamic>[];
+        for (var from = 0;; from += pageSize) {
+          final page = await supabase
+              .from('Tasks')
+              .select('*, Categories!Tasks_category_id_fkey(*)')
+              .eq('owner_id', userId)
+              .range(from, from + pageSize - 1);
+          final pageList = page as List<dynamic>;
+          userTasksData.addAll(pageList);
+          if (pageList.length < pageSize) break;
+        }
         print(
             'IncomingLinkProcessor: Checking ${userTasksData.length} tasks across all user categories');
 
@@ -525,11 +534,34 @@ class IncomingLinkProcessor {
             : [category, ...ordered];
         if (!context.mounted) return;
 
+        // The match may have been on headline alone (title-based fallback), so
+        // the existing task might not actually contain the incoming link. If it
+        // doesn't, pre-add it and tell the user we did.
+        final incomingUrl = originalResult?.url ?? duplicate.matchingUrl;
+        final existingLinks = List<String>.from(duplicate.task.links ?? const []);
+        final alreadyHasLink = existingLinks.any((l) {
+          final u = _extractUrlFromHtmlLink(l);
+          return u != null && _urlsMatch(u, incomingUrl);
+        });
+        List<String>? initialLinks;
+        String? infoMessage;
+        if (!alreadyHasLink) {
+          final proposed = originalResult?.proposedTask;
+          final newLinks = (proposed != null && proposed.links.isNotEmpty)
+              ? proposed.links
+              : ['<a href="$incomingUrl">${originalResult?.title ?? incomingUrl}</a>'];
+          initialLinks = [...existingLinks, ...newLinks];
+          infoMessage =
+              'This ${NamingUtils.tasksName(capitalize: false, plural: false)} didn\'t have the shared link, so we added it below. Save to keep it.';
+        }
+
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => TaskEditScreen(
               category: category,
               task: duplicate.task,
+              initialLinks: initialLinks,
+              infoMessage: infoMessage,
               showPursuitSelector: selectable.isNotEmpty,
               selectableCategories:
                   selectable.isNotEmpty ? selectable : null,
@@ -788,6 +820,7 @@ class IncomingLinkProcessor {
             showAlternativeOptions: false,
             showPursuitSelector: selectable != null,
             selectableCategories: selectable,
+            allowAddToExisting: true, // offer redirect to an existing task
           ),
         ),
       );
@@ -884,6 +917,7 @@ class IncomingLinkProcessor {
             showPursuitSelector: selectable != null,
             selectableCategories: selectable,
             forceCreate: forceCreate,
+            allowAddToExisting: true, // offer redirect to an existing task
           ),
         ),
       );
