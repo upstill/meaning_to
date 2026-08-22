@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:meaning_to/models/category.dart';
 import 'package:link_enrichment_core/models/enrichment_context.dart';
 import 'package:link_enrichment_core/service/enrichment_service.dart';
@@ -228,6 +229,11 @@ class LinkToTaskConverter {
   /// caller then falls back to the scraped page title.
   static Future<ArtistWorkInfo?> _resolveTidalArtistWork(String url) async {
     if (!url.contains('tidal.com')) return null;
+    // Web can't call the Tidal API directly (CORS) and must not ship the client
+    // secret, so it goes through the `tidal-resolve` edge function. Native calls
+    // the Tidal API directly (no CORS, secret from bundled .env).
+    if (kIsWeb) return _resolveTidalViaEdgeFunction(url);
+
     final resource = TidalApiService.extractTidalResource(url);
     if (resource == null) return null;
     final type = resource['type'];
@@ -255,6 +261,32 @@ class LinkToTaskConverter {
       }
     } catch (e) {
       print('LinkToTaskConverter: Tidal API resolution failed: $e');
+    }
+    return null;
+  }
+
+  /// Web path: resolve a Tidal URL via the `tidal-resolve` Supabase edge function
+  /// (server-side OAuth + API, no CORS, secret stays server-side).
+  static Future<ArtistWorkInfo?> _resolveTidalViaEdgeFunction(String url) async {
+    try {
+      final res = await supabase.functions.invoke(
+        'tidal-resolve',
+        body: {'url': url},
+      );
+      final data = res.data;
+      if (data is Map) {
+        final artist = data['artist'] as String?;
+        final work = data['work'] as String?;
+        if (artist != null &&
+            artist.isNotEmpty &&
+            work != null &&
+            work.isNotEmpty) {
+          return ArtistWorkInfo(artist: artist, work: work);
+        }
+      }
+      print('LinkToTaskConverter: tidal-resolve returned no artist/work: $data');
+    } catch (e) {
+      print('LinkToTaskConverter: tidal-resolve edge function failed: $e');
     }
     return null;
   }
