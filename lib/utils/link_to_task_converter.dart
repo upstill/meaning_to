@@ -6,6 +6,7 @@ import 'package:meaning_to/utils/category_suggestion_registry.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/title_cleaner.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
+import 'package:meaning_to/utils/tidal_api.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/synopsis_fetcher.dart';
@@ -92,6 +93,18 @@ class LinkToTaskConverter {
       print('LinkToTaskConverter: Cleaned title "$rawTitle" -> "$pageTitle"');
     }
 
+    // Tidal is a JS SPA — a plain page fetch yields no real title (often just
+    // the numeric album/track id from the URL path). Resolve via the Tidal API
+    // instead, when we weren't handed a title. Overwrite pageTitle with a clean
+    // "Artist - Work" so downstream extraction + the link title both work.
+    final tidalInfo = (preProvidedTitle == null || preProvidedTitle.trim().isEmpty)
+        ? await _resolveTidalArtistWork(normalizedUrl)
+        : null;
+    if (tidalInfo != null) {
+      pageTitle = '${tidalInfo.artist} - ${tidalInfo.work}';
+      print('LinkToTaskConverter: Tidal API resolved title -> "$pageTitle"');
+    }
+
     print('LinkToTaskConverter: Page title: "$pageTitle"');
     print(
         'LinkToTaskConverter: Page description: ${pageDescription?.substring(0, pageDescription.length > 100 ? 100 : pageDescription.length)}...');
@@ -112,6 +125,10 @@ class LinkToTaskConverter {
     String headline;
     String? notes;
     String? synopsis;
+    // The text shown for the link itself. Defaults to the page title, but for
+    // streaming media it's the work (album/track), so the link reads e.g.
+    // "Currents" while the task headline is the artist "Tame Impala".
+    String linkDisplayTitle = pageTitle;
 
     // Process based on link type
     if (isStreamingUrl &&
@@ -131,6 +148,7 @@ class LinkToTaskConverter {
         headline = artistWorkInfo.artist;
         notes = artistWorkInfo.work;
         synopsis = pageDescription;
+        linkDisplayTitle = artistWorkInfo.work;
         print(
             'LinkToTaskConverter: Extracted streaming media - Artist: "$headline", Work: "$notes"');
       } else {
@@ -170,8 +188,8 @@ class LinkToTaskConverter {
       print('LinkToTaskConverter: General link - headline: "$headline"');
     }
 
-    // Create HTML link
-    final htmlLink = '<a href="$normalizedUrl">$pageTitle</a>';
+    // Create HTML link (streaming links read as the work, e.g. "Currents")
+    final htmlLink = '<a href="$normalizedUrl">$linkDisplayTitle</a>';
 
     // Check for existing task with this link (for original_id)
     final existingTaskOriginalId =
@@ -202,6 +220,43 @@ class LinkToTaskConverter {
       suggestedCategoryOriginalIds: suggestedCategoryIds,
       existingTaskOriginalId: existingTaskOriginalId,
     );
+  }
+
+  /// Resolve a Tidal album/track/playlist URL to its artist + work via the Tidal
+  /// API (the page itself is a JS SPA with no scrapeable title). Returns null for
+  /// non-Tidal URLs, when credentials are missing, or on any API failure — the
+  /// caller then falls back to the scraped page title.
+  static Future<ArtistWorkInfo?> _resolveTidalArtistWork(String url) async {
+    if (!url.contains('tidal.com')) return null;
+    final resource = TidalApiService.extractTidalResource(url);
+    if (resource == null) return null;
+    final type = resource['type'];
+    final id = resource['id'];
+    if (id == null || id.isEmpty) return null;
+    try {
+      if (type == 'album') {
+        final info = await TidalApiService.getAlbumInfo(id);
+        if (info?['artist'] != null && info?['album'] != null) {
+          return ArtistWorkInfo(artist: info!['artist']!, work: info['album']!);
+        }
+      } else if (type == 'track') {
+        final info = await TidalApiService.getTrackInfo(id);
+        if (info?['artist'] != null && info?['track'] != null) {
+          return ArtistWorkInfo(artist: info!['artist']!, work: info['track']!);
+        }
+      } else if (type == 'playlist') {
+        final info = await TidalApiService.getPlaylistInfo(id);
+        if (info?['name'] != null) {
+          // A playlist has no single artist; use its owner as the "artist"
+          // slot when present, else repeat the name.
+          return ArtistWorkInfo(
+              artist: info!['owner'] ?? info['name']!, work: info['name']!);
+        }
+      }
+    } catch (e) {
+      print('LinkToTaskConverter: Tidal API resolution failed: $e');
+    }
+    return null;
   }
 
   /// Normalize URL for comparison (remove tracking parameters, etc.)

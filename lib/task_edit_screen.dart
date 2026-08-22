@@ -638,6 +638,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           _error = errorMessage;
         });
       }
+      // Adopt the link's derived headline/notes when the fields are still empty.
+      // For a streaming link the derived headline is the artist (e.g. "Tame
+      // Impala") and notes the work (e.g. "Currents") — the link itself now
+      // reads as the work, so _handleStreamingMediaLink can't re-derive these.
+      if (_headlineController.text.trim().isEmpty &&
+          result.headline.trim().isNotEmpty) {
+        setState(() => _headlineController.text = result.headline.trim());
+      }
+      if (_notesController.text.trim().isEmpty &&
+          (result.notes?.trim().isNotEmpty ?? false)) {
+        setState(() => _notesController.text = result.notes!.trim());
+      }
     }
   }
 
