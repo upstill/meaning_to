@@ -10,6 +10,9 @@ import 'package:meaning_to/utils/pending_intent_store.dart';
 import 'package:meaning_to/utils/pending_list_store.dart';
 import 'package:meaning_to/add_tasks_screen.dart';
 import 'package:meaning_to/utils/incoming_link_processor.dart';
+import 'package:meaning_to/utils/input_line_parser.dart';
+import 'package:meaning_to/utils/share_handler.dart';
+import 'package:flutter/services.dart' show Clipboard;
 import 'package:meaning_to/utils/category_ordering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
@@ -171,6 +174,18 @@ class HomeScreenState extends State<HomeScreen> {
         tooltip: 'Search',
       ),
     );
+
+    // Paste button - turn clipboard text into an idea (single) or ideas (list).
+    // Hidden for guests (who can't create content).
+    if (!AuthUtils.isGuestUser()) {
+      actions.add(
+        IconButton(
+          icon: const Icon(Icons.content_paste),
+          onPressed: _pasteNewContent,
+          tooltip: 'Paste new idea(s)',
+        ),
+      );
+    }
 
     // Help button - always show
     actions.add(
@@ -2609,6 +2624,105 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   /// A multi-line "list" share (e.g. a Notes list) was stashed → open the bulk
+  /// The pursuit new content should default into: the currently-shown pursuit
+  /// if it's your own, else your first owned pursuit, else create one inline.
+  /// Returns null if the user backs out of creating a first pursuit.
+  Future<Category?> _resolveTargetPursuit() async {
+    final owned = _categories.where((c) => !c.isShared).toList();
+    if (_selectedCategory != null &&
+        owned.any((c) => c.id == _selectedCategory!.id)) {
+      return _selectedCategory!;
+    }
+    if (owned.isNotEmpty) return owned.first;
+    // No pursuit of one's own yet — create one first.
+    final result = await Navigator.of(context).pushNamed('/new-category');
+    if (!mounted || result is! Category) return null;
+    await _loadCategories();
+    return mounted ? result : null;
+  }
+
+  /// After the editor/list returns, reload and select+show the pursuit the
+  /// content landed in ([result] is a Category when the editor created content
+  /// in — possibly inline-created — a pursuit; otherwise fall back to [target]).
+  Future<void> _afterContentLanded(Object? result, Category target) async {
+    await _loadCategories();
+    if (!mounted) return;
+    final landed = result is Category ? result : target;
+    final matches = _categories.where((c) => c.id == landed.id).toList();
+    if (matches.isNotEmpty) {
+      setState(() => _showTaskListMode = true);
+      await _handleCategorySelection(matches.first);
+    }
+  }
+
+  /// Home "Paste" action: turn the clipboard into an idea (single line) or ideas
+  /// (multi-line list). Single line runs the same enrich + duplicate flow as an
+  /// incoming share; a multi-line list opens the bulk "Add a List of Ideas"
+  /// editor. The target pursuit defaults to the current one (still selectable).
+  Future<void> _pasteNewContent() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim() ?? '';
+    if (!mounted) return;
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nothing to paste — the clipboard is empty.')),
+      );
+      return;
+    }
+
+    final target = await _resolveTargetPursuit();
+    if (!mounted || target == null) return;
+
+    // Multi-line list → the bulk Add-a-List editor (no per-item dup checks).
+    if (ShareHandler.looksLikeList(text)) {
+      final landed = await Navigator.push<Object?>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AddTasksScreen(category: target, initialText: text),
+        ),
+      );
+      if (!mounted) return;
+      await _afterContentLanded(landed, target);
+      return;
+    }
+
+    // Single line → shared parser. A link routes through the incoming-link flow
+    // (enrich + URL/title duplicate dialog + editor + "add to existing"); plain
+    // text opens the New Task editor pre-filled, with the pursuit selector.
+    final parsed = InputLineParser.parse(text);
+    if (parsed.url != null && parsed.url!.isNotEmpty) {
+      await IncomingLinkProcessor.showLinkActionDialog(
+        context,
+        parsed.url!,
+        defaultCategory: target,
+        preTitle: parsed.rawTitle.isNotEmpty ? parsed.rawTitle : null,
+      );
+      if (!mounted) return;
+      await _loadCategories();
+      if (mounted) _handleEditComplete();
+      return;
+    }
+
+    final owned = _categories.where((c) => !c.isShared).toList();
+    final ordering = await orderCategoriesBySensibility(owned);
+    if (!mounted) return;
+    final landed = await Navigator.push<Object?>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskEditScreen(
+          category: target,
+          selectableCategories: ordering.ordered,
+          showPursuitSelector: true,
+          showAlternativeOptions: false,
+          initialHeadline: parsed.headline,
+          initialNotes: parsed.notes,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _afterContentLanded(landed, target);
+  }
+
   /// "Add a List of Ideas" editor, pre-filled, so each line becomes its own
   /// Idea. The editor's own pursuit dropdown lets the user pick/create the
   /// target; we default it to the current or first owned pursuit (creating one

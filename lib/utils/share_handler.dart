@@ -243,7 +243,7 @@ class ShareHandler {
     // Multi-line share (e.g. a Notes list) → divert to the bulk "Add a List of
     // Ideas" editor instead of mashing every line into one Idea's title. A lone
     // "Title\n<url>" is still a single item, so exclude that 2-line shape.
-    if (_looksLikeList(content)) {
+    if (looksLikeList(content)) {
       print('ShareHandler: Detected multi-line list → routing to Add Ideas');
       try {
         await PendingListStore.set(content);
@@ -344,8 +344,9 @@ class ShareHandler {
 
   /// True when [content] is a multi-line list (route to bulk Add Ideas) rather
   /// than a single item. A lone "Title\n<url>" (exactly two lines, one a bare
-  /// URL) is treated as a single item, not a list.
-  bool _looksLikeList(String content) {
+  /// URL) is treated as a single item, not a list. Static so the Home paste
+  /// action can share the same single-vs-list decision as incoming shares.
+  static bool looksLikeList(String content) {
     final lines = content
         .split('\n')
         .map((l) => l.trim())
