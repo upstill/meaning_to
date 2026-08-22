@@ -66,35 +66,59 @@ async function getAccessToken(): Promise<string | null> {
   return token
 }
 
-async function fetchResource(type: string, id: string, token: string): Promise<any | null> {
+// The current Tidal API is JSON:API: query the collection with filter[id] and
+// include the artists relationship, then read the title from data[0] and the
+// artist name from the `included` array. (The old /v2/{plural}/{id} path 404s.)
+async function fetchResource(
+  type: string,
+  id: string,
+  token: string,
+): Promise<{ title: string | null; artist: string | null } | null> {
   const plural = type === 'album' ? 'albums' : type === 'track' ? 'tracks' : 'playlists'
-  const url = `https://openapi.tidal.com/v2/${plural}/${id}?countryCode=${COUNTRY}`
+  const includeArtists = type === 'playlist' ? '' : '&include=artists'
+  const url =
+    `https://openapi.tidal.com/v2/${plural}?countryCode=${COUNTRY}` +
+    `&filter%5Bid%5D=${encodeURIComponent(id)}${includeArtists}`
   const resp = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${token}`,
-      'accept': 'application/vnd.tidal.v1+json',
+      'accept': 'application/vnd.api+json',
     },
   })
   if (!resp.ok) {
-    console.error(`tidal-resolve: ${plural}/${id} failed ${resp.status}`)
+    console.error(`tidal-resolve: ${plural} filter[id]=${id} failed ${resp.status}`)
     return null
   }
-  const data = await resp.json()
-  return data?.resource ?? null
+  const body = await resp.json()
+  const primary = Array.isArray(body?.data) ? body.data[0] : null
+  if (!primary) return null
+
+  const title = (primary.attributes?.title as string | undefined) ?? null
+
+  // Resolve the first artist id from relationships → look it up in `included`.
+  let artist: string | null = null
+  const artistRef = primary.relationships?.artists?.data?.[0]
+  if (artistRef?.id && Array.isArray(body.included)) {
+    const match = body.included.find(
+      (r: any) => r.type === 'artists' && r.id === artistRef.id,
+    )
+    artist = (match?.attributes?.name as string | undefined) ?? null
+  }
+  return { title, artist }
 }
 
-/** Map a Tidal resource to { artist, work }. */
-function toArtistWork(type: string, resource: any): { artist: string; work: string } | null {
-  const artists = resource?.artists
-  const artistName = Array.isArray(artists) && artists.length > 0 ? artists[0]?.name : null
-  const title = resource?.title as string | undefined
-
+/** Map a fetched Tidal resource to { artist, work }. */
+function toArtistWork(
+  type: string,
+  resource: { title: string | null; artist: string | null },
+): { artist: string; work: string } | null {
+  const title = resource.title
   if (type === 'playlist') {
     // Playlists have no single artist; use the playlist name as the work.
-    if (title) return { artist: resource?.owner ?? title, work: title }
+    if (title) return { artist: title, work: title }
     return null
   }
-  if (artistName && title) return { artist: artistName, work: title }
+  if (resource.artist && title) return { artist: resource.artist, work: title }
   return null
 }
 
