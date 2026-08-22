@@ -374,135 +374,84 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     });
 
     try {
-      print('TaskEditScreen: Fetching webpage metadata...');
+      print('TaskEditScreen: Resolving pasted URL via createProposedTaskFromLink...');
 
-      // Fetch the webpage metadata
-      final processedLink = await LinkProcessor.validateAndProcessLink(url);
-      print('TaskEditScreen: Fetch complete');
-      print('TaskEditScreen: Title: ${processedLink.title}');
-      print(
-          'TaskEditScreen: Description: ${processedLink.description?.substring(0, 50)}...');
+      // Use the SAME enrichment the Paste-from-Clipboard button and the Add-a-Link
+      // dialog use, so IMDb/Tidal/etc. resolve to real titles (not the URL id).
+      // (This method previously called LinkProcessor.validateAndProcessLink
+      // directly, which bypassed the per-domain OMDb/Tidal resolution.)
+      final userId = AuthUtils.getCurrentUserId();
+      final proposed = await LinkToTaskConverter.createProposedTaskFromLink(
+        url,
+        userId,
+        currentCategory: _category,
+      );
+      print('TaskEditScreen: Resolved headline: "${proposed.headline}"');
 
-      final fetchedTitle = processedLink.title;
-
-      if (fetchedTitle == null) {
-        // Non-fatal: the URL is still captured as a link below/by the preview.
-        // Don't surface a red error — just leave the headline as typed.
-        print('TaskEditScreen: Could not fetch title — leaving URL as the link');
+      if (proposed.headline.isEmpty && proposed.links.isEmpty) {
+        // Nothing usable — leave the headline as typed (URL stays as a link).
         if (mounted) setState(() => _error = null);
         return;
       }
 
-      print('TaskEditScreen: Fetched title: "$fetchedTitle"');
-
-      // Check if this is a streaming media link in a streaming media category
-      final isStreamingCategory = _category.originalId != null &&
+      // In a streaming-media pursuit, createProposedTaskFromLink returns the
+      // artist as the headline and the work as notes; otherwise the headline is
+      // the resolved page/OMDb title.
+      final isStreaming = isStreamingMediaUrl(url) &&
+          _category.originalId != null &&
           STREAMING_MEDIA_CATEGORY_IDS.contains(_category.originalId);
 
-      print(
-          'TaskEditScreen: Category original_id: ${_category.originalId}');
-      print('TaskEditScreen: Is streaming category: $isStreamingCategory');
-      print('TaskEditScreen: Is streaming URL: ${isStreamingMediaUrl(url)}');
+      _isProgrammaticUpdate = true;
+      setState(() {
+        if (proposed.headline.isNotEmpty) {
+          _headlineController.text = proposed.headline;
+        }
+        if (isStreaming &&
+            (proposed.notes?.isNotEmpty ?? false) &&
+            _notesController.text.trim().isEmpty) {
+          _notesController.text = proposed.notes!;
+        }
+        _links.addAll(proposed.links);
+        _error = null;
+      });
+      _isProgrammaticUpdate = false;
 
-      if (isStreamingMediaUrl(url) && isStreamingCategory) {
-        print('TaskEditScreen: === PROCESSING AS STREAMING MEDIA ===');
-
-        // Try to extract artist and work from the title
-        print(
-            'TaskEditScreen: Attempting to extract artist/work from: "$fetchedTitle"');
-        final artistWorkInfo = extractArtistAndWorkFromTidal(fetchedTitle);
-        print('TaskEditScreen: Extraction result: $artistWorkInfo');
-
-        if (artistWorkInfo != null) {
-          print(
-              'TaskEditScreen: Successfully extracted - artist: "${artistWorkInfo.artist}", work: "${artistWorkInfo.work}"');
-
-          // Create HTML link
-          final htmlLink = '<a href="$url">$fetchedTitle</a>';
-          print('TaskEditScreen: Created HTML link: $htmlLink');
-
-          // Update the fields (mark as programmatic to avoid triggering listener)
-          print('TaskEditScreen: Setting _isProgrammaticUpdate = true');
-          _isProgrammaticUpdate = true;
-
-          setState(() {
-            print(
-                'TaskEditScreen: Updating headline to: "${artistWorkInfo.artist}"');
-            print(
-                'TaskEditScreen: Updating notes to: "${artistWorkInfo.work}"');
-            print('TaskEditScreen: Adding link to links array');
-            _headlineController.text = artistWorkInfo.artist;
-            _notesController.text = artistWorkInfo.work;
-            _links.add(htmlLink);
-            _error = null; // Clear error message
-          });
-
-          print('TaskEditScreen: Setting _isProgrammaticUpdate = false');
-          _isProgrammaticUpdate = false;
-
-          print(
-              'TaskEditScreen: Successfully updated headline and notes with artist/work');
-
-          // Check for existing artist tasks (only for new tasks, not editing)
-          if (_localTask == null && mounted) {
-            final userId = AuthUtils.getCurrentUserId();
-            final existingTask = await IncomingLinkProcessor
-                .findTaskByArtistInStreamingCategories(
-              artistWorkInfo.artist,
-              userId,
-            );
-
-            if (existingTask != null && mounted) {
-              // Show dialog asking if user wants to switch to existing task
-              final shouldSwitch = await _showExistingArtistDialog(
-                existingTask,
-                artistWorkInfo.work,
-              );
-
-              if (shouldSwitch == true && mounted) {
-                // Navigate back and then to the existing task
-                Navigator.of(context).pop(); // Close current screen
-
-                // Navigate to existing task edit screen
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => TaskEditScreen(
-                      category: _category,
-                      task: existingTask,
-                      initialNotes: existingTask.notes != null
-                          ? '${existingTask.notes}\n${artistWorkInfo.work}'
-                          : artistWorkInfo.work,
-                      initialLinks: [
-                        ...existingTask.links ?? [],
-                        htmlLink,
-                      ],
-                    ),
+      if (isStreaming) {
+        // Streaming: offer to fold this into an existing task for the same
+        // artist (new tasks only).
+        if (_localTask == null && mounted) {
+          final existingTask = await IncomingLinkProcessor
+              .findTaskByArtistInStreamingCategories(proposed.headline, userId);
+          if (existingTask != null && mounted) {
+            final shouldSwitch = await _showExistingArtistDialog(
+                existingTask, proposed.notes ?? '');
+            if (shouldSwitch == true && mounted) {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => TaskEditScreen(
+                    category: _category,
+                    task: existingTask,
+                    initialNotes: existingTask.notes != null
+                        ? '${existingTask.notes}\n${proposed.notes ?? ''}'
+                        : proposed.notes,
+                    initialLinks: [
+                      ...existingTask.links ?? [],
+                      ...proposed.links,
+                    ],
                   ),
-                );
-              }
+                ),
+              );
+              return;
             }
           }
         }
       } else {
-        print('TaskEditScreen: === PROCESSING AS REGULAR LINK ===');
-        // For non-streaming URLs, just set the title and add the link
-        final htmlLink = '<a href="$url">$fetchedTitle</a>';
-
-        _isProgrammaticUpdate = true;
-        setState(() {
-          _headlineController.text = fetchedTitle;
-          _links.add(htmlLink);
-          _error = null; // Clear error message
-        });
-        _isProgrammaticUpdate = false;
-
-        print('TaskEditScreen: Updated headline with fetched title');
-
-        // Run the duplicate check immediately (not deferred to Register): a
-        // pasted URL that's already on a task pops the Make New / Edit Old /
-        // Cancel dialog right away. Only for a genuinely new task.
+        // Regular link: run the duplicate check immediately (not deferred to
+        // Register) — a URL already on a task pops the Make New / Edit Old /
+        // Cancel dialog right away. New tasks only.
         if (_localTask == null && !widget.forceCreate) {
-          await _promptUrlDuplicate(url, fetchedTitle);
+          await _promptUrlDuplicate(url, proposed.headline);
         }
       }
 

@@ -706,8 +706,23 @@ class IncomingLinkProcessor {
     if (!context.mounted) return SingleLineDupOutcome.cancelled;
 
     if (choice == 'edit') {
+      // Carry the incoming URL into the edit flow so a HEADLINE-only match (the
+      // existing task has the same title but not this link) still gets the
+      // pasted link added. Without this, a headline match has matchingUrl='' and
+      // no enriched result, so the link would be silently dropped.
+      final effective = enriched ??
+          (url != null && url.isNotEmpty
+              ? LinkProcessingResult(
+                  url: url,
+                  title: headline,
+                  description: null,
+                  duplicates: const [],
+                  hasValidMetadata: true,
+                  proposedTask: null,
+                )
+              : null);
       await _openExistingTaskForEdit(context, match,
-          originalResult: enriched, replaceCurrentRoute: replaceCurrentRoute);
+          originalResult: effective, replaceCurrentRoute: replaceCurrentRoute);
       return SingleLineDupOutcome.handledExisting;
     } else if (choice == 'new') {
       return SingleLineDupOutcome.makeNew;
