@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
-import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/models/link.dart';
+import 'package:meaning_to/utils/input_line_parser.dart';
 
 /// Represents an item that can be imported from text data
 class ImportItem {
@@ -379,7 +379,9 @@ class TextImporter {
       print('    -> Detected checked checklist item (finished)');
     }
 
-    // 1. Try JSON object detection first (before any URL extraction)
+    // JSON object → delegate to the JSON parser; a JSON array yields null here
+    // (arrays are expanded upstream). These must be handled before the line
+    // parser, which would otherwise treat the JSON text as a plain title.
     if (trimmedInput.startsWith('{')) {
       try {
         final jsonObj = jsonDecode(trimmedInput);
@@ -388,155 +390,39 @@ class TextImporter {
           return parseJsonItem(jsonObj);
         }
       } catch (_) {
-        // Not valid JSON, continue with normal processing
+        // Not valid JSON — fall through to the line parser.
       }
     }
-
-    // 2. Try JSON array detection — arrays yield null from importFromText
     if (trimmedInput.startsWith('[')) {
       try {
         jsonDecode(trimmedInput);
         print('    -> Detected JSON array, returning null');
         return null;
       } catch (_) {
-        // Not valid JSON, continue
+        // Not valid JSON — fall through.
       }
     }
 
-    // 3. Check if text is an HTML link (before URL extraction)
-    if (trimmedInput.startsWith('<a') && trimmedInput.endsWith('</a>')) {
-      print('    -> Attempting HTML link parsing');
-      final (url, title) = LinkProcessor.parseHtmlLink(trimmedInput);
-      if (url != trimmedInput) {
-        final item = ImportItem(
-          title: title ?? 'Link',
-          link: url,
-          metadata: {'source': 'html_link'},
-          finished: finished,
-        );
-        print('    -> Created ImportItem from HTML link: "${item.title}"');
-        return item;
-      }
+    // Everything else → the shared per-line parser (Phase 2): extract the link
+    // (<a> / markdown / bare URL) and turn the remaining text into title+notes.
+    final parsed = InputLineParser.parse(trimmedInput);
+    final title = parsed.headline.isNotEmpty
+        ? parsed.headline
+        : (parsed.linkTitle ?? parsed.url ?? '');
+    if (title.isEmpty && parsed.url == null) {
+      print('    -> Nothing usable on this line, returning null');
+      return null;
     }
-
-    // 4. Check for markdown list prefix
-    String processableText = trimmedInput;
-    if (processableText.startsWith('- ') || processableText.startsWith('* ')) {
-      processableText = processableText.substring(2);
-      print('    -> Removed markdown list prefix, text now: "$processableText"');
-    }
-
-    // 5. Check for markdown link [title](url) with optional description (before URL extraction)
-    final markdownMatch =
-        RegExp(r'\[([^\]]+)\]\(([^)]*)\)(.*)').firstMatch(processableText);
-    if (markdownMatch != null) {
-      final title = markdownMatch.group(1) ?? 'Link';
-      final url = markdownMatch.group(2) ?? '';
-      final description = markdownMatch.group(3)?.trim();
-      print('    -> Found markdown link - title: "$title", url: "$url"');
-
-      final item = ImportItem(
-        title: title,
-        link: url.isEmpty ? null : url,
-        description: description?.isNotEmpty == true ? description : null,
-        metadata: {'source': 'markdown_link'},
-        finished: finished,
-      );
-      print('    -> Created ImportItem from markdown: "${item.title}"');
-      return item;
-    }
-
-    // 6. Extract URL from text
-    String? extractedURL;
-    final urlMatch = RegExp(r'https?://[^\s:]+').firstMatch(processableText);
-    if (urlMatch != null) {
-      extractedURL = urlMatch.group(0)!;
-      print('    -> Found URL: $extractedURL');
-      // Remove trailing colon if present
-      if (extractedURL.endsWith(':')) {
-        extractedURL = extractedURL.substring(0, extractedURL.length - 1);
-      }
-      final urlStart = urlMatch.start;
-      final urlEnd = urlMatch.end;
-      final beforeURL = processableText.substring(0, urlStart);
-      final afterURL = processableText.substring(urlEnd);
-      final colonMaybe =
-          beforeURL.lastIndexOf(':') >= 0 || afterURL.contains(':') ? '' : ':';
-      processableText = beforeURL + colonMaybe + afterURL;
-      print('    -> Text after URL extraction: "$processableText"');
-    }
-
-    // 7. Check if text contains a colon separator (title: description)
-    final colonIndex = processableText.indexOf(':');
-    if (colonIndex > 0 &&
-        !processableText.trim().startsWith('{') &&
-        !processableText.trim().startsWith('[')) {
-      final title = processableText.substring(0, colonIndex).trim();
-      String description = processableText.substring(colonIndex + 1).trim();
-      print(
-          '    -> Found colon separator - title: "$title", description: "$description"');
-
-      // Check for parentheses in the title and move them to description if description is empty
-      String cleanTitle = title;
-      if (description.isEmpty) {
-        final parenthesesMatch = RegExp(r'\(([^)]+)\)').firstMatch(title);
-        if (parenthesesMatch != null) {
-          final parenthesesContent = parenthesesMatch.group(1)?.trim();
-          if (parenthesesContent != null && parenthesesContent.isNotEmpty) {
-            description = '($parenthesesContent)';
-            // Remove the parentheses and their content from the title
-            cleanTitle =
-                title.replaceAll(RegExp(r'\s*\([^)]+\)\s*'), ' ').trim();
-            print(
-                '    -> Moved parentheses from title to description: "$description"');
-            print('    -> Cleaned title: "$cleanTitle"');
-          }
-        }
-      }
-
-      if (cleanTitle.isNotEmpty) {
-        final item = ImportItem(
-          title: cleanTitle,
-          description: description.isNotEmpty ? description : null,
-          link: extractedURL,
-          metadata: {
-            'source': extractedURL != null
-                ? 'plain_text_with_url'
-                : 'plain_text_with_colon'
-          },
-          finished: finished,
-        );
-        print('    -> Created ImportItem with colon: "${item.title}"');
-        return item;
-      }
-    }
-
-    // 8. Check for parentheses in the text and move them to notes
-    final trimmedText = processableText.trim();
-    String? notesFromParentheses;
-    String cleanTitle = trimmedText;
-
-    final parenthesesMatch = RegExp(r'\(([^)]+)\)').firstMatch(trimmedText);
-    if (parenthesesMatch != null) {
-      final parenthesesContent = parenthesesMatch.group(1)?.trim();
-      if (parenthesesContent != null && parenthesesContent.isNotEmpty) {
-        notesFromParentheses = '($parenthesesContent)';
-        cleanTitle =
-            trimmedText.replaceAll(RegExp(r'\s*\([^)]+\)\s*'), ' ').trim();
-        print('    -> Found parentheses content: $notesFromParentheses');
-        print('    -> Cleaned title: "$cleanTitle"');
-      }
-    }
-
-    // 9. Treat as plain text
-    print('    -> Treating as plain text: "$cleanTitle"');
     final item = ImportItem(
-      title: cleanTitle,
-      description: notesFromParentheses,
-      metadata: {'source': 'plain_text'},
+      title: title.isEmpty ? 'Link' : title,
+      description: parsed.notes,
+      link: parsed.url,
+      metadata: {
+        'source': parsed.url != null ? 'line_with_link' : 'plain_text',
+      },
       finished: finished,
     );
-    print('    -> Created ImportItem from plain text: "${item.title}"');
+    print('    -> Parsed ImportItem: "${item.title}"');
     return item;
   }
 

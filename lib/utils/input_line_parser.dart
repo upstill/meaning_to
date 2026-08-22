@@ -160,26 +160,27 @@ class InputLineParser {
 
     // 4. Remaining text → headline + notes.
     rest = rest.replaceAll(RegExp(r'\s+'), ' ').trim();
+    // Removing a link often strands the separator that joined it to the title,
+    // e.g. "Title (AQ) - <url>" → "Title (AQ) -". Trim a trailing/leading
+    // separator (- : | – —) left behind.
+    if (url != null) {
+      rest = rest
+          .replaceAll(RegExp(r'\s*[-:|–—]\s*$'), '')
+          .replaceAll(RegExp(r'^\s*[-:|–—]\s*'), '')
+          .trim();
+    }
     final String rawTitle = rest;
     String headline = rest;
     String? notes;
 
+    // Notes come only from an explicit "Title: notes" colon split. A trailing
+    // parenthetical (e.g. an abbreviation like "(AQ)") stays part of the title.
     if (rest.isNotEmpty) {
       final colon = rest.indexOf(': ');
       if (colon > 0) {
         headline = rest.substring(0, colon).trim();
         final after = rest.substring(colon + 2).trim();
         notes = after.isNotEmpty ? after : null;
-      } else {
-        final paren = RegExp(r'\(([^)]+)\)').firstMatch(rest);
-        if (paren != null) {
-          final inner = paren.group(1)?.trim() ?? '';
-          if (inner.isNotEmpty) {
-            notes = '($inner)';
-            headline =
-                rest.replaceAll(RegExp(r'\s*\([^)]+\)\s*'), ' ').trim();
-          }
-        }
       }
     }
 

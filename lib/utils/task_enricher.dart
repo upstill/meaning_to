@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/link_processor.dart';
-import 'package:meaning_to/utils/text_importer.dart';
+import 'package:meaning_to/utils/input_line_parser.dart';
 
 /// Specification for what fields should be enriched in a Task
 class TaskEnrichmentSpec {
@@ -223,164 +223,85 @@ class TaskEnricher {
     required String ownerId,
     TaskEnrichmentSpec spec = TaskEnrichmentSpec.webContent,
   }) async {
-    // Strip a leading checklist checkbox (e.g. a Google Keep list arrives as
-    // "[ ] Buy milk" / "[x] Walk dog"); a checked box marks the item done.
-    // Done before URL detection so "[x] https://…" is still recognised.
-    final checkbox = TextImporter.stripChecklistCheckbox(inputLine);
-    final bool checklistDone = checkbox.done;
-    final trimmedLine = checkbox.text.trim();
-
-    if (trimmedLine.isEmpty) {
+    // Phase 2: the shared per-line parser does Step 1/2 (extract the link — <a>,
+    // markdown, or bare URL — and turn the rest of the line into title+notes);
+    // enrichment (below) and, for single lines elsewhere, duplicate checks layer
+    // on top. Here (multi-line/bulk) there are no duplicate checks.
+    final parsed = InputLineParser.parse(inputLine);
+    if (parsed.headline.isEmpty && parsed.url == null) {
       throw Exception('Input line is empty');
     }
+    final bool checklistDone = parsed.finished;
 
-    // Remove @ prefix if present for URL validation
-    String urlToCheck = trimmedLine;
-    if (urlToCheck.startsWith('@')) {
-      urlToCheck = urlToCheck.substring(1);
-    }
-
-    // Check if this is already an HTML link (including malformed ones)
-    if (trimmedLine.startsWith('<a href="') && trimmedLine.contains('">')) {
-      String htmlToProcess = trimmedLine;
-
-      // Fix common malformed HTML patterns
-      if (trimmedLine.endsWith('<a>')) {
-        // Fix malformed closing tag: <a href="...">Title<a> -> <a href="...">Title</a>
-        htmlToProcess = trimmedLine.replaceAll(RegExp(r'<a>$'), '</a>');
-        print('TaskEnricher: Fixed malformed HTML link - changed <a> to </a>');
-      } else if (!trimmedLine.endsWith('</a>')) {
-        // If it doesn't end with </a> but starts like an HTML link, try to fix it
-        if (trimmedLine.contains('<a>')) {
-          htmlToProcess = trimmedLine.replaceAll('<a>', '</a>');
-          print(
-              'TaskEnricher: Fixed malformed HTML link - changed <a> to </a>');
-        } else {
-          // Add missing closing tag if it seems to be a complete link
-          htmlToProcess = '$trimmedLine</a>';
-          print('TaskEnricher: Added missing closing tag </a>');
-        }
-      }
-
-      // Parse the fixed HTML link to extract URL and title
-      final (url, title) = LinkProcessor.parseHtmlLink(htmlToProcess);
-
+    if (parsed.url != null && parsed.url!.isNotEmpty) {
+      final url = parsed.url!;
       try {
-        // Always fetch webpage content to validate URL and get description
+        // Provide the extracted label as linkText so LinkProcessor keeps it
+        // (skips a fetch); a bare URL passes '' and gets its title fetched.
         final processedLink = await LinkProcessor.validateAndProcessLink(
           url,
-          linkText: title, // Use the title from the HTML link
+          linkText: parsed.linkTitle ?? '',
         );
 
-        // Create task with webpage-fetched description but preserve the original title
+        // Prefer the surrounding text as the headline; else the link's own label
+        // or the fetched page title.
+        final headline = parsed.headline.isNotEmpty
+            ? parsed.headline
+            : (parsed.linkTitle ?? processedLink.title ?? 'Link Task');
+        // Notes are user-authored only (the "Title: notes" colon split). The
+        // fetched page description belongs in synopsis, populated by
+        // SynopsisFetcher when the task is viewed — putting it in notes too made
+        // notes and synopsis identical.
+        final notes = parsed.notes;
+        // Keep an explicit label if the line carried one; else the fetched link.
+        final linkHtml =
+            (parsed.linkTitle != null && parsed.linkTitle!.isNotEmpty)
+                ? '<a href="$url">${parsed.linkTitle}</a>'
+                : processedLink.originalLink;
+
         return await createAndEnrichTask(
           id: DateTime.now().millisecondsSinceEpoch,
           categoryId: categoryId,
-          headline: title ??
-              processedLink.title ??
-              'Link Task', // Prefer HTML title, fall back to fetched title
-          notes: processedLink.description, // Use description from webpage
+          headline: headline,
+          notes: notes,
           ownerId: ownerId,
           finished: checklistDone,
-          links: [htmlToProcess], // Use the corrected HTML link
+          links: [linkHtml],
           spec: const TaskEnrichmentSpec(
-            enrichLinks: false, // Don't re-enrich since we already processed
-            generateDescription:
-                false, // Don't generate since we already have it
-            ensureProcessedLinks:
-                true, // Still create ProcessedLinks for display
-            cleanHeadline: true, // Clean the headline as usual
-          ),
-        );
-      } catch (e) {
-        // If webpage fetch fails, create a fallback task with the HTML link data
-        return await createAndEnrichTask(
-          id: DateTime.now().millisecondsSinceEpoch,
-          categoryId: categoryId,
-          headline: title ?? 'Link Task',
-          notes: 'Failed to validate URL: $url',
-          ownerId: ownerId,
-          finished: checklistDone,
-          links: [htmlToProcess], // Use the corrected HTML link
-          spec: const TaskEnrichmentSpec(
-            enrichLinks: false,
-            generateDescription: false,
+            enrichLinks: false, // already processed
+            generateDescription: false, // already have it
             ensureProcessedLinks: true,
             cleanHeadline: true,
           ),
         );
-      }
-    }
-
-    // Check if this is a single URL
-    if (LinkProcessor.isValidUrl(urlToCheck)) {
-      try {
-        // Process the URL through LinkProcessor
-        final processedLink = await LinkProcessor.validateAndProcessLink(
-          urlToCheck,
-          linkText: '', // Let LinkProcessor fetch the title
-        );
-
-        // Create task and enrich it - use the ProcessedLink's description directly
-        // Use a spec that preserves the existing notes and doesn't regenerate ProcessedLinks
-        return await createAndEnrichTask(
-          id: DateTime.now().millisecondsSinceEpoch,
-          categoryId: categoryId,
-          headline: processedLink.title ?? 'Link Task',
-          notes: processedLink
-              .description, // Use the description from ProcessedLink
-          ownerId: ownerId,
-          finished: checklistDone,
-          links: [processedLink.originalLink],
-          spec: const TaskEnrichmentSpec(
-            enrichLinks:
-                false, // Don't re-enrich the links since we already processed them
-            generateDescription:
-                false, // Don't generate description since we already have it
-            ensureProcessedLinks:
-                true, // Still create ProcessedLinks for display
-            cleanHeadline: true, // Still clean the headline
-          ),
-        );
       } catch (e) {
-        // If URL processing fails, create a fallback task
-        String fallbackTitle = _createFallbackTitleFromUrl(urlToCheck);
-
+        // Webpage fetch failed — fall back to what we parsed.
+        final fallbackTitle = parsed.headline.isNotEmpty
+            ? parsed.headline
+            : (parsed.linkTitle ?? _createFallbackTitleFromUrl(url));
         return await createAndEnrichTask(
           id: DateTime.now().millisecondsSinceEpoch,
           categoryId: categoryId,
           headline: fallbackTitle,
-          notes: 'Failed to fetch webpage title',
+          notes: parsed.notes,
           ownerId: ownerId,
           finished: checklistDone,
-          links: ['<a href="$urlToCheck">$fallbackTitle</a>'],
+          links: ['<a href="$url">$fallbackTitle</a>'],
           spec: spec,
         );
       }
-    } else {
-      // Process as regular text line (headline with optional notes)
-      String headline = trimmedLine;
-      String? notes;
-
-      // Check for "Task: Note" format
-      if (trimmedLine.contains(': ')) {
-        final parts = trimmedLine.split(': ');
-        if (parts.length >= 2) {
-          headline = parts[0].trim();
-          notes = parts.sublist(1).join(': ').trim();
-        }
-      }
-
-      return await createAndEnrichTask(
-        id: DateTime.now().millisecondsSinceEpoch,
-        categoryId: categoryId,
-        headline: headline,
-        notes: notes,
-        ownerId: ownerId,
-        finished: checklistDone,
-        spec: spec,
-      );
     }
+
+    // Plain text line (no link).
+    return await createAndEnrichTask(
+      id: DateTime.now().millisecondsSinceEpoch,
+      categoryId: categoryId,
+      headline: parsed.headline,
+      notes: parsed.notes,
+      ownerId: ownerId,
+      finished: checklistDone,
+      spec: spec,
+    );
   }
 
   /// Parse and process bulk input (CSV, JSON, or plain text) into multiple tasks

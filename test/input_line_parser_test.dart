@@ -53,10 +53,18 @@ void main() {
       expect(p.notes, 'from the good store');
     });
 
-    test('trailing parenthetical becomes notes', () {
+    test('trailing parenthetical stays part of the title', () {
       final p = InputLineParser.parse('Call Sam (about the roof)');
-      expect(p.headline, 'Call Sam');
-      expect(p.notes, '(about the roof)');
+      expect(p.headline, 'Call Sam (about the roof)');
+      expect(p.notes, isNull);
+    });
+
+    test('abbreviation stays in title; separator before URL is trimmed', () {
+      final p = InputLineParser.parse(
+          'The Autism Spectrum Quotient (AQ) - https://x.com/aq');
+      expect(p.headline, 'The Autism Spectrum Quotient (AQ)');
+      expect(p.notes, isNull);
+      expect(p.url, 'https://x.com/aq');
     });
 
     test('colon inside a plain title is not split without a space', () {
