@@ -2854,48 +2854,29 @@ class HomeScreenState extends State<HomeScreen> {
 
     setState(() => _editingTask = task);
 
-    TaskEditScreen.onEditComplete = () {
-      print('HomeScreen: Task edit complete callback received');
-      if (mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() {
-              HomeScreen.needsTaskReload.value = true;
-            });
-          }
-        });
-      }
-    };
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => Dialog(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 480,
-            maxHeight: MediaQuery.of(context).size.height * 0.85,
-          ),
-          child: TaskEditScreen(
-            category: _selectedCategory!,
-            task: task,
-            isPanel: true,
-            showPursuitSelector: selectable != null,
-            selectableCategories: selectable,
-            onCategoryChange: (newCategory) =>
-                _handleEditPanelCategoryChange(task, newCategory),
-          ),
+    // Use the same full-screen editor as the search-results Edit and the
+    // duplicate "Edit Old" path (this used to be a centered bottom-panel dialog),
+    // so editing a task is consistent everywhere. The full-screen editor's own
+    // pursuit selector handles move/copy on save — no onCategoryChange needed.
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskEditScreen(
+          category: _selectedCategory!,
+          task: task,
+          showPursuitSelector: selectable != null,
+          selectableCategories: selectable,
         ),
       ),
     );
 
-    TaskEditScreen.onEditComplete = null;
-    // Rebuild the list immediately from the already-updated cache.
-    // cacheManager.updateTask was called before the panel closed, so the
-    // cache is correct at this point — no need to wait for _handleEditComplete.
+    if (!mounted) return;
+    // The editor updates the cache on save; rebuild the visible list from it.
     setState(() {
       _editingTask = null;
       if (_showTaskListMode) _rebuildTaskListFromCache();
     });
+    HomeScreen.needsTaskReload.value = true;
   }
 
   Future<void> _handleEditPanelCategoryChange(

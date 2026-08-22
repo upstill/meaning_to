@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/utils/pending_intent_store.dart';
 import 'package:meaning_to/utils/pending_list_store.dart';
+import 'package:meaning_to/utils/input_line_parser.dart';
 
 class ShareHandler {
   static final ShareHandler _instance = ShareHandler._internal();
@@ -275,15 +276,16 @@ class ShareHandler {
     }
 
     try {
-      // Process the first URL (could be enhanced to handle multiple URLs).
-      final firstUrl = urls.first;
+      // Parse the shared line with the shared InputLineParser (the same "Step 1"
+      // every task-creation path uses): pull out the link and keep the rest of
+      // the line as the title, so a native share carries one just like the
+      // browser extension. rawTitle keeps the full remaining text (no colon /
+      // parenthetical split) since the intent pipeline carries only a title.
+      final parsed = InputLineParser.parse(content);
+      final firstUrl = parsed.url ?? urls.first;
       print('ShareHandler: Processing first URL: $firstUrl');
-      // Many apps share "Page Title <url>" (or "Title\n<url>"); keep the
-      // non-URL remainder as the title so a native share carries one just like
-      // the browser extension does (no page fetch needed downstream).
-      final derivedTitle =
-          content.replaceAll(firstUrl, '').replaceAll(RegExp(r'\s+'), ' ').trim();
-      print('ShareHandler: Derived title: "${derivedTitle}"');
+      final derivedTitle = parsed.rawTitle;
+      print('ShareHandler: Derived title: "$derivedTitle"');
       // Stash as a pending intent and nudge Home to process it via the same
       // robust pipeline as the extension: survives sign-in, and handles
       // no-pursuit / single-pursuit / picker uniformly.

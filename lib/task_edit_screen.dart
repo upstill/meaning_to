@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, listEquals;
 import 'package:flutter/material.dart';
 import 'package:meaning_to/theme/app_colors.dart';
 import 'package:flutter/services.dart';
@@ -126,6 +126,19 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   bool _isProcessingUrl = false;
   String? _lastProcessedUrl;
   bool _isProgrammaticUpdate = false;
+  // A pasted URL runs the duplicate check immediately (not at Register). When the
+  // user answers "Make New"/"Cancel", we remember the URL and headline that were
+  // just resolved so Register doesn't prompt again for the same link OR the same
+  // title (the IMDb/JustWatch case: same movie title, different URL).
+  String? _forceNewForUrl;
+  String? _forceNewForHeadline;
+
+  // Snapshot of the form as it opened, for the "Save Changes" dirty check.
+  String _initialHeadline = '';
+  String _initialNotes = '';
+  List<String> _initialLinks = const [];
+  bool _initialShared = false;
+  int? _initialCategoryId;
 
   // Memoized link-preview future so the FutureBuilder in build() doesn't kick
   // off a fresh network fetch on every rebuild (each setState). Recomputed only
@@ -234,16 +247,54 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       _isShared = !_category.tasksArePrivate;
     }
 
+    // Snapshot the initial state so "Save Changes" can stay disabled until the
+    // user actually changes something (existing-task edits only). For an existing
+    // task the baseline is its PERSISTED values, not the current form — so a
+    // pre-filled override (e.g. a link pre-added by the duplicate "Edit Old"
+    // flow) correctly counts as a change and enables Save.
+    if (_localTask != null) {
+      _initialHeadline = _localTask!.headline.trim();
+      _initialNotes = (_localTask!.notes ?? '').trim();
+      _initialLinks = List<String>.from(_localTask!.links ?? const []);
+      _initialShared = _localTask!.shared;
+      _initialCategoryId = _localTask!.categoryId;
+    } else {
+      _initialHeadline = _headlineController.text.trim();
+      _initialNotes = _notesController.text.trim();
+      _initialLinks = List<String>.from(_links);
+      _initialShared = _isShared;
+      _initialCategoryId = _category.id;
+    }
+
     // Add listener to track headline changes and detect pasted URLs
     print('TaskEditScreen: Adding listener to _headlineController');
     _headlineController.addListener(_onHeadlineChanged);
+    // Notes edits also affect the dirty state → rebuild the Save button.
+    _notesController.addListener(_onNotesChanged);
     print('TaskEditScreen: Listener added successfully');
     print('TaskEditScreen: ============ initState COMPLETE ============');
+  }
+
+  void _onNotesChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// True when the current form differs from the snapshot taken in initState.
+  /// Used to gate "Save Changes" for existing tasks.
+  bool get _isDirty {
+    if (_headlineController.text.trim() != _initialHeadline) return true;
+    if (_notesController.text.trim() != _initialNotes) return true;
+    if (_isShared != _initialShared) return true;
+    if (_category.id != _initialCategoryId) return true;
+    if (_copyMode) return true; // copying into another pursuit is an action
+    if (!listEquals(_links, _initialLinks)) return true;
+    return false;
   }
 
   @override
   void dispose() {
     _headlineController.removeListener(_onHeadlineChanged);
+    _notesController.removeListener(_onNotesChanged);
     _headlineController.dispose();
     _notesController.dispose();
     super.dispose();
@@ -446,6 +497,13 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         _isProgrammaticUpdate = false;
 
         print('TaskEditScreen: Updated headline with fetched title');
+
+        // Run the duplicate check immediately (not deferred to Register): a
+        // pasted URL that's already on a task pops the Make New / Edit Old /
+        // Cancel dialog right away. Only for a genuinely new task.
+        if (_localTask == null && !widget.forceCreate) {
+          await _promptUrlDuplicate(url, fetchedTitle);
+        }
       }
 
       print('TaskEditScreen: === URL PROCESSING COMPLETE ===');
@@ -459,10 +517,32 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     } finally {
       print('TaskEditScreen: Cleaning up - resetting flags');
       _isProgrammaticUpdate = false; // Ensure flag is reset
-      setState(() {
-        _isProcessingUrl = false;
-      });
+      // Guard: "Edit Old" replaces this editor, so the State may be unmounted.
+      if (mounted) {
+        setState(() {
+          _isProcessingUrl = false;
+        });
+      }
       print('TaskEditScreen: === END URL PROCESSING ===');
+    }
+  }
+
+  /// Immediately check whether a just-pasted [url] duplicates an existing task
+  /// and, if so, show the shared Make New / Edit Old / Cancel dialog. On "Edit
+  /// Old" this editor is replaced; on "Make New"/"Cancel" we remember the URL so
+  /// Register won't prompt again for it.
+  Future<void> _promptUrlDuplicate(String url, String headline) async {
+    if (!mounted) return;
+    final outcome = await IncomingLinkProcessor.resolveSingleLineDuplicates(
+      context,
+      headline: headline,
+      url: url,
+      replaceCurrentRoute: true,
+    );
+    if (!mounted) return;
+    if (outcome != SingleLineDupOutcome.handledExisting) {
+      _forceNewForUrl = url;
+      _forceNewForHeadline = headline.trim();
     }
   }
 
@@ -851,293 +931,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
     print('TaskEditScreen: Link updated successfully: $htmlLink');
     return null; // No error
-  }
-
-  /// Check if a task with the same headline or same link already exists and merge information if needed
-  Future<Task?> _checkForDuplicateAndMerge(
-      Map<String, dynamic> newTaskData, String userId) async {
-    print('TaskEditScreen: === DUPLICATE DETECTION START ===');
-    print(
-        'TaskEditScreen: Checking for duplicates of: "${newTaskData['headline']}"');
-    print('TaskEditScreen: New task links: ${newTaskData['links']}');
-
-    // First, check if the current task (if editing) already has the same link
-    if (_localTask != null &&
-        newTaskData['links'] != null &&
-        (newTaskData['links'] as List).isNotEmpty) {
-      print('TaskEditScreen: Checking current task for duplicate links...');
-      print('TaskEditScreen: Current task links: ${_localTask!.links}');
-
-      if (_localTask!.links != null && _localTask!.links!.isNotEmpty) {
-        for (final newLink in newTaskData['links'] as List) {
-          print('TaskEditScreen: Checking new link: $newLink');
-          for (final existingLink in _localTask!.links!) {
-            print('TaskEditScreen: Against current task link: $existingLink');
-            // Extract URLs from HTML links for comparison
-            final newUrl = _extractUrlFromHtmlLink(newLink);
-            final existingUrl = _extractUrlFromHtmlLink(existingLink);
-            print('TaskEditScreen: Extracted new URL: $newUrl');
-            print('TaskEditScreen: Extracted existing URL: $existingUrl');
-
-            if (newUrl != null &&
-                existingUrl != null &&
-                newUrl == existingUrl) {
-              print('TaskEditScreen: Found duplicate link in current task!');
-              print('TaskEditScreen: New link: $newUrl');
-              print('TaskEditScreen: Existing link: $existingUrl');
-              print(
-                  'TaskEditScreen: === DUPLICATE DETECTION END - DUPLICATE IN CURRENT TASK ===');
-              return _localTask; // Return current task since it already has this link
-            }
-          }
-        }
-      }
-      print('TaskEditScreen: No duplicate links found in current task');
-    }
-
-    // Get existing tasks for the current category (excluding the current task being edited)
-    final response = await supabase
-        .from('Tasks')
-        .select()
-        .eq('category_id', _category.id)
-        .eq('owner_id', userId)
-        .order('created_at', ascending: false);
-
-    final existingTasks = (response as List)
-        .map((json) => Task.fromJson(json as Map<String, dynamic>))
-        .where((task) =>
-            _localTask == null ||
-            task.id != _localTask!.id) // Exclude current task if editing
-        .toList();
-    print(
-        'TaskEditScreen: Existing tasks count: ${existingTasks.length} (excluding current task)');
-
-    // First, check for tasks with the same headline
-    Task? existingTask;
-    for (final task in existingTasks) {
-      if (task.headline.toLowerCase().trim() ==
-          (newTaskData['headline'] as String).toLowerCase().trim()) {
-        existingTask = task;
-        print(
-            'TaskEditScreen: Found existing task with matching headline: "${task.headline}" (ID: ${task.id})');
-        break;
-      }
-    }
-
-    // If no headline match found, check for tasks with the same link
-    if (existingTask == null &&
-        newTaskData['links'] != null &&
-        (newTaskData['links'] as List).isNotEmpty) {
-      print(
-          'TaskEditScreen: No headline match found, checking for link matches...');
-
-      // Extract URL from the first new link and search for it in the database
-      final firstNewLink = (newTaskData['links'] as List).first as String;
-      final searchUrl = _extractUrlFromHtmlLink(firstNewLink);
-
-      if (searchUrl != null) {
-        // Escape special characters for LIKE pattern
-        final escapedUrl =
-            searchUrl.replaceAll('%', '\\%').replaceAll('_', '\\_');
-
-        print('TaskEditScreen: Searching for tasks with URL: $searchUrl');
-
-/*         
-        Query database using unnest to find tasks where links array contains the URL.
-        This uses a PostgreSQL function. Create it with:
-        CREATE OR REPLACE FUNCTION find_tasks_by_link_url(search_url_pattern TEXT)
-        RETURNS TABLE(id INTEGER, category_id INTEGER, headline TEXT, notes TEXT,
-                      synopsis TEXT, owner_id TEXT, created_at TIMESTAMPTZ,
-                      suggestible_at TIMESTAMPTZ, triggers_at TIMESTAMPTZ, deferral INTEGER,
-                      links TEXT[], processed_links JSONB, finished BOOLEAN,
-                      shared BOOLEAN, original_id INTEGER, dirty BOOLEAN) AS $$
-        BEGIN
-          RETURN QUERY
-          SELECT t.* FROM "Tasks" t
-          WHERE EXISTS (
-            SELECT 1 FROM unnest(t.links) AS link
-            WHERE link LIKE search_url_pattern
-          )
-          ORDER BY t.created_at DESC;
-        END;
-        $$ LANGUAGE plpgsql; 
-        */
-        try {
-          final linkResponse = await supabase.rpc(
-            'find_tasks_by_link_url',
-            params: {'search_url_pattern': '%$escapedUrl%'},
-          );
-
-          final tasksWithLink = (linkResponse as List)
-              .map((json) => Task.fromJson(json as Map<String, dynamic>))
-              .where((task) =>
-                  _localTask == null ||
-                  task.id != _localTask!.id) // Exclude current task if editing
-              .toList();
-
-          print(
-              'TaskEditScreen: Found ${tasksWithLink.length} task(s) with matching link');
-
-          // Find the first task with an exact URL match
-          for (final task in tasksWithLink) {
-            if (task.links != null && task.links!.isNotEmpty) {
-              for (final existingLink in task.links!) {
-                final existingUrl = _extractUrlFromHtmlLink(existingLink);
-                if (existingUrl != null && existingUrl == searchUrl) {
-                  print(
-                      'TaskEditScreen: Found existing task with matching link: "${task.headline}" (ID: ${task.id})');
-                  print('TaskEditScreen:   New link: $searchUrl');
-                  print('TaskEditScreen:   Existing link: $existingUrl');
-                  existingTask = task;
-                  break;
-                }
-              }
-              if (existingTask != null) break;
-            }
-          }
-        } catch (e) {
-          print(
-              'TaskEditScreen: Error querying tasks by link (RPC may not exist): $e');
-          print(
-              'TaskEditScreen: Using direct query with array_to_string fallback...');
-
-          // Fallback: use array_to_string to search (less efficient but works without RPC)
-          try {
-            final linkResponse = await supabase
-                .from('Tasks')
-                .select()
-                .filter('links', 'not.is', null)
-                .order('created_at', ascending: false);
-
-            final allTasks = (linkResponse as List)
-                .map((json) => Task.fromJson(json as Map<String, dynamic>))
-                .where((task) =>
-                    _localTask == null ||
-                    task.id !=
-                        _localTask!.id) // Exclude current task if editing
-                .toList();
-
-            // Filter in memory using the escaped URL
-            final tasksWithLink = allTasks.where((task) {
-              if (task.links == null || task.links!.isEmpty) return false;
-              return task.links!.any((link) => link.contains(escapedUrl));
-            }).toList();
-
-            print(
-                'TaskEditScreen: Found ${tasksWithLink.length} task(s) with matching link');
-
-            // Find the first task with an exact URL match
-            for (final task in tasksWithLink) {
-              for (final existingLink in task.links!) {
-                final existingUrl = _extractUrlFromHtmlLink(existingLink);
-                if (existingUrl != null && existingUrl == searchUrl) {
-                  print(
-                      'TaskEditScreen: Found existing task with matching link: "${task.headline}" (ID: ${task.id})');
-                  print('TaskEditScreen:   New link: $searchUrl');
-                  print('TaskEditScreen:   Existing link: $existingUrl');
-                  existingTask = task;
-                  break;
-                }
-              }
-              if (existingTask != null) break;
-            }
-          } catch (e2) {
-            print('TaskEditScreen: Error with fallback query: $e2');
-            // Final fallback to in-memory search on existingTasks
-            print('TaskEditScreen: Falling back to in-memory search...');
-            for (final task in existingTasks) {
-              if (task.links != null && task.links!.isNotEmpty) {
-                for (final existingLink in task.links!) {
-                  final existingUrl = _extractUrlFromHtmlLink(existingLink);
-                  if (existingUrl != null && existingUrl == searchUrl) {
-                    existingTask = task;
-                    break;
-                  }
-                }
-                if (existingTask != null) break;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (existingTask != null) {
-      print(
-          'TaskEditScreen: Found existing task: "${existingTask.headline}" (ID: ${existingTask.id})');
-      // Found a duplicate - merge information and update
-      print('TaskEditScreen: Found duplicate task: "${existingTask.headline}"');
-      print(
-          'TaskEditScreen: === DUPLICATE DETECTION END - DUPLICATE FOUND ===');
-      // Found a duplicate - merge information and update
-      print('TaskEditScreen: Found duplicate task: "${existingTask.headline}"');
-      print(
-          'TaskEditScreen: === DUPLICATE DETECTION END - DUPLICATE FOUND ===');
-
-      // Check if we need to update the existing task with new information
-      Map<String, dynamic> updateData = {};
-
-      // Add links if the new task has them and the existing task doesn't
-      if (newTaskData['links'] != null &&
-          (newTaskData['links'] as List).isNotEmpty &&
-          (existingTask.links == null || existingTask.links!.isEmpty)) {
-        updateData['links'] = newTaskData['links'];
-        print('TaskEditScreen:   -> Adding links to existing task');
-      }
-
-      // Add notes if the new task has them and the existing task doesn't
-      if (newTaskData['notes'] != null &&
-          (newTaskData['notes'] as String).isNotEmpty &&
-          (existingTask.notes == null || existingTask.notes!.isEmpty)) {
-        updateData['notes'] = newTaskData['notes'];
-        print('TaskEditScreen:   -> Adding notes to existing task');
-      }
-
-      // Always update the existing task to move it to the top of the list
-      // Set suggestibleAt to null to make it appear first
-      try {
-        // Add suggestibleAt: null to the update data to move task to top
-        updateData['suggestible_at'] = null;
-
-        await supabase
-            .from('Tasks')
-            .update(updateData)
-            .eq('id', existingTask.id)
-            .eq('owner_id', userId);
-
-        print(
-            'TaskEditScreen:   -> Updated existing task and moved to top of list');
-
-        // Create the updated task object
-        final updatedTask = Task(
-          id: existingTask.id,
-          categoryId: existingTask.categoryId,
-          ownerId: existingTask.ownerId,
-          headline: existingTask.headline,
-          notes: updateData['notes'] ?? existingTask.notes,
-          links: updateData['links'] ?? existingTask.links,
-          processedLinks: existingTask.processedLinks,
-          createdAt: existingTask.createdAt,
-          suggestibleAt: null, // Set to null to move to top
-          finished: existingTask.finished,
-        );
-
-        // Update the cache to reflect the changes
-        final cacheManager = CacheManager();
-        await cacheManager.updateTask(updatedTask);
-        print('TaskEditScreen:   -> Updated cache with moved task');
-
-        return updatedTask;
-      } catch (e) {
-        print('TaskEditScreen: Error updating existing task: $e');
-        return existingTask; // Return existing task without changes on error
-      }
-    } else {
-      print(
-          'TaskEditScreen: === DUPLICATE DETECTION END - NO DUPLICATE FOUND ===');
-    }
-
-    return null; // No duplicate found
   }
 
   /// Fetch Letterboxd notes/description for a URL (similar to the import screen logic)
@@ -1584,28 +1377,45 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
       Task? updatedTask;
       if (creatingNew) {
-        // A genuinely new task checks for an existing duplicate to merge into; a
-        // deliberate copy into another pursuit always inserts a fresh row.
-        print(
-            'TaskEditScreen: Checking for duplicates before creating new task...');
-        final existingTask = (_copyMode || widget.forceCreate)
-            ? null
-            : await _checkForDuplicateAndMerge(data, userId);
-
-        if (existingTask != null) {
-          // Found a duplicate - use the existing task
-          print(
-              'TaskEditScreen: Found duplicate task, using existing: ${existingTask.headline}');
-          updatedTask = existingTask;
-        } else {
-          // No duplicate found - create new task
-          print('TaskEditScreen: No duplicate found, creating new task...');
-          final response =
-              await supabase.from('Tasks').insert(data).select().single();
-
-          updatedTask = Task.fromJson(response);
-          print('TaskEditScreen: Created new task: ${updatedTask.headline}');
+        // A genuinely new task runs the unified single-line duplicate check —
+        // the same Make New / Edit Old / Cancel dialog a share gets — keyed on
+        // the link URL (precise) then the headline. A deliberate copy into
+        // another pursuit, or an explicit "Make New" over a duplicate, skips it.
+        if (!_copyMode && !widget.forceCreate) {
+          final firstUrl =
+              allLinks.isNotEmpty ? _hrefOf(allLinks.first) : null;
+          // If the URL or the headline was already resolved when the link was
+          // pasted (user chose Make New / Cancel then), don't prompt again for
+          // the same values here. An empty headline makes the title check a
+          // no-op, so suppressing both yields an immediate "make new".
+          final urlForDup =
+              (firstUrl != null && firstUrl == _forceNewForUrl) ? null : firstUrl;
+          final headlineForDup =
+              (processedHeadline.trim() == _forceNewForHeadline)
+                  ? ''
+                  : processedHeadline;
+          final outcome =
+              await IncomingLinkProcessor.resolveSingleLineDuplicates(
+            context,
+            headline: headlineForDup,
+            url: urlForDup,
+            ownerId: userId,
+            replaceCurrentRoute: true, // we're inside the New Task editor
+          );
+          if (!mounted) return; // "Edit Old" replaced this editor
+          if (outcome == SingleLineDupOutcome.handledExisting) return;
+          if (outcome == SingleLineDupOutcome.cancelled) {
+            setState(() => _isLoading = false);
+            return;
+          }
+          // makeNew → fall through and insert.
         }
+
+        print('TaskEditScreen: Creating new task...');
+        final response =
+            await supabase.from('Tasks').insert(data).select().single();
+        updatedTask = Task.fromJson(response);
+        print('TaskEditScreen: Created new task: ${updatedTask.headline}');
       } else {
         // Update existing task
         print('TaskEditScreen: Updating existing task...');
@@ -2249,8 +2059,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                           Expanded(
                             flex: 2,
                             child: ElevatedButton(
+                              // For an existing task, keep "Save Changes"
+                              // disabled until something actually changes.
                               onPressed: (_isLoading ||
-                                      _headlineController.text.trim().isEmpty)
+                                      _headlineController.text.trim().isEmpty ||
+                                      (_localTask != null && !_isDirty))
                                   ? null
                                   : _saveTask,
                               style: AppButtons.finalize().copyWith(

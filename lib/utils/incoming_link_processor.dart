@@ -56,6 +56,20 @@ enum LinkAction {
   cancel,
 }
 
+/// Outcome of [IncomingLinkProcessor.resolveSingleLineDuplicates].
+enum SingleLineDupOutcome {
+  /// The user chose "Edit Old"; the existing task was opened for editing, so the
+  /// caller should abandon whatever new task it was about to create.
+  handledExisting,
+
+  /// No duplicate was found, or the user chose "Make New" — the caller should
+  /// proceed to create its new task.
+  makeNew,
+
+  /// The user cancelled; the caller should abort without creating anything.
+  cancelled,
+}
+
 /// Service for processing incoming shared links
 class IncomingLinkProcessor {
 
@@ -507,67 +521,8 @@ class IncomingLinkProcessor {
       if (!context.mounted) return;
 
       if (userChoice == 'edit') {
-        // User chose to edit the existing task
-        final categoryResponse = await supabase
-            .from('Categories')
-            .select()
-            .eq('id', duplicate.task.categoryId)
-            .single();
-
-        final category = Category.fromJson(categoryResponse);
-
-        // Offer the pursuit selector here too, so the user can move/copy the
-        // existing task to another pursuit while editing it.
-        final orderingResult = originalResult ??
-            LinkProcessingResult(
-              url: duplicate.matchingUrl,
-              title: null,
-              description: null,
-              duplicates: const [],
-              hasValidMetadata: false,
-              proposedTask: null,
-            );
-        final ordered = await _orderedOwnedFor(orderingResult);
-        // Make sure the task's current pursuit is present as the default.
-        final selectable = ordered.any((c) => c.id == category.id)
-            ? ordered
-            : [category, ...ordered];
-        if (!context.mounted) return;
-
-        // The match may have been on headline alone (title-based fallback), so
-        // the existing task might not actually contain the incoming link. If it
-        // doesn't, pre-add it and tell the user we did.
-        final incomingUrl = originalResult?.url ?? duplicate.matchingUrl;
-        final existingLinks = List<String>.from(duplicate.task.links ?? const []);
-        final alreadyHasLink = existingLinks.any((l) {
-          final u = _extractUrlFromHtmlLink(l);
-          return u != null && _urlsMatch(u, incomingUrl);
-        });
-        List<String>? initialLinks;
-        String? infoMessage;
-        if (!alreadyHasLink) {
-          final proposed = originalResult?.proposedTask;
-          final newLinks = (proposed != null && proposed.links.isNotEmpty)
-              ? proposed.links
-              : ['<a href="$incomingUrl">${originalResult?.title ?? incomingUrl}</a>'];
-          initialLinks = [...existingLinks, ...newLinks];
-          infoMessage =
-              'This ${NamingUtils.tasksName(capitalize: false, plural: false)} didn\'t have the shared link, so we added it below. Save to keep it.';
-        }
-
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => TaskEditScreen(
-              category: category,
-              task: duplicate.task,
-              initialLinks: initialLinks,
-              infoMessage: infoMessage,
-              showPursuitSelector: selectable.isNotEmpty,
-              selectableCategories:
-                  selectable.isNotEmpty ? selectable : null,
-            ),
-          ),
-        );
+        await _openExistingTaskForEdit(context, duplicate,
+            originalResult: originalResult);
       } else if (userChoice == 'new') {
         // User chose to create a new task anyway. Reuse the original processing
         // result (which already has the correct title) rather than re-fetching
@@ -598,6 +553,166 @@ class IncomingLinkProcessor {
       print(
           'IncomingLinkProcessor: Error navigating to edit existing task: $e');
     }
+  }
+
+  /// Open the existing (duplicate) task in the editor. Shared by the share
+  /// "Edit Old" path and [resolveSingleLineDuplicates]. If the match was on
+  /// headline alone, the task may lack the incoming link — pre-add it (with an
+  /// info banner) so the user can Save to keep it.
+  static Future<void> _openExistingTaskForEdit(
+    BuildContext context,
+    DuplicateMatch duplicate, {
+    LinkProcessingResult? originalResult,
+    bool replaceCurrentRoute = false,
+  }) async {
+    final categoryResponse = await supabase
+        .from('Categories')
+        .select()
+        .eq('id', duplicate.task.categoryId)
+        .single();
+    final category = Category.fromJson(categoryResponse);
+
+    // Offer the pursuit selector here too, so the user can move/copy the
+    // existing task to another pursuit while editing it.
+    final orderingResult = originalResult ??
+        LinkProcessingResult(
+          url: duplicate.matchingUrl,
+          title: null,
+          description: null,
+          duplicates: const [],
+          hasValidMetadata: false,
+          proposedTask: null,
+        );
+    final ordered = await _orderedOwnedFor(orderingResult);
+    final selectable = ordered.any((c) => c.id == category.id)
+        ? ordered
+        : [category, ...ordered];
+    if (!context.mounted) return;
+
+    // The match may have been on headline alone, so the existing task might not
+    // contain the incoming link. If it doesn't, pre-add it and say so.
+    final incomingUrl = originalResult?.url ?? duplicate.matchingUrl;
+    final existingLinks = List<String>.from(duplicate.task.links ?? const []);
+    final alreadyHasLink = existingLinks.any((l) {
+      final u = _extractUrlFromHtmlLink(l);
+      return u != null && incomingUrl.isNotEmpty && _urlsMatch(u, incomingUrl);
+    });
+    // Always apprise the user of what brought them here — the duplicate they
+    // landed on — via the editor's info banner.
+    final tasksNoun = NamingUtils.tasksName(capitalize: false, plural: false);
+    List<String>? initialLinks;
+    String? infoMessage;
+    if (incomingUrl.isEmpty) {
+      // Matched by title alone (no incoming link).
+      infoMessage = 'You already have this $tasksNoun, with the same title.';
+    } else if (!alreadyHasLink) {
+      // The task existed under this title but without the shared link — add it.
+      final proposed = originalResult?.proposedTask;
+      final newLinks = (proposed != null && proposed.links.isNotEmpty)
+          ? proposed.links
+          : ['<a href="$incomingUrl">${originalResult?.title ?? incomingUrl}</a>'];
+      initialLinks = [...existingLinks, ...newLinks];
+      infoMessage =
+          'This $tasksNoun didn\'t have that link, so we added it below. Save to keep it.';
+    } else {
+      // The task already carries this exact link — that's the duplicate.
+      infoMessage = 'You\'re already tracking this link on this $tasksNoun.';
+    }
+
+    final route = MaterialPageRoute(
+      builder: (context) => TaskEditScreen(
+        category: category,
+        task: duplicate.task,
+        initialLinks: initialLinks,
+        infoMessage: infoMessage,
+        showPursuitSelector: selectable.isNotEmpty,
+        selectableCategories: selectable.isNotEmpty ? selectable : null,
+      ),
+    );
+    // From within the New Task editor (headline paste) we replace it, so the
+    // abandoned new task doesn't linger under the existing-task editor.
+    if (replaceCurrentRoute) {
+      Navigator.of(context).pushReplacement(route);
+    } else {
+      Navigator.of(context).push(route);
+    }
+  }
+
+  /// Find an owned task whose headline matches [headline] (case-insensitive),
+  /// as a [DuplicateMatch] for the duplicate dialog. Used as the title-based
+  /// duplicate check, complementing the URL check in [findAllDuplicates].
+  static Future<DuplicateMatch?> _findOwnedTaskByHeadline(
+    String headline,
+    String userId,
+  ) async {
+    final h = headline.trim();
+    if (h.isEmpty) return null;
+    try {
+      final tasksResponse = await supabase
+          .from('Tasks')
+          .select('*, Categories!Tasks_category_id_fkey(*)')
+          .eq('owner_id', userId)
+          .ilike('headline', h)
+          .limit(1);
+      final rows = tasksResponse as List<dynamic>;
+      if (rows.isEmpty) return null;
+      final row = rows.first;
+      final categoryData = row['Categories'];
+      if (categoryData == null) return null;
+      return DuplicateMatch(
+        task: Task.fromJson(row),
+        category: Category.fromJson(categoryData),
+        matchingUrl: '',
+        originalLinkText: '',
+      );
+    } catch (e) {
+      print('IncomingLinkProcessor: Error in title duplicate lookup: $e');
+      return null;
+    }
+  }
+
+  /// Reusable single-line duplicate resolution, shared by the incoming-share
+  /// flow and the New Task headline-paste flow (and, later, a Home paste
+  /// action). Checks a URL duplicate first (precise), then a title duplicate,
+  /// and on a hit shows the same Make New / Edit Old / Cancel dialog.
+  ///
+  /// Returns what the user decided so the caller can act in its own context:
+  /// [SingleLineDupOutcome.handledExisting] (edited the existing task — caller
+  /// should abandon its pending new task), [SingleLineDupOutcome.makeNew]
+  /// (no duplicate, or user chose Make New — caller proceeds to create), or
+  /// [SingleLineDupOutcome.cancelled].
+  static Future<SingleLineDupOutcome> resolveSingleLineDuplicates(
+    BuildContext context, {
+    required String headline,
+    String? url,
+    String? ownerId,
+    LinkProcessingResult? enriched,
+    bool replaceCurrentRoute = false,
+  }) async {
+    final userId = ownerId ?? AuthUtils.getCurrentUserId();
+
+    DuplicateMatch? match;
+    if (url != null && url.isNotEmpty) {
+      final normalized = _normalizeUrl(url) ?? url;
+      final dups = await findAllDuplicates(normalized);
+      if (dups.isNotEmpty) match = dups.first;
+    }
+    match ??= await _findOwnedTaskByHeadline(headline, userId);
+
+    if (match == null) return SingleLineDupOutcome.makeNew;
+    if (!context.mounted) return SingleLineDupOutcome.cancelled;
+
+    final choice = await _showDuplicateOptionsDialog(context, match);
+    if (!context.mounted) return SingleLineDupOutcome.cancelled;
+
+    if (choice == 'edit') {
+      await _openExistingTaskForEdit(context, match,
+          originalResult: enriched, replaceCurrentRoute: replaceCurrentRoute);
+      return SingleLineDupOutcome.handledExisting;
+    } else if (choice == 'new') {
+      return SingleLineDupOutcome.makeNew;
+    }
+    return SingleLineDupOutcome.cancelled;
   }
 
   /// Show dialog with options for handling duplicate task
