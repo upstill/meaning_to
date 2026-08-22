@@ -8,6 +8,7 @@ import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/title_cleaner.dart';
 import 'package:meaning_to/utils/streaming_media_constants.dart';
 import 'package:meaning_to/utils/tidal_api.dart';
+import 'package:meaning_to/utils/omdb_client.dart';
 import 'package:meaning_to/utils/supabase_client.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/synopsis_fetcher.dart';
@@ -161,19 +162,29 @@ class LinkToTaskConverter {
             'LinkToTaskConverter: Could not extract artist/work, using page title');
       }
     } else if (normalizedUrl.contains('imdb.com')) {
-      // IMDb: clean up title and use SynopsisFetcher for synopsis
-      headline = LinkProcessor.cleanImdbTitle(pageTitle);
-      notes = null;
-      synopsis = await SynopsisFetcher.fetchSynopsisForUrl(normalizedUrl);
-
-      print('🎯 LinkToTaskConverter: IMDb processing complete:');
-      print('   - Headline: "$headline"');
-      print(
-          '   - Synopsis: ${synopsis != null ? "${synopsis.length} chars" : "null"}');
-      print(
-          '   - Synopsis preview: ${synopsis != null ? synopsis.substring(0, synopsis.length > 100 ? 100 : synopsis.length) : "N/A"}...');
-
-      print('LinkToTaskConverter: IMDb link - cleaned headline: "$headline"');
+      // IMDb: the page fetch alone yields only the URL's id (e.g. "tt0106226").
+      // Resolve the real title + plot from OMDb by IMDb id — it's CORS-friendly,
+      // so this works on web AND native (no edge function needed).
+      final imdbId = RegExp(r'tt\d+').firstMatch(normalizedUrl)?.group(0);
+      OmdbFilmInfo? omdb;
+      if (imdbId != null && OmdbClient.isAvailable) {
+        omdb = await OmdbClient.getByImdbId(imdbId);
+      }
+      if (omdb != null) {
+        headline = omdb.title;
+        linkDisplayTitle = omdb.title;
+        notes = null;
+        synopsis =
+            omdb.plot ?? await SynopsisFetcher.fetchSynopsisForUrl(normalizedUrl);
+        print('LinkToTaskConverter: IMDb via OMDb - title: "$headline"');
+      } else {
+        // Fallback: clean the scraped page title + SynopsisFetcher.
+        headline = LinkProcessor.cleanImdbTitle(pageTitle);
+        notes = null;
+        synopsis = await SynopsisFetcher.fetchSynopsisForUrl(normalizedUrl);
+        print(
+            'LinkToTaskConverter: IMDb OMDb miss - cleaned page title: "$headline"');
+      }
     } else if (normalizedUrl.contains('letterboxd.com') ||
         normalizedUrl.contains('boxd.it')) {
       // Letterboxd: use SynopsisFetcher
