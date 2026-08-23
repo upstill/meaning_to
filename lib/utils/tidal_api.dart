@@ -186,207 +186,150 @@ class TidalApiService {
     }
   }
 
-  /// Fetch album information from Tidal API
-  /// Returns a map with 'artist', 'album', and 'artistId' keys
+  /// Fetch a resource from the CURRENT Tidal API (JSON:API). The old
+  /// `/v2/{plural}/{id}` path 404s, so query the collection with `filter[id]=`
+  /// and include the artists relationship, then read `data[0].attributes.title`
+  /// and the artist name from the `included` array. Returns (title, artist)
+  /// with artist null for playlists / when absent. Mirrors the `tidal-resolve`
+  /// edge function used by the web client so both stay in lock-step.
+  static Future<({String? title, String? artist})?> _fetchResource(
+    String plural,
+    String id, {
+    bool includeArtists = true,
+  }) async {
+    final token = await _getAccessToken();
+    if (token == null) {
+      print('TidalApi: Failed to get access token');
+      return null;
+    }
+
+    final include = includeArtists ? '&include=artists' : '';
+    // filter[id] must be percent-encoded as filter%5Bid%5D.
+    final url = Uri.parse(
+        'https://openapi.tidal.com/v2/$plural?countryCode=$_defaultCountryCode'
+        '&filter%5Bid%5D=${Uri.encodeComponent(id)}$include');
+    print('TidalApi: GET $url');
+
+    final response = await http.get(url, headers: {
+      'Authorization': 'Bearer $token',
+      'accept': 'application/vnd.api+json',
+    });
+    print(
+        'TidalApi: Response ${response.statusCode} (${response.body.length} bytes)');
+
+    if (response.statusCode != 200) {
+      print(
+          'TidalApi: API request failed: ${response.statusCode} ${response.body}');
+      return null;
+    }
+
+    final data = json.decode(response.body) as Map<String, dynamic>;
+    final list = data['data'] as List<dynamic>?;
+    if (list == null || list.isEmpty) {
+      print('TidalApi: No resource data in response');
+      return null;
+    }
+    final primary = list.first as Map<String, dynamic>;
+    final title =
+        (primary['attributes'] as Map<String, dynamic>?)?['title'] as String?;
+
+    // Resolve the first artist id via relationships → look it up in `included`.
+    String? artist;
+    final artistData = ((primary['relationships'] as Map<String, dynamic>?)?[
+            'artists'] as Map<String, dynamic>?)?['data'];
+    final firstArtistId = (artistData is List && artistData.isNotEmpty)
+        ? (artistData.first as Map<String, dynamic>)['id'] as String?
+        : null;
+    final included = data['included'] as List<dynamic>?;
+    if (firstArtistId != null && included != null) {
+      for (final r in included) {
+        final m = r as Map<String, dynamic>;
+        if (m['type'] == 'artists' && m['id'] == firstArtistId) {
+          artist =
+              (m['attributes'] as Map<String, dynamic>?)?['name'] as String?;
+          break;
+        }
+      }
+    }
+    return (title: title, artist: artist);
+  }
+
+  /// Fetch album information from Tidal API.
+  /// Returns a map with 'artist' and 'album' keys.
   static Future<Map<String, String>?> getAlbumInfo(String albumId) async {
     try {
       if (!isAvailable) {
         print('TidalApi: API credentials not configured');
         return null;
       }
-
-      final token = await _getAccessToken();
-      if (token == null) {
-        print('TidalApi: Failed to get access token');
-        return null;
+      final res = await _fetchResource('albums', albumId);
+      final artist = res?.artist;
+      final album = res?.title;
+      if (artist != null && album != null) {
+        print('TidalApi: Successfully fetched album: "$album" by $artist');
+        return {'artist': artist, 'album': album};
       }
-
-      final url = Uri.parse(
-          'https://openapi.tidal.com/v2/albums/$albumId?countryCode=$_defaultCountryCode');
-      print('TidalApi: GET $url');
-
-      final response = await http.get(url, headers: {
-        'Authorization': 'Bearer $token',
-        'accept': 'application/vnd.tidal.v1+json',
-      });
-      print(
-          'TidalApi: Response ${response.statusCode} (${response.body.length} bytes)');
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final resource = data['resource'];
-
-        if (resource == null) {
-          print('TidalApi: No resource data in response');
-          return null;
-        }
-
-        // Extract artist info (use first artist if multiple)
-        final artists = resource['artists'] as List<dynamic>?;
-        final artistName = artists != null && artists.isNotEmpty
-            ? artists[0]['name'] as String?
-            : null;
-        final artistId = artists != null && artists.isNotEmpty
-            ? artists[0]['id'] as String?
-            : null;
-
-        // Extract album name
-        final albumName = resource['title'] as String?;
-
-        if (artistName != null && albumName != null) {
-          print(
-              'TidalApi: Successfully fetched album: "$albumName" by $artistName');
-          return {
-            'artist': artistName,
-            'album': albumName,
-            if (artistId != null) 'artistId': artistId,
-          };
-        }
-
-        print('TidalApi: Missing artist or album name in response');
-        return null;
-      } else {
-        print(
-            'TidalApi: API request failed: ${response.statusCode} ${response.body}');
-        return null;
-      }
+      print('TidalApi: Missing artist or album name in response');
+      return null;
     } catch (e) {
       print('TidalApi: Error fetching album info: $e');
       return null;
     }
   }
 
-  /// Fetch track information from Tidal API
-  /// Returns a map with 'artist' and 'track' keys
+  /// Fetch track information from Tidal API.
+  /// Returns a map with 'artist' and 'track' keys.
   static Future<Map<String, String>?> getTrackInfo(String trackId) async {
     try {
       if (!isAvailable) {
         print('TidalApi: API credentials not configured');
         return null;
       }
-
-      final token = await _getAccessToken();
-      if (token == null) {
-        print('TidalApi: Failed to get access token');
-        return null;
+      final res = await _fetchResource('tracks', trackId);
+      final artist = res?.artist;
+      final track = res?.title;
+      if (artist != null && track != null) {
+        print('TidalApi: Successfully fetched track: "$track" by $artist');
+        return {'artist': artist, 'track': track};
       }
-
-      final url = Uri.parse(
-          'https://openapi.tidal.com/v2/tracks/$trackId?countryCode=$_defaultCountryCode');
-      print('TidalApi: GET $url');
-      final response = await http.get(url, headers: {
-        'Authorization': 'Bearer $token',
-        'accept': 'application/vnd.tidal.v1+json',
-      });
-      print(
-          'TidalApi: Response ${response.statusCode} (${response.body.length} bytes)');
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final resource = data['resource'];
-
-        if (resource == null) {
-          print('TidalApi: No resource data in response');
-          return null;
-        }
-
-        // Extract artist name (use first artist if multiple)
-        final artists = resource['artists'] as List<dynamic>?;
-        final artistName = artists != null && artists.isNotEmpty
-            ? artists[0]['name'] as String?
-            : null;
-
-        // Extract track name
-        final trackName = resource['title'] as String?;
-
-        if (artistName != null && trackName != null) {
-          print(
-              'TidalApi: Successfully fetched track: "$trackName" by $artistName');
-          return {
-            'artist': artistName,
-            'track': trackName,
-          };
-        }
-
-        print('TidalApi: Missing artist or track name in response');
-        return null;
-      } else {
-        print(
-            'TidalApi: API request failed: ${response.statusCode} ${response.body}');
-        return null;
-      }
+      print('TidalApi: Missing artist or track name in response');
+      return null;
     } catch (e) {
       print('TidalApi: Error fetching track info: $e');
       return null;
     }
   }
 
-  /// Fetch playlist information from Tidal API
-  /// Returns a map with 'name' and optionally 'owner' keys
+  /// Fetch playlist information from Tidal API.
+  /// Returns a map with a 'name' key (playlists have no single artist; the
+  /// caller uses the name for both slots).
   static Future<Map<String, String>?> getPlaylistInfo(String playlistId) async {
     try {
       if (!isAvailable) {
         print('TidalApi: API credentials not configured');
         return null;
       }
-
-      final token = await _getAccessToken();
-      if (token == null) {
-        print('TidalApi: Failed to get access token');
-        return null;
+      final res =
+          await _fetchResource('playlists', playlistId, includeArtists: false);
+      final name = res?.title;
+      if (name != null) {
+        print('TidalApi: Successfully fetched playlist: "$name"');
+        return {'name': name};
       }
-
-      final url = Uri.parse(
-          'https://openapi.tidal.com/v2/playlists/$playlistId?countryCode=$_defaultCountryCode');
-      print('TidalApi: GET $url');
-      final response = await http.get(url, headers: {
-        'Authorization': 'Bearer $token',
-        'accept': 'application/vnd.tidal.v1+json',
-      });
-      print(
-          'TidalApi: Response ${response.statusCode} (${response.body.length} bytes)');
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final resource = data['resource'];
-
-        if (resource == null) {
-          print('TidalApi: No resource data in response');
-          return null;
-        }
-
-        // Extract playlist name
-        final playlistName = resource['title'] as String?;
-
-        // Extract creator/owner name if available
-        final creator = resource['creator'] as Map<String, dynamic>?;
-        final creatorName = creator?['name'] as String?;
-
-        if (playlistName != null) {
-          print(
-              'TidalApi: Successfully fetched playlist: "$playlistName"${creatorName != null ? ' by $creatorName' : ''}');
-          return {
-            'name': playlistName,
-            if (creatorName != null) 'owner': creatorName,
-          };
-        }
-
-        print('TidalApi: Missing playlist name in response');
-        return null;
-      } else {
-        print(
-            'TidalApi: API request failed: ${response.statusCode} ${response.body}');
-        return null;
-      }
+      print('TidalApi: Missing playlist name in response');
+      return null;
     } catch (e) {
       print('TidalApi: Error fetching playlist info: $e');
       return null;
     }
   }
 
-  /// Fetch all albums for an artist from Tidal API
-  /// Returns a list of album titles
-  /// Note: Handles pagination automatically (TIDAL returns max 20 items per request)
+  /// Fetch all albums for an artist from Tidal API.
+  /// Returns a list of album titles.
+  /// NOTE: currently UNUSED and still targets the legacy `/v2/artists/{id}/albums`
+  /// endpoint (which 404s like the other pre-JSON:API paths). Left in place but
+  /// not migrated; wire it to the JSON:API (`/v2/albums?filter[artistId]=…`)
+  /// before relying on it.
   static Future<List<String>> getArtistAlbums(String artistId) async {
     final albums = <String>[];
 
