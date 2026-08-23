@@ -16,7 +16,7 @@ import 'package:flutter/services.dart' show Clipboard;
 import 'package:meaning_to/utils/category_ordering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:meaning_to/utils/cache_manager.dart';
-import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/task_edit_screen.dart';
 import 'package:meaning_to/widgets/edit_category_dialog.dart';
 import 'package:meaning_to/dialogs/category_picker_dialog.dart';
@@ -4211,7 +4211,7 @@ class HomeScreenState extends State<HomeScreen> {
                                                                       bottom:
                                                                           4),
                                                               child:
-                                                                  LinkDisplayWidget(
+                                                                  LinkDisplay(
                                                                 linkText: link,
                                                                 showIcon: true,
                                                                 showTitle: true,

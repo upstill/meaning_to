@@ -418,6 +418,27 @@ class IncomingLinkProcessor {
       rethrow;
     }
 
+    // No URL duplicate. For a normal (non-streaming) link, also check for a
+    // TITLE duplicate — an existing task with the same headline but not this
+    // link — mirroring the New Task headline-paste flow
+    // (resolveSingleLineDuplicates). Without this, pasting a link whose resolved
+    // title already exists (e.g. an IMDb link to a movie already on file) would
+    // silently create a second task. Streaming links keep their artist-match
+    // flow below. _navigateToEditExistingTask → _openExistingTaskForEdit adds
+    // the pasted link to the matched task on "Edit Old".
+    if (!isStreamingMediaUrl(result.url)) {
+      final titleForDup = (result.title ?? preTitle ?? '').trim();
+      if (titleForDup.isNotEmpty) {
+        final headlineMatch = await _findOwnedTaskByHeadline(
+            titleForDup, AuthUtils.getCurrentUserId());
+        if (headlineMatch != null && context.mounted) {
+          await _navigateToEditExistingTask(context, headlineMatch,
+              originalResult: result);
+          return;
+        }
+      }
+    }
+
     // No URL duplicates - check if this is a Tidal link with artist matching
     ArtistWorkInfo? artistWorkInfo;
     if (isStreamingMediaUrl(result.url)) {

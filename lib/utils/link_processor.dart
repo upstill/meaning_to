@@ -1,8 +1,6 @@
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 import 'package:meaning_to/models/icon.dart';
-import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:meaning_to/utils/api_client.dart';
 import 'package:link_enrichment_core/models/enrichment_context.dart';
@@ -15,7 +13,7 @@ import 'package:meaning_to/utils/youtube_api.dart';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Container for webpage title and description extracted together
 class WebpageContent {
@@ -47,36 +45,6 @@ class ProcessedLink {
   });
 
   String get displayTitle => title ?? url;
-
-  // Widget to display the link with its icon
-  Widget buildLinkWidget() {
-    return LinkDisplayWidget(
-      linkText: originalLink,
-      showIcon: true,
-      showTitle: true,
-    );
-  }
-
-  // Widget to display a list of links
-  static Widget buildLinksList(List<ProcessedLink> links) {
-    if (links.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Links:', style: TextStyle(fontWeight: FontWeight.bold)),
-        ...links
-            .map((link) => LinkDisplayWidget(
-                  linkText: link.originalLink,
-                  showIcon: true,
-                  showTitle: true,
-                ))
-            .toList(),
-      ],
-    );
-  }
 }
 
 enum LinkType { webpage, youtube, github, twitter, other }
@@ -632,24 +600,6 @@ class LinkProcessor {
     return cleaned.trim();
   }
 
-  // Process and display links
-  static Widget processAndDisplayLinks(List<String> links) {
-    if (links.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: links
-          .map((link) => LinkDisplayWidget(
-                linkText: link,
-                showIcon: true,
-                showTitle: true,
-              ))
-          .toList(),
-    );
-  }
-
   /// Checks if a URL leads to a valid page by attempting to fetch its title.
   /// Returns true if the URL is valid and leads to a page, false otherwise.
   static Future<bool> isUrlValid(String url) async {
@@ -833,223 +783,5 @@ class LinkProcessor {
 
     // For generic/unregistered sites, fetch only if we need a title
     return linkText == null || linkText.isEmpty || linkText == url;
-  }
-}
-
-class LinkDisplayWidget extends StatelessWidget {
-  final String linkText;
-  final bool showIcon;
-  final bool showTitle;
-  final VoidCallback? onTap;
-  final bool isEditing;
-
-  /// Colour for the link title text. Defaults to blue; pass e.g. white when the
-  /// link sits on a coloured (dark) background like the featured-task card.
-  final Color? linkColor;
-
-  const LinkDisplayWidget({
-    super.key,
-    required this.linkText,
-    this.showIcon = true,
-    this.showTitle = true,
-    this.onTap,
-    this.isEditing = false,
-    this.linkColor,
-  });
-
-  Widget _buildFavicon(String? faviconUrl, [DomainIcon? domainIcon]) {
-    if (faviconUrl == null && domainIcon == null) {
-      return const SizedBox.shrink();
-    }
-
-    const fallback = Icon(Icons.link, size: 32, color: Colors.grey);
-    const size = 32.0;
-
-    // Prefer cached binary data (avoids CORS issues on web)
-    if (domainIcon?.iconData != null) {
-      return Padding(
-        padding: const EdgeInsets.only(right: 8.0),
-        child: Image.memory(
-          domainIcon!.iconData!,
-          width: size,
-          height: size,
-          errorBuilder: (_, __, ___) => fallback,
-        ),
-      );
-    }
-
-    if (faviconUrl == null) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8.0),
-      child: Image.network(
-        faviconUrl,
-        width: size,
-        height: size,
-        errorBuilder: (_, __, ___) => fallback,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<ProcessedLink>(
-      future: LinkProcessor.processLinkForDisplay(linkText),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox(
-            height: 32,
-            width: 32,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          );
-        }
-
-        if (snapshot.hasError) {
-          print('Error processing link: ${snapshot.error}');
-          // Show a simple link with error styling
-          return Row(
-            children: [
-              const Icon(
-                Icons.link,
-                size: 32,
-                color: Colors.grey,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  linkText,
-                  style: const TextStyle(
-                    color: Colors.red,
-                    decoration: TextDecoration.underline,
-                    fontSize: 16, // Increased by 4 from default
-                  ),
-                ),
-              ),
-            ],
-          );
-        }
-
-        final processedLink = snapshot.data;
-        if (processedLink == null) {
-          return Row(
-            children: [
-              const Icon(
-                Icons.link,
-                size: 32,
-                color: Colors.grey,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  linkText,
-                  style: const TextStyle(
-                    color: Colors.red,
-                    decoration: TextDecoration.underline,
-                    fontSize: 16, // Increased by 4 from default
-                  ),
-                ),
-              ),
-            ],
-          );
-        }
-
-        if (isEditing) {
-          return Row(
-            children: [
-              if (showIcon) _buildFavicon(processedLink.favicon, processedLink.domainIcon),
-              Expanded(
-                child: Text(
-                  processedLink.displayTitle,
-                  style: TextStyle(
-                    color: linkColor ?? Colors.blue,
-                    decoration: TextDecoration.underline,
-                    fontSize: 16, // Increased by 4 from default
-                  ),
-                ),
-              ),
-            ],
-          );
-        }
-
-        return InkWell(
-          onTap: onTap ??
-              () {
-                _handleLinkClick(context, processedLink);
-              },
-          borderRadius: BorderRadius.circular(4),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4.0),
-            child: Row(
-              children: [
-                if (showIcon) _buildFavicon(processedLink.favicon, processedLink.domainIcon),
-                if (showTitle)
-                  Expanded(
-                    child: Text(
-                      processedLink.displayTitle,
-                      style: TextStyle(
-                        color: linkColor ?? Colors.blue,
-                        decoration: TextDecoration.underline,
-                        fontSize: 16, // Increased by 4 from default
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  /// Handle link clicks with special handling for internal/localhost links
-  Future<void> _handleLinkClick(
-      BuildContext context, ProcessedLink link) async {
-    final url = link.url; // Use the original URL, not displayUrl
-
-    // Check if this is an internal link (meaning-to.me in debug mode)
-    if (kDebugMode && url.contains('meaning-to.me')) {
-      // Parse the URL to extract the path for internal navigation
-      try {
-        final uri = Uri.parse(url);
-        if (uri.pathSegments.isNotEmpty && uri.pathSegments[0] == 'category') {
-          // This is a category link - we should navigate within the app
-          print(
-              'LinkDisplayWidget: Internal category navigation to: ${uri.path}');
-          print('LinkDisplayWidget: Category ID: ${uri.pathSegments[1]}');
-
-          // Navigate to the Home screen for this category
-          Navigator.pushReplacementNamed(
-            context,
-            '/category',
-            arguments: {'categoryId': uri.pathSegments[1]},
-          );
-
-          return;
-        }
-      } catch (e) {
-        print('LinkDisplayWidget: Error parsing internal URL: $e');
-      }
-
-      // If it's not a category link or parsing failed, fall back to external launch
-      print('LinkDisplayWidget: Falling back to external launch for: $url');
-    }
-
-    // For external links or fallback, use Android-optimized external application mode
-    try {
-      bool launched = await launchUrl(
-        Uri.parse(url),
-        mode: LaunchMode.externalApplication,
-        webViewConfiguration: const WebViewConfiguration(
-          enableJavaScript: false,
-          enableDomStorage: false,
-        ),
-      );
-      if (!launched) {
-        // Fallback to platform default
-        await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault);
-      }
-    } catch (e) {
-      print('LinkDisplayWidget: Failed to launch URL: $url, error: $e');
-    }
   }
 }

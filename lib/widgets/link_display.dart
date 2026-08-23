@@ -15,6 +15,10 @@ class LinkDisplay extends StatelessWidget {
   final VoidCallback? onTap;
   final bool isEditing;
 
+  /// Colour for the link title text. Defaults to blue; pass white (etc.) when
+  /// the link sits on a dark/coloured card (e.g. the blue featured-task card).
+  final Color? linkColor;
+
   const LinkDisplay({
     super.key,
     required this.linkText,
@@ -22,6 +26,7 @@ class LinkDisplay extends StatelessWidget {
     this.showTitle = true,
     this.onTap,
     this.isEditing = false,
+    this.linkColor,
   });
 
   /// Builds a widget to display a processed link with its icon and title.
@@ -283,7 +288,9 @@ class LinkDisplay extends StatelessWidget {
 
         final processedLink = snapshot.data!;
 
-        Widget buildFavicon(String? favicon) {
+        // Network favicon (e.g. our CORS-safe /functions/v1/favicon proxy for
+        // domains not yet cached). Shows nothing if it can't load.
+        Widget networkFavicon(String? favicon) {
           if (favicon == null) return const SizedBox.shrink();
           return Padding(
             padding: const EdgeInsets.only(right: 8.0),
@@ -297,15 +304,36 @@ class LinkDisplay extends StatelessWidget {
           );
         }
 
+        // Prefer the cached binary icon via Image.memory — it needs no network
+        // and dodges CORS, so it renders on Flutter web where a cross-origin
+        // favicon URL (e.g. img.logo.dev) is blocked by the CanvasKit renderer.
+        // Fall back to the network favicon, then to nothing.
+        Widget buildFavicon() {
+          final iconData = processedLink.domainIcon?.iconData;
+          if (iconData != null) {
+            return Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Image.memory(
+                iconData,
+                width: 32,
+                height: 32,
+                errorBuilder: (context, error, stackTrace) =>
+                    networkFavicon(processedLink.favicon),
+              ),
+            );
+          }
+          return networkFavicon(processedLink.favicon);
+        }
+
         if (isEditing) {
           return Row(
             children: [
-              if (showIcon) buildFavicon(processedLink.favicon),
+              if (showIcon) buildFavicon(),
               Expanded(
                 child: Text(
                   processedLink.displayTitle,
-                  style: const TextStyle(
-                    color: Colors.blue,
+                  style: TextStyle(
+                    color: linkColor ?? Colors.blue,
                     decoration: TextDecoration.underline,
                     fontSize: 16,
                   ),
@@ -326,13 +354,13 @@ class LinkDisplay extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 4.0),
             child: Row(
               children: [
-                if (showIcon) buildFavicon(processedLink.favicon),
+                if (showIcon) buildFavicon(),
                 if (showTitle)
                   Expanded(
                     child: Text(
                       processedLink.displayTitle,
-                      style: const TextStyle(
-                        color: Colors.blue,
+                      style: TextStyle(
+                        color: linkColor ?? Colors.blue,
                         decoration: TextDecoration.underline,
                         fontSize: 16,
                       ),

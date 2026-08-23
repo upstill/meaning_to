@@ -88,7 +88,11 @@ class InputLineParser {
   static final RegExp _bareUrlRe = RegExp(r'https?://[^\s]+');
 
   /// Parse [line] into a [ParsedLine]. Pure; never touches the network.
-  static ParsedLine parse(String line) {
+  ///
+  /// [splitColon] controls step 4's `Title: notes` split. Pass false when
+  /// editing an existing task, so a headline like "Mission: Impossible" isn't
+  /// truncated into headline "Mission" + notes "Impossible".
+  static ParsedLine parse(String line, {bool splitColon = true}) {
     // 1. Checklist checkbox → finished.
     final checkbox = TextImporter.stripChecklistCheckbox(line);
     final bool finished = checkbox.done;
@@ -175,7 +179,7 @@ class InputLineParser {
 
     // Notes come only from an explicit "Title: notes" colon split. A trailing
     // parenthetical (e.g. an abbreviation like "(AQ)") stays part of the title.
-    if (rest.isNotEmpty) {
+    if (splitColon && rest.isNotEmpty) {
       final colon = rest.indexOf(': ');
       if (colon > 0) {
         headline = rest.substring(0, colon).trim();

@@ -53,6 +53,20 @@ void main() {
       expect(p.notes, 'from the good store');
     });
 
+    test('splitColon: false leaves a "Title: notes" line intact', () {
+      // Existing-task edits pass splitColon: false so a real colon title
+      // (e.g. "Mission: Impossible") is not truncated into headline + notes.
+      final p = InputLineParser.parse('Mission: Impossible', splitColon: false);
+      expect(p.headline, 'Mission: Impossible');
+      expect(p.notes, isNull);
+    });
+
+    test('splitColon: true (default) still splits "Title: notes"', () {
+      final p = InputLineParser.parse('Mission: Impossible', splitColon: true);
+      expect(p.headline, 'Mission');
+      expect(p.notes, 'Impossible');
+    });
+
     test('trailing parenthetical stays part of the title', () {
       final p = InputLineParser.parse('Call Sam (about the roof)');
       expect(p.headline, 'Call Sam (about the roof)');

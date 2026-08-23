@@ -1,14 +1,12 @@
-import 'package:flutter/foundation.dart' show kIsWeb, listEquals;
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:meaning_to/theme/app_colors.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
-import 'package:html/parser.dart' as html_parser;
 import 'package:meaning_to/models/category.dart';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/home_screen.dart';
 import 'package:meaning_to/utils/link_to_task_converter.dart';
-import 'package:meaning_to/utils/link_processor.dart';
+import 'package:meaning_to/utils/input_line_parser.dart';
 import 'package:meaning_to/widgets/link_display.dart';
 import 'package:meaning_to/link_edit_screen.dart';
 import 'package:meaning_to/utils/auth.dart';
@@ -315,19 +313,15 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     // Trigger rebuild for button state
     setState(() {});
 
-    // Check if headline contains a URL
+    // Check if the headline contains a link (bare URL, <a> tag, or markdown)
+    // using the shared parser, so detection matches every other line→task path.
     final headlineText = _headlineController.text.trim();
     print('TaskEditScreen: Checking for URL in: "$headlineText"');
 
-    final urlMatch = RegExp(r'https?://[^\s]+').firstMatch(headlineText);
-    print('TaskEditScreen: URL match found: ${urlMatch != null}');
+    final cleanUrl = InputLineParser.parse(headlineText).url;
+    print('TaskEditScreen: URL match found: ${cleanUrl != null}');
 
-    if (urlMatch != null && !_isProcessingUrl) {
-      final url = urlMatch.group(0)!;
-      print('TaskEditScreen: Matched URL: $url');
-
-      // Remove trailing punctuation
-      final cleanUrl = url.replaceAll(RegExp(r'[.,;:!?]+$'), '');
+    if (cleanUrl != null && cleanUrl.isNotEmpty && !_isProcessingUrl) {
       print('TaskEditScreen: Clean URL: $cleanUrl');
       print('TaskEditScreen: Last processed URL: $_lastProcessedUrl');
 
@@ -339,7 +333,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       } else {
         print('TaskEditScreen: URL already processed, skipping');
       }
-    } else if (urlMatch == null) {
+    } else if (cleanUrl == null || cleanUrl.isEmpty) {
       print('TaskEditScreen: No URL found in headline');
     } else if (_isProcessingUrl) {
       print('TaskEditScreen: Already processing a URL, skipping');
@@ -352,7 +346,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   Future<Map<String, dynamic>> _headlinePreviewFuture(String text) {
     if (_previewFuture == null || _previewSourceText != text) {
       _previewSourceText = text;
-      _previewFuture = _processHeadlineText(text);
+      // The preview only needs the extracted link chip — skip the network.
+      _previewFuture = _processHeadlineText(text, enrich: false);
     }
     return _previewFuture!;
   }
@@ -894,128 +889,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     return null; // No error
   }
 
-  /// Fetch Letterboxd notes/description for a URL (similar to the import screen logic)
-  Future<String?> _fetchLetterboxdNotes(String url) async {
-    // Skip description fetching for web platform due to CORS restrictions
-    if (kIsWeb) {
-      print(
-          'TaskEditScreen: Skipping Letterboxd notes fetch on web platform (CORS restriction)');
-      return null; // Leave as null to allow dynamic fetching
-    }
-
-    try {
-      print('TaskEditScreen: Fetching Letterboxd notes from: $url');
-
-      // Handle boxd.it redirects
-      String finalUrl = url;
-      if (url.contains('boxd.it')) {
-        print(
-            'TaskEditScreen: Detected boxd.it short URL, following redirect...');
-        try {
-          final redirectResponse = await http.head(Uri.parse(url));
-          if (redirectResponse.headers.containsKey('location')) {
-            finalUrl = redirectResponse.headers['location']!;
-            print('TaskEditScreen: Redirect found, new URL: $finalUrl');
-          } else {
-            final testResponse = await http.get(Uri.parse(url));
-            if (testResponse.request?.url != null) {
-              finalUrl = testResponse.request!.url.toString();
-              print('TaskEditScreen: Auto-redirected to: $finalUrl');
-            }
-          }
-        } catch (e) {
-          print(
-              'TaskEditScreen: Error following redirect: $e, continuing with original URL');
-        }
-      }
-
-      final response = await http.get(
-        Uri.parse(finalUrl),
-        headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept':
-              'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'DNT': '1',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
-        },
-      );
-
-      if (response.statusCode != 200) {
-        print(
-            'TaskEditScreen: HTTP status code ${response.statusCode} for URL: $url');
-        return null; // Leave as null to allow dynamic fetching
-      }
-
-      final document = html_parser.parse(response.body);
-
-      // Try different meta description tags in order of preference
-      String? description;
-
-      // First: Standard meta description
-      description = document
-          .querySelector('meta[name="description"]')
-          ?.attributes['content']
-          ?.trim();
-      if (description != null && description.isNotEmpty) {
-        print(
-            'TaskEditScreen: Found description from meta[name="description"]: "$description"');
-        return _formatLetterboxdNotes(description, url);
-      }
-
-      // Second: Open Graph description
-      description = document
-          .querySelector('meta[property="og:description"]')
-          ?.attributes['content']
-          ?.trim();
-      if (description == null || description.isEmpty) {
-        description = document
-            .querySelector('meta[name="og:description"]')
-            ?.attributes['content']
-            ?.trim();
-      }
-      if (description != null && description.isNotEmpty) {
-        print(
-            'TaskEditScreen: Found description from og:description: "$description"');
-        return _formatLetterboxdNotes(description, url);
-      }
-
-      // Third: Twitter Card description
-      description = document
-          .querySelector('meta[name="twitter:description"]')
-          ?.attributes['content']
-          ?.trim();
-      if (description != null && description.isNotEmpty) {
-        print(
-            'TaskEditScreen: Found description from twitter:description: "$description"');
-        return _formatLetterboxdNotes(description, url);
-      }
-
-      print('TaskEditScreen: No description found for Letterboxd URL: $url');
-      return null; // Leave as null to allow dynamic fetching
-    } catch (e) {
-      print('TaskEditScreen: Error fetching Letterboxd notes for $url: $e');
-      return null; // Leave as null to allow dynamic fetching
-    }
-  }
-
-  /// Format Letterboxd notes similar to JustWatch imports
-  String _formatLetterboxdNotes(String description, String url) {
-    // Truncate to first 100 characters
-    String truncatedDescription = description.length > 100
-        ? '${description.substring(0, 100)}...'
-        : description;
-
-    // Create formatted notes with description + Letterboxd link
-    return '$truncatedDescription <a href="$url">(more)</a>';
-  }
-
-  /// Process headline text to extract links and set appropriate headline
+  /// Resolve the headline field into the pieces a save needs, using the SAME
+  /// shared pipeline as every other line→task entry point: [InputLineParser] for
+  /// the structural split, and [LinkToTaskConverter.createProposedTaskFromLink]
+  /// for URL enrichment (so IMDb/Tidal/etc. resolve to real titles, the page
+  /// description lands in `synopsis` — never `notes` — and web Tidal goes through
+  /// the tidal-resolve edge function).
+  ///
+  /// [skipColonSplit] leaves a "Title: notes" headline intact (existing-task
+  /// edits, so "Mission: Impossible" isn't truncated). [enrich] false skips the
+  /// network — used by the live link preview, which only needs the extracted URL.
   Future<Map<String, dynamic>> _processHeadlineText(String headlineText,
-      {bool skipColonSplit = false}) async {
+      {bool skipColonSplit = false, bool enrich = true}) async {
     print('TaskEditScreen: Processing headline text: "$headlineText"');
 
     if (headlineText.trim().isEmpty) {
@@ -1023,177 +908,83 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         'headline': '',
         'notes': null,
         'links': <String>[],
+        'synopsis': null,
       };
     }
 
-    // Check if text contains a URL
-    final urlMatch = RegExp(r'https?://[^\s:]+').firstMatch(headlineText);
-    if (urlMatch != null) {
-      final extractedURL = urlMatch.group(0)!;
-      print('TaskEditScreen: Found URL in headline: $extractedURL');
+    final parsed =
+        InputLineParser.parse(headlineText, splitColon: !skipColonSplit);
 
-      // Remove trailing colon if present
-      String cleanURL = extractedURL;
-      if (cleanURL.endsWith(':')) {
-        cleanURL = cleanURL.substring(0, cleanURL.length - 1);
+    // No link → plain headline (+ optional colon-split notes).
+    if (parsed.url == null || parsed.url!.isEmpty) {
+      return {
+        'headline': parsed.headline.trim(),
+        'notes': parsed.notes,
+        'links': <String>[],
+        'synopsis': null,
+      };
+    }
+
+    final String parsedHeadline = parsed.headline.trim();
+    final String fallbackTitle = parsedHeadline.isNotEmpty
+        ? parsedHeadline
+        : (parsed.linkTitle ?? 'Link');
+    final String htmlLink =
+        parsed.htmlLink(fallbackTitle: fallbackTitle) ?? parsed.url!;
+
+    // Preview / no-network path: just surface the extracted link.
+    if (!enrich) {
+      return {
+        'headline': fallbackTitle,
+        'notes': parsed.notes,
+        'links': [htmlLink],
+        'synopsis': null,
+      };
+    }
+
+    // Enrich via the shared converter — the same call _processUrlInHeadline and
+    // the Add-a-Link dialog use.
+    try {
+      final userId = AuthUtils.getCurrentUserId();
+      final proposed = await LinkToTaskConverter.createProposedTaskFromLink(
+        parsed.url!,
+        userId,
+        currentCategory: _category,
+      );
+
+      // Headline: prefer the user's own text; else the resolved title; else label.
+      String headline = parsedHeadline;
+      if (headline.isEmpty) headline = proposed.headline.trim();
+      if (headline.isEmpty) headline = parsed.linkTitle ?? 'Link';
+
+      // Notes: ONLY the user's explicit "Title: notes" split. For streaming media
+      // the converter returns artist=headline / work=notes; adopt its notes when
+      // the user gave no text of their own. The fetched page description is NEVER
+      // notes — it rides along as synopsis.
+      String? notes = parsed.notes;
+      if (parsedHeadline.isEmpty && (proposed.notes?.isNotEmpty ?? false)) {
+        notes = proposed.notes;
       }
 
-      // Extract text before and after the URL
-      final urlStart = urlMatch.start;
-      final urlEnd = urlMatch.end;
-      final beforeURL = headlineText.substring(0, urlStart);
-      final afterURL = headlineText.substring(urlEnd);
-
-      // Combine text before and after URL, removing any trailing colons
-      String cleanHeadline = (beforeURL + afterURL).trim();
-      if (cleanHeadline.endsWith(':')) {
-        cleanHeadline =
-            cleanHeadline.substring(0, cleanHeadline.length - 1).trim();
-      }
-
-      // Remove @ prefix if it's the only text before the URL
-      if (cleanHeadline == '@') {
-        cleanHeadline = '';
-      }
-
-      // Fetch the webpage title/description to get link metadata
-      String? fetchedNotes;
-      String? fetchedTitle;
-
-      try {
-        print('TaskEditScreen: Fetching webpage metadata...');
-        final processedLink =
-            await LinkProcessor.validateAndProcessLink(cleanURL);
-        fetchedTitle = processedLink.title;
-        print('TaskEditScreen: Fetched webpage title: "$fetchedTitle"');
-
-        // Check if this is a streaming media link in a streaming media category
-        final isStreamingCategory = _category.originalId != null &&
-            STREAMING_MEDIA_CATEGORY_IDS.contains(_category.originalId);
-
-        if (isStreamingMediaUrl(cleanURL) &&
-            isStreamingCategory &&
-            fetchedTitle != null) {
-          print(
-              'TaskEditScreen: Detected streaming media link in streaming category');
-
-          // Try to extract artist and work from the title
-          final artistWorkInfo = extractArtistAndWorkFromTidal(fetchedTitle);
-
-          if (artistWorkInfo != null) {
-            print(
-                'TaskEditScreen: Extracted artist: "${artistWorkInfo.artist}", work: "${artistWorkInfo.work}"');
-
-            // Set headline to artist name (overriding any text before/after URL)
-            cleanHeadline = artistWorkInfo.artist;
-
-            // Set notes to work title
-            fetchedNotes = artistWorkInfo.work;
-
-            print('TaskEditScreen: Set headline to artist and notes to work');
-          }
-        }
-        // For non-streaming links with no headline text, use the fetched title
-        else if (cleanHeadline.isEmpty && fetchedTitle != null) {
-          cleanHeadline = fetchedTitle;
-        }
-
-        // Use the description from processedLink if available (and not already set by streaming media)
-        if (fetchedNotes == null &&
-            processedLink.description != null &&
-            processedLink.description!.isNotEmpty) {
-          fetchedNotes = processedLink.description;
-          print(
-              'TaskEditScreen: Using description from LinkProcessor: "${fetchedNotes!.length > 100 ? '${fetchedNotes.substring(0, 100)}...' : fetchedNotes}"');
-        }
-        // For Letterboxd URLs without description, try the special Letterboxd fetch
-        if (fetchedNotes == null &&
-            (cleanURL.contains('letterboxd.com') ||
-                cleanURL.contains('boxd.it'))) {
-          fetchedNotes = await _fetchLetterboxdNotes(cleanURL);
-          if (fetchedNotes != null) {
-            print('TaskEditScreen: Fetched Letterboxd notes: "$fetchedNotes"');
-          }
-        }
-      } catch (e) {
-        print('TaskEditScreen: Failed to fetch webpage metadata: $e');
-      }
-
-      // If still no headline text after processing, use a default
-      if (cleanHeadline.isEmpty) {
-        cleanHeadline = fetchedTitle ?? 'Link';
-      }
-
-      print('TaskEditScreen: Processed headline: "$cleanHeadline"');
-      print('TaskEditScreen: Extracted link: "$cleanURL"');
+      final links =
+          proposed.links.isNotEmpty ? proposed.links : <String>[htmlLink];
 
       return {
-        'headline': cleanHeadline,
-        'notes': fetchedNotes,
-        'links': [cleanURL],
+        'headline': headline,
+        'notes': notes,
+        'links': links,
+        'synopsis': proposed.synopsis,
+      };
+    } catch (e) {
+      // A failed fetch (e.g. CORS on web) is non-fatal: keep the link, no synopsis.
+      print('TaskEditScreen: Headline link enrichment failed (non-fatal): $e');
+      return {
+        'headline': fallbackTitle,
+        'notes': parsed.notes,
+        'links': [htmlLink],
+        'synopsis': null,
       };
     }
-
-    // Check if text contains a colon separator (title: description)
-    // Skip this when editing an existing task — user may have colons in their text
-    // (e.g. movie titles like "Mission: Impossible").
-    final colonIndex = skipColonSplit ? -1 : headlineText.indexOf(':');
-    if (colonIndex > 0) {
-      final title = headlineText.substring(0, colonIndex).trim();
-      final description = headlineText.substring(colonIndex + 1).trim();
-
-      if (title.isNotEmpty) {
-        print(
-            'TaskEditScreen: Found colon separator - title: "$title", description: "$description"');
-        return {
-          'headline': title,
-          'notes': description.isNotEmpty ? description : null,
-          'links': <String>[],
-        };
-      }
-    }
-
-    // Check if text is a markdown link [title](url)
-    final markdownMatch =
-        RegExp(r'\[([^\]]+)\]\(([^)]+)\)').firstMatch(headlineText);
-    if (markdownMatch != null) {
-      final title = markdownMatch.group(1) ?? 'Link';
-      final url = markdownMatch.group(2) ?? '';
-
-      if (url.isNotEmpty) {
-        print(
-            'TaskEditScreen: Found markdown link - title: "$title", url: "$url"');
-        return {
-          'headline': title,
-          'notes': null,
-          'links': [url],
-        };
-      }
-    }
-
-    // Check if text is an HTML link
-    if (headlineText.trim().startsWith('<a') &&
-        headlineText.trim().endsWith('</a>')) {
-      print('TaskEditScreen: Attempting HTML link parsing');
-      final (url, title) = LinkProcessor.parseHtmlLink(headlineText);
-      if (url != headlineText) {
-        print(
-            'TaskEditScreen: Parsed HTML link - title: "$title", url: "$url"');
-        return {
-          'headline': title ?? 'Link',
-          'notes': null,
-          'links': [url],
-        };
-      }
-    }
-
-    // Treat as plain text
-    print('TaskEditScreen: Treating as plain text: "$headlineText"');
-    return {
-      'headline': headlineText.trim(),
-      'notes': null,
-      'links': <String>[],
-    };
   }
 
   /// Extract the href from an `<a href="...">` HTML link string.
@@ -1271,6 +1062,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       final processedHeadline = processedData['headline'] as String;
       final processedNotes = processedData['notes'] as String?;
       final newLinks = processedData['links'] as List<String>;
+      final processedSynopsis = processedData['synopsis'] as String?;
 
       // Combine existing links with newly processed links
       final allLinks = [..._links, ...newLinks];
@@ -1289,6 +1081,14 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         'links':
             allLinks, // PostgreSQL array - always store as array, even if empty
       };
+
+      // Persist a synopsis resolved from the pasted link (page description →
+      // synopsis, NOT notes). Only set it when we actually have one, so an update
+      // never clobbers an existing synopsis to null; the post-save SynopsisFetcher
+      // below still fills the gap when this came up empty.
+      if (processedSynopsis != null && processedSynopsis.isNotEmpty) {
+        data['synopsis'] = processedSynopsis;
+      }
 
       // For new tasks (and copies), explicitly set suggestible_at to null so they appear at the top
       if (creatingNew) {
@@ -1938,7 +1738,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                                                   const SizedBox(width: 8),
                                                   Expanded(
                                                     child: Text(
-                                                      link,
+                                                      _hrefOf(link) ?? link,
                                                       style: TextStyle(
                                                         fontSize: 12,
                                                         color: Colors

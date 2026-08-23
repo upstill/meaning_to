@@ -66,8 +66,21 @@ class DomainIcon {
   Map<String, dynamic> toJson() {
     return {
       'domain': domain,
-      'data': iconData?.toList(), // Store binary data in 'data' column
+      'data': iconData == null ? null : encodeBytea(iconData!),
     };
+  }
+
+  /// Encode bytes as a Postgres `bytea` hex literal (`\xDEADBEEF`) — the format
+  /// PostgREST stores correctly into a `bytea` column. Sending a raw [Uint8List]
+  /// instead serializes to a JSON int array, which Postgres stores as the LITERAL
+  /// text "[255,216,...]" — not a decodable image. That was the bug behind blank
+  /// icons: the cached `data` couldn't be turned back into an image.
+  static String encodeBytea(Uint8List bytes) {
+    final sb = StringBuffer(r'\x');
+    for (final b in bytes) {
+      sb.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return sb.toString();
   }
 
   // Resize image to fit within maxIconSize while maintaining aspect ratio
@@ -448,7 +461,7 @@ class DomainIcon {
           try {
             response = await supabase.from('Icons').insert({
               'domain': domain,
-              'data': iconData, // Store binary data in 'data' column
+              'data': iconData == null ? null : encodeBytea(iconData!), // bytea hex
             }).select();
             print('Pure INSERT operation successful');
           } catch (insertError) {
@@ -458,7 +471,7 @@ class DomainIcon {
               // Fall back to upsert using the Supabase client
               response = await supabase.from('Icons').upsert({
                 'domain': domain,
-                'data': iconData, // Store binary data in 'data' column
+                'data': iconData == null ? null : encodeBytea(iconData!), // bytea hex
               }, onConflict: 'domain').select();
             } else {
               rethrow;
@@ -469,7 +482,7 @@ class DomainIcon {
           print('Icon exists, using upsert for update...');
           response = await supabase.from('Icons').upsert({
             'domain': domain,
-            'data': iconData, // Store binary data in 'data' column
+            'data': iconData == null ? null : encodeBytea(iconData!), // bytea hex
           }, onConflict: 'domain').select();
         }
 
@@ -600,13 +613,29 @@ class DomainIcon {
   }
 
   static Future<DomainIcon?> getIconForDomain(String domain) async {
-    // 1. Check cache first
+    // 1. Check in-memory cache first
     if (_iconCache.containsKey(domain)) {
       print('Using cached icon for domain: $domain');
       return _iconCache[domain];
     }
 
-    // 2. Try to get from database
+    // 2. On web, always resolve through the CORS-safe favicon proxy. Neither
+    //    other source works in the browser: a cross-origin img.logo.dev URL is
+    //    blocked by the CanvasKit renderer, and the cached DB `data` is not raw
+    //    image bytes (it was stored as the stringified byte list). Our
+    //    /functions/v1/favicon edge function fetches the icon server-side and
+    //    returns it with Access-Control-Allow-Origin, so it renders for any
+    //    domain (cached or not).
+    if (kIsWeb) {
+      const supabaseUrl = String.fromEnvironment('SUPABASE_URL',
+          defaultValue: 'https://zhpxdayfpysoixxjjqik.supabase.co');
+      final proxyUrl = '$supabaseUrl/functions/v1/favicon?domain=$domain';
+      final icon = DomainIcon(domain: domain, iconUrl: proxyUrl);
+      _iconCache[domain] = icon;
+      return icon;
+    }
+
+    // 3. Native: try the database cache
     try {
       print('Fetching icon from database for domain: $domain');
       final response = await supabase
@@ -639,18 +668,8 @@ class DomainIcon {
       print('Error details: $e');
     }
 
-    // 3. If not in cache or database, fetch icon.
-    // On web, proxy through our Supabase edge function to avoid CORS.
-    // On native, fetch binary from logo.dev and cache to database.
-    if (kIsWeb) {
-      const supabaseUrl = String.fromEnvironment('SUPABASE_URL',
-          defaultValue: 'https://zhpxdayfpysoixxjjqik.supabase.co');
-      final proxyUrl = '$supabaseUrl/functions/v1/favicon?domain=$domain';
-      final icon = DomainIcon(domain: domain, iconUrl: proxyUrl);
-      _iconCache[domain] = icon;
-      return icon;
-    }
-
+    // 4. Not cached: fetch the binary from logo.dev and cache it (native only —
+    //    web returned the proxy above).
     print('Fetching icon from logo.dev for domain: $domain');
     try {
       final logoDevUrl =
