@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:meaning_to/models/task.dart';
 import 'package:meaning_to/utils/link_processor.dart';
 import 'package:meaning_to/utils/input_line_parser.dart';
+import 'package:meaning_to/utils/link_to_task_converter.dart';
 
 /// Specification for what fields should be enriched in a Task
 class TaskEnrichmentSpec {
@@ -236,40 +237,44 @@ class TaskEnricher {
     if (parsed.url != null && parsed.url!.isNotEmpty) {
       final url = parsed.url!;
       try {
-        // Provide the extracted label as linkText so LinkProcessor keeps it
-        // (skips a fetch); a bare URL passes '' and gets its title fetched.
-        final processedLink = await LinkProcessor.validateAndProcessLink(
+        // Enrich via the SAME module every other entry point uses
+        // (LinkToTaskConverter), so a link resolves identically whether it
+        // arrives here (list/bulk import) or via share / New-Task headline paste
+        // / Home paste — i.e. per-domain smarts (Tidal, IMDb→OMDb, …), not just
+        // the generic page title. An explicit link label (from an <a> tag or
+        // markdown) is honoured as the pre-provided title (skips the fetch); a
+        // bare URL gets fully resolved.
+        final proposed = await LinkToTaskConverter.createProposedTaskFromLink(
           url,
-          linkText: parsed.linkTitle ?? '',
+          ownerId,
+          preProvidedTitle:
+              (parsed.linkTitle != null && parsed.linkTitle!.isNotEmpty)
+                  ? parsed.linkTitle
+                  : null,
         );
 
-        // Prefer the surrounding text as the headline; else the link's own label
-        // or the fetched page title.
-        final headline = parsed.headline.isNotEmpty
-            ? parsed.headline
-            : (parsed.linkTitle ?? processedLink.title ?? 'Link Task');
-        // Notes are user-authored only (the "Title: notes" colon split). The
-        // fetched page description belongs in synopsis, populated by
-        // SynopsisFetcher when the task is viewed — putting it in notes too made
-        // notes and synopsis identical.
-        final notes = parsed.notes;
-        // Keep an explicit label if the line carried one; else the fetched link.
-        final linkHtml =
-            (parsed.linkTitle != null && parsed.linkTitle!.isNotEmpty)
-                ? '<a href="$url">${parsed.linkTitle}</a>'
-                : processedLink.originalLink;
+        // Prefer the line's surrounding text as the headline; else the resolved
+        // title. Notes stay user-authored (the "Title: notes" colon split); else
+        // the proposed notes (e.g. a streaming work title). The page description
+        // rides in synopsis, lazily fetched when the task is viewed.
+        final headline =
+            parsed.headline.isNotEmpty ? parsed.headline : proposed.headline;
+        final notes = parsed.notes ?? proposed.notes;
+        final links = proposed.links.isNotEmpty
+            ? proposed.links
+            : ['<a href="$url">${parsed.linkTitle ?? url}</a>'];
 
         return await createAndEnrichTask(
           id: DateTime.now().millisecondsSinceEpoch,
           categoryId: categoryId,
-          headline: headline,
+          headline: headline.isNotEmpty ? headline : (parsed.linkTitle ?? url),
           notes: notes,
           ownerId: ownerId,
           finished: checklistDone,
-          links: [linkHtml],
+          links: links,
           spec: const TaskEnrichmentSpec(
-            enrichLinks: false, // already processed
-            generateDescription: false, // already have it
+            enrichLinks: false, // links already resolved by LinkToTaskConverter
+            generateDescription: false,
             ensureProcessedLinks: true,
             cleanHeadline: true,
           ),
