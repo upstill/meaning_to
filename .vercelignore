@@ -30,10 +30,6 @@ supabase/
 *.sh
 *.p8
 
-# One-off RSS feed (feed/*.html + feed/feed.xml ARE served for a Substack
-# import; the generator script is not). Remove the feed/ dir to back it all out.
-feed/*.dart
-
 # Node modules
 node_modules/
 
