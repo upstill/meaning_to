@@ -9,7 +9,6 @@ class Category {
   final DateTime? triggersAt;
   final String? template;
   final DateTime? lastAccess;
-  bool isPrivate;
   bool tasksArePrivate;
   final bool isShared;       // true if from shared_categories (not a DB column)
   final String? ownerName;   // display name of the sharer, for shared categories only
@@ -26,7 +25,6 @@ class Category {
     this.triggersAt,
     this.template,
     this.lastAccess,
-    this.isPrivate = false,
     this.tasksArePrivate = true,
     this.isShared = false,
     this.ownerName,
@@ -60,7 +58,6 @@ class Category {
       lastAccess: json['last_access'] != null
           ? DateTime.parse(json['last_access'] as String)
           : null,
-      isPrivate: json['private'] as bool? ?? false,
       tasksArePrivate: json['tasks_are_private'] as bool? ?? true,
     );
   }
@@ -77,7 +74,6 @@ class Category {
       'triggers_at': triggersAt?.toIso8601String(),
       'template': template,
       'last_access': lastAccess?.toIso8601String(),
-      'private': isPrivate,
       'tasks_are_private': tasksArePrivate,
     };
   }
@@ -98,7 +94,6 @@ class Category {
       triggersAt: triggersAt,
       template: template,
       lastAccess: lastAccess,
-      isPrivate: isPrivate,
       tasksArePrivate: tasksArePrivate,
       isShared: isShared,
       ownerName: ownerName,

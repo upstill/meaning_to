@@ -35,7 +35,8 @@ import 'package:meaning_to/widgets/task_display.dart';
 import 'package:meaning_to/widgets/task_search_results.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:meaning_to/widgets/linkified_text.dart';
+import 'package:meaning_to/widgets/expandable_notes.dart';
+import 'package:meaning_to/widgets/linkified_text.dart' show openUrlExternal;
 import 'package:meaning_to/widgets/pursuit_switcher_sheet.dart';
 import 'package:meaning_to/dialogs/allowed_senders_dialog.dart';
 import 'package:meaning_to/utils/pending_channel_store.dart';
@@ -545,7 +546,6 @@ class HomeScreenState extends State<HomeScreen> {
             await ApiClient.updateTaskShared(task.id, newSharedState);
             _performFind();
           },
-          isCategoryPrivate: category.isPrivate,
         ),
       ),
     );
@@ -2004,7 +2004,6 @@ class HomeScreenState extends State<HomeScreen> {
                     ? null
                     : (newSharedState) =>
                         _toggleTaskShareFromList(task, newSharedState),
-                isCategoryPrivate: _selectedCategory?.isPrivate ?? false,
                 isSnagged: taskSnagged,
                 onSnag: _isReadOnly &&
                         !taskSnagged &&
@@ -3768,7 +3767,7 @@ class HomeScreenState extends State<HomeScreen> {
                                     .trim()
                                     .isNotEmpty) ...[
                                   const SizedBox(height: 8),
-                                  LinkifiedText(
+                                  ExpandableNotes(
                                     _selectedCategory!.invitation!,
                                     style: const TextStyle(
                                       fontSize: 15,

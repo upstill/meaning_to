@@ -8,8 +8,8 @@ class CategoryForm extends StatefulWidget {
   final bool isEditing;
   final bool isLoading;
   final bool showPrivacyOptions;
-  final Function(String headline, String invitation, bool isPrivate,
-      bool tasksArePrivate) onSave;
+  final Function(String headline, String invitation, bool tasksArePrivate)
+      onSave;
   final VoidCallback? onEdit;
   final VoidCallback? onCancel;
 
@@ -32,7 +32,6 @@ class CategoryFormState extends State<CategoryForm> {
   final _formKey = GlobalKey<FormState>();
   final _headlineController = TextEditingController();
   final _invitationController = TextEditingController();
-  bool _isPrivate = true;
   bool _tasksArePrivate = true;
 
   @override
@@ -61,12 +60,10 @@ class CategoryFormState extends State<CategoryForm> {
     if (widget.category != null) {
       _headlineController.text = widget.category!.headline;
       _invitationController.text = widget.category!.invitation ?? '';
-      _isPrivate = widget.category!.isPrivate;
       _tasksArePrivate = widget.category!.tasksArePrivate;
     } else {
       _headlineController.clear();
       _invitationController.clear();
-      _isPrivate = true;
       _tasksArePrivate = true;
     }
   }
@@ -83,7 +80,6 @@ class CategoryFormState extends State<CategoryForm> {
     widget.onSave(
       _headlineController.text,
       _invitationController.text,
-      _isPrivate,
       _tasksArePrivate,
     );
   }
@@ -144,35 +140,18 @@ class CategoryFormState extends State<CategoryForm> {
                 if (widget.category != null && widget.showPrivacyOptions) ...[
                   const SizedBox(height: 16),
                   CheckboxListTile(
-                    title: const Text('Private'),
-                    subtitle: Text(
-                        'I want to keep this ${NamingUtils.categoriesName(capitalize: false, plural: false)} to myself'),
-                    value: _isPrivate,
+                    title: Text(
+                        '${NamingUtils.tasksName(plural: true)} are private by default'),
+                    value: _tasksArePrivate,
                     onChanged: widget.isLoading
                         ? null
                         : (bool? value) {
                             setState(() {
-                              _isPrivate = value ?? false;
+                              _tasksArePrivate = value ?? true;
                             });
                           },
                     controlAffinity: ListTileControlAffinity.leading,
                   ),
-                  if (!_isPrivate) ...[
-                    const SizedBox(height: 8),
-                    CheckboxListTile(
-                      title: Text(
-                          '${NamingUtils.tasksName(plural: true)} are private by default'),
-                      value: _tasksArePrivate,
-                      onChanged: widget.isLoading
-                          ? null
-                          : (bool? value) {
-                              setState(() {
-                                _tasksArePrivate = value ?? true;
-                              });
-                            },
-                      controlAffinity: ListTileControlAffinity.leading,
-                    ),
-                  ],
                 ],
                 const SizedBox(height: 24),
                 Row(
@@ -236,26 +215,6 @@ class CategoryFormState extends State<CategoryForm> {
                       color: Colors.grey[600],
                       fontStyle: FontStyle.italic,
                     ),
-                  ),
-                ],
-                if (widget.category!.isPrivate) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.lock,
-                        size: 16,
-                        color: Colors.grey[600],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Private',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ],

@@ -485,7 +485,7 @@ class _ShareActionDialogState extends State<ShareActionDialog> {
             Text(
               (_nativeShareAvailable
                       ? ''
-                      : 'Copy this link and paste into a message to someone '
+                      : 'Copy this link and paste it into a message to someone '
                           'you want to share with. ') +
                   'Recipients get read-only access. Hit Tasks below to choose '
                       'which tasks to share.',

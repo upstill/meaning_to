@@ -18,7 +18,6 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _headlineController;
   late final TextEditingController _invitationController;
-  late bool _isPrivate;
   bool _isLoading = false;
 
   @override
@@ -28,7 +27,6 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
         TextEditingController(text: widget.category.headline);
     _invitationController =
         TextEditingController(text: widget.category.invitation ?? '');
-    _isPrivate = widget.category.isPrivate;
   }
 
   @override
@@ -48,7 +46,6 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
           .update({
             'headline': _headlineController.text.trim(),
             'invitation': invitation.isEmpty ? null : invitation,
-            'private': _isPrivate,
           })
           .eq('id', widget.category.id)
           .select()

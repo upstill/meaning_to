@@ -14,8 +14,6 @@ class TaskDisplay extends StatefulWidget {
   final VoidCallback? onTap;
   final Function(DateTime)? onUpdateSuggestibleAt;
   final Function(bool)? onShareToggle;
-  final bool? isCategoryPrivate;
-  final VoidCallback? onMakeCategoryPublic;
   // When set, replaces all controls with a selection checkbox
   final bool? isSelected;
   final ValueChanged<bool?>? onSelected;
@@ -33,8 +31,6 @@ class TaskDisplay extends StatefulWidget {
     this.onTap,
     this.onUpdateSuggestibleAt,
     this.onShareToggle,
-    this.isCategoryPrivate,
-    this.onMakeCategoryPublic,
     this.isSelected,
     this.onSelected,
     this.isSnagged = false,
@@ -54,8 +50,6 @@ class TaskDisplay extends StatefulWidget {
     VoidCallback? onTap,
     Function(DateTime)? onUpdateSuggestibleAt,
     Function(bool)? onShareToggle,
-    bool? isCategoryPrivate,
-    VoidCallback? onMakeCategoryPublic,
     bool? isSelected,
     ValueChanged<bool?>? onSelected,
     bool isSnagged = false,
@@ -70,8 +64,6 @@ class TaskDisplay extends StatefulWidget {
       onTap: onTap,
       onUpdateSuggestibleAt: onUpdateSuggestibleAt,
       onShareToggle: onShareToggle,
-      isCategoryPrivate: isCategoryPrivate,
-      onMakeCategoryPublic: onMakeCategoryPublic,
       isSelected: isSelected,
       onSelected: onSelected,
       isSnagged: isSnagged,
@@ -216,35 +208,6 @@ class _TaskDisplayState extends State<TaskDisplay> {
           ),
         ),
       ),
-    );
-  }
-
-  void _showPrivateCategoryDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Private Pursuit'),
-          content: const Text(
-            'This pursuit is private, so ideas aren\'t being shared. Would you like to make the pursuit public so you can share them?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                if (widget.onMakeCategoryPublic != null) {
-                  widget.onMakeCategoryPublic!();
-                }
-              },
-              child: const Text('Yes, please share'),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -449,17 +412,9 @@ class _TaskDisplayState extends State<TaskDisplay> {
                         // Share control — only when sharing is enabled
                         if (widget.onShareToggle != null)
                         _buildShareToggleButton(
-                          isShared: widget.isCategoryPrivate == true
-                              ? false
-                              : widget.task.shared,
-                          onPressed: () {
-                            if (widget.isCategoryPrivate == true &&
-                                !widget.task.shared) {
-                              _showPrivateCategoryDialog(context);
-                            } else if (widget.onShareToggle != null) {
-                              widget.onShareToggle!(!widget.task.shared);
-                            }
-                          },
+                          isShared: widget.task.shared,
+                          onPressed: () =>
+                              widget.onShareToggle!(!widget.task.shared),
                         ),
                         // Edit and Delete buttons grouped tightly together
                         if (widget.withControls) ...[

@@ -48,8 +48,15 @@ class LinkifiedText extends StatefulWidget {
   final String text;
   final TextStyle? style;
   final TextAlign? textAlign;
+  final int? maxLines;
+  final TextOverflow? overflow;
 
-  const LinkifiedText(this.text, {super.key, this.style, this.textAlign});
+  const LinkifiedText(this.text,
+      {super.key,
+      this.style,
+      this.textAlign,
+      this.maxLines,
+      this.overflow});
 
   @override
   State<LinkifiedText> createState() => _LinkifiedTextState();
@@ -79,6 +86,8 @@ class _LinkifiedTextState extends State<LinkifiedText> {
             linkifySpans(widget.text, baseStyle: widget.style, recognizers: _recognizers),
       ),
       textAlign: widget.textAlign,
+      maxLines: widget.maxLines,
+      overflow: widget.overflow ?? TextOverflow.clip,
     );
   }
 }

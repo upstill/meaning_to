@@ -44,8 +44,7 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
   Future<void> _createCategory(
     String headline,
     String invitation,
-    bool _unusedIsPrivate,
-    bool _unusedTasksArePrivate,
+    bool tasksArePrivate,
   ) async {
     setState(() {
       _isLoading = true;
@@ -59,8 +58,7 @@ class NewCategoryScreenState extends State<NewCategoryScreen> {
         'invitation': invitation.isEmpty ? null : invitation,
         'owner_id': userId,
         'original_id': null, // Custom categories should have null original_id
-        'private': true,
-        'tasks_are_private': true,
+        'tasks_are_private': tasksArePrivate,
       };
 
       // Create new category

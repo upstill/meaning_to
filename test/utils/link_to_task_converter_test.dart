@@ -72,7 +72,6 @@ void main() {
         ownerId: testUserId,
         createdAt: DateTime.now(),
         originalId: 54, // "Play a Favorite Record"
-        isPrivate: false,
         tasksArePrivate: false,
       );
 
